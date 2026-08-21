@@ -7,38 +7,63 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import androidx.media3.common.Player
-import androidx.media3.common.Player.PlaybackSuppressionReason
+import ani.dantotsu.media.anime.player.PlaybackEngine
 
-@Suppress("DEPRECATION")
 class AudioFocusListener(
     val context: Context,
-    val player: Player
-) : Player.Listener {
+    val engine: PlaybackEngine
+) : AudioManager.OnAudioFocusChangeListener {
+
     private val handler = Handler(Looper.getMainLooper())
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var focusRequest: AudioFocusRequest? = null
+    var wasPlayingBeforeTransientLoss = false
+        private set
 
-    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
-        if (focusChange == AudioManager.AUDIOFOCUS_GAIN) {
-            player.apply {
-                if (playbackState == Player.STATE_READY || playbackState == Player.STATE_BUFFERING) {
-                    play()
+    override fun onAudioFocusChange(focusChange: Int) {
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                if (wasPlayingBeforeTransientLoss) {
+                    engine.play()
+                    wasPlayingBeforeTransientLoss = false
                 }
             }
-            abandonRequest()
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                wasPlayingBeforeTransientLoss = engine.playWhenReady
+                engine.pause()
+            }
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                wasPlayingBeforeTransientLoss = false
+                engine.pause()
+                abandonRequest()
+            }
         }
     }
 
-    private fun requestFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            focusRequest?.let { audioManager.requestAudioFocus(it) }
+    fun requestFocus(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (focusRequest == null) {
+                focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).run {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+                            .build()
+                    )
+                    setAcceptsDelayedFocusGain(true)
+                    setOnAudioFocusChangeListener(this@AudioFocusListener, handler)
+                    build()
+                }
+            }
+            audioManager.requestAudioFocus(focusRequest!!) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         } else {
+            @Suppress("DEPRECATION")
             audioManager.requestAudioFocus(
-                audioFocusChangeListener,
+                this,
                 AudioManager.STREAM_MUSIC,
                 AudioManager.AUDIOFOCUS_GAIN
-            )
+            ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         }
     }
 
@@ -46,31 +71,9 @@ class AudioFocusListener(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         } else {
-            audioManager.abandonAudioFocus(audioFocusChangeListener)
+            @Suppress("DEPRECATION")
+            audioManager.abandonAudioFocus(this)
         }
-    }
-
-    init {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).run {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
-                        .build()
-                )
-                setAcceptsDelayedFocusGain(true)
-                setOnAudioFocusChangeListener(audioFocusChangeListener, handler)
-                build()
-            }
-        }
-        onPlaybackSuppressionReasonChanged(player.playbackSuppressionReason)
-    }
-
-    override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: @PlaybackSuppressionReason Int) {
-        if (playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS) {
-            player.playWhenReady = false
-            requestFocus()
-        }
+        wasPlayingBeforeTransientLoss = false
     }
 }

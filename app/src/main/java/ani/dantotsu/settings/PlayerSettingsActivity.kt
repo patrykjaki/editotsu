@@ -422,6 +422,11 @@ class PlayerSettingsActivity :
         }
         toggleSubOptions(binding.subSwitch.isChecked)
 
+        binding.useSourceSubSwitch.isChecked = PrefManager.getVal(PrefName.UseSourceSubtitleStyling)
+        binding.useSourceSubSwitch.setOnCheckedChangeListener { _, isChecked ->
+            PrefManager.setVal(PrefName.UseSourceSubtitleStyling, isChecked)
+        }
+
         binding.subTextSwitch.isChecked = PrefManager.getVal(PrefName.TextviewSubtitles)
         binding.subTextSwitch.setOnCheckedChangeListener { _, isChecked ->
             PrefManager.setVal(PrefName.TextviewSubtitles, isChecked)

@@ -4,8 +4,6 @@ import android.os.Handler
 import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.updateProgress
@@ -21,11 +19,10 @@ import ani.dantotsu.widgets.continue_widget.ContinueWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@UnstableApi
 class PlayerProgressManager(
     private val activity: AppCompatActivity,
     private val model: MediaDetailsViewModel,
-    private val getPlayer: () -> Player?,
+    private val getEngine: () -> PlaybackEngine?,
     private val isPlayerInitialized: () -> Boolean
 ) {
 
@@ -77,14 +74,14 @@ class PlayerProgressManager(
     }
 
     private fun checkAndPreloadProgress() {
-        val player = getPlayer() ?: return
+        val engine = getEngine() ?: return
         val m = media ?: return
-        if (!isPlayerInitialized() || player.duration <= 0) return
+        if (!isPlayerInitialized() || engine.durationMs <= 0L) return
 
-        val duration = if (episodeLength > 0f) episodeLength else player.duration.toFloat()
+        val duration = if (episodeLength > 0f) episodeLength else engine.durationMs.toFloat()
         if (duration <= 0f) return
 
-        val watchRatio = player.currentPosition.toFloat() / duration
+        val watchRatio = engine.positionMs.toFloat() / duration
         val watchPercentage = PrefManager.getVal<Float>(PrefName.WatchPercentage)
 
         if (watchRatio > watchPercentage) {
@@ -111,18 +108,21 @@ class PlayerProgressManager(
     }
 
     fun updateAniProgress(forceComplete: Boolean = false) {
-        val player = getPlayer() ?: return
+        val engine = getEngine() ?: return
         val m = media ?: return
         val incognito = PrefManager.getVal<Boolean>(PrefName.Incognito)
-        val duration = if (episodeLength > 0f) episodeLength else player.duration.toFloat()
+        val duration = if (episodeLength > 0f) episodeLength else engine.durationMs.toFloat()
 
         val episodeEnd = forceComplete ||
-                player.playbackState == Player.STATE_ENDED ||
-                (duration > 0f && player.currentPosition.toFloat() / duration > PrefManager.getVal<Float>(PrefName.WatchPercentage))
+                engine.playbackState is PlaybackState.Ended ||
+                (duration > 0f && engine.positionMs.toFloat() / duration > PrefManager.getVal<Float>(PrefName.WatchPercentage))
         val episode0 = currentEpisodeIndex == 0 && PrefManager.getVal<Boolean>(PrefName.ChapterZeroPlayer)
 
         if (!incognito && (episodeEnd || episode0) && Anilist.userid != null) {
-            if (PrefManager.getCustomVal("${m.id}_save_progress", true) &&
+            val saveProgress = if (PrefManager.getVal(PrefName.AskIndividualPlayer)) {
+                PrefManager.getCustomVal("${m.id}_save_progress", true)
+            } else true
+            if (saveProgress &&
                 (if (m.isAdult) PrefManager.getVal(PrefName.UpdateForHPlayer) else true)
             ) {
                 val epNum = m.anime?.selectedEpisode

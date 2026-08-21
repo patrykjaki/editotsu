@@ -16,13 +16,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AnimationUtils
 import android.widget.TextView
+import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.math.MathUtils.clamp
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import ani.dantotsu.GesturesListener
 import ani.dantotsu.R
 import ani.dantotsu.brightnessConverter
@@ -45,15 +43,14 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-@UnstableApi
 class PlayerGestureManager(
     private val activity: AppCompatActivity,
-    private val playerView: PlayerView,
+    private val playerView: DantotsuPlayerView,
     private val exoBrightnessCont: View,
     private val exoVolumeCont: View,
     private val exoBrightness: Slider,
     private val exoVolume: Slider,
-    private val getPlayer: () -> ExoPlayer?,
+    private val getEngine: () -> PlaybackEngine?,
     private val isPlayerInitialized: () -> Boolean
 ) {
 
@@ -163,7 +160,7 @@ class PlayerGestureManager(
     }
 
     fun seek(forward: Boolean, event: MotionEvent? = null) {
-        val player = getPlayer() ?: return
+        val engine = getEngine() ?: return
         val seekTime = PrefManager.getVal<Int>(PrefName.SeekTime)
         val forwardText = playerView.findViewById<TextView>(R.id.exo_fast_forward_anim)
         val rewindText = playerView.findViewById<TextView>(R.id.exo_fast_rewind_anim)
@@ -173,12 +170,12 @@ class PlayerGestureManager(
         val (card, text) = if (forward) {
             val t = "+${seekTime * ++seekTimesF}"
             forwardText.text = t
-            handler.post { player.seekTo(player.currentPosition + seekTime * 1000) }
+            handler.post { engine.seekRelative(seekTime * 1000L) }
             fastForwardCard to forwardText
         } else {
             val t = "-${seekTime * ++seekTimesR}"
             rewindText.text = t
-            handler.post { player.seekTo(player.currentPosition - seekTime * 1000) }
+            handler.post { engine.seekRelative(-seekTime * 1000L) }
             fastRewindCard to rewindText
         }
 
@@ -265,15 +262,13 @@ class PlayerGestureManager(
             }
         }
 
-        playerView.setControllerVisibilityListener(
-            PlayerView.ControllerVisibilityListener { visibility ->
-                if (visibility == View.GONE) {
-                    activity.hideSystemBars()
-                    brightnessRunnable.run()
-                    volumeRunnable.run()
-                }
+        playerView.setControllerVisibilityListener { visibility ->
+            if (visibility == View.GONE) {
+                activity.hideSystemBars()
+                brightnessRunnable.run()
+                volumeRunnable.run()
             }
-        )
+        }
 
         playerView.findViewById<View>(R.id.exo_full_area)?.setOnClickListener {
             handleController()
@@ -349,19 +344,19 @@ class PlayerGestureManager(
             }
 
             fun fastForward(event: MotionEvent) {
-                val player = getPlayer() ?: return
+                val engine = getEngine() ?: return
                 isFastForwarding = true
                 fastForwardStartX = event.rawX
-                fastForwardOriginalSpeed = player.playbackParameters.speed
+                fastForwardOriginalSpeed = engine.playbackSpeed
                 fastForwardInitialSpeed = clamp(fastForwardOriginalSpeed * 2f, minLongPressSpeed, maxLongPressSpeed)
-                player.setPlaybackSpeed(fastForwardInitialSpeed)
+                engine.setPlaybackSpeed(fastForwardInitialSpeed)
                 lastFastForwardSpeed = fastForwardInitialSpeed
                 fastForward.visibility = View.VISIBLE
-                updateFastForwardText(player.playbackParameters.speed)
+                updateFastForwardText(engine.playbackSpeed)
             }
 
             fun updateFastForwardSpeed(event: MotionEvent) {
-                val player = getPlayer() ?: return
+                val engine = getEngine() ?: return
                 if (!isFastForwarding) return
                 val width = playerView.width.toFloat().takeIf { it > 0f } ?: return
                 val deltaX = event.rawX - fastForwardStartX
@@ -373,16 +368,16 @@ class PlayerGestureManager(
                     maxLongPressSpeed
                 )
                 if (abs(targetSpeed - lastFastForwardSpeed) < minSpeedUpdateDelta) return
-                player.setPlaybackSpeed(targetSpeed)
+                engine.setPlaybackSpeed(targetSpeed)
                 lastFastForwardSpeed = targetSpeed
-                updateFastForwardText(player.playbackParameters.speed)
+                updateFastForwardText(engine.playbackSpeed)
             }
 
             fun stopFastForward() {
-                val player = getPlayer()
-                if (isFastForwarding && player != null) {
+                val engine = getEngine()
+                if (isFastForwarding && engine != null) {
                     isFastForwarding = false
-                    player.setPlaybackSpeed(fastForwardOriginalSpeed)
+                    engine.setPlaybackSpeed(fastForwardOriginalSpeed)
                     fastForward.visibility = View.GONE
                 }
             }

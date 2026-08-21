@@ -5,26 +5,22 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.annotation.OptIn
-import androidx.media3.common.C.TRACK_TYPE_AUDIO
-import androidx.media3.common.C.TrackType
-import androidx.media3.common.Tracks
-import androidx.media3.common.util.UnstableApi
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.BottomSheetDialogFragment
 import ani.dantotsu.R
 import ani.dantotsu.databinding.BottomSheetTrackGroupsBinding
 import ani.dantotsu.databinding.ItemSubtitleTextBinding
+import ani.dantotsu.media.anime.player.PlayerTrack
+import ani.dantotsu.media.anime.player.TrackType
 import java.util.Locale
 
-@OptIn(UnstableApi::class)
 class TrackGroupDialogFragment(
     private var instance: ExoplayerView,
-    private var trackGroups: ArrayList<Tracks.Group>,
-    private var type: @TrackType Int,
-    private var overrideTrackNames: List<Pair<String, String>>? = null
+    private var tracks: List<PlayerTrack>,
+    private var type: TrackType
 ) : BottomSheetDialogFragment() {
+
     private var _binding: BottomSheetTrackGroupsBinding? = null
     private val binding get() = _binding!!
 
@@ -40,7 +36,12 @@ class TrackGroupDialogFragment(
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        if (type == TRACK_TYPE_AUDIO) binding.selectionTitle.text = getString(R.string.audio_tracks)
+        if (type == TrackType.AUDIO) {
+            binding.selectionTitle.text = getString(R.string.audio_tracks)
+        } else {
+            binding.selectionTitle.text = getString(R.string.subtitles)
+        }
+
         binding.subtitlesRecycler.layoutManager = LinearLayoutManager(requireContext())
         binding.subtitlesRecycler.adapter = TrackGroupAdapter()
     }
@@ -58,71 +59,46 @@ class TrackGroupDialogFragment(
                 )
             )
 
+        // Item 0 is "Off / Disabled", subsequent items are tracks
+        override fun getItemCount(): Int = tracks.size + 1
+
         @SuppressLint("SetTextI18n")
-        @OptIn(UnstableApi::class)
         override fun onBindViewHolder(holder: StreamViewHolder, position: Int) {
-            val binding = holder.binding
-            trackGroups[position].let { trackGroup ->
-                if (overrideTrackNames?.getOrNull(
-                        position - (trackGroups.size - (overrideTrackNames?.size ?: 0))
-                    ) != null
-                ) {
-                    val pair =
-                        overrideTrackNames!![position - (trackGroups.size - overrideTrackNames!!.size)]
-                    binding.subtitleTitle.text =
-                        "[${pair.second}] ${pair.first}"
-                } else when (val language = trackGroup.getTrackFormat(0).language?.lowercase()) {
-                    null -> {
-                        val label = trackGroup.getTrackFormat(0).label
-                        binding.subtitleTitle.text =
-                            if (!label.isNullOrBlank()) label else getString(R.string.unknown_track, "Track $position")
-                    }
+            val itemBinding = holder.binding
 
-                    "none" -> {
-                        binding.subtitleTitle.text = getString(R.string.disabled_track)
-                    }
-
-                    else -> {
-                        val format = trackGroup.getTrackFormat(0)
-                        val locale = if (language.contains("-")) {
-                            val parts = language.split("-")
-                            try {
-                                Locale(parts[0], parts[1])
-                            } catch (ignored: Exception) {
-                                null
-                            }
-                        } else {
-                            try {
-                                Locale(language)
-                            } catch (ignored: Exception) {
-                                null
-                            }
-                        }
-                        binding.subtitleTitle.text = locale?.let {
-                            val label = format.label
-                            if (!label.isNullOrBlank()) {
-                                "[${it.language}] $label"
-                            } else {
-                                "[${it.language}] ${it.displayName}"
-                            }
-                        } ?: run {
-                            val label = format.label
-                            if (!label.isNullOrBlank()) label else getString(R.string.unknown_track, language)
-                        }
-                    }
-                }
-                if (trackGroup.isSelected) {
-                    val selected = "✔ ${binding.subtitleTitle.text}"
-                    binding.subtitleTitle.text = selected
-                }
-                binding.root.setOnClickListener {
+            if (position == 0) {
+                val isAnySelected = tracks.any { it.selected }
+                val title = getString(R.string.disabled_track)
+                itemBinding.subtitleTitle.text = if (!isAnySelected) "✔ $title" else title
+                itemBinding.root.setOnClickListener {
                     dismiss()
-                    instance.onSetTrackGroupOverride(trackGroup, type)
+                    instance.onSelectTrack(null, type)
                 }
+                return
+            }
+
+            val track = tracks[position - 1]
+            val lang = track.language?.lowercase()
+            val locale = if (!lang.isNullOrBlank()) {
+                if (lang.contains("-")) {
+                    val parts = lang.split("-")
+                    try { Locale(parts[0], parts[1]) } catch (_: Exception) { null }
+                } else {
+                    try { Locale(lang) } catch (_: Exception) { null }
+                }
+            } else {
+                null
+            }
+
+            val displayLabel = track.name ?: locale?.displayName ?: getString(R.string.unknown_track, "Track #${track.id}")
+            val formattedTitle = if (locale != null) "[${locale.language}] $displayLabel" else displayLabel
+
+            itemBinding.subtitleTitle.text = if (track.selected) "✔ $formattedTitle" else formattedTitle
+            itemBinding.root.setOnClickListener {
+                dismiss()
+                instance.onSelectTrack(track, type)
             }
         }
-
-        override fun getItemCount(): Int = trackGroups.size
     }
 
     override fun onDestroy() {

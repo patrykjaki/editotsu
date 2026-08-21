@@ -11,17 +11,13 @@ import androidx.core.net.toUri
 import androidx.media3.cast.CastPlayer
 import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.PlayerView
-import ani.dantotsu.R
 import ani.dantotsu.defaultHeaders
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.anime.CustomCastButton
 import ani.dantotsu.media.anime.CustomCastThemeFactory
-import ani.dantotsu.parsers.Episode
 import ani.dantotsu.parsers.Subtitle
 import ani.dantotsu.parsers.Video
 import ani.dantotsu.settings.saving.PrefManager
@@ -42,7 +38,7 @@ import com.google.android.gms.cast.framework.media.RemoteMediaClient
 @UnstableApi
 class PlayerCastManager(
     private val activity: AppCompatActivity,
-    private val playerView: PlayerView,
+    private val playerView: View,
     private val onCastStateChanged: (isPlaying: Boolean) -> Unit
 ) : SessionAvailabilityListener {
 
@@ -57,7 +53,8 @@ class PlayerCastManager(
         private set
     var currentVideo: Video? = null
         private set
-    private var exoPlayer: Player? = null
+    private var playbackEngine: PlaybackEngine? = null
+    private var playbackCoordinator: PlaybackCoordinator? = null
 
     var castScreenView: CastScreenView? = null
 
@@ -71,7 +68,7 @@ class PlayerCastManager(
         private set
 
     var onSessionStartedListener: ((deviceName: String?) -> Unit)? = null
-    var onSessionEndedListener: ((resumePositionMs: Long) -> Unit)? = null
+    var onSessionEndedListener: ((resumePositionMs: Long, shouldPlay: Boolean) -> Unit)? = null
 
     private val progressHandler = Handler(Looper.getMainLooper())
     private var isTrackingProgress = false
@@ -109,11 +106,12 @@ class PlayerCastManager(
 
         override fun onSessionEnded(session: CastSession, error: Int) {
             val resumePos = currentPositionMs
+            val wasPlaying = castPlayer?.isPlaying == true
             activeDeviceName = null
             session.remoteMediaClient?.removeProgressListener(remoteProgressListener)
             stopProgressTracking()
             CastProxyServerService.stop(activity)
-            onSessionEndedListener?.invoke(resumePos)
+            onSessionEndedListener?.invoke(resumePos, wasPlaying)
         }
 
         override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
@@ -266,10 +264,16 @@ class PlayerCastManager(
         }
     }
 
-    fun updateCurrentMedia(mediaItem: MediaItem?, exoPlayer: Player?, video: Video? = null) {
+    fun updateCurrentMedia(
+        mediaItem: MediaItem?,
+        engine: PlaybackEngine?,
+        video: Video? = null,
+        coordinator: PlaybackCoordinator? = null
+    ) {
         this.currentMediaItem = mediaItem
-        this.exoPlayer = exoPlayer
+        this.playbackEngine = engine
         this.currentVideo = video
+        this.playbackCoordinator = coordinator
     }
 
     fun isCasting(): Boolean = castPlayer?.isCastSessionAvailable == true && castPlayer?.currentMediaItem != null
@@ -361,8 +365,9 @@ class PlayerCastManager(
     override fun onCastSessionAvailable() {
         val item = currentMediaItem
         if (isCastApiAvailable && !activity.isDestroyed && item != null) {
-            val handoverPosition = exoPlayer?.currentPosition ?: 0L
-            exoPlayer?.pause()
+            playbackCoordinator?.setPlaybackTarget(PlaybackTarget.REMOTE_CAST)
+            val handoverPosition = playbackEngine?.positionMs ?: 0L
+            playbackEngine?.pause()
 
             activeDeviceName = castContext?.sessionManager?.currentCastSession?.castDevice?.friendlyName
             castScreenView?.updateDeviceName(activeDeviceName)
@@ -416,8 +421,10 @@ class PlayerCastManager(
 
     override fun onCastSessionUnavailable() {
         val resumePosition = currentPositionMs
+        val wasPlaying = castPlayer?.isPlaying == true
         stopProgressTracking()
-        onSessionEndedListener?.invoke(resumePosition)
+        playbackCoordinator?.setPlaybackTarget(PlaybackTarget.LOCAL)
+        onSessionEndedListener?.invoke(resumePosition, wasPlaying)
     }
 
     fun release() {

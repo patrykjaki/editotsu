@@ -1,5 +1,6 @@
 # Gradle files
 .gradle/
+**/build/
 build/
 
 #kotlin
@@ -10,16 +11,24 @@ local.properties
 
 # Log/OS Files
 *.log
+.DS_Store
+*/.DS_Store
 
 # Secrets
 apikey.properties
 
 # Android Studio generated files and folders
 captures/
-.externalNativeBuild/
-.cxx/
+**/.externalNativeBuild/
+**/.cxx/
 *.apk
 output.json
+
+# Native binaries
+*.so
+**/jniLibs/
+
+
 
 # IntelliJ
 *.iml

@@ -1,284 +1,160 @@
 package ani.dantotsu.media.anime.player
 
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.net.toUri
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.PlaybackParameters
-import androidx.media3.common.Player
-import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.datasource.HttpDataSource
-import androidx.media3.datasource.cache.CacheDataSource
-import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.dash.DashMediaSource
-import androidx.media3.exoplayer.hls.HlsMediaSource
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.MergingMediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.exoplayer.source.SingleSampleMediaSource
-import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
-import androidx.media3.exoplayer.util.EventLogger
 import androidx.media3.session.MediaSession
-import androidx.media3.ui.PlayerView
 import ani.dantotsu.defaultHeaders
-import ani.dantotsu.media.anime.AudioFocusListener
-import ani.dantotsu.media.anime.VideoCache
+import ani.dantotsu.parsers.Subtitle
 import ani.dantotsu.parsers.Video
-import ani.dantotsu.parsers.VideoType
-import ani.dantotsu.settings.saving.PrefManager
-import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.toast
-import ani.dantotsu.util.Logger
-import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
-import io.github.peerless2012.ass.media.kt.withAssSupport
 import okhttp3.OkHttpClient
 import java.util.Calendar
 
 @UnstableApi
 class DantotsuPlayerManager(
     private val activity: AppCompatActivity,
-    private val playerView: PlayerView,
+    private val playerView: DantotsuPlayerView,
     private val subtitleManager: PlayerSubtitleManager,
     private val client: OkHttpClient,
-    private val onPlayerErrorCallback: (error: PlaybackException) -> Unit
+    private val onPlayerErrorCallback: (error: PlaybackError) -> Unit
 ) {
 
-    var exoPlayer: ExoPlayer? = null
+    var playbackEngine: PlaybackEngine? = null
         private set
-    var trackSelector: DefaultTrackSelector? = null
+    var playbackCoordinator: PlaybackCoordinator? = null
+        private set
+    var audioFocusController: AudioFocusController? = null
         private set
     var mediaSession: MediaSession? = null
         private set
-    var audioFocusListener: AudioFocusListener? = null
+    var media3PlayerAdapter: PlaybackEngineMedia3Player? = null
+        private set
+    var becomingNoisyReceiver: BecomingNoisyReceiver? = null
         private set
 
-    var mediaSource: MediaSource? = null
-        private set
-    var currentMediaItem: MediaItem? = null
-        private set
     var isInitialized = false
         private set
 
-    private val DEFAULT_MIN_BUFFER_MS = 30_000
-    private val DEFAULT_MAX_BUFFER_MS = 120_000
-    private val BUFFER_FOR_PLAYBACK_MS = 2_500
-    private val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 5_000
-    private val BACK_BUFFER_DURATION_MS = 60_000
-
-    fun initTrackSelector() {
-        trackSelector = DefaultTrackSelector(activity)
-    }
-
-    fun buildMediaSource(
+    fun buildPlaybackRequest(
         video: Video,
-        subConfigs: List<MediaItem.SubtitleConfiguration>,
-        mimeType: String?,
-        downloadedMediaItem: MediaItem?,
-        mediaMetadata: MediaMetadata? = null
-    ): Pair<MediaSource, MediaItem> {
+        subtitles: List<Subtitle>? = null,
+        startPositionMs: Long = 0L,
+        title: String? = null,
+        seriesTitle: String? = null,
+        episodeNumber: String? = null,
+        coverUrl: String? = null,
+        mimeType: String? = null,
+        preferredSubLang: String? = null,
+        embedUrl: String? = null
+    ): PlaybackRequest {
         val headers = mutableMapOf<String, String>()
         headers.putAll(defaultHeaders)
         video.file.headers?.let {
             headers.putAll(it)
         }
 
-        val httpClient = client.newBuilder().apply {
-            connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-        }.build()
-        val httpDataSourceFactory = OkHttpDataSource.Factory(httpClient).apply {
-            setDefaultRequestProperties(headers)
-            if (headers.containsKey("User-Agent")) {
-                setUserAgent(headers["User-Agent"])
+        val externalSubs = subtitles?.mapNotNull { sub ->
+            val rawUrl = sub.file.url
+            if (rawUrl.isBlank()) null
+            else {
+                val resolvedUrl = SubtitleSelectionResolver.resolveSubtitleUri(rawUrl, embedUrl, video.file.url)
+                val isSelected = preferredSubLang != null && sub.language.equals(preferredSubLang, ignoreCase = true)
+                ExternalSubtitle(
+                    url = resolvedUrl,
+                    title = sub.language,
+                    language = sub.language,
+                    selected = isSelected
+                )
             }
-        }
+        } ?: emptyList()
 
-        val upstream = DefaultDataSource.Factory(activity, httpDataSourceFactory)
-        val cacheFactory: DataSource.Factory = CacheDataSource.Factory()
-            .setCache(VideoCache.getInstance(activity))
-            .setUpstreamDataSourceFactory(upstream)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
-        val extractorsFactory = subtitleManager.createExtractorsFactory()
-        val assParserFactory = subtitleManager.createSubtitleParserFactory()
-        val assMediaSourceFactory = DefaultMediaSourceFactory(cacheFactory, extractorsFactory)
-            .setSubtitleParserFactory(assParserFactory)
-
-        val mediaItem = downloadedMediaItem?.buildUpon()?.apply {
-            if (mediaMetadata != null) setMediaMetadata(mediaMetadata)
-        }?.build() ?: MediaItem.Builder()
-            .setUri(video.file.url.toUri())
-            .apply {
-                if (mimeType != null) setMimeType(mimeType)
-                if (subConfigs.isNotEmpty()) setSubtitleConfigurations(subConfigs)
-                if (mediaMetadata != null) setMediaMetadata(mediaMetadata)
-            }
-            .build()
-        this.currentMediaItem = mediaItem
-
-        val isContentUri = video.file.url.startsWith("content://")
-        val activeFactory = if (isContentUri) {
-            val localDataSourceFactory = DefaultDataSource.Factory(activity)
-            DefaultMediaSourceFactory(localDataSourceFactory, extractorsFactory)
-                .setSubtitleParserFactory(assParserFactory)
-        } else {
-            assMediaSourceFactory
-        }
-        this.activeMediaSourceFactory = activeFactory
-        val primarySource = activeFactory.createMediaSource(mediaItem)
-
-        this.mediaSource = primarySource
-        return Pair(primarySource, mediaItem)
+        return PlaybackRequest(
+            uri = video.file.url,
+            startPositionMs = startPositionMs,
+            headers = headers,
+            title = title,
+            seriesTitle = seriesTitle,
+            episodeNumber = episodeNumber,
+            coverUrl = coverUrl,
+            mimeType = mimeType,
+            externalSubtitles = externalSubs
+        )
     }
 
-    var activeMediaSourceFactory: MediaSource.Factory? = null
+    fun initPlayer(
+        playbackPosition: Long = 0L,
+        speed: Float = 1.0f,
+        listener: PlaybackListener
+    ): PlaybackEngine {
+        releasePlayer()
 
-    fun applyUpdatedSubtitles(newSubConfigs: List<MediaItem.SubtitleConfiguration>, position: Long) {
-        val player = exoPlayer ?: return
-        val currentItem = currentMediaItem ?: return
+        val engine = MpvPlaybackEngine(activity)
+        this.playbackEngine = engine
 
-        val newMediaItem = currentItem.buildUpon()
-            .setSubtitleConfigurations(newSubConfigs)
-            .build()
-        this.currentMediaItem = newMediaItem
+        val focusController = AndroidAudioFocusController(activity)
+        this.audioFocusController = focusController
 
-        val factory = activeMediaSourceFactory
-        if (factory != null) {
-            val newSource = factory.createMediaSource(newMediaItem)
-            this.mediaSource = newSource
-            player.setMediaSource(newSource, position)
-        } else {
-            player.setMediaItem(newMediaItem, position)
+        val coord = PlaybackCoordinator(
+            getEngine = { playbackEngine },
+            audioFocusController = focusController
+        )
+        this.playbackCoordinator = coord
+
+        playerView.bindEngine(engine)
+        engine.setPlaybackSpeed(speed)
+
+        becomingNoisyReceiver = BecomingNoisyReceiver {
+            coord.onBecomingNoisy()
         }
-        player.prepare()
-        player.play()
-    }
-
-    fun buildExoplayer(
-        playbackPosition: Long,
-        playbackParameters: PlaybackParameters,
-        listener: Player.Listener,
-        forceDefaultRenderers: Boolean = false
-    ): ExoPlayer {
-        releaseExoPlayer()
-
-        val loadControl = DefaultLoadControl.Builder()
-            .setBackBuffer(BACK_BUFFER_DURATION_MS, false)
-            .setBufferDurationsMs(
-                DEFAULT_MIN_BUFFER_MS,
-                DEFAULT_MAX_BUFFER_MS,
-                BUFFER_FOR_PLAYBACK_MS,
-                BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
-            )
-            .setTargetBufferBytes(C.LENGTH_UNSET)
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
-
-        val useExtensionDecoder = PrefManager.getVal<Boolean>(PrefName.UseAdditionalCodec) && !forceDefaultRenderers
-        val decoder = if (useExtensionDecoder) {
-            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
-        } else {
-            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
-        }
-
-        val nextRenderersFactory = NextRenderersFactory(activity)
-            .setEnableDecoderFallback(true)
-            .setExtensionRendererMode(decoder)
-
-        subtitleManager.initAssHandler()
-        val handler = subtitleManager.assHandler!!
-        Logger.log("Libass: Calling nextRenderersFactory.withAssSupport()")
-        val renderersFactory = if (forceDefaultRenderers) {
-            DefaultRenderersFactory(activity)
-                .setEnableDecoderFallback(true)
-                .withAssSupport(handler)
-        } else {
-            nextRenderersFactory.withAssSupport(handler)
-        }
-
-        val mediaSourceFactory = activeMediaSourceFactory ?: DefaultMediaSourceFactory(activity)
-            .setSubtitleParserFactory(subtitleManager.createSubtitleParserFactory())
-
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(C.USAGE_MEDIA)
-            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-            .build()
-
-        val newTrackSelector = DefaultTrackSelector(activity)
-        this.trackSelector = newTrackSelector
-
-        val player = ExoPlayer.Builder(activity, renderersFactory)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .setTrackSelector(newTrackSelector)
-            .setLoadControl(loadControl)
-            .setAudioAttributes(audioAttributes, true)
-            .setHandleAudioBecomingNoisy(true)
-            .setWakeMode(C.WAKE_MODE_NETWORK)
-            .build()
-
-        this.exoPlayer = player
-        playerView.player = player
-
-        audioFocusListener = AudioFocusListener(activity, player)
-        player.addListener(audioFocusListener!!)
-
-        Logger.log("Libass: Calling handler.init(exoPlayer)")
-        handler.init(player)
-
-        player.playWhenReady = true
-        player.playbackParameters = playbackParameters
-        mediaSource?.let { player.setMediaSource(it) }
-        player.prepare()
-        if (playbackPosition > 0L) {
-            player.seekTo(playbackPosition)
-        }
+        becomingNoisyReceiver?.register(activity)
 
         try {
+            val adapter = PlaybackEngineMedia3Player(engine, coord)
+            this.media3PlayerAdapter = adapter
             val rightNow = Calendar.getInstance()
-            mediaSession = MediaSession.Builder(activity, player)
+            mediaSession = MediaSession.Builder(activity, adapter)
                 .setId(rightNow.timeInMillis.toString())
                 .build()
         } catch (e: Exception) {
             toast(e.toString())
         }
 
-        player.addListener(listener)
-        player.addAnalyticsListener(EventLogger())
+        engine.addListener(listener)
+        subtitleManager.applySubtitlePreferences()
         isInitialized = true
-        return player
+        return engine
     }
 
-    fun releaseExoPlayer() {
-        audioFocusListener?.abandonRequest()
-        audioFocusListener = null
+    fun releasePlayer() {
+        becomingNoisyReceiver?.unregister(activity)
+        becomingNoisyReceiver = null
+
+        playbackCoordinator?.release()
+        playbackCoordinator = null
+
+        audioFocusController?.abandonFocus()
+        audioFocusController = null
+
         isInitialized = false
-        playerView.player = null
-        exoPlayer?.let { p ->
-            p.stop()
-            p.clearMediaItems()
-            p.release()
-        }
-        exoPlayer = null
-        trackSelector = null
+        playerView.unbindEngine()
+
         mediaSession?.release()
         mediaSession = null
+
+        media3PlayerAdapter?.releaseAdapter()
+        media3PlayerAdapter = null
+
+        playbackEngine?.release()
+        playbackEngine = null
     }
 
-    fun release() {
-        releaseExoPlayer()
-        VideoCache.release()
-        subtitleManager.release()
+    fun pause() {
+        playbackCoordinator?.pause() ?: playbackEngine?.pause()
     }
+
+    fun play() {
+        playbackCoordinator?.play() ?: playbackEngine?.play()
+    }
+
+    fun isPlaying(): Boolean = playbackEngine?.isPlaying == true
 }

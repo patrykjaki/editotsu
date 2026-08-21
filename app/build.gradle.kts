@@ -112,7 +112,12 @@ android {
             pickFirsts.add("**/libavutil.so")
             pickFirsts.add("**/libswresample.so")
             pickFirsts.add("**/libswscale.so")
+            pickFirsts.add("**/libc++_shared.so")
         }
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 
     compileOptions {
@@ -158,8 +163,9 @@ dependencies {
     ksp(libs.glide.ksp)
 
     implementation(libs.bundles.media3)
-    implementation(libs.bundles.subtitles)
+    implementation(libs.mpv)
     implementation(libs.mediarouter)
+
 
     // UI
     implementation(libs.material)
@@ -189,4 +195,6 @@ dependencies {
     implementation(libs.libtorrent4j.android.arm64)
     implementation(libs.libtorrent4j.android.x86)
     implementation(libs.libtorrent4j.android.x86.x64)
+
+    testImplementation(libs.junit)
 }

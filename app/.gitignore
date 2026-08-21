@@ -1,8 +1,8 @@
 /build
-/debug
+/debug/*.apk
 /debug/output-metadata.json
-/alpha
+/alpha/*.apk
 /alpha/output-metadata.json
-/google/*
-/fdroid/*
-/release
+/google/*.apk
+/fdroid/*.apk
+/release/*.apk

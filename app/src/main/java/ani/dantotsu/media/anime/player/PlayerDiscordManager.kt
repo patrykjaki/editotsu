@@ -1,10 +1,7 @@
 package ani.dantotsu.media.anime.player
 
-import android.content.Context
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.media3.common.C
-import androidx.media3.common.Player
 import ani.dantotsu.R
 import ani.dantotsu.connections.discord.Discord
 import ani.dantotsu.connections.discord.RPC
@@ -23,10 +20,11 @@ class PlayerDiscordManager(
     fun updatePresence(
         media: Media?,
         episode: Episode?,
-        player: Player?,
+        positionMs: Long,
+        durationMs: Long,
         isPlaying: Boolean
     ) {
-        if (media == null || episode == null || player == null) return
+        if (media == null || episode == null) return
         val context = activity
         val offline = PrefManager.getVal<Boolean>(PrefName.OfflineMode)
         val incognito = PrefManager.getVal<Boolean>(PrefName.Incognito)
@@ -46,12 +44,8 @@ class PlayerDiscordManager(
                 }
 
                 val now = System.currentTimeMillis()
-                val currentPosMs = if (player.currentPosition > 0) player.currentPosition else 0L
-                val safeDurationMs = if (player.duration > 0 && player.duration != C.TIME_UNSET) {
-                    player.duration
-                } else {
-                    1440000L // default 24 mins
-                }
+                val currentPosMs = if (positionMs > 0) positionMs else 0L
+                val safeDurationMs = if (durationMs > 0) durationMs else 1440000L // default 24 mins
 
                 val isPaused = !isPlaying
                 val startTimestamp = if (isPaused) null else now - currentPosMs

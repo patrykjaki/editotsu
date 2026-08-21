@@ -89,6 +89,16 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/upcoming_widget_info" />
         </receiver>
+
+        <receiver
+            android:name=".media.anime.player.MpvDiagnosticReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="ani.dantotsu.RUN_ZERO_OPTION_PROBE" />
+                <action android:name="ani.dantotsu.RUN_PREFIX_PROBE" />
+                <action android:name="ani.dantotsu.RUN_FULL_BOOTSTRAP_PROBE" />
+            </intent-filter>
+        </receiver>
         <activity
             android:name=".widgets.upcoming.UpcomingWidgetConfigure"
             android:exported="true">

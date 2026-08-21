@@ -529,25 +529,36 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
                                 video.file.url = torrentManager.getLink(currentTorrent, index)
                                 Logger.log("Received: ${video.file.url}")
-                                if (launch == true) {
-                                    Intent(activity, ExoplayerView::class.java).apply {
-                                        ExoplayerView.media = media
-                                        ExoplayerView.initialized = true
-                                        startActivity(this)
+                                withContext(Dispatchers.Main) {
+                                    val act = activity ?: currActivity()
+                                    if (launch == true) {
+                                        if (act != null) {
+                                            Intent(act, ExoplayerView::class.java).apply {
+                                                ExoplayerView.media = media
+                                                ExoplayerView.initialized = true
+                                                act.startActivity(this)
+                                            }
+                                        }
+                                    } else {
+                                        val epKey = media.anime?.selectedEpisode
+                                        val targetEp = media.anime?.episodes?.getEpisode(epKey) ?: ep
+                                        if (targetEp != null) {
+                                            model.setEpisode(targetEp, "startExo no launch")
+                                        }
                                     }
-                                } else {
-                                    val epKey = media.anime?.selectedEpisode
-                                    val targetEp = media.anime?.episodes?.getEpisode(epKey) ?: ep
-                                    if (targetEp != null) {
-                                        model.setEpisode(targetEp, "startExo no launch")
+                                    tryWith {
+                                        dismissAllowingStateLoss()
                                     }
                                 }
-                                dismissAllowingStateLoss()
                             } catch (e: Exception) {
                                 Injekt.get<CrashlyticsInterface>().logException(e)
                                 Logger.log(e)
-                                toast("Error starting video: ${e.message}")
-                                dismissAllowingStateLoss()
+                                withContext(Dispatchers.Main) {
+                                    toast("Error starting video: ${e.message}")
+                                    tryWith {
+                                        dismissAllowingStateLoss()
+                                    }
+                                }
                             }
                         }
                     } else {

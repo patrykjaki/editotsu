@@ -116,6 +116,7 @@ enum class PrefName(val data: Pref) {
     CursedSpeeds(Pref(Location.Player, Boolean::class, false)),
     Resize(Pref(Location.Player, Int::class, 0)),
     Subtitles(Pref(Location.Player, Boolean::class, true)),
+    UseSourceSubtitleStyling(Pref(Location.Player, Boolean::class, true)),
     OnlineSubtitlesEnabled(Pref(Location.Player, Boolean::class, true)),
     OnlineSubtitleProviders(Pref(Location.Player, Set::class, setOf("Wyzie", "Stremio"))),
     OnlineSubtitleLanguages(Pref(Location.Player, Set::class, setOf("English"))),

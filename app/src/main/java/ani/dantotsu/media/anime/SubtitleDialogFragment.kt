@@ -53,7 +53,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
     // Models for subtitle list items
     object NoneSubtitleOption
     data class OtherServerSubtitle(val serverName: String, val subtitle: Subtitle)
-    data class EmbeddedSubtitleTrack(val group: Tracks.Group, val trackIndex: Int, val language: String?, val label: String?)
+    data class EmbeddedSubtitleTrack(val track: ani.dantotsu.media.anime.player.PlayerTrack, val language: String?, val label: String?)
     enum class TabType { SERVER, ONLINE, LOCAL }
 
     private var _binding: BottomSheetSubtitlesBinding? = null
@@ -413,16 +413,13 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
 
         // 3. Embedded Player Tracks
         val exoActivity = activity as? ExoplayerView
-        val trackGroups = exoActivity?.currentSubTrackGroups
-        if (trackGroups != null && trackGroups.isNotEmpty()) {
-            trackGroups.forEachIndexed { _, group ->
-                for (trackIndex in 0 until group.length) {
-                    val format = group.getTrackFormat(trackIndex)
-                    val lang = format.language
-                    val label = format.label
-                    if (lang != "none") {
-                        items.add(EmbeddedSubtitleTrack(group, trackIndex, lang, label))
-                    }
+        val tracks = exoActivity?.playerManager?.playbackEngine?.availableTracks?.filter { it.type == ani.dantotsu.media.anime.player.TrackType.SUBTITLE }
+        if (tracks != null && tracks.isNotEmpty()) {
+            tracks.forEach { track ->
+                val lang = track.language
+                val label = track.name
+                if (lang != "none") {
+                    items.add(EmbeddedSubtitleTrack(track, lang, label))
                 }
             }
         }
@@ -758,15 +755,15 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
 
                 // --- 4. EMBEDDED STREAM TRACKS ---
                 is EmbeddedSubtitleTrack -> {
-                    val langName = item.language?.let { mapLanguageCode(it) } ?: "Stream Track ${item.trackIndex + 1}"
+                    val langName = item.language?.let { mapLanguageCode(it) } ?: (item.label ?: "Track #${item.track.id}")
                     val label = item.label ?: "Embedded Track"
 
                     itemBinding.subtitleIcon.setImageResource(R.drawable.ic_round_subtitles_24)
                     itemBinding.subtitleTitle.text = langName
                     itemBinding.subtitleDetails.text = "${getString(R.string.embedded_stream_subs)} • $label"
 
-                    val uniqueKey = "Embedded:${item.language ?: item.trackIndex}"
-                    val isSelected = savedLang == uniqueKey
+                    val uniqueKey = "Embedded:${item.language ?: item.track.id}"
+                    val isSelected = savedLang == uniqueKey || item.track.selected
                     if (isSelected) {
                         itemBinding.subtitleCardRoot.setCardBackgroundColor(highlightColor)
                         itemBinding.subtitleCardRoot.strokeColor = borderSelectedColor
@@ -775,10 +772,9 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
 
                     itemBinding.subtitleCardRoot.setOnClickListener {
                         PrefManager.setCustomVal("subLang_${mediaId}", uniqueKey)
-                        (requireActivity() as? ExoplayerView)?.onSetTrackGroupOverride(
-                            item.group,
-                            C.TRACK_TYPE_TEXT,
-                            item.trackIndex
+                        (requireActivity() as? ExoplayerView)?.onSelectTrack(
+                            item.track,
+                            ani.dantotsu.media.anime.player.TrackType.SUBTITLE
                         )
                         updateActiveSubtitleBadge()
                         dismiss()

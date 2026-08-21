@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.crashlytics) apply false
 }
 
+
 tasks.register<Delete>("clean") {
     delete(layout.buildDirectory)
 }
