@@ -72,8 +72,9 @@ object MpvNetworkOptions {
         }.joinToString(",")
     }
 
-    fun buildPerFileOptions(
-        headers: Map<String, String>,
+    fun buildPerFilePerformanceOptions(
+        sourceClass: PlaybackSourceClass = PlaybackSourceClass.LOCAL_FILE,
+        headers: Map<String, String> = emptyMap(),
         startPositionMs: Long = 0L
     ): String {
         val optionsList = mutableListOf<String>()
@@ -101,7 +102,40 @@ object MpvNetworkOptions {
             optionsList.add("start=$startSec")
         }
 
+        when (sourceClass) {
+            PlaybackSourceClass.DIRECT_HTTP -> {
+                optionsList.add("demuxer-max-bytes=67108864")
+                optionsList.add("demuxer-max-back-bytes=33554432")
+                optionsList.add("network-timeout=20")
+                optionsList.add("cache-pause-initial=no")
+                optionsList.add("cache-pause-wait=1")
+            }
+            PlaybackSourceClass.HLS -> {
+                optionsList.add("demuxer-max-bytes=67108864")
+                optionsList.add("network-timeout=20")
+            }
+            PlaybackSourceClass.TORRENT_LOCALHOST -> {
+                optionsList.add("demuxer-max-bytes=33554432")
+                optionsList.add("cache-pause-initial=no")
+            }
+            PlaybackSourceClass.LOCAL_FILE,
+            PlaybackSourceClass.CONTENT_FD -> {
+                // Default local options
+            }
+        }
+
         return optionsList.joinToString(",")
+    }
+
+    fun buildPerFileOptions(
+        headers: Map<String, String>,
+        startPositionMs: Long = 0L
+    ): String {
+        return buildPerFilePerformanceOptions(
+            sourceClass = PlaybackSourceClass.LOCAL_FILE,
+            headers = headers,
+            startPositionMs = startPositionMs
+        )
     }
 
     fun redactHeadersForLogging(headers: Map<String, String>): Map<String, String> {
@@ -114,8 +148,13 @@ object MpvNetworkOptions {
         }
     }
 
-    fun getRedactedOptionsDescription(headers: Map<String, String>, startPositionMs: Long): String {
+    fun getRedactedOptionsDescription(
+        headers: Map<String, String>,
+        startPositionMs: Long,
+        sourceClass: PlaybackSourceClass = PlaybackSourceClass.LOCAL_FILE
+    ): String {
         val redactedHeaders = redactHeadersForLogging(headers)
-        return "headers=$redactedHeaders, startMs=$startPositionMs"
+        return "sourceClass=$sourceClass, headers=$redactedHeaders, startMs=$startPositionMs"
     }
 }
+

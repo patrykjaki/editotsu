@@ -291,13 +291,15 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                                 torrentManager.activeTorrentHash =
                                                     currentTorrent.hash
 
-                                                // Pre-buffer the first piece
-                                                torrentManager.prebuffer(currentTorrent.hash!!, index)
+                                                // Pre-buffer the first piece and release temporary check lease
+                                                val prebufferResult = torrentManager.prebufferWithResult(currentTorrent.hash!!, index)
+                                                prebufferResult.lease?.close()
 
                                                 selectedVideo.file.url =
                                                     torrentManager.getLink(currentTorrent, index)
                                                 Logger.log("Received: ${selectedVideo.file.url}")
                                             }
+
                                         } catch (e: Exception) {
                                             Injekt.get<CrashlyticsInterface>()
                                                 .logException(e)

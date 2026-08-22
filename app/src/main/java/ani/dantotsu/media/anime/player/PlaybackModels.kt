@@ -2,6 +2,14 @@ package ani.dantotsu.media.anime.player
 
 import java.io.File
 
+enum class PlaybackSourceClass {
+    LOCAL_FILE,
+    CONTENT_FD,
+    DIRECT_HTTP,
+    HLS,
+    TORRENT_LOCALHOST
+}
+
 data class ExternalSubtitle(
     val url: String,
     val title: String? = null,
@@ -21,7 +29,9 @@ data class PlaybackRequest(
     val mimeType: String? = null,
     val subtitleStyle: SubtitleStyle = SubtitleStyle(),
     val externalSubtitles: List<ExternalSubtitle> = emptyList(),
-    val metadata: Map<String, String> = emptyMap()
+    val metadata: Map<String, String> = emptyMap(),
+    val sourceClass: PlaybackSourceClass = PlaybackSourceClass.LOCAL_FILE,
+    val sourceLease: AutoCloseable? = null
 )
 
 enum class TrackType {

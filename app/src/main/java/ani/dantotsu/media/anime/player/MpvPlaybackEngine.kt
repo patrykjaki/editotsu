@@ -13,6 +13,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 interface EngineDispatcher {
     fun post(action: () -> Unit)
@@ -95,6 +96,8 @@ class MpvPlaybackEngine(
         const val MPV_EVENT_END_FILE = 7
         const val MPV_EVENT_FILE_LOADED = 8
         const val MPV_EVENT_PLAYBACK_RESTART = 21
+
+        private val engineGenerationSeq = AtomicLong(0L)
     }
 
     enum class LoadOperationState {
@@ -111,13 +114,24 @@ class MpvPlaybackEngine(
     private class LoadOperation(
         val generationId: Long,
         val request: PlaybackRequest,
-        val lease: AutoCloseable?,
+        val leases: MutableList<AutoCloseable> = mutableListOf(),
         var playlistEntryId: Long? = null,
         var state: LoadOperationState = LoadOperationState.CREATED,
         var externalSubtitlesAttached: Boolean = false,
-        var durationKnown: Boolean = false
-    )
+        var durationKnown: Boolean = false,
+        var pendingSeekMs: Long? = null,
+        var pendingAudioTrackId: Int? = null,
+        var pendingSubtitleTrackId: Int? = null
+    ) {
+        fun closeLeases() {
+            leases.forEach { lease ->
+                try { lease.close() } catch (_: Exception) {}
+            }
+            leases.clear()
+        }
+    }
 
+    private val engineGen = engineGenerationSeq.incrementAndGet()
     private val listeners = CopyOnWriteArraySet<PlaybackListener>()
 
     private val releaseRequested = AtomicBoolean(false)
@@ -137,6 +151,15 @@ class MpvPlaybackEngine(
     private val supersededLeases = mutableListOf<AutoCloseable>()
     private var activeOperation: LoadOperation? = null
     private var activeEntryId: Long? = null
+
+    // Stage A Pre-Ready Desired State Accumulators
+    private var pendingSurface: Surface? = null
+    private var pendingSurfaceWidth: Int = 0
+    private var pendingSurfaceHeight: Int = 0
+    private var pendingSpeed: Float? = null
+    private var pendingResizeMode: ResizeMode? = null
+    private var pendingPlayIntent: Boolean? = null
+    private var pendingLoadRequest: PlaybackRequest? = null
 
     private var pausedForCache = false
     private var isPausedInternal = true
@@ -169,7 +192,7 @@ class MpvPlaybackEngine(
     override val lastError: PlaybackError?
         get() = currentSnapshot.error
     override val currentRequest: PlaybackRequest?
-        get() = activeOperation?.request
+        get() = activeOperation?.request ?: pendingLoadRequest
 
     init {
         engineDispatcher.post {
@@ -177,16 +200,11 @@ class MpvPlaybackEngine(
         }
     }
 
-    private fun ensureInitialized(): Boolean {
-        if (!isInitialized && !releaseRequested.get() && engineLifecycle !is EngineLifecycle.Failed) {
-            initMpv()
-        }
-        return isInitialized && !releaseRequested.get()
-    }
-
     private fun initMpv() {
         if (isInitialized || releaseRequested.get() || engineLifecycle is EngineLifecycle.Failed) return
         engineLifecycle = EngineLifecycle.Initializing
+
+        // In test environments or environments where MpvNativeRuntime is bypassed/synchronized
         try {
             val targetContext = context?.applicationContext ?: context
             ani.dantotsu.util.Logger.log("MPVSTEP 01 before create")
@@ -238,16 +256,34 @@ class MpvPlaybackEngine(
             mpvClient.observeProperty("dheight", MPV_FORMAT_INT64)
             ani.dantotsu.util.Logger.log("MPVSTEP 10 after observeProperty")
 
-            // Start paused so playback only begins when coordinator.play()
-            // explicitly requests audio focus and unpauses. This keeps
-            // isPausedInternal = true in sync with MPV's actual state.
+            // Start paused so playback only begins when play is explicitly requested
             ani.dantotsu.util.Logger.log("MPVSTEP 11 before initial pause property set")
             mpvClient.setPropertyBoolean("pause", true)
             ani.dantotsu.util.Logger.log("MPVSTEP 12 after initial pause property set")
 
+            // Replay Stage A accumulated settings
+            pendingSurface?.let { setVideoSurfaceInternal(it) }
+            if (pendingSurfaceWidth > 0 && pendingSurfaceHeight > 0) {
+                setVideoSurfaceSizeInternal(pendingSurfaceWidth, pendingSurfaceHeight)
+            }
+            pendingSpeed?.let { setPlaybackSpeedInternal(it) }
+            pendingResizeMode?.let { setResizeModeInternal(it) }
+            applySubtitleStyleInternal(sessionSubtitleStyle)
+
             isInitialized = true
             engineLifecycle = EngineLifecycle.Ready
             ani.dantotsu.util.Logger.log("MPVSTEP 13 initialization complete")
+
+            // Replay Stage A pending load request
+            val reqToLoad = pendingLoadRequest
+            if (reqToLoad != null) {
+                pendingLoadRequest = null
+                loadMediaInternal(reqToLoad)
+            }
+
+            if (pendingPlayIntent == true) {
+                playInternal()
+            }
         } catch (t: Throwable) {
             ani.dantotsu.util.Logger.log("MPVSTEP ERROR in initMpv: ${t.message}")
             try {
@@ -272,21 +308,48 @@ class MpvPlaybackEngine(
         }
     }
 
+    private fun ensureInitialized(): Boolean {
+        if (!isInitialized && !releaseRequested.get() && engineLifecycle !is EngineLifecycle.Failed) {
+            initMpv()
+        }
+        return isInitialized && !releaseRequested.get()
+    }
+
     override fun play() {
         engineDispatcher.post {
-            if (!ensureInitialized()) return@post
             updateSnapshot(currentSnapshot.copy(userPlayIntent = true))
             notifyPlayWhenReadyChanged(true)
+            pendingPlayIntent = true
+            if (isInitialized && !releaseRequested.get()) {
+                playInternal()
+            }
+        }
+    }
+
+    private fun playInternal() {
+        try {
             mpvClient.setPropertyBoolean("pause", false)
+        } catch (e: Exception) {
+            ani.dantotsu.util.Logger.log("MpvPlaybackEngine: playInternal failed: ${e.message}")
         }
     }
 
     override fun pause() {
         engineDispatcher.post {
-            if (!ensureInitialized()) return@post
             updateSnapshot(currentSnapshot.copy(userPlayIntent = false))
             notifyPlayWhenReadyChanged(false)
+            pendingPlayIntent = false
+            if (isInitialized && !releaseRequested.get()) {
+                pauseInternal()
+            }
+        }
+    }
+
+    private fun pauseInternal() {
+        try {
             mpvClient.setPropertyBoolean("pause", true)
+        } catch (e: Exception) {
+            ani.dantotsu.util.Logger.log("MpvPlaybackEngine: pauseInternal failed: ${e.message}")
         }
     }
 
@@ -302,63 +365,134 @@ class MpvPlaybackEngine(
 
     override fun seekTo(positionMs: Long) {
         engineDispatcher.post {
-            if (!ensureInitialized()) return@post
-            val sec = TimeConverter.msToSeconds(positionMs)
-            mpvClient.command("seek", sec.toString(), "absolute+exact")
+            if (releaseRequested.get()) return@post
+            if (!isInitialized) {
+                // Stage A pre-ready seek: fold into pending load request
+                pendingLoadRequest = pendingLoadRequest?.copy(startPositionMs = positionMs)
+                return@post
+            }
+
+            val op = activeOperation
+            if (op != null && (op.state == LoadOperationState.CREATED || op.state == LoadOperationState.SUBMITTED || op.state == LoadOperationState.BOUND || op.state == LoadOperationState.STARTED)) {
+                // Stage B pre-loaded seek: store as generation-scoped pending seek
+                op.pendingSeekMs = positionMs
+                ani.dantotsu.util.Logger.log("MpvPlaybackEngine: generation ${op.generationId} in state ${op.state}; queued pendingSeekMs=$positionMs")
+            } else {
+                val sec = TimeConverter.msToSeconds(positionMs)
+                try {
+                    mpvClient.command("seek", sec.toString(), "absolute+exact")
+                } catch (e: Exception) {
+                    ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekTo command failed: ${e.message}")
+                }
+            }
         }
     }
 
     override fun seekRelative(offsetMs: Long) {
         engineDispatcher.post {
-            if (!ensureInitialized()) return@post
-            val sec = TimeConverter.msToSecondsSigned(offsetMs)
-            ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekRelative offsetMs=$offsetMs -> ${sec}s")
-            mpvClient.command("seek", sec.toString(), "relative+exact")
+            if (releaseRequested.get()) return@post
+            if (!isInitialized) {
+                // Stage A pre-ready relative seek: fold into pending start position
+                val currentStart = pendingLoadRequest?.startPositionMs ?: 0L
+                val updatedStart = (currentStart + offsetMs).coerceAtLeast(0L)
+                pendingLoadRequest = pendingLoadRequest?.copy(startPositionMs = updatedStart)
+                return@post
+            }
+
+            val op = activeOperation
+            if (op != null && (op.state == LoadOperationState.CREATED || op.state == LoadOperationState.SUBMITTED || op.state == LoadOperationState.BOUND || op.state == LoadOperationState.STARTED)) {
+                val base = op.pendingSeekMs ?: op.request.startPositionMs
+                val updated = (base + offsetMs).coerceAtLeast(0L)
+                op.pendingSeekMs = updated
+                ani.dantotsu.util.Logger.log("MpvPlaybackEngine: generation ${op.generationId} in state ${op.state}; updated pendingSeekMs=$updated")
+            } else {
+                val sec = TimeConverter.msToSecondsSigned(offsetMs)
+                ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekRelative offsetMs=$offsetMs -> ${sec}s")
+                try {
+                    mpvClient.command("seek", sec.toString(), "relative+exact")
+                } catch (e: Exception) {
+                    ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekRelative command failed: ${e.message}")
+                }
+            }
         }
     }
 
     override fun setPlaybackSpeed(speed: Float) {
         engineDispatcher.post {
-            if (!ensureInitialized()) return@post
             val clamped = speed.coerceIn(0.25f, 50.0f)
-            mpvClient.setPropertyDouble("speed", clamped.toDouble())
+            pendingSpeed = clamped
+            if (isInitialized && !releaseRequested.get()) {
+                setPlaybackSpeedInternal(clamped)
+            }
+        }
+    }
+
+    private fun setPlaybackSpeedInternal(speed: Float) {
+        try {
+            mpvClient.setPropertyDouble("speed", speed.toDouble())
+        } catch (e: Exception) {
+            ani.dantotsu.util.Logger.log("MpvPlaybackEngine: setPlaybackSpeed failed: ${e.message}")
         }
     }
 
     override fun setVideoSurface(surface: Surface?) {
         engineDispatcher.post {
             if (releaseRequested.get()) return@post
-            ani.dantotsu.util.Logger.log("MPVSTEP 30 before setVideoSurface (isValid=${surface?.isValid})")
-            if (!ensureInitialized()) return@post
-            if (surface != null && surface.isValid) {
-                mpvClient.attachSurface(surface)
-                try {
-                    mpvClient.setPropertyString("force-window", "yes")
-                    mpvClient.setPropertyString("vo", "gpu")
-                } catch (_: Exception) {}
-            } else {
-                try {
-                    mpvClient.setPropertyString("vo", "null")
-                    mpvClient.setPropertyString("force-window", "no")
-                } catch (_: Exception) {}
-                mpvClient.detachSurface()
+            pendingSurface = surface
+            if (isInitialized) {
+                setVideoSurfaceInternal(surface)
             }
-            ani.dantotsu.util.Logger.log("MPVSTEP 31 after setVideoSurface")
         }
+    }
+
+    private fun setVideoSurfaceInternal(surface: Surface?) {
+        ani.dantotsu.util.Logger.log("MPVSTEP 30 before setVideoSurface (isValid=${surface?.isValid})")
+        if (surface != null && surface.isValid) {
+            try {
+                mpvClient.attachSurface(surface)
+                mpvClient.setPropertyString("force-window", "yes")
+                mpvClient.setPropertyString("vo", "gpu")
+            } catch (_: Exception) {}
+        } else {
+            try {
+                mpvClient.setPropertyString("vo", "null")
+                mpvClient.setPropertyString("force-window", "no")
+            } catch (_: Exception) {}
+            try {
+                mpvClient.detachSurface()
+            } catch (_: Exception) {}
+        }
+        ani.dantotsu.util.Logger.log("MPVSTEP 31 after setVideoSurface")
     }
 
     override fun setVideoSurfaceSize(width: Int, height: Int) {
         engineDispatcher.post {
-            if (!ensureInitialized() || width <= 0 || height <= 0) return@post
-            try {
-                mpvClient.setPropertyString("android-surface-size", "${width}x${height}")
-            } catch (_: Exception) {}
+            if (width <= 0 || height <= 0 || releaseRequested.get()) return@post
+            pendingSurfaceWidth = width
+            pendingSurfaceHeight = height
+            if (isInitialized) {
+                setVideoSurfaceSizeInternal(width, height)
+            }
         }
+    }
+
+    private fun setVideoSurfaceSizeInternal(width: Int, height: Int) {
+        try {
+            mpvClient.setPropertyString("android-surface-size", "${width}x${height}")
+        } catch (_: Exception) {}
     }
 
     override fun setResizeMode(mode: ResizeMode) {
         engineDispatcher.post {
-            if (!ensureInitialized()) return@post
+            pendingResizeMode = mode
+            if (isInitialized && !releaseRequested.get()) {
+                setResizeModeInternal(mode)
+            }
+        }
+    }
+
+    private fun setResizeModeInternal(mode: ResizeMode) {
+        try {
             when (mode) {
                 ResizeMode.FIT -> {
                     mpvClient.setPropertyString("keepaspect", "yes")
@@ -388,42 +522,46 @@ class MpvPlaybackEngine(
                     mpvClient.setPropertyDouble("panscan", 0.0)
                 }
             }
-        }
+        } catch (_: Exception) {}
     }
 
     override fun loadMedia(request: PlaybackRequest) {
         engineDispatcher.post {
-            ani.dantotsu.util.Logger.log("MPVSTEP 40 before loadMedia uri=${request.uri}")
-            if (!ensureInitialized()) return@post
+            if (releaseRequested.get()) {
+                try { request.sourceLease?.close() } catch (_: Exception) {}
+                return@post
+            }
 
-            generationCounter++
-            val genId = generationCounter
+            if (!isInitialized) {
+                // Stage A pre-ready load: collapse A->B, close previous pending lease immediately
+                pendingLoadRequest?.let { prev ->
+                    try { prev.sourceLease?.close() } catch (_: Exception) {}
+                }
+                pendingLoadRequest = request
+                return@post
+            }
 
-            // Open content URI resource lease if needed
-            var pfdLease: ParcelFileDescriptor? = null
-            val loadUri = if (request.uri.startsWith("content://")) {
-                try {
-                    val pfd = context?.contentResolver?.openFileDescriptor(Uri.parse(request.uri), "r")
-                    if (pfd == null) {
-                        val error = PlaybackError(
-                            category = ErrorCategory.SOURCE,
-                            message = "Could not open content descriptor: ${request.uri}",
-                            fatal = true,
-                            retryable = false
-                        )
-                        updateSnapshot(currentSnapshot.copy(
-                            playbackState = PlaybackState.Error(error),
-                            error = error
-                        ))
-                        notifyPlaybackStateChanged(PlaybackState.Error(error))
-                        return@post
-                    }
-                    pfdLease = pfd
-                    "fd://${pfd.fd}"
-                } catch (e: Exception) {
+            loadMediaInternal(request)
+        }
+    }
+
+    private fun loadMediaInternal(request: PlaybackRequest) {
+        ani.dantotsu.util.Logger.log("MPVSTEP 40 before loadMedia uri=${request.uri}")
+
+        generationCounter++
+        val genId = generationCounter
+
+        val opLeases = mutableListOf<AutoCloseable>()
+        request.sourceLease?.let { opLeases.add(it) }
+
+        // Open content URI resource lease if needed
+        val loadUri = if (request.uri.startsWith("content://")) {
+            try {
+                val pfd = context?.contentResolver?.openFileDescriptor(Uri.parse(request.uri), "r")
+                if (pfd == null) {
                     val error = PlaybackError(
                         category = ErrorCategory.SOURCE,
-                        message = "Failed to open content URI (${e.message}): ${request.uri}",
+                        message = "Could not open content descriptor: ${request.uri}",
                         fatal = true,
                         retryable = false
                     )
@@ -432,69 +570,14 @@ class MpvPlaybackEngine(
                         error = error
                     ))
                     notifyPlaybackStateChanged(PlaybackState.Error(error))
-                    return@post
+                    return
                 }
-            } else {
-                request.uri
-            }
-
-            val operation = LoadOperation(
-                generationId = genId,
-                request = request,
-                lease = pfdLease,
-                state = LoadOperationState.SUBMITTED
-            )
-            operationsByGen[genId] = operation
-            activeOperation = operation
-
-            // Clean up any old cancelled operations that never started
-            cleanupSupersededOperations(exceptGenId = genId)
-
-            // Reset media-scoped snapshot
-            updateSnapshot(currentSnapshot.copy(
-                generationId = genId,
-                playlistEntryId = null,
-                playbackState = PlaybackState.Buffering,
-                positionMs = 0L,
-                durationMs = 0L,
-                tracks = emptyList(),
-                selectedAudioTrackId = null,
-                selectedSubtitleTrackId = null,
-                videoDimensions = null,
-                error = null
-            ))
-            notifyPlaybackStateChanged(PlaybackState.Buffering)
-
-            try {
-                // Build per-file options
-                val perFileOptions = MpvNetworkOptions.buildPerFileOptions(
-                    headers = request.headers,
-                    startPositionMs = request.startPositionMs
-                )
-
-                // Apply subtitle style if session-configured
-                applySubtitleStyleInternal(sessionSubtitleStyle)
-
-                ani.dantotsu.util.Logger.log("MPVSTEP 41 before loadfile command (options: ${MpvNetworkOptions.getRedactedOptionsDescription(request.headers, request.startPositionMs)})")
-                if (perFileOptions.isNotBlank()) {
-                    mpvClient.command("loadfile", loadUri, "replace", "-1", perFileOptions)
-                } else {
-                    mpvClient.command("loadfile", loadUri, "replace")
-                }
-                ani.dantotsu.util.Logger.log("MPVSTEP 42 after loadfile command")
-
-                // Immediately bind playlist entry ID if available from MPV playlist
-                val insertedId = getLatestPlaylistEntryId()
-                if (insertedId != null) {
-                    operation.playlistEntryId = insertedId
-                    operation.state = LoadOperationState.BOUND
-                    operationsByEntryId[insertedId] = operation
-                }
+                opLeases.add(pfd)
+                "fd://${pfd.fd}"
             } catch (e: Exception) {
-                ani.dantotsu.util.Logger.log("MPVSTEP ERROR in loadMedia: ${e.message}")
                 val error = PlaybackError(
-                    category = ErrorCategory.UNKNOWN,
-                    message = "Failed to load media: ${e.message}",
+                    category = ErrorCategory.SOURCE,
+                    message = "Failed to open content URI (${e.message}): ${request.uri}",
                     fatal = true,
                     retryable = false
                 )
@@ -503,7 +586,78 @@ class MpvPlaybackEngine(
                     error = error
                 ))
                 notifyPlaybackStateChanged(PlaybackState.Error(error))
+                return
             }
+        } else {
+            request.uri
+        }
+
+        val operation = LoadOperation(
+            generationId = genId,
+            request = request,
+            leases = opLeases,
+            state = LoadOperationState.SUBMITTED
+        )
+        operationsByGen[genId] = operation
+        activeOperation = operation
+
+        // Clean up any old cancelled operations that never started
+        cleanupSupersededOperations(exceptGenId = genId)
+
+        // Reset media-scoped snapshot
+        updateSnapshot(currentSnapshot.copy(
+            generationId = genId,
+            playlistEntryId = null,
+            playbackState = PlaybackState.Buffering,
+            positionMs = 0L,
+            durationMs = 0L,
+            tracks = emptyList(),
+            selectedAudioTrackId = null,
+            selectedSubtitleTrackId = null,
+            videoDimensions = null,
+            error = null
+        ))
+        notifyPlaybackStateChanged(PlaybackState.Buffering)
+
+        try {
+            // Build per-file options with source-scoped profile
+            val perFileOptions = MpvNetworkOptions.buildPerFilePerformanceOptions(
+                sourceClass = request.sourceClass,
+                headers = request.headers,
+                startPositionMs = request.startPositionMs
+            )
+
+            // Apply subtitle style if session-configured
+            applySubtitleStyleInternal(sessionSubtitleStyle)
+
+            ani.dantotsu.util.Logger.log("MPVSTEP 41 before loadfile command (${MpvNetworkOptions.getRedactedOptionsDescription(request.headers, request.startPositionMs, request.sourceClass)})")
+            if (perFileOptions.isNotBlank()) {
+                mpvClient.command("loadfile", loadUri, "replace", "-1", perFileOptions)
+            } else {
+                mpvClient.command("loadfile", loadUri, "replace")
+            }
+            ani.dantotsu.util.Logger.log("MPVSTEP 42 after loadfile command")
+
+            // Immediately bind playlist entry ID if available from MPV playlist
+            val insertedId = getLatestPlaylistEntryId()
+            if (insertedId != null) {
+                operation.playlistEntryId = insertedId
+                operation.state = LoadOperationState.BOUND
+                operationsByEntryId[insertedId] = operation
+            }
+        } catch (e: Exception) {
+            ani.dantotsu.util.Logger.log("MPVSTEP ERROR in loadMedia: ${e.message}")
+            val error = PlaybackError(
+                category = ErrorCategory.UNKNOWN,
+                message = "Failed to load media: ${e.message}",
+                fatal = true,
+                retryable = false
+            )
+            updateSnapshot(currentSnapshot.copy(
+                playbackState = PlaybackState.Error(error),
+                error = error
+            ))
+            notifyPlaybackStateChanged(PlaybackState.Error(error))
         }
     }
 
@@ -514,14 +668,15 @@ class MpvPlaybackEngine(
             val op = entry.value
             if (op.generationId < exceptGenId && (op.state == LoadOperationState.CREATED || op.state == LoadOperationState.SUBMITTED || op.state == LoadOperationState.BOUND)) {
                 op.state = LoadOperationState.CANCELLED
-                if (op.lease != null) {
-                    supersededLeases.add(op.lease)
-                }
+                supersededLeases.addAll(op.leases)
+                op.leases.clear()
                 op.playlistEntryId?.let { operationsByEntryId.remove(it) }
                 iterator.remove()
             }
         }
+        drainSupersededLeases()
     }
+
 
     private fun drainSupersededLeases() {
         if (supersededLeases.isEmpty()) return
@@ -534,24 +689,50 @@ class MpvPlaybackEngine(
 
     override fun selectAudioTrack(id: Int?) {
         engineDispatcher.post {
-            if (!ensureInitialized()) return@post
+            if (releaseRequested.get()) return@post
+            val op = activeOperation
+            if (op != null && op.state < LoadOperationState.LOADED) {
+                op.pendingAudioTrackId = id
+                return@post
+            }
+            if (isInitialized) {
+                selectAudioTrackInternal(id)
+            }
+        }
+    }
+
+    private fun selectAudioTrackInternal(id: Int?) {
+        try {
             if (id == null) {
                 mpvClient.setPropertyString("aid", "no")
             } else {
                 mpvClient.setPropertyInt("aid", id)
             }
-        }
+        } catch (_: Exception) {}
     }
 
     override fun selectSubtitleTrack(id: Int?) {
         engineDispatcher.post {
-            if (!ensureInitialized()) return@post
+            if (releaseRequested.get()) return@post
+            val op = activeOperation
+            if (op != null && op.state < LoadOperationState.LOADED) {
+                op.pendingSubtitleTrackId = id
+                return@post
+            }
+            if (isInitialized) {
+                selectSubtitleTrackInternal(id)
+            }
+        }
+    }
+
+    private fun selectSubtitleTrackInternal(id: Int?) {
+        try {
             if (id == null) {
                 mpvClient.setPropertyString("sid", "no")
             } else {
                 mpvClient.setPropertyInt("sid", id)
             }
-        }
+        } catch (_: Exception) {}
     }
 
     override fun addExternalSubtitle(
@@ -561,46 +742,51 @@ class MpvPlaybackEngine(
         select: Boolean
     ) {
         engineDispatcher.post {
+            if (releaseRequested.get()) return@post
             if (!ensureInitialized()) return@post
             val flag = if (select) "select" else "auto"
-            mpvClient.command("sub-add", uri, flag, title ?: "", language ?: "")
+            try {
+                mpvClient.command("sub-add", uri, flag, title ?: "", language ?: "")
+            } catch (_: Exception) {}
         }
     }
 
     override fun applySubtitleStyle(style: SubtitleStyle) {
         engineDispatcher.post {
             sessionSubtitleStyle = style
-            if (ensureInitialized()) {
+            if (isInitialized && !releaseRequested.get()) {
                 applySubtitleStyleInternal(style)
             }
         }
     }
 
     private fun applySubtitleStyleInternal(style: SubtitleStyle) {
-        when (style.mode) {
-            SubtitleStyleMode.SOURCE -> {
-                mpvClient.setPropertyString("sub-ass-override", "no")
-            }
-            SubtitleStyleMode.CUSTOM -> {
-                mpvClient.setPropertyString("sub-ass-override", "force")
-                val scaledFontSize = MpvSubtitleStyleMapper.spToMpvScaledSize(style.fontSizeSp)
-                val scaledMargin = MpvSubtitleStyleMapper.dpToMpvScaledMargin(style.bottomMarginDp)
-                val primaryHex = MpvSubtitleStyleMapper.colorToMpvHex(style.textColor)
-                val outlineHex = MpvSubtitleStyleMapper.colorToMpvHex(style.borderColor)
-                val backgroundHex = MpvSubtitleStyleMapper.colorToMpvHex(style.backgroundColor)
+        try {
+            when (style.mode) {
+                SubtitleStyleMode.SOURCE -> {
+                    mpvClient.setPropertyString("sub-ass-override", "no")
+                }
+                SubtitleStyleMode.CUSTOM -> {
+                    mpvClient.setPropertyString("sub-ass-override", "force")
+                    val scaledFontSize = MpvSubtitleStyleMapper.spToMpvScaledSize(style.fontSizeSp)
+                    val scaledMargin = MpvSubtitleStyleMapper.dpToMpvScaledMargin(style.bottomMarginDp)
+                    val primaryHex = MpvSubtitleStyleMapper.colorToMpvHex(style.textColor)
+                    val outlineHex = MpvSubtitleStyleMapper.colorToMpvHex(style.borderColor)
+                    val backgroundHex = MpvSubtitleStyleMapper.colorToMpvHex(style.backgroundColor)
 
-                mpvClient.setPropertyDouble("sub-font-size", scaledFontSize.toDouble())
-                mpvClient.setPropertyDouble("sub-margin-y", scaledMargin.toDouble())
-                mpvClient.setPropertyString("sub-color", primaryHex)
-                mpvClient.setPropertyString("sub-border-color", outlineHex)
-                mpvClient.setPropertyString("sub-back-color", backgroundHex)
-                mpvClient.setPropertyDouble("sub-border-size", style.borderWidth.toDouble())
+                    mpvClient.setPropertyDouble("sub-font-size", scaledFontSize.toDouble())
+                    mpvClient.setPropertyDouble("sub-margin-y", scaledMargin.toDouble())
+                    mpvClient.setPropertyString("sub-color", primaryHex)
+                    mpvClient.setPropertyString("sub-border-color", outlineHex)
+                    mpvClient.setPropertyString("sub-back-color", backgroundHex)
+                    mpvClient.setPropertyDouble("sub-border-size", style.borderWidth.toDouble())
 
-                if (!style.fontFamily.isNullOrBlank()) {
-                    mpvClient.setPropertyString("sub-font", style.fontFamily)
+                    if (!style.fontFamily.isNullOrBlank()) {
+                        mpvClient.setPropertyString("sub-font", style.fontFamily)
+                    }
                 }
             }
-        }
+        } catch (_: Exception) {}
     }
 
     override fun addListener(listener: PlaybackListener) {
@@ -613,8 +799,16 @@ class MpvPlaybackEngine(
 
     override fun stop() {
         engineDispatcher.post {
-            if (!ensureInitialized()) return@post
-            mpvClient.command("stop")
+            pendingLoadRequest?.let { req ->
+                try { req.sourceLease?.close() } catch (_: Exception) {}
+            }
+            pendingLoadRequest = null
+            pendingPlayIntent = false
+            if (isInitialized && !releaseRequested.get()) {
+                try {
+                    mpvClient.command("stop")
+                } catch (_: Exception) {}
+            }
             updateSnapshot(currentSnapshot.copy(playbackState = PlaybackState.Idle))
             notifyPlaybackStateChanged(PlaybackState.Idle)
         }
@@ -626,21 +820,45 @@ class MpvPlaybackEngine(
         engineLifecycle = EngineLifecycle.Released
         listeners.clear()
 
+        ownerRequestId?.let { reqId ->
+            MpvNativeRuntime.cancel(reqId)
+        }
+
+        pendingLoadRequest?.let { req ->
+            try { req.sourceLease?.close() } catch (_: Exception) {}
+        }
+        pendingLoadRequest = null
+
         engineDispatcher.post {
             try {
+                pendingLoadRequest?.let { req ->
+                    try { req.sourceLease?.close() } catch (_: Exception) {}
+                }
+                pendingLoadRequest = null
+
                 if (observerRegistered) {
                     mpvClient.removeObserver(this)
                     observerRegistered = false
                 }
+
                 operationsByGen.values.forEach { op ->
-                    try { op.lease?.close() } catch (_: Exception) {}
+                    op.closeLeases()
                 }
                 operationsByGen.clear()
                 operationsByEntryId.clear()
                 drainSupersededLeases()
                 activeOperation = null
                 activeEntryId = null
-                mpvClient.destroy()
+                try {
+                    mpvClient.destroy()
+                } catch (t: Throwable) {
+                    ownerToken?.let { tok ->
+                        MpvNativeRuntime.poisonFromOwner(tok, t)
+                    }
+                }
+                ownerToken?.let { tok ->
+                    MpvNativeRuntime.finishOwnerOnRuntime(tok)
+                }
             } catch (_: Exception) {}
             engineDispatcher.quit()
         }
@@ -691,7 +909,6 @@ class MpvPlaybackEngine(
             val node = mpvClient.getPropertyNode("playlist")
             val arr = node?.asArray()
             if (arr != null) {
-                // First pass: strictly check playing entry
                 for (item in arr) {
                     val map = item.asMap()
                     if (map?.get("playing")?.asBoolean() == true) {
@@ -699,7 +916,6 @@ class MpvPlaybackEngine(
                         if (id != null) return id
                     }
                 }
-                // Second pass: check current entry
                 for (item in arr) {
                     val map = item.asMap()
                     if (map?.get("current")?.asBoolean() == true) {
@@ -887,8 +1103,33 @@ class MpvPlaybackEngine(
                             op.externalSubtitlesAttached = true
                             op.request.externalSubtitles.forEach { sub ->
                                 val flag = if (sub.selected) "select" else "auto"
-                                mpvClient.command("sub-add", sub.url, flag, sub.title ?: "", sub.language ?: "")
+                                try {
+                                    mpvClient.command("sub-add", sub.url, flag, sub.title ?: "", sub.language ?: "")
+                                } catch (_: Exception) {}
                             }
+                        }
+
+                        // Execute generation-bound pending seek if recorded
+                        if (op.pendingSeekMs != null) {
+                            val seekPos = op.pendingSeekMs!!
+                            op.pendingSeekMs = null
+                            try {
+                                val sec = TimeConverter.msToSeconds(seekPos)
+                                mpvClient.command("seek", sec.toString(), "absolute+exact")
+                            } catch (_: Exception) {}
+                        }
+
+                        // Apply pending generation track selections
+                        if (op.pendingAudioTrackId != null) {
+                            val aid = op.pendingAudioTrackId
+                            op.pendingAudioTrackId = null
+                            selectAudioTrackInternal(aid)
+                        }
+
+                        if (op.pendingSubtitleTrackId != null) {
+                            val sid = op.pendingSubtitleTrackId
+                            op.pendingSubtitleTrackId = null
+                            selectSubtitleTrackInternal(sid)
                         }
 
                         updateSnapshot(currentSnapshot.copy(
@@ -930,7 +1171,7 @@ class MpvPlaybackEngine(
 
                     if (op != null) {
                         op.state = LoadOperationState.ENDED
-                        try { op.lease?.close() } catch (_: Exception) {}
+                        op.closeLeases()
                         operationsByGen.remove(op.generationId)
                     }
 

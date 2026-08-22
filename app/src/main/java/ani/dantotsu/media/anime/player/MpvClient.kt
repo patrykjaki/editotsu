@@ -5,6 +5,12 @@ import android.view.Surface
 import `is`.xyz.mpv.MPV
 import `is`.xyz.mpv.MPVNode
 
+class MpvOperationException(
+    val operation: String,
+    val errorCode: Int? = null,
+    cause: Throwable? = null
+) : Exception("MPV operation '$operation' failed${errorCode?.let { " (rc=$it)" } ?: ""}${cause?.let { ": ${it.message}" } ?: ""}", cause)
+
 interface MpvClientFactory {
     fun createFresh(): MpvClient
 }
@@ -60,7 +66,7 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
         } catch (t: Throwable) {
             nativeMarker("RealMpvClient: mpv.create failed: ${t.message}")
             ani.dantotsu.util.Logger.log("RealMpvClient: mpv.create failed: ${t.message}")
-            throw t
+            throw MpvOperationException("create", cause = t)
         }
     }
 
@@ -74,7 +80,7 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
         } catch (t: Throwable) {
             nativeMarker("RealMpvClient: mpv.init failed: ${t.message}")
             ani.dantotsu.util.Logger.log("RealMpvClient: mpv.init failed: ${t.message}")
-            throw t
+            throw MpvOperationException("init", cause = t)
         }
     }
 
@@ -87,7 +93,7 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
         } catch (t: Throwable) {
             nativeMarker("RealMpvClient: mpv.destroy error: ${t.message}")
             ani.dantotsu.util.Logger.log("RealMpvClient: mpv.destroy error: ${t.message}")
-            throw t
+            throw MpvOperationException("destroy", cause = t)
         }
     }
 
@@ -101,7 +107,7 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
         } catch (t: Throwable) {
             nativeMarker("RealMpvClient: mpv.attachSurface failed: ${t.message}")
             ani.dantotsu.util.Logger.log("RealMpvClient: mpv.attachSurface failed: ${t.message}")
-            throw t
+            throw MpvOperationException("attachSurface", cause = t)
         }
     }
 
@@ -114,6 +120,7 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
         } catch (t: Throwable) {
             nativeMarker("RealMpvClient: mpv.detachSurface error: ${t.message}")
             ani.dantotsu.util.Logger.log("RealMpvClient: mpv.detachSurface error: ${t.message}")
+            throw MpvOperationException("detachSurface", cause = t)
         }
     }
 
@@ -124,7 +131,7 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
         } catch (t: Throwable) {
             nativeMarker("RealMpvClient: mpv.command failed: ${t.message}")
             ani.dantotsu.util.Logger.log("RealMpvClient: mpv.command failed: ${t.message}")
-            throw t
+            throw MpvOperationException("command(${args.firstOrNull() ?: ""})", cause = t)
         }
     }
 
@@ -140,7 +147,7 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
         } catch (t: Throwable) {
             nativeMarker("RealMpvClient: setOptionString($name, $value) failed: ${t.message}")
             ani.dantotsu.util.Logger.log("RealMpvClient: setOptionString($name, $value) failed: ${t.message}")
-            throw t
+            throw MpvOperationException("setOptionString($name)", cause = t)
         }
     }
 
@@ -149,6 +156,7 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
             mpv.setPropertyString(name, value)
         } catch (e: Exception) {
             ani.dantotsu.util.Logger.log("MPV setPropertyString($name, $value) failed: ${e.message}")
+            throw MpvOperationException("setPropertyString($name)", cause = e)
         }
     }
 
@@ -157,6 +165,7 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
             mpv.setPropertyBoolean(name, value)
         } catch (e: Exception) {
             ani.dantotsu.util.Logger.log("MPV setPropertyBoolean($name, $value) failed: ${e.message}")
+            throw MpvOperationException("setPropertyBoolean($name)", cause = e)
         }
     }
 
@@ -165,6 +174,7 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
             mpv.setPropertyInt(name, value)
         } catch (e: Exception) {
             ani.dantotsu.util.Logger.log("MPV setPropertyInt($name, $value) failed: ${e.message}")
+            throw MpvOperationException("setPropertyInt($name)", cause = e)
         }
     }
 
@@ -173,6 +183,7 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
             mpv.setPropertyDouble(name, value)
         } catch (e: Exception) {
             ani.dantotsu.util.Logger.log("MPV setPropertyDouble($name, $value) failed: ${e.message}")
+            throw MpvOperationException("setPropertyDouble($name)", cause = e)
         }
     }
 
@@ -229,13 +240,16 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
             mpv.observeProperty(property, format)
         } catch (e: Exception) {
             ani.dantotsu.util.Logger.log("MPV observeProperty($property) failed: ${e.message}")
+            throw MpvOperationException("observeProperty($property)", cause = e)
         }
     }
 
     override fun addObserver(observer: MPV.EventObserver) {
         try {
             mpv.addObserver(observer)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            throw MpvOperationException("addObserver", cause = e)
+        }
     }
 
     override fun removeObserver(observer: MPV.EventObserver) {
@@ -256,3 +270,4 @@ class RealMpvClient(private val mpv: MPV = MPV()) : MpvClient {
         } catch (_: Exception) {}
     }
 }
+

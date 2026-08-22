@@ -57,6 +57,19 @@ sealed interface OwnerReleaseResult {
     data class Mismatch(val expectedGeneration: Long, val actualGeneration: Long?) : OwnerReleaseResult
 }
 
+sealed interface OwnerDispatchResult {
+    data object Enqueued : OwnerDispatchResult
+    data object StaleOwner : OwnerDispatchResult
+    data object Poisoned : OwnerDispatchResult
+}
+
+sealed interface OwnerCallResult<out T> {
+    data class Executed<T>(val value: T) : OwnerCallResult<T>
+    data object StaleOwner : OwnerCallResult<Nothing>
+    data object Poisoned : OwnerCallResult<Nothing>
+    data class OperationFailure(val error: PlaybackError) : OwnerCallResult<Nothing>
+}
+
 data class ProbeBodyResult(
     val primary: ProbePrimaryResult,
     val teardown: ProbeTeardownResult
@@ -71,6 +84,7 @@ data class FinalProbeResult(
                 body.teardown is ProbeTeardownResult.Success &&
                 ownerRelease is OwnerReleaseResult.Released
 }
+
 
 private enum class StartOutcome {
     STARTED,
@@ -201,6 +215,64 @@ object MpvNativeRuntime {
 
     fun post(action: () -> Unit) {
         runtimeDispatcher.post(action)
+    }
+
+    fun postWithOwner(token: MpvOwnerToken, action: () -> Unit): OwnerDispatchResult {
+        if (isPoisoned) {
+            return OwnerDispatchResult.Poisoned
+        }
+        runtimeDispatcher.post {
+            if (isPoisoned) return@post
+            if (activeOwner !== token) {
+                logRuntimeError("MpvNativeRuntime: stale owner action dropped for token generation ${token.generation}, activeOwner=${activeOwner?.generation}")
+                return@post
+            }
+            try {
+                action()
+            } catch (e: MpvOperationException) {
+                logRuntimeError("MpvNativeRuntime: operation exception in postWithOwner (${e.operation}): ${e.message}")
+            } catch (t: Throwable) {
+                logRuntimeError("MpvNativeRuntime: unexpected exception in postWithOwner; poisoning runtime", t)
+                poisonFromOwner(token, t)
+            }
+        }
+        return OwnerDispatchResult.Enqueued
+    }
+
+    fun <T> executeWithOwner(token: MpvOwnerToken, block: () -> T): OwnerCallResult<T> {
+        if (isPoisoned) {
+            return OwnerCallResult.Poisoned
+        }
+        if (activeOwner !== token) {
+            return OwnerCallResult.StaleOwner
+        }
+        return try {
+            OwnerCallResult.Executed(block())
+        } catch (e: MpvOperationException) {
+            logRuntimeError("MpvNativeRuntime: operation exception in executeWithOwner (${e.operation}): ${e.message}")
+            OwnerCallResult.OperationFailure(
+                PlaybackError(
+                    category = ErrorCategory.UNKNOWN,
+                    message = e.message ?: "MPV operation failed"
+                )
+            )
+        } catch (t: Throwable) {
+            logRuntimeError("MpvNativeRuntime: unexpected exception in executeWithOwner; poisoning runtime", t)
+            poisonFromOwner(token, t)
+            OwnerCallResult.Poisoned
+        }
+    }
+
+    fun poisonFromOwner(token: MpvOwnerToken, cause: Throwable) {
+        if (!runtimeDispatcher.isRuntimeThread()) {
+            runtimeDispatcher.post { poisonFromOwner(token, cause) }
+            return
+        }
+        if (activeOwner === token) {
+            poisonRuntime(cause)
+        } else {
+            logRuntimeError("MpvNativeRuntime: ignoring poison attempt from non-active owner token gen=${token.generation}, active=${activeOwner?.generation}", cause)
+        }
     }
 
     fun requestLongLivedOwner(

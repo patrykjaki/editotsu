@@ -26,19 +26,16 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "ani.dantotsu"
+        applicationId = "ani.editotsu"
         minSdk = 26
         targetSdk = 36
 
-        versionName = "3.2.2"
-        versionCode = (versionName ?: "1.0.0").split(".")
-            //noinspection WrongGradleMethod
-            .map { it.toInt() * 100 }
-            .joinToString("")
-            .toInt()
+        versionName = "1.0.0"
+        versionCode = 1000000
 
         signingConfig = signingConfigs.getByName("debug")
     }
+
 
     splits {
         abi {

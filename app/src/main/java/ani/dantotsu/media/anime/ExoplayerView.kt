@@ -1150,9 +1150,6 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     .load(if (isPlaying) R.drawable.anim_play_to_pause else R.drawable.anim_pause_to_play)
                     .into(exoPlay)
             }
-            // Guard: episode is a lateinit var. If this callback fires before
-            // the episode field is assigned, accessing it throws
-            // UninitializedPropertyAccessException and kills the Activity.
             if (this::episode.isInitialized) {
                 discordManager.updatePresence(
                     media, episode,
@@ -1161,6 +1158,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     isPlaying
                 )
             }
+            updatePipParams()
         }
     }
 
@@ -1168,6 +1166,48 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (width > 0 && height > 0) {
             aspectRatio = Rational(width, height)
             videoInfo.text = getString(R.string.video_quality, height)
+            updatePipParams()
+        }
+    }
+
+    private fun getClampedAspectRatio(ratio: Rational?): Rational {
+        if (ratio == null || ratio.numerator <= 0 || ratio.denominator <= 0 || ratio.isZero || ratio.isNaN || ratio.isInfinite) {
+            return Rational(16, 9)
+        }
+        val floatVal = ratio.toFloat()
+        val minVal = 1000f / 2390f
+        val maxVal = 2390f / 1000f
+        return when {
+            floatVal < minVal -> Rational(1000, 2390)
+            floatVal > maxVal -> Rational(2390, 1000)
+            else -> ratio
+        }
+    }
+
+    private fun updatePipParams() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val clampedRatio = getClampedAspectRatio(aspectRatio)
+                val builder = android.app.PictureInPictureParams.Builder()
+                    .setAspectRatio(clampedRatio)
+
+                val surfaceView = playerView.surfaceView
+                if (surfaceView != null && surfaceView.isLaidOut) {
+                    val rect = android.graphics.Rect()
+                    if (surfaceView.getGlobalVisibleRect(rect) && rect.width() > 0 && rect.height() > 0) {
+                        builder.setSourceRectHint(rect)
+                    }
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val liveIsPlaying = if (this::playerManager.isInitialized && playerManager.isInitialized) {
+                        playerManager.playbackEngine?.isPlaying == true
+                    } else false
+                    builder.setAutoEnterEnabled(liveIsPlaying && pipEnabled && PrefManager.getVal(PrefName.Pip))
+                }
+
+                setPictureInPictureParams(builder.build())
+            } catch (_: Exception) {}
         }
     }
 
@@ -1200,10 +1240,17 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     private fun enterPipMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val params = android.app.PictureInPictureParams.Builder()
-                .setAspectRatio(aspectRatio)
-                .build()
-            enterPictureInPictureMode(params)
+            val clampedRatio = getClampedAspectRatio(aspectRatio)
+            val builder = android.app.PictureInPictureParams.Builder()
+                .setAspectRatio(clampedRatio)
+            val surfaceView = playerView.surfaceView
+            if (surfaceView != null && surfaceView.isLaidOut) {
+                val rect = android.graphics.Rect()
+                if (surfaceView.getGlobalVisibleRect(rect) && rect.width() > 0 && rect.height() > 0) {
+                    builder.setSourceRectHint(rect)
+                }
+            }
+            enterPictureInPictureMode(builder.build())
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             @Suppress("DEPRECATION")
             enterPictureInPictureMode()
@@ -1213,7 +1260,43 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (pipEnabled && PrefManager.getVal(PrefName.Pip)) {
-            enterPipMode()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                enterPipMode()
+            }
+        }
+    }
+
+    override fun onPictureInPictureUiStateChanged(pipState: android.app.PictureInPictureUiState) {
+        super.onPictureInPictureUiStateChanged(pipState)
+        if (Build.VERSION.SDK_INT >= 35) { // Android 15+ (VanillaIceCream)
+            if (pipState.isTransitioningToPip) {
+                playerView.hideController()
+                if (this::aniSkipManager.isInitialized) {
+                    aniSkipManager.hideSkipButtons()
+                }
+            }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (isInPictureInPictureMode) {
+            playerView.hideController()
+            if (this::aniSkipManager.isInitialized) {
+                aniSkipManager.hideSkipButtons()
+                aniSkipManager.stopTracking()
+            }
+            if (this::progressManager.isInitialized) {
+                progressManager.stopTracking()
+            }
+        } else {
+            hideSystemBars()
+            if (this::aniSkipManager.isInitialized && PrefManager.getVal(PrefName.TimeStampsEnabled)) {
+                aniSkipManager.startTracking()
+            }
+            if (this::progressManager.isInitialized) {
+                progressManager.startTracking()
+            }
         }
     }
 
@@ -1237,13 +1320,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (this::playerManager.isInitialized && playerManager.isInitialized) {
             playerManager.playbackCoordinator?.setLifecycleSuppressed(false)
         }
+        updatePipParams()
     }
 
     override fun onPause() {
         super.onPause()
-        if (this::playerManager.isInitialized && playerManager.isInitialized && !(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode)) {
-            playerManager.playbackCoordinator?.setLifecycleSuppressed(true)
-        }
         if (this::aniSkipManager.isInitialized) {
             aniSkipManager.stopTracking()
         }
@@ -1254,6 +1335,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     override fun onStop() {
         super.onStop()
+        val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
+        if (this::playerManager.isInitialized && playerManager.isInitialized && !inPip) {
+            playerManager.playbackCoordinator?.setLifecycleSuppressed(true)
+        }
         if (this::playerManager.isInitialized && playerManager.isInitialized) {
             playerManager.playbackEngine?.let { engine ->
                 val selEp = if (initialized) media.anime?.selectedEpisode else null
@@ -1272,6 +1357,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             }
         }
     }
+
 
     @SuppressLint("UnsafeIntentLaunch")
     override fun onNewIntent(intent: Intent) {

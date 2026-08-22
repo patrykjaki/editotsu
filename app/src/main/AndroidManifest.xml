@@ -90,15 +90,7 @@
                 android:resource="@xml/upcoming_widget_info" />
         </receiver>
 
-        <receiver
-            android:name=".media.anime.player.MpvDiagnosticReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="ani.dantotsu.RUN_ZERO_OPTION_PROBE" />
-                <action android:name="ani.dantotsu.RUN_PREFIX_PROBE" />
-                <action android:name="ani.dantotsu.RUN_FULL_BOOTSTRAP_PROBE" />
-            </intent-filter>
-        </receiver>
+
         <activity
             android:name=".widgets.upcoming.UpcomingWidgetConfigure"
             android:exported="true">
@@ -289,12 +281,15 @@
             android:excludeFromRecents="true"
             android:exported="true"
             android:launchMode="singleTask">
-            <intent-filter android:label="Anilist Login for Dantotsu">
+            <intent-filter android:label="Anilist Login for Editotsu">
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <data
+                    android:host="anilist"
+                    android:scheme="editotsu" />
                 <data
                     android:host="anilist"
                     android:scheme="dantotsu" />
@@ -306,12 +301,15 @@
             android:excludeFromRecents="true"
             android:exported="true"
             android:launchMode="singleTask">
-            <intent-filter android:label="Myanimelist Login for Dantotsu">
+            <intent-filter android:label="Myanimelist Login for Editotsu">
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <data
+                    android:host="mal"
+                    android:scheme="editotsu" />
                 <data
                     android:host="mal"
                     android:scheme="dantotsu" />
@@ -323,12 +321,13 @@
             android:excludeFromRecents="true"
             android:exported="true"
             android:launchMode="singleTask">
-            <intent-filter android:label="Discord Login for Dantotsu">
+            <intent-filter android:label="Discord Login for Editotsu">
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <data android:scheme="editotsu" />
                 <data android:scheme="dantotsu" />
                 <data android:host="discord" />
             </intent-filter>
@@ -339,12 +338,13 @@
             android:excludeFromRecents="true"
             android:exported="true"
             android:launchMode="singleTask">
-            <intent-filter android:label="Discord Login for Dantotsu">
+            <intent-filter android:label="Discord Login for Editotsu">
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <data android:scheme="editotsu" />
                 <data android:scheme="dantotsu" />
                 <data android:scheme="http" />
                 <data android:scheme="https" />

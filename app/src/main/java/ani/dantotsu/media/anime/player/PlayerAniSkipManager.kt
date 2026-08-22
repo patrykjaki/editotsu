@@ -105,6 +105,14 @@ class PlayerAniSkipManager(
         cancelTimer()
     }
 
+    fun hideSkipButtons() {
+        cancelTimer()
+        skipTimeButton.visibility = View.GONE
+        timeStampText.text = ""
+        disappeared = true
+        functionStarted = false
+    }
+
     fun resetForNewEpisode() {
         disappeared = false
         functionStarted = false
@@ -112,6 +120,7 @@ class PlayerAniSkipManager(
         skippedTimeStamps.clear()
         cancelTimer()
     }
+
 
     fun skipCurrentInterval() {
         val new = currentTimeStamp ?: return

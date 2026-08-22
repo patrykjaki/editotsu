@@ -6,8 +6,12 @@ import androidx.media3.session.MediaSession
 import ani.dantotsu.defaultHeaders
 import ani.dantotsu.parsers.Subtitle
 import ani.dantotsu.parsers.Video
+import ani.dantotsu.parsers.VideoType
 import ani.dantotsu.toast
+import ani.dantotsu.torrent.TorrentServerManager
 import okhttp3.OkHttpClient
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.util.Calendar
 
 @UnstableApi
@@ -68,6 +72,28 @@ class DantotsuPlayerManager(
             }
         } ?: emptyList()
 
+        val uri = video.file.url
+        val sourceClass = when {
+            uri.contains("127.0.0.1") && (uri.contains("/stream") || uri.contains("hash=")) -> PlaybackSourceClass.TORRENT_LOCALHOST
+            video.format == VideoType.M3U8 || uri.contains(".m3u8", ignoreCase = true) -> PlaybackSourceClass.HLS
+            video.format == VideoType.DASH || uri.startsWith("http://", ignoreCase = true) || uri.startsWith("https://", ignoreCase = true) -> PlaybackSourceClass.DIRECT_HTTP
+            uri.startsWith("content://", ignoreCase = true) -> PlaybackSourceClass.CONTENT_FD
+            else -> PlaybackSourceClass.LOCAL_FILE
+        }
+
+        val sourceLease: AutoCloseable? = if (sourceClass == PlaybackSourceClass.TORRENT_LOCALHOST) {
+            try {
+                val hash = uri.substringAfter("hash=").substringBefore("&")
+                val index = uri.substringAfter("index=").substringBefore("&").toIntOrNull() ?: 0
+                if (hash.isNotEmpty()) {
+                    Injekt.get<TorrentServerManager>().adoptPrebufferLease(hash, index)
+                } else null
+            } catch (_: Exception) {
+                null
+            }
+        } else null
+
+
         return PlaybackRequest(
             uri = video.file.url,
             startPositionMs = startPositionMs,
@@ -77,9 +103,12 @@ class DantotsuPlayerManager(
             episodeNumber = episodeNumber,
             coverUrl = coverUrl,
             mimeType = mimeType,
-            externalSubtitles = externalSubs
+            externalSubtitles = externalSubs,
+            sourceClass = sourceClass,
+            sourceLease = sourceLease
         )
     }
+
 
     fun initPlayer(
         playbackPosition: Long = 0L,

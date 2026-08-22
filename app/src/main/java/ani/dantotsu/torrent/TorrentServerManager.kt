@@ -1,6 +1,9 @@
 package ani.dantotsu.torrent
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.Logger
@@ -8,6 +11,141 @@ import eu.kanade.tachiyomi.data.torrentServer.model.FileStat
 import eu.kanade.tachiyomi.data.torrentServer.model.Torrent
 import org.libtorrent4j.*
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+
+data class StreamingPiecePlan(
+    val startupPieces: List<Int>,
+    val opportunisticTail: Int?
+)
+
+fun computeStreamingPiecePlan(
+    fileOffset: Long,
+    fileSize: Long,
+    pieceLength: Long,
+    totalPieces: Int
+): StreamingPiecePlan {
+    if (fileOffset < 0 || fileSize <= 0 || pieceLength <= 0 || totalPieces <= 0) {
+        return StreamingPiecePlan(emptyList(), null)
+    }
+    val firstPiece = (fileOffset / pieceLength).toInt()
+    val lastPiece = ((fileOffset + fileSize - 1) / pieceLength).toInt()
+
+    if (firstPiece < 0 || firstPiece >= totalPieces || lastPiece < 0 || lastPiece >= totalPieces || firstPiece > lastPiece) {
+        return StreamingPiecePlan(emptyList(), null)
+    }
+
+    val candidates = listOf(firstPiece, firstPiece + 1, firstPiece + 2)
+    val boundedStartup = candidates.filter { it <= lastPiece && it < totalPieces }.distinct()
+    val tail = if (lastPiece !in boundedStartup) lastPiece else null
+
+    return StreamingPiecePlan(boundedStartup, tail)
+}
+
+interface TorrentDeadlineAdapter {
+    val isValid: Boolean
+    fun setPieceDeadline(index: Int, deadline: Int)
+    fun resetPieceDeadline(index: Int)
+}
+
+class LibtorrentDeadlineAdapter(private val handle: TorrentHandle) : TorrentDeadlineAdapter {
+    override val isValid: Boolean get() = handle.isValid
+    override fun setPieceDeadline(index: Int, deadline: Int) {
+        handle.setPieceDeadline(index, deadline)
+    }
+    override fun resetPieceDeadline(index: Int) {
+        handle.resetPieceDeadline(index)
+    }
+}
+
+class TorrentDeadlineRegistry(
+    val torrentHash: String,
+    private val adapter: TorrentDeadlineAdapter,
+    private val timeProvider: () -> Long = { System.currentTimeMillis() }
+) {
+    constructor(torrentHash: String, handle: TorrentHandle) : this(torrentHash, LibtorrentDeadlineAdapter(handle))
+
+    private val pieceDeadlines = mutableMapOf<Int, MutableMap<String, Long>>()
+    private var isDisposed = false
+
+    fun registerDeadline(pieceIndex: Int, ownerId: String, delayMs: Long) {
+        synchronized(this) {
+            if (isDisposed || !adapter.isValid) return
+            val map = pieceDeadlines.getOrPut(pieceIndex) { mutableMapOf() }
+            val targetAbsolute = timeProvider() + delayMs
+            map[ownerId] = targetAbsolute
+            updatePieceDeadlineLocked(pieceIndex, map)
+        }
+    }
+
+    fun unregisterOwner(ownerId: String) {
+        synchronized(this) {
+            if (isDisposed || !adapter.isValid) return
+            val iterator = pieceDeadlines.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                val pieceIndex = entry.key
+                val map = entry.value
+                if (map.remove(ownerId) != null) {
+                    if (map.isEmpty()) {
+                        iterator.remove()
+                        try {
+                            adapter.resetPieceDeadline(pieceIndex)
+                        } catch (_: Exception) {}
+                    } else {
+                        updatePieceDeadlineLocked(pieceIndex, map)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updatePieceDeadlineLocked(pieceIndex: Int, map: Map<String, Long>) {
+        val minTarget = map.values.minOrNull() ?: return
+        val remainingMs = (minTarget - timeProvider()).coerceIn(0L, Int.MAX_VALUE.toLong())
+        try {
+            adapter.setPieceDeadline(pieceIndex, remainingMs.toInt())
+        } catch (_: Exception) {}
+    }
+
+    fun dispose() {
+        synchronized(this) {
+            if (isDisposed) return
+            isDisposed = true
+            pieceDeadlines.keys.forEach { piece ->
+                try {
+                    if (adapter.isValid) {
+                        adapter.resetPieceDeadline(piece)
+                    }
+                } catch (_: Exception) {}
+            }
+            pieceDeadlines.clear()
+        }
+    }
+}
+
+
+class PrebufferLease(
+    val sessionId: String,
+    val torrentHash: String,
+    val fileIndex: Int,
+    private val onClose: (PrebufferLease) -> Unit
+) : AutoCloseable {
+    private val closed = AtomicBoolean(false)
+    val isClosed: Boolean get() = closed.get()
+
+    override fun close() {
+        if (closed.compareAndSet(false, true)) {
+            onClose(this)
+        }
+    }
+}
+
+data class PrebufferResult(
+    val ready: Boolean,
+    val lease: PrebufferLease?
+)
 
 class TorrentServerManager(private val context: Context) {
     private val sessionManager by lazy { SessionManager() }
@@ -15,6 +153,12 @@ class TorrentServerManager(private val context: Context) {
     var activeTorrentHash: String? = null
     var serverPort: Int = 8090
         private set
+
+    private val registries = ConcurrentHashMap<String, TorrentDeadlineRegistry>()
+    private val activePrebufferLeases = ConcurrentHashMap<Pair<String, Int>, PrebufferLease>()
+    private val scheduledTtls = ConcurrentHashMap<String, Runnable>()
+    private val ttlHandler = Handler(Looper.getMainLooper())
+    private val leaseCounter = AtomicLong(0L)
 
     fun start() {
         if (sessionManager.isRunning) return
@@ -104,15 +248,22 @@ class TorrentServerManager(private val context: Context) {
             sessionManager.startDht()
 
             serverPort = findFreePort(8090)
-            httpServer = TorrentHttpServer(serverPort, { hash ->
-                try {
-                    sessionManager.find(Sha1Hash.parseHex(hash))
-                } catch (e: Exception) {
-                    null
+            httpServer = TorrentHttpServer(
+                serverPort,
+                { hash ->
+                    try {
+                        sessionManager.find(Sha1Hash.parseHex(hash))
+                    } catch (e: Exception) {
+                        null
+                    }
+                },
+                {
+                    getTorrentCacheDir().absolutePath
+                },
+                { hash ->
+                    getDeadlineRegistry(hash)
                 }
-            }, {
-                getTorrentCacheDir().absolutePath
-            })
+            )
             httpServer?.start()
             Logger.log("TorrentServerManager started. Port: $serverPort")
         } catch (e: Exception) {
@@ -120,6 +271,22 @@ class TorrentServerManager(private val context: Context) {
             e.printStackTrace()
         }
     }
+
+    fun getDeadlineRegistry(hash: String): TorrentDeadlineRegistry? {
+        val normalized = hash.uppercase()
+        registries[normalized]?.let { return it }
+        return try {
+            val sha1 = Sha1Hash.parseHex(normalized)
+            val handle = sessionManager.find(sha1)
+            if (handle != null && handle.isValid) {
+                val reg = TorrentDeadlineRegistry(normalized, handle)
+                registries.putIfAbsent(normalized, reg) ?: reg
+            } else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
 
     private fun isBatteryLowAndNotCharging(): Boolean {
         if (!PrefManager.getVal<Boolean>(PrefName.TorrentBatterySaving)) return false
@@ -141,6 +308,12 @@ class TorrentServerManager(private val context: Context) {
         Logger.log("Stopping built-in TorrentServerManager...")
         httpServer?.stop()
         httpServer = null
+        registries.values.forEach { it.dispose() }
+        registries.clear()
+        activePrebufferLeases.values.forEach { it.close() }
+        activePrebufferLeases.clear()
+        scheduledTtls.values.forEach { ttlHandler.removeCallbacks(it) }
+        scheduledTtls.clear()
         if (sessionManager.isRunning) {
             sessionManager.stop()
         }
@@ -236,9 +409,14 @@ class TorrentServerManager(private val context: Context) {
     }
 
     fun prebuffer(torrentHash: String, fileIndex: Int): Boolean {
+        return prebufferWithResult(torrentHash, fileIndex).ready
+    }
+
+    fun prebufferWithResult(torrentHash: String, fileIndex: Int): PrebufferResult {
         try {
-            val sha1 = Sha1Hash.parseHex(torrentHash)
-            val handle = sessionManager.find(sha1) ?: return false
+            val normHash = torrentHash.uppercase()
+            val sha1 = Sha1Hash.parseHex(normHash)
+            val handle = sessionManager.find(sha1) ?: return PrebufferResult(false, null)
             
             // Wait for metadata if not loaded yet
             var waitTime = 0
@@ -247,29 +425,53 @@ class TorrentServerManager(private val context: Context) {
                 waitTime++
             }
             
-            val torrentInfo = handle.torrentFile() ?: return false
+            val torrentInfo = handle.torrentFile() ?: return PrebufferResult(false, null)
             val fileStorage = torrentInfo.files()
 
-            if (fileIndex < 0 || fileIndex >= fileStorage.numFiles()) return false
+            if (fileIndex < 0 || fileIndex >= fileStorage.numFiles()) return PrebufferResult(false, null)
 
+            val registry = getDeadlineRegistry(normHash) ?: TorrentDeadlineRegistry(normHash, handle).also { registries[normHash] = it }
             val fileOffset = fileStorage.fileOffset(fileIndex)
+            val fileSize = fileStorage.fileSize(fileIndex)
             val pieceLength = torrentInfo.pieceLength().toLong()
-            val firstPiece = (fileOffset / pieceLength).toInt()
+            val totalPieces = torrentInfo.numPieces()
 
-            Logger.log("TorrentServerManager: Pre-buffering piece $firstPiece for file $fileIndex")
+            val plan = computeStreamingPiecePlan(fileOffset, fileSize, pieceLength, totalPieces)
+            if (plan.startupPieces.isEmpty()) return PrebufferResult(false, null)
 
-            // Prioritize first piece
-            handle.piecePriority(firstPiece, Priority.TOP_PRIORITY)
-            handle.setPieceDeadline(firstPiece, 1000)
+            val sessionId = "prebuffer_${normHash}_${fileIndex}_${leaseCounter.incrementAndGet()}"
+            val key = Pair(normHash, fileIndex)
 
-            // Prioritize next piece too
-            val secondPiece = firstPiece + 1
-            if (secondPiece < torrentInfo.numPieces()) {
-                handle.piecePriority(secondPiece, Priority.TOP_PRIORITY)
-                handle.setPieceDeadline(secondPiece, 2000)
+            // Atomically replace existing slot if any
+            val existing = activePrebufferLeases[key]
+            existing?.close()
+
+            val lease = PrebufferLease(sessionId, normHash, fileIndex) { closedLease ->
+                registry.unregisterOwner(closedLease.sessionId)
+                activePrebufferLeases.remove(key, closedLease)
+                cancelTtl(closedLease.sessionId)
+            }
+            activePrebufferLeases[key] = lease
+
+            // Schedule manager TTL
+            val ttlRunnable = Runnable {
+                lease.close()
+            }
+            scheduledTtls[sessionId] = ttlRunnable
+            ttlHandler.postDelayed(ttlRunnable, 30_000L)
+
+            // Register piece deadlines for plan
+            plan.startupPieces.forEachIndexed { i, piece ->
+                registry.registerDeadline(piece, sessionId, (100 + i * 250).toLong())
+            }
+            plan.opportunisticTail?.let { tail ->
+                registry.registerDeadline(tail, sessionId, 1500L)
             }
 
-            // Wait up to 15 seconds for the first piece to complete
+            Logger.log("TorrentServerManager: Pre-buffering piece plan: startup=${plan.startupPieces}, tail=${plan.opportunisticTail} for file $fileIndex")
+
+            // Wait up to 15 seconds for the first piece to complete (non-blocking for tail)
+            val firstPiece = plan.startupPieces.first()
             var waitCount = 0
             while (!handle.havePiece(firstPiece) && waitCount < 150) {
                 if (!sessionManager.isRunning || !handle.isValid) break
@@ -278,10 +480,27 @@ class TorrentServerManager(private val context: Context) {
             }
             val success = handle.havePiece(firstPiece)
             Logger.log("TorrentServerManager: Pre-buffering success = $success")
-            return success
+            return PrebufferResult(success, lease)
         } catch (e: Exception) {
             e.printStackTrace()
-            return false
+            return PrebufferResult(false, null)
+        }
+    }
+
+    fun adoptPrebufferLease(torrentHash: String, fileIndex: Int): PrebufferLease? {
+        val key = Pair(torrentHash.uppercase(), fileIndex)
+        val lease = activePrebufferLeases.remove(key)
+        if (lease != null && !lease.isClosed) {
+            cancelTtl(lease.sessionId)
+            return lease
+        }
+        return null
+    }
+
+    private fun cancelTtl(sessionId: String) {
+        val runnable = scheduledTtls.remove(sessionId)
+        if (runnable != null) {
+            ttlHandler.removeCallbacks(runnable)
         }
     }
 
@@ -295,7 +514,15 @@ class TorrentServerManager(private val context: Context) {
 
     fun removeTorrent(torrentHash: String) {
         try {
-            val sha1 = Sha1Hash.parseHex(torrentHash)
+            val normHash = torrentHash.uppercase()
+            registries.remove(normHash)?.dispose()
+            activePrebufferLeases.entries.removeIf { entry ->
+                if (entry.key.first == normHash) {
+                    entry.value.close()
+                    true
+                } else false
+            }
+            val sha1 = Sha1Hash.parseHex(normHash)
             val handle = sessionManager.find(sha1)
             if (handle != null && handle.isValid) {
                 sessionManager.remove(handle)

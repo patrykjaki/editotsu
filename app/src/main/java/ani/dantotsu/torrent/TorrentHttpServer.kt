@@ -10,15 +10,18 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 class TorrentHttpServer(
     private val port: Int,
     private val getTorrentHandle: (String) -> TorrentHandle?,
-    private val getSavePath: () -> String
+    private val getSavePath: () -> String,
+    private val getTorrentDeadlineRegistry: (String) -> TorrentDeadlineRegistry? = { null }
 ) {
     private var serverSocket: ServerSocket? = null
     private val executor = Executors.newCachedThreadPool()
     private var isRunning = false
+    private val streamSessionCounter = AtomicLong(0L)
 
     fun start() {
         isRunning = true
@@ -54,6 +57,8 @@ class TorrentHttpServer(
 
     private fun handleClient(socket: Socket) {
         socket.use { client ->
+            var streamOwnerId: String? = null
+            var deadlineRegistry: TorrentDeadlineRegistry? = null
             try {
                 val input = client.getInputStream()
                 val reader = input.bufferedReader()
@@ -118,16 +123,14 @@ class TorrentHttpServer(
                     return
                 }
 
-                // Prioritize this file's pieces and sequential downloading
-                torrentHandle.setSequentialRange(0)
-
-                val priorities = Array(fileStorage.numFiles()) { Priority.IGNORE }
-                priorities[fileIndex] = Priority.TOP_PRIORITY
-                torrentHandle.prioritizeFiles(priorities)
-
                 val fileSize = fileStorage.fileSize(fileIndex)
                 val fileOffset = fileStorage.fileOffset(fileIndex)
                 val pieceLength = torrentInfo.pieceLength().toLong()
+
+                // Setup shared deadline registry session
+                val streamId = "http_${fileIndex}_${streamSessionCounter.incrementAndGet()}"
+                streamOwnerId = streamId
+                deadlineRegistry = getTorrentDeadlineRegistry(hash)
 
                 // Read headers to check for Range
                 var rangeHeader: String? = null
@@ -193,7 +196,7 @@ class TorrentHttpServer(
                 val targetFile = File(fileStorage.filePath(fileIndex, savePath))
 
                 var currentPosition = startByte
-                val buffer = ByteArray(64 * 1024) // 64KB buffer
+                val buffer = ByteArray(128 * 1024) // 128KB buffer
                 var fileChannel: RandomAccessFile? = null
 
                 try {
@@ -201,7 +204,16 @@ class TorrentHttpServer(
                         val torrentByteOffset = fileOffset + currentPosition
                         val pieceIndex = (torrentByteOffset / pieceLength).toInt()
 
-                        // 1. Wait for the piece to be downloaded/verified
+                        // 1. Register deadline for current and lookahead pieces in shared registry
+                        deadlineRegistry?.registerDeadline(pieceIndex, streamId, 500L)
+                        for (i in 1..4) {
+                            val nextPiece = pieceIndex + i
+                            if (nextPiece < torrentInfo.numPieces()) {
+                                deadlineRegistry?.registerDeadline(nextPiece, streamId, 500L + i * 500L)
+                            }
+                        }
+
+                        // 2. Wait for the piece to be downloaded/verified
                         var waitCount = 0
                         var loggedWait = false
                         while (!torrentHandle.havePiece(pieceIndex)) {
@@ -212,25 +224,12 @@ class TorrentHttpServer(
                                 Logger.log("TorrentHttpServer: Waiting for piece $pieceIndex (current position: $currentPosition)...")
                                 loggedWait = true
                             }
-                            // Prioritize the piece and set deadlines
-                            if (waitCount % 100 == 0) {
-                                torrentHandle.piecePriority(pieceIndex, Priority.TOP_PRIORITY)
-                                torrentHandle.setPieceDeadline(pieceIndex, 1000)
-                                // Pre-buffer subsequent pieces
-                                for (i in 1..4) {
-                                    val nextPiece = pieceIndex + i
-                                    if (nextPiece < torrentInfo.numPieces()) {
-                                        torrentHandle.piecePriority(nextPiece, Priority.TOP_PRIORITY)
-                                        torrentHandle.setPieceDeadline(nextPiece, 1000 + i * 1000)
-                                    }
-                                }
-                            }
                             Thread.sleep(50)
                             waitCount++
                         }
                         if (!isRunning || !torrentHandle.isValid) break
 
-                        // 2. Determine how many bytes we can read from the current piece
+                        // 3. Determine how many bytes we can read from the current piece
                         val pieceEndByteInTorrent = (pieceIndex.toLong() + 1) * pieceLength
                         val pieceEndPositionInFile = pieceEndByteInTorrent - fileOffset
                         val remainingToRead = endByte - currentPosition + 1
@@ -239,7 +238,7 @@ class TorrentHttpServer(
 
                         if (toRead <= 0) break
 
-                        // 3. Read directly from targetFile on disk
+                        // 4. Read directly from targetFile on disk
                         var bytesRead = -1
                         var readAttempts = 0
                         while (readAttempts < 100) {
@@ -269,7 +268,7 @@ class TorrentHttpServer(
                             break
                         }
 
-                        // 4. Write to output stream
+                        // 5. Write to output stream
                         output.write(buffer, 0, bytesRead)
                         output.flush()
                         currentPosition += bytesRead
@@ -283,6 +282,10 @@ class TorrentHttpServer(
 
             } catch (e: Exception) {
                 // Connection reset by peer or similar
+            } finally {
+                streamOwnerId?.let { id ->
+                    deadlineRegistry?.unregisterOwner(id)
+                }
             }
         }
     }
