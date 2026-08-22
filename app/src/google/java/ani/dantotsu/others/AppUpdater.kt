@@ -50,30 +50,15 @@ object AppUpdater {
     }
 
     private suspend fun fetchFromGithub(repo: String, isDebug: Boolean): Pair<String, String> {
-        return if (isDebug) {
-            val res = client.get("https://api.github.com/repos/$repo/releases")
-                .parsed<JsonArray>().map {
-                    Mapper.json.decodeFromJsonElement<GithubResponse>(it)
-                }
-            val r = res.filter { it.prerelease }.filter { !it.tagName.contains("fdroid", ignoreCase = true) }
-                .maxByOrNull {
-                    it.timeStamp()
-                } ?: throw Exception("No Pre Release Found")
-            val v = r.tagName.removePrefix("v").trim()
-            (r.body ?: "") to v.ifEmpty { throw Exception("Weird Version : ${r.tagName}") }
-        } else {
-            try {
-                val res = client.get("https://api.github.com/repos/$repo/releases/latest")
-                    .parsed<GithubResponse>()
-                val v = res.tagName.removePrefix("v").trim()
-                (res.body ?: "") to v.ifEmpty { throw Exception("Weird Version : ${res.tagName}") }
-            } catch (e: Exception) {
-                Logger.log("GitHub latest release lookup failed, checking stable.md: ${e.message}")
-                val res = client.get("https://raw.githubusercontent.com/$repo/main/stable.md").text
-                val v = res.substringAfter("# ").substringBefore("\n").trim()
-                res to v.ifEmpty { throw Exception("Weird Version in stable.md") }
+        val res = client.get("https://api.github.com/repos/$repo/releases")
+            .parsed<JsonArray>().map {
+                Mapper.json.decodeFromJsonElement<GithubResponse>(it)
             }
-        }
+        val r = res.filter { !it.tagName.contains("fdroid", ignoreCase = true) }
+            .maxByOrNull { it.timeStamp() }
+            ?: throw Exception("No Release Found")
+        val v = r.tagName.removePrefix("v").trim()
+        return (r.body ?: "") to v.ifEmpty { throw Exception("Weird Version : ${r.tagName}") }
     }
 
     private suspend fun fetchApkUrl(repo: String, version: String, isDebug: Boolean): String? {
