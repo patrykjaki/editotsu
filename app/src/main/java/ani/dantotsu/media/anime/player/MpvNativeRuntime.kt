@@ -105,24 +105,24 @@ data class OwnershipRequest(
 
 fun nativeMarker(message: String) {
     try {
-        android.util.Log.e("DantotsuMPV", message)
+        android.util.Log.e("EditotsuMPV", message)
     } catch (_: Throwable) {
-        System.err.println("DantotsuMPV: $message")
+        System.err.println("EditotsuMPV: $message")
     }
 }
 
 private fun logRuntimeError(message: String, cause: Throwable? = null) {
     try {
         if (cause != null) {
-            android.util.Log.e("DantotsuMPV", message, cause)
+            android.util.Log.e("EditotsuMPV", message, cause)
         } else {
-            android.util.Log.e("DantotsuMPV", message)
+            android.util.Log.e("EditotsuMPV", message)
         }
     } catch (_: Throwable) {
         if (cause != null) {
-            System.err.println("DantotsuMPV: $message - ${cause.message}")
+            System.err.println("EditotsuMPV: $message - ${cause.message}")
         } else {
-            System.err.println("DantotsuMPV: $message")
+            System.err.println("EditotsuMPV: $message")
         }
     }
 }

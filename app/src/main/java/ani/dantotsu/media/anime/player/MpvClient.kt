@@ -23,7 +23,8 @@ fun redactOptionValue(name: String, value: String): String {
     return when (name) {
         "config", "vo", "hwdec", "hwdec-codecs", "sub-auto",
         "keep-open", "ytdl", "force-window", "idle",
-        "gpu-context", "opengl-es" -> value
+        "gpu-context", "opengl-es", "slang", "alang",
+        "sub-font-provider", "sub-font", "embeddedfonts" -> value
         "sub-fonts-dir", "gpu-shader-cache-dir", "icc-cache-dir" -> "[pathKind: ${name.removeSuffix("-dir")}]"
         else -> "<redacted>"
     }

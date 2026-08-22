@@ -220,7 +220,12 @@ class MpvPlaybackEngine(
                     ResolvedInitSetting.Apply(MpvInitOption("vo", MpvSettingValue.StringValue("gpu"))),
                     ResolvedInitSetting.Apply(MpvInitOption("hwdec", MpvSettingValue.StringValue("auto"))),
                     ResolvedInitSetting.Apply(MpvInitOption("hwdec-codecs", MpvSettingValue.StringValue("all"))),
-                    ResolvedInitSetting.Apply(MpvInitOption("sub-auto", MpvSettingValue.StringValue("no"))),
+                    ResolvedInitSetting.Apply(MpvInitOption("sub-auto", MpvSettingValue.StringValue("fuzzy"))),
+                    ResolvedInitSetting.Apply(MpvInitOption("slang", MpvSettingValue.StringValue("eng,en,enUS,en-US,English,enm"))),
+                    ResolvedInitSetting.Apply(MpvInitOption("alang", MpvSettingValue.StringValue("jpn,ja,eng,en,Japanese,English"))),
+                    ResolvedInitSetting.Apply(MpvInitOption("sub-font-provider", MpvSettingValue.StringValue("none"))),
+                    ResolvedInitSetting.Apply(MpvInitOption("sub-font", MpvSettingValue.StringValue("sans-serif"))),
+                    ResolvedInitSetting.Apply(MpvInitOption("embeddedfonts", MpvSettingValue.StringValue("yes"))),
                     ResolvedInitSetting.Apply(MpvInitOption("keep-open", MpvSettingValue.StringValue("no"))),
                     ResolvedInitSetting.Apply(MpvInitOption("ytdl", MpvSettingValue.StringValue("no"))),
                     ResolvedInitSetting.Apply(MpvInitOption("force-window", MpvSettingValue.StringValue("no"))),
@@ -381,7 +386,7 @@ class MpvPlaybackEngine(
             } else {
                 val sec = TimeConverter.msToSeconds(positionMs)
                 try {
-                    mpvClient.command("seek", sec.toString(), "absolute+exact")
+                    mpvClient.command("seek", sec.toString(), "absolute+keyframes")
                 } catch (e: Exception) {
                     ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekTo command failed: ${e.message}")
                 }
@@ -410,7 +415,7 @@ class MpvPlaybackEngine(
                 val sec = TimeConverter.msToSecondsSigned(offsetMs)
                 ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekRelative offsetMs=$offsetMs -> ${sec}s")
                 try {
-                    mpvClient.command("seek", sec.toString(), "relative+exact")
+                    mpvClient.command("seek", sec.toString(), "relative+keyframes")
                 } catch (e: Exception) {
                     ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekRelative command failed: ${e.message}")
                 }
@@ -597,7 +602,8 @@ class MpvPlaybackEngine(
             generationId = genId,
             request = request,
             leases = opLeases,
-            state = LoadOperationState.SUBMITTED
+            state = LoadOperationState.SUBMITTED,
+            pendingSeekMs = if (request.startPositionMs > 0L && request.sourceClass == PlaybackSourceClass.TORRENT_LOCALHOST) request.startPositionMs else null
         )
         operationsByGen[genId] = operation
         activeOperation = operation
@@ -734,6 +740,51 @@ class MpvPlaybackEngine(
                 mpvClient.setPropertyInt("sid", id)
             }
         } catch (_: Exception) {}
+    }
+
+    private fun findBestMatchingSubtitleTrack(tracks: List<PlayerTrack>, preferredSubLang: String?): PlayerTrack? {
+        val subTracks = tracks.filter { it.type == TrackType.SUBTITLE }
+        if (subTracks.isEmpty()) return null
+
+        if (preferredSubLang != null) {
+            if (preferredSubLang.equals("None", ignoreCase = true)) {
+                return null
+            }
+            if (preferredSubLang.startsWith("Embedded:", ignoreCase = true)) {
+                val target = preferredSubLang.removePrefix("Embedded:").trim()
+                val byId = target.toIntOrNull()?.let { id -> subTracks.find { it.id == id } }
+                if (byId != null) return byId
+                val byLang = subTracks.find {
+                    it.language?.equals(target, ignoreCase = true) == true ||
+                    it.name?.contains(target, ignoreCase = true) == true
+                }
+                if (byLang != null) return byLang
+            }
+            val match = subTracks.find {
+                it.language?.contains(preferredSubLang, ignoreCase = true) == true ||
+                it.name?.contains(preferredSubLang, ignoreCase = true) == true
+            }
+            if (match != null) return match
+        }
+
+        // Default fallback: English tracks (prioritize full dialogue over Signs/Songs)
+        val englishTracks = subTracks.filter {
+            val l = it.language?.lowercase() ?: ""
+            val n = it.name?.lowercase() ?: ""
+            l.contains("eng") || l.contains("en") || n.contains("english") || n.contains("eng")
+        }
+        if (englishTracks.isNotEmpty()) {
+            val fullTrack = englishTracks.firstOrNull {
+                val n = it.name?.lowercase() ?: ""
+                !n.contains("sign") && !n.contains("song") && !it.forced
+            }
+            return fullTrack ?: englishTracks.first()
+        }
+
+        val defaultTrack = subTracks.firstOrNull { it.default }
+        if (defaultTrack != null) return defaultTrack
+
+        return subTracks.firstOrNull { !it.forced } ?: subTracks.firstOrNull()
     }
 
     override fun addExternalSubtitle(
@@ -1041,7 +1092,18 @@ class MpvPlaybackEngine(
                 } ?: emptyList()
                 val parsedTracks = MpvTrackMapper.parseTrackList(rawList)
                 val audioId = parsedTracks.firstOrNull { it.type == TrackType.AUDIO && it.selected }?.id
-                val subId = parsedTracks.firstOrNull { it.type == TrackType.SUBTITLE && it.selected }?.id
+                var subId = parsedTracks.firstOrNull { it.type == TrackType.SUBTITLE && it.selected }?.id
+
+                // Auto-select preferred/English subtitle track if none is currently selected in MPV
+                val preferred = activeOperation?.request?.preferredSubLang
+                if (subId == null && preferred != "None" && activeOperation?.pendingSubtitleTrackId == null) {
+                    val autoSub = findBestMatchingSubtitleTrack(parsedTracks, preferred)
+                    if (autoSub != null) {
+                        subId = autoSub.id
+                        selectSubtitleTrackInternal(autoSub.id)
+                    }
+                }
+
                 updateSnapshot(currentSnapshot.copy(
                     tracks = parsedTracks,
                     selectedAudioTrackId = audioId,
@@ -1146,7 +1208,7 @@ class MpvPlaybackEngine(
                             op.pendingSeekMs = null
                             try {
                                 val sec = TimeConverter.msToSeconds(seekPos)
-                                mpvClient.command("seek", sec.toString(), "absolute+exact")
+                                mpvClient.command("seek", sec.toString(), "absolute+keyframes")
                             } catch (_: Exception) {}
                         }
 
@@ -1161,6 +1223,10 @@ class MpvPlaybackEngine(
                             val sid = op.pendingSubtitleTrackId
                             op.pendingSubtitleTrackId = null
                             selectSubtitleTrackInternal(sid)
+                        }
+
+                        if (currentSnapshot.userPlayIntent) {
+                            playInternal()
                         }
 
                         updateSnapshot(currentSnapshot.copy(

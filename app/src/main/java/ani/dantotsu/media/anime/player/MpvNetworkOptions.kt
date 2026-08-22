@@ -97,7 +97,7 @@ object MpvNetworkOptions {
             optionsList.add("http-header-fields=\"$escapedFields\"")
         }
 
-        if (startPositionMs > 0L) {
+        if (startPositionMs > 0L && sourceClass != PlaybackSourceClass.TORRENT_LOCALHOST) {
             val startSec = TimeConverter.msToSeconds(startPositionMs)
             optionsList.add("start=$startSec")
         }
@@ -115,8 +115,12 @@ object MpvNetworkOptions {
                 optionsList.add("network-timeout=20")
             }
             PlaybackSourceClass.TORRENT_LOCALHOST -> {
-                optionsList.add("demuxer-max-bytes=33554432")
+                optionsList.add("demuxer-max-bytes=67108864")
+                optionsList.add("demuxer-max-back-bytes=33554432")
+                optionsList.add("demuxer-readahead-secs=30")
+                optionsList.add("network-timeout=30")
                 optionsList.add("cache-pause-initial=no")
+                optionsList.add("cache-pause-wait=1")
             }
             PlaybackSourceClass.LOCAL_FILE,
             PlaybackSourceClass.CONTENT_FD -> {

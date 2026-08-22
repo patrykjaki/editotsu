@@ -39,29 +39,13 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 object AppUpdater {
-    private val fallbackStableUrl: String
-        get() = "aHR0cHM6Ly9hcGkuZGFudG90c3UuYXBwL3VwZGF0ZXMvc3RhYmxl".decodeBase64ToString()
-    private val fallbackBetaUrl: String
-        get() = "aHR0cHM6Ly9hcGkuZGFudG90c3UuYXBwL3VwZGF0ZXMvYmV0YQ==".decodeBase64ToString()
-
-    @Serializable
-    data class FallbackResponse(
-        val version: String,
-        val changelog: String,
-        val downloadUrl: String? = null
-    )
 
     private suspend fun fetchUpdateInfo(repo: String, isDebug: Boolean): Pair<String, String>? {
         return try {
             fetchFromGithub(repo, isDebug)
         } catch (e: Exception) {
-            Logger.log("Github fetch failed, trying fallback: ${e.message}")
-            try {
-                fetchFromFallback(isDebug)
-            } catch (e: Exception) {
-                Logger.log("Fallback fetch failed: ${e.message}")
-                null
-            }
+            Logger.log("Github fetch failed: ${e.message}")
+            null
         }
     }
 
@@ -71,49 +55,43 @@ object AppUpdater {
                 .parsed<JsonArray>().map {
                     Mapper.json.decodeFromJsonElement<GithubResponse>(it)
                 }
-            val r = res.filter { it.prerelease }.filter { !it.tagName.contains("fdroid") }
+            val r = res.filter { it.prerelease }.filter { !it.tagName.contains("fdroid", ignoreCase = true) }
                 .maxByOrNull {
                     it.timeStamp()
                 } ?: throw Exception("No Pre Release Found")
-            val v = r.tagName.substringAfter("v", "")
+            val v = r.tagName.removePrefix("v").trim()
             (r.body ?: "") to v.ifEmpty { throw Exception("Weird Version : ${r.tagName}") }
         } else {
-            val res = client.get("https://raw.githubusercontent.com/$repo/main/stable.md").text
-            res to res.substringAfter("# ").substringBefore("\n")
+            try {
+                val res = client.get("https://api.github.com/repos/$repo/releases/latest")
+                    .parsed<GithubResponse>()
+                val v = res.tagName.removePrefix("v").trim()
+                (res.body ?: "") to v.ifEmpty { throw Exception("Weird Version : ${res.tagName}") }
+            } catch (e: Exception) {
+                Logger.log("GitHub latest release lookup failed, checking stable.md: ${e.message}")
+                val res = client.get("https://raw.githubusercontent.com/$repo/main/stable.md").text
+                val v = res.substringAfter("# ").substringBefore("\n").trim()
+                res to v.ifEmpty { throw Exception("Weird Version in stable.md") }
+            }
         }
-    }
-
-    private suspend fun fetchFromFallback(isDebug: Boolean): Pair<String, String> {
-        val url = if (isDebug) fallbackBetaUrl else fallbackStableUrl
-        val response = CommentsAPI.requestBuilder().get(url).parsed<FallbackResponse>()
-        return response.changelog to response.version
     }
 
     private suspend fun fetchApkUrl(repo: String, version: String, isDebug: Boolean): String? {
         return try {
             fetchApkUrlFromGithub(repo, version)
         } catch (e: Exception) {
-            Logger.log("Github APK fetch failed, trying fallback: ${e.message}")
-            try {
-                fetchApkUrlFromFallback(version, isDebug)
-            } catch (e: Exception) {
-                Logger.log("Fallback APK fetch failed: ${e.message}")
-                null
-            }
+            Logger.log("Github APK fetch failed: ${e.message}")
+            null
         }
     }
 
     private suspend fun fetchApkUrlFromGithub(repo: String, version: String): String? {
-        val apks = client.get("https://api.github.com/repos/$repo/releases/tags/v$version")
+        val tag = if (version.startsWith("v")) version else "v$version"
+        val apks = client.get("https://api.github.com/repos/$repo/releases/tags/$tag")
             .parsed<GithubResponse>().assets?.filter {
                 it.browserDownloadURL.endsWith(".apk")
             }
         return apks?.firstOrNull()?.browserDownloadURL
-    }
-
-    private suspend fun fetchApkUrlFromFallback(version: String, isDebug: Boolean): String? {
-        val url = if (isDebug) fallbackBetaUrl else fallbackStableUrl
-        return CommentsAPI.requestBuilder().get("$url/$version").parsed<FallbackResponse>().downloadUrl
     }
 
     suspend fun check(activity: FragmentActivity, post: Boolean = false) {
@@ -157,7 +135,7 @@ object AppUpdater {
                                 if (apkUrl != null) {
                                     activity.downloadUpdate(version, apkUrl)
                                 } else {
-                                    openLinkInBrowser("https://github.com/repos/$repo/releases/tag/v$version")
+                                    openLinkInBrowser("https://github.com/$repo/releases/tag/v$version")
                                 }
                             } catch (e: Exception) {
                                 logError(e)
@@ -177,8 +155,8 @@ object AppUpdater {
     }
 
     private fun compareVersion(version: String): Boolean {
-
-
+        val cleanVersion = version.removePrefix("v").substringBefore("-").trim()
+        val cleanCurrent = BuildConfig.VERSION_NAME.removePrefix("v").substringBefore("-").trim()
         return when (BuildConfig.BUILD_TYPE) {
             "debug" -> BuildConfig.VERSION_NAME != version
             "alpha" -> false
@@ -187,20 +165,19 @@ object AppUpdater {
                     return list.mapIndexed { i, s ->
                         val num = s.toDoubleOrNull() ?: 0.0
                         when (i) {
-                            0 -> num * 100
-                            1 -> num * 10
+                            0 -> num * 10000
+                            1 -> num * 100
                             2 -> num
-                            else -> num
+                            else -> num / 10.0
                         }
                     }.sum()
                 }
-                val new = toDoubleSafe(version.split("."))
-                val curr = toDoubleSafe(BuildConfig.VERSION_NAME.split("."))
+                val new = toDoubleSafe(cleanVersion.split("."))
+                val curr = toDoubleSafe(cleanCurrent.split("."))
                 new > curr
             }
         }
     }
-
 
     //Blatantly kanged from https://github.com/LagradOst/CloudStream-3/blob/master/app/src/main/java/com/lagradost/cloudstream3/utils/InAppUpdater.kt
     private fun Activity.downloadUpdate(version: String, url: String) {
@@ -210,10 +187,10 @@ object AppUpdater {
 
         val request = DownloadManager.Request(Uri.parse(url))
             .setMimeType("application/vnd.android.package-archive")
-            .setTitle("Downloading Dantotsu $version")
+            .setTitle("Downloading Editotsu $version")
             .setDestinationInExternalPublicDir(
                 Environment.DIRECTORY_DOWNLOADS,
-                "Dantotsu $version.apk"
+                "Editotsu $version.apk"
             )
             .setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
             .setAllowedOverRoaming(true)

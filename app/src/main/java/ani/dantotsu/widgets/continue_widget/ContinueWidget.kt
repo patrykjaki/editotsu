@@ -171,7 +171,7 @@ class ContinueWidget : AppWidgetProvider() {
 
             if (isActive) {
                 headerText = prefs.getString(KEY_ACTIVE_HEADER, "CURRENTLY ACTIVE") ?: "CURRENTLY ACTIVE"
-                titleText = prefs.getString(KEY_ACTIVE_TITLE, "Dantotsu") ?: "Dantotsu"
+                titleText = prefs.getString(KEY_ACTIVE_TITLE, "Editotsu") ?: "Editotsu"
                 detailText = prefs.getString(KEY_ACTIVE_DETAIL, "In Progress") ?: "In Progress"
                 coverUrl = prefs.getString(KEY_ACTIVE_COVER, null)
             } else {

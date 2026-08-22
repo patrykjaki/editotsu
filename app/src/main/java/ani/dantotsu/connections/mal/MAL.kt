@@ -19,7 +19,7 @@ import java.security.SecureRandom
 object MAL {
     val query: MALQueries = MALQueries()
     val jikan: JikanQueries = JikanQueries()
-    const val clientId = "86b35cf02205a0303da3aaea1c9e33f3"
+    const val clientId = "b70e05dccba4c13e5174a7858426ee47"
     var username: String? = null
     var avatar: String? = null
     var token: String? = null

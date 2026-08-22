@@ -163,8 +163,21 @@ class TorrentHttpServer(
                     return
                 }
 
+                val numFiles = fileStorage.numFiles()
+                val filePriorities = Priority.array(Priority.IGNORE, numFiles)
+                if (fileIndex in 0 until numFiles) {
+                    filePriorities[fileIndex] = Priority.TOP_PRIORITY
+                }
+                try {
+                    torrentHandle.prioritizeFiles(filePriorities)
+                } catch (_: Exception) {}
+
                 val contentSize = endByte - startByte + 1
-                val output = client.getOutputStream()
+                try {
+                    client.tcpNoDelay = true
+                    client.sendBufferSize = 512 * 1024
+                } catch (_: Exception) {}
+                val output = java.io.BufferedOutputStream(client.getOutputStream(), 256 * 1024)
 
                 // Send response headers
                 val contentType = getMimeType(fileStorage.filePath(fileIndex))
@@ -196,39 +209,51 @@ class TorrentHttpServer(
                 val targetFile = File(fileStorage.filePath(fileIndex, savePath))
 
                 var currentPosition = startByte
-                val buffer = ByteArray(128 * 1024) // 128KB buffer
+                val buffer = ByteArray(256 * 1024) // 256KB buffer
                 var fileChannel: RandomAccessFile? = null
+                var lastRegisteredPiece = -1
 
                 try {
                     while (currentPosition <= endByte) {
                         val torrentByteOffset = fileOffset + currentPosition
                         val pieceIndex = (torrentByteOffset / pieceLength).toInt()
 
-                        // 1. Register deadline for current and lookahead pieces in shared registry
-                        deadlineRegistry?.registerDeadline(pieceIndex, streamId, 500L)
-                        for (i in 1..4) {
-                            val nextPiece = pieceIndex + i
-                            if (nextPiece < torrentInfo.numPieces()) {
-                                deadlineRegistry?.registerDeadline(nextPiece, streamId, 500L + i * 500L)
+                        // 1. Pipeline lookahead window (24 pieces ahead) when entering a new piece
+                        if (pieceIndex != lastRegisteredPiece) {
+                            lastRegisteredPiece = pieceIndex
+                            deadlineRegistry?.focusPieceWindow(streamId, pieceIndex, 24, torrentInfo.numPieces())
+                            for (i in 0..24) {
+                                val targetPiece = pieceIndex + i
+                                if (targetPiece < torrentInfo.numPieces()) {
+                                    val priority = when {
+                                        i <= 4 -> Priority.TOP_PRIORITY
+                                        i <= 12 -> Priority.SIX
+                                        else -> Priority.DEFAULT
+                                    }
+                                    try { torrentHandle.piecePriority(targetPiece, priority) } catch (_: Exception) {}
+                                    val deadline = if (i == 0) 0L else (i * 200L)
+                                    deadlineRegistry?.registerDeadline(targetPiece, streamId, deadline)
+                                }
                             }
                         }
 
                         // 2. Wait for the piece to be downloaded/verified
                         var waitCount = 0
-                        var loggedWait = false
                         while (!torrentHandle.havePiece(pieceIndex)) {
                             if (!isRunning || !torrentHandle.isValid) {
                                 break
                             }
-                            if (!loggedWait) {
-                                Logger.log("TorrentHttpServer: Waiting for piece $pieceIndex (current position: $currentPosition)...")
-                                loggedWait = true
+                            if (waitCount % 25 == 0) { // Log every 500ms
+                                val status = try { torrentHandle.status() } catch (_: Exception) { null }
+                                Logger.log(
+                                    "TorrentHttpServer: Waiting for piece $pieceIndex (pos $currentPosition) | " +
+                                    "Peers: ${status?.numPeers() ?: -1}, Seeds: ${status?.numSeeds() ?: -1}, " +
+                                    "DownRate: ${(status?.downloadRate() ?: 0) / 1024} KB/s, State: ${status?.state()}"
+                                )
                             }
-                            Thread.sleep(50)
+                            Thread.sleep(20)
                             waitCount++
                         }
-                        if (!isRunning || !torrentHandle.isValid) break
-
                         // 3. Determine how many bytes we can read from the current piece
                         val pieceEndByteInTorrent = (pieceIndex.toLong() + 1) * pieceLength
                         val pieceEndPositionInFile = pieceEndByteInTorrent - fileOffset
@@ -248,23 +273,22 @@ class TorrentHttpServer(
                                     if (fileChannel == null) {
                                         fileChannel = RandomAccessFile(targetFile, "r")
                                     }
-                                    if (fileChannel.length() > currentPosition) {
-                                        fileChannel.seek(currentPosition)
-                                        bytesRead = fileChannel.read(buffer, 0, toRead)
-                                        if (bytesRead > 0) {
-                                            break
-                                        }
+                                    fileChannel.seek(currentPosition)
+                                    bytesRead = fileChannel.read(buffer, 0, toRead)
+                                    if (bytesRead > 0) {
+                                        break
                                     }
                                 }
                             } catch (e: Exception) {
-                                // Ignore and retry
+                                try { fileChannel?.close() } catch (_: Exception) {}
+                                fileChannel = null
                             }
-                            Thread.sleep(50)
+                            Thread.sleep(20)
                             readAttempts++
                         }
 
                         if (bytesRead <= 0) {
-                            Logger.log("TorrentHttpServer: Failed to read from disk at position $currentPosition")
+                            Logger.log("TorrentHttpServer: Failed to read from disk at position $currentPosition after $readAttempts attempts")
                             break
                         }
 

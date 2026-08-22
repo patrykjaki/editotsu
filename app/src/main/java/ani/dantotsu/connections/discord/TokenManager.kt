@@ -239,8 +239,8 @@ class TokenManager(
     }
 
     companion object {
-        // PreMiD client ID ΓÇô widely used for headless Discord RPC (same as Echo)
-        const val CLIENT_ID = "503557087041683458"
+        // Editotsu Discord application ID
+        const val CLIENT_ID = "1540568327712153743"
         const val REDIRECT_URI = "https://login.premid.app"
         val SCOPES = listOf("identify", "activities.write")
     }

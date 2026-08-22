@@ -26,7 +26,7 @@ jobs:
 
     steps:
     - name: Checkout repo
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
@@ -66,9 +66,9 @@ jobs:
 
     - name: Set variables
       run: |
-        VER=$(grep -E -o "versionName \".*\"" app/build.gradle | sed -e 's/versionName //g' | tr -d '"')
+        VER=$(grep -E -o 'versionName = ".*"' app/build.gradle.kts | sed -e 's/versionName = //g' | tr -d '"')
         SHA=${{ github.sha }}
-        VERSION="$VER+${SHA:0:7}"
+        VERSION="${VER:-0.1.0}+${SHA:0:7}"
         echo "Version $VERSION"
         echo "VERSION=$VERSION" >> $GITHUB_ENV
 
@@ -126,36 +126,34 @@ jobs:
 
     - name: Upload a Build Artifact
       if: ${{ env.SKIP_BUILD != 'true' }}
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      uses: actions/upload-artifact@v4
       with:
-          name: Dantotsu
+          name: Editotsu
           retention-days: 5
           compression-level: 9
-          path: "app/build/outputs/apk/google/alpha/app-google-alpha.apk"
+          path: "app/build/outputs/apk/google/alpha/*.apk"
 
-    - name: Upload APK to Discord and Telegram
-      if: ${{ github.repository == 'rebelonion/Dantotsu' }}
-      shell: bash
-      run: |
-        chmod +x workflowscripts/notify.sh
-        ./workflowscripts/notify.sh
+    - name: Create GitHub Pre-Release
+      if: ${{ startsWith(github.ref, 'refs/tags/') }}
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Editotsu ${{ github.ref_name }}
+        body: ${{ env.COMMIT_LOG }}
+        prerelease: true
+        files: |
+          app/build/outputs/apk/google/alpha/*.apk
       env:
-        COMMIT_LOG: ${{ env.COMMIT_LOG }}
-        VERSION: ${{ env.VERSION }}
-        CHECKSUM: ${{ env.CHECKSUM }}
-        SKIP_BUILD: ${{ env.SKIP_BUILD }}
-        APK_PATH: "app/build/outputs/apk/google/alpha/app-google-alpha.apk"
-        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload Current SHA as Artifact
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      uses: actions/upload-artifact@v4
       with:
         name: last-sha
         path: last_sha.txt
 
     - name: Upload Commit log as Artifact
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      uses: actions/upload-artifact@v4
       with:
         name: commit-log
         path: commit_log.txt

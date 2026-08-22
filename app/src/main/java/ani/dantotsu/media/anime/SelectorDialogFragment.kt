@@ -31,6 +31,7 @@ import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.BottomSheetDialogFragment
 import ani.dantotsu.R
 import ani.dantotsu.addons.download.DownloadAddonManager
+import ani.dantotsu.torrent.TorrentBufferingDialogFragment
 import ani.dantotsu.torrent.TorrentServerManager
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.copyToClipboard
@@ -529,58 +530,23 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 if (url.startsWith("magnet:") || url.endsWith(".torrent")) {
                     val torrentManager = Injekt.get<TorrentServerManager>()
                     if (torrentManager.isAvailable()) {
-                        val activity = activity ?: currActivity()
-                        launchIO {
-                            try {
-                                torrentManager.activeTorrentHash?.let {
-                                    torrentManager.removeTorrent(it)
-                                }
-                                val index = if (url.contains("index=")) {
-                                    url.substringAfter("index=").toIntOrNull() ?: 0
-                                } else 0
-                                Logger.log("Sending: ${url}, ${video.quality}, $index")
-                                val currentTorrent = torrentManager.addTorrent(
-                                    url, video.quality.toString(), "", "", false
-                                )
-                                torrentManager.activeTorrentHash = currentTorrent.hash
-
-                                // Pre-buffer the first piece
-                                torrentManager.prebuffer(currentTorrent.hash!!, index)
-
-                                video.file.url = torrentManager.getLink(currentTorrent, index)
-                                Logger.log("Received: ${video.file.url}")
-                                withContext(Dispatchers.Main) {
-                                    val act = activity ?: currActivity()
-                                    if (launch == true) {
-                                        if (act != null) {
-                                            Intent(act, ExoplayerView::class.java).apply {
-                                                ExoplayerView.media = media
-                                                ExoplayerView.initialized = true
-                                                act.startActivity(this)
-                                            }
-                                        }
-                                    } else {
-                                        val epKey = media.anime?.selectedEpisode
-                                        val targetEp = media.anime?.episodes?.getEpisode(epKey) ?: ep
-                                        if (targetEp != null) {
-                                            model.setEpisode(targetEp, "startExo no launch")
-                                        }
-                                    }
-                                    tryWith {
-                                        dismissAllowingStateLoss()
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                Injekt.get<CrashlyticsInterface>().logException(e)
-                                Logger.log(e)
-                                withContext(Dispatchers.Main) {
-                                    toast("Error starting video: ${e.message}")
-                                    tryWith {
-                                        dismissAllowingStateLoss()
-                                    }
-                                }
-                            }
+                        val act = activity ?: currActivity()
+                        dismissAllowingStateLoss()
+                        if (launch == true) {
+                            stopAddingToList()
+                            val epKey = media.anime?.selectedEpisode
+                            val targetEp = media.anime?.episodes?.getEpisode(epKey) ?: ep
+                            model.setEpisode(targetEp, "startExo launch")
+                            val fm = (act as? androidx.fragment.app.FragmentActivity)?.supportFragmentManager
+                                ?: parentFragmentManager
+                            TorrentBufferingDialogFragment.newInstance(media, targetEp, video, url)
+                                .show(fm, "torrent_buffering_dialog")
+                        } else {
+                            val epKey = media.anime?.selectedEpisode
+                            val targetEp = media.anime?.episodes?.getEpisode(epKey) ?: ep
+                            model.setEpisode(targetEp, "startExo no launch")
                         }
+                        return
                     } else {
                         try {
                             externalPlayerResult.launch(exportMagnetIntent(ep, video))

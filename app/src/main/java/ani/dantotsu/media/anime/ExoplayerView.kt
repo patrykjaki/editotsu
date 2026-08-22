@@ -931,11 +931,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             val torrentManager = Injekt.get<ani.dantotsu.torrent.TorrentServerManager>()
             if (torrentManager.isAvailable()) {
                 val url = currentVideo.file.url
+                exoBufferingIndicator.visibility = View.VISIBLE
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
-                        torrentManager.activeTorrentHash?.let {
-                            torrentManager.removeTorrent(it)
-                        }
                         val index = if (url.contains("index=")) {
                             url.substringAfter("index=").toIntOrNull() ?: 0
                         } else 0
@@ -1309,7 +1307,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
-        if (PrefManager.getVal(PrefName.FocusPause) && !epChanging) {
+        val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
+        if (PrefManager.getVal(PrefName.FocusPause) && !epChanging && !inPip) {
             if (this::playerManager.isInitialized && playerManager.isInitialized) {
                 playerManager.playbackCoordinator?.setLifecycleSuppressed(!hasFocus)
             }
@@ -1319,29 +1318,37 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     private fun enterPipMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val clampedRatio = getClampedAspectRatio(aspectRatio)
-            val builder = android.app.PictureInPictureParams.Builder()
-                .setAspectRatio(clampedRatio)
-            val surfaceView = playerView.surfaceView
-            if (surfaceView != null && surfaceView.isLaidOut) {
-                val rect = android.graphics.Rect()
-                if (surfaceView.getGlobalVisibleRect(rect) && rect.width() > 0 && rect.height() > 0) {
-                    builder.setSourceRectHint(rect)
+            try {
+                playerView.hideController()
+                val clampedRatio = getClampedAspectRatio(aspectRatio)
+                val builder = android.app.PictureInPictureParams.Builder()
+                    .setAspectRatio(clampedRatio)
+                val surfaceView = playerView.surfaceView
+                if (surfaceView != null && surfaceView.isLaidOut) {
+                    val rect = android.graphics.Rect()
+                    if (surfaceView.getGlobalVisibleRect(rect) && rect.width() > 0 && rect.height() > 0) {
+                        builder.setSourceRectHint(rect)
+                    }
                 }
+                enterPictureInPictureMode(builder.build())
+            } catch (e: Exception) {
+                Logger.log("enterPipMode failed: ${e.message}")
             }
-            enterPictureInPictureMode(builder.build())
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             @Suppress("DEPRECATION")
-            enterPictureInPictureMode()
+            try {
+                playerView.hideController()
+                enterPictureInPictureMode()
+            } catch (e: Exception) {
+                Logger.log("enterPipMode legacy failed: ${e.message}")
+            }
         }
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (pipEnabled && PrefManager.getVal(PrefName.Pip)) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                enterPipMode()
-            }
+            enterPipMode()
         }
     }
 
@@ -1360,6 +1367,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (isInPictureInPictureMode) {
+            if (this::playerManager.isInitialized && playerManager.isInitialized) {
+                playerManager.playbackCoordinator?.setLifecycleSuppressed(false)
+            }
             playerView.hideController()
             if (this::aniSkipManager.isInitialized) {
                 aniSkipManager.hideSkipButtons()

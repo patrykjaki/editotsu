@@ -174,7 +174,7 @@ class MpvPlaybackEngineTest {
         assertNotNull(seekCmd)
         assertEquals("seek", seekCmd!![0])
         assertEquals("-10.0", seekCmd[1])
-        assertEquals("relative+exact", seekCmd[2])
+        assertEquals("relative+keyframes", seekCmd[2])
     }
 
     @Test

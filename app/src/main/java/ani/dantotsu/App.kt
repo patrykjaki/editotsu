@@ -185,7 +185,7 @@ class App : Application() {
 
         var details = "Browsing"
         var state = "In Menus"
-        var largeImage: RPC.Link? = RPC.Link("Dantotsu", Discord.small_Image)
+        var largeImage: RPC.Link? = RPC.Link("Editotsu", Discord.small_Image)
 
         when {
             activityName == "MainActivity" -> {
@@ -225,7 +225,7 @@ class App : Application() {
         val rpcData = RPC.Companion.RPCData(
             applicationId = Discord.application_Id,
             type = RPC.Type.PLAYING,
-            activityName = "Dantotsu",
+            activityName = "Editotsu",
             details = details,
             state = state,
             largeImage = largeImage,

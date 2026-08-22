@@ -1,4 +1,8 @@
-# 3.2.1
+# 1.0.0
 
-- **Bugfixes:**
-  - Fix a crash after watching a video
+- **Editotsu Initial Release**
+  - High-performance native libmpv video playback engine
+  - Dynamic Anime Skip (AniSkip) integration
+  - Seamless Picture-in-Picture lifecycle (Android 12–16)
+  - Torrent streaming with pre-buffering and deadline scheduling
+  - Full AniList / MyAnimeList tracking support

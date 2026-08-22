@@ -72,7 +72,7 @@ class PiPAndTorrentUnitTest {
             pieceLength = pieceLength,
             totalPieces = 10
         )
-        assertEquals(listOf(0, 1, 2), planMulti.startupPieces)
+        assertEquals(listOf(0, 1, 2, 3), planMulti.startupPieces)
         assertEquals(4, planMulti.opportunisticTail)
 
         // Case C: Sub-file with offset in middle of torrent (offset = 5MB -> piece 2, size = 6MB -> spans pieces 2, 3, 4, 5)
@@ -82,8 +82,8 @@ class PiPAndTorrentUnitTest {
             pieceLength = pieceLength,
             totalPieces = 20
         )
-        assertEquals(listOf(2, 3, 4), planOffset.startupPieces)
-        assertEquals(5, planOffset.opportunisticTail)
+        assertEquals(listOf(2, 3, 4, 5), planOffset.startupPieces)
+        assertNull(planOffset.opportunisticTail)
 
         // Case D: Two-piece file
         val planTwo = computeStreamingPiecePlan(

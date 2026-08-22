@@ -36,7 +36,7 @@ fun computeStreamingPiecePlan(
         return StreamingPiecePlan(emptyList(), null)
     }
 
-    val candidates = listOf(firstPiece, firstPiece + 1, firstPiece + 2)
+    val candidates = listOf(firstPiece, firstPiece + 1, firstPiece + 2, firstPiece + 3)
     val boundedStartup = candidates.filter { it <= lastPiece && it < totalPieces }.distinct()
     val tail = if (lastPiece !in boundedStartup) lastPiece else null
 
@@ -76,6 +76,31 @@ class TorrentDeadlineRegistry(
             val targetAbsolute = timeProvider() + delayMs
             map[ownerId] = targetAbsolute
             updatePieceDeadlineLocked(pieceIndex, map)
+        }
+    }
+
+    fun focusPieceWindow(ownerId: String, startPiece: Int, count: Int, totalPieces: Int) {
+        synchronized(this) {
+            if (isDisposed || !adapter.isValid) return
+            val windowEnd = minOf(startPiece + count, totalPieces)
+            val iterator = pieceDeadlines.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                val piece = entry.key
+                if (piece < startPiece || piece >= windowEnd) {
+                    val map = entry.value
+                    if (map.remove(ownerId) != null) {
+                        if (map.isEmpty()) {
+                            iterator.remove()
+                            try {
+                                adapter.resetPieceDeadline(piece)
+                            } catch (_: Exception) {}
+                        } else {
+                            updatePieceDeadlineLocked(piece, map)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -147,6 +172,16 @@ data class PrebufferResult(
     val lease: PrebufferLease?
 )
 
+data class PrebufferProgress(
+    val downloadRateBytes: Long = 0L,
+    val numPeers: Int = 0,
+    val numSeeds: Int = 0,
+    val piecesReady: Int = 0,
+    val totalPieces: Int = 0,
+    val progressPercent: Float = 0f,
+    val stateDescription: String = ""
+)
+
 class TorrentServerManager(private val context: Context) {
     private val sessionManager by lazy { SessionManager() }
     private var httpServer: TorrentHttpServer? = null
@@ -169,6 +204,25 @@ class TorrentServerManager(private val context: Context) {
             settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.enable_natpmp.swigValue(), true)
             settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.enable_lsd.swigValue(), true)
             settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.enable_dht.swigValue(), true)
+            settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.announce_to_all_trackers.swigValue(), true)
+            settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.announce_to_all_tiers.swigValue(), true)
+            settings.setString(
+                org.libtorrent4j.swig.settings_pack.string_types.dht_bootstrap_nodes.swigValue(),
+                "router.bittorrent.com:6881,dht.transmissionbt.com:6881,router.utorrent.com:6881,dht.libtorrent.org:25401,dht.aelitis.com:6881"
+            )
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.active_downloads.swigValue(), 20)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.active_seeds.swigValue(), 20)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.active_limit.swigValue(), 100)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.connections_limit.swigValue(), 300)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.unchoke_slots_limit.swigValue(), 64)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_out_request_queue.swigValue(), 2000)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.torrent_connect_boost.swigValue(), 50)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_peerlist_size.swigValue(), 1000)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_paused_peerlist_size.swigValue(), 500)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.request_timeout.swigValue(), 5)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.peer_connect_timeout.swigValue(), 5)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.aio_threads.swigValue(), 2)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.hashing_threads.swigValue(), 1)
 
             // Disable UDP (uTP) if configured
             val disableUtp = PrefManager.getVal<Boolean>(PrefName.TorrentDisableUtp)
@@ -347,17 +401,45 @@ class TorrentServerManager(private val context: Context) {
         val cacheDir = getTorrentCacheDir()
         var handle: TorrentHandle? = null
 
+        val defaultTrackers = listOf(
+            "http://nyaa.tracker.wf:7777/announce",
+            "udp://open.stealth.si:80/announce",
+            "udp://tracker.opentrackr.org:1337/announce",
+            "udp://tracker.torrent.eu.org:451/announce",
+            "udp://tracker.openbittorrent.com:6969/announce",
+            "udp://explodie.org:6969/announce",
+            "udp://uploads.gamehub.live:6969/announce",
+            "http://tracker.openbittorrent.com:80/announce",
+            "udp://opentracker.i2p.rocks:6969/announce",
+            "udp://tracker.moeking.me:6969/announce",
+            "udp://p4p.arenabg.com:1337/announce",
+            "https://tracker.tamersunion.org:443/announce"
+        )
+
         if (url.startsWith("magnet:")) {
-            sessionManager.download(url, cacheDir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
             val infoHash = parseMagnetHash(url)
             val sha1 = Sha1Hash.parseHex(infoHash)
             handle = sessionManager.find(sha1)
-
-            // Wait for metadata (up to 60 seconds)
-            var waitTime = 0
-            while ((handle == null || handle.torrentFile() == null) && waitTime < 600) {
-                Thread.sleep(100)
+            if (handle == null) {
+                sessionManager.download(url, cacheDir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
                 handle = sessionManager.find(sha1)
+            }
+
+            if (handle != null) {
+                defaultTrackers.forEach { trk ->
+                    try { handle.addTracker(AnnounceEntry(trk)) } catch (_: Exception) {}
+                }
+                try { handle.forceReannounce() } catch (_: Exception) {}
+            }
+
+            // Fast polling for metadata (up to 20 seconds, reannouncing every second)
+            var waitTime = 0
+            while ((handle == null || handle.torrentFile() == null) && waitTime < 400) {
+                Thread.sleep(50)
+                handle = sessionManager.find(sha1)
+                if (handle != null && waitTime % 20 == 0) {
+                    try { handle.forceReannounce() } catch (_: Exception) {}
+                }
                 waitTime++
             }
         } else if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -384,6 +466,15 @@ class TorrentServerManager(private val context: Context) {
 
         // Explicitly resume to ensure downloading starts
         handle.resume()
+
+        defaultTrackers.forEach { trk ->
+            try {
+                handle.addTracker(AnnounceEntry(trk))
+            } catch (_: Exception) {}
+        }
+        try {
+            handle.forceReannounce()
+        } catch (_: Exception) {}
 
         val infoHash = handle.infoHash().toHex()
         val name = handle.getName() ?: title
@@ -412,16 +503,37 @@ class TorrentServerManager(private val context: Context) {
         return prebufferWithResult(torrentHash, fileIndex).ready
     }
 
-    fun prebufferWithResult(torrentHash: String, fileIndex: Int): PrebufferResult {
+    fun prebufferWithResult(
+        torrentHash: String,
+        fileIndex: Int,
+        onProgress: ((PrebufferProgress) -> Boolean)? = null
+    ): PrebufferResult {
         try {
             val normHash = torrentHash.uppercase()
             val sha1 = Sha1Hash.parseHex(normHash)
-            val handle = sessionManager.find(sha1) ?: return PrebufferResult(false, null)
+            var handle = sessionManager.find(sha1) ?: return PrebufferResult(false, null)
             
             // Wait for metadata if not loaded yet
             var waitTime = 0
-            while (handle.torrentFile() == null && waitTime < 300) {
+            while ((!handle.isValid || handle.torrentFile() == null) && waitTime < 300) {
+                if (!sessionManager.isRunning) return PrebufferResult(false, null)
+                if (onProgress != null) {
+                    val status = try { if (handle.isValid) handle.status() else null } catch (_: Throwable) { null }
+                    val shouldContinue = onProgress(
+                        PrebufferProgress(
+                            downloadRateBytes = status?.downloadPayloadRate()?.toLong() ?: 0L,
+                            numPeers = status?.numPeers() ?: 0,
+                            numSeeds = status?.numSeeds() ?: 0,
+                            piecesReady = 0,
+                            totalPieces = 4,
+                            progressPercent = 0f,
+                            stateDescription = "Fetching torrent metadata…"
+                        )
+                    )
+                    if (!shouldContinue) return PrebufferResult(false, null)
+                }
                 Thread.sleep(100)
+                handle = sessionManager.find(sha1) ?: return PrebufferResult(false, null)
                 waitTime++
             }
             
@@ -435,6 +547,16 @@ class TorrentServerManager(private val context: Context) {
             val fileSize = fileStorage.fileSize(fileIndex)
             val pieceLength = torrentInfo.pieceLength().toLong()
             val totalPieces = torrentInfo.numPieces()
+
+            // Prioritize ONLY the selected file in the torrent to avoid wasting bandwidth on other files
+            val numFiles = fileStorage.numFiles()
+            val filePriorities = Priority.array(Priority.IGNORE, numFiles)
+            if (fileIndex in 0 until numFiles) {
+                filePriorities[fileIndex] = Priority.TOP_PRIORITY
+            }
+            try {
+                handle.prioritizeFiles(filePriorities)
+            } catch (_: Exception) {}
 
             val plan = computeStreamingPiecePlan(fileOffset, fileSize, pieceLength, totalPieces)
             if (plan.startupPieces.isEmpty()) return PrebufferResult(false, null)
@@ -460,27 +582,80 @@ class TorrentServerManager(private val context: Context) {
             scheduledTtls[sessionId] = ttlRunnable
             ttlHandler.postDelayed(ttlRunnable, 30_000L)
 
-            // Register piece deadlines for plan
-            plan.startupPieces.forEachIndexed { i, piece ->
-                registry.registerDeadline(piece, sessionId, (100 + i * 250).toLong())
+            // Explicitly set TOP priority in piece picker for startup and tail pieces
+            plan.startupPieces.forEach { piece ->
+                try { handle.piecePriority(piece, Priority.TOP_PRIORITY) } catch (_: Exception) {}
             }
             plan.opportunisticTail?.let { tail ->
-                registry.registerDeadline(tail, sessionId, 1500L)
+                try { handle.piecePriority(tail, Priority.TOP_PRIORITY) } catch (_: Exception) {}
+                if (tail > 0) {
+                    try { handle.piecePriority(tail - 1, Priority.TOP_PRIORITY) } catch (_: Exception) {}
+                }
+            }
+
+            // Register piece deadlines for plan (highest priority for first and tail piece for MKV/MP4 header indexing)
+            plan.startupPieces.forEachIndexed { i, piece ->
+                registry.registerDeadline(piece, sessionId, (100 + i * 200).toLong())
+            }
+            plan.opportunisticTail?.let { tail ->
+                registry.registerDeadline(tail, sessionId, 100L)
+                if (tail > 0) {
+                    registry.registerDeadline(tail - 1, sessionId, 300L)
+                }
             }
 
             Logger.log("TorrentServerManager: Pre-buffering piece plan: startup=${plan.startupPieces}, tail=${plan.opportunisticTail} for file $fileIndex")
 
-            // Wait up to 15 seconds for the first piece to complete (non-blocking for tail)
-            val firstPiece = plan.startupPieces.first()
+            // Wait up to 45 seconds for startup pieces (and tail piece if present)
+            val tailPiece = plan.opportunisticTail
+            val totalStartupCount = plan.startupPieces.size + (if (tailPiece != null) 1 else 0)
             var waitCount = 0
-            while (!handle.havePiece(firstPiece) && waitCount < 150) {
+            while (waitCount < 450) {
                 if (!sessionManager.isRunning || !handle.isValid) break
+                val startupReadyCount = plan.startupPieces.count { handle.havePiece(it) }
+                val tailReady = tailPiece == null || handle.havePiece(tailPiece)
+                val readyCount = startupReadyCount + (if (tailPiece != null && tailReady) 1 else 0)
+                val progressFraction = if (totalStartupCount > 0) readyCount.toFloat() / totalStartupCount else 0f
+
+                if (onProgress != null) {
+                    val status = try { if (handle.isValid) handle.status() else null } catch (_: Throwable) { null }
+                    val dlRate = status?.downloadPayloadRate()?.toLong() ?: 0L
+                    val peers = status?.numPeers() ?: 0
+                    val seeds = status?.numSeeds() ?: 0
+
+                    val desc = when {
+                        peers == 0 -> "Finding peers & seeders…"
+                        readyCount == 0 -> "Connecting to swarm…"
+                        readyCount < totalStartupCount -> "Buffering runway ($readyCount/$totalStartupCount pieces)…"
+                        else -> "Ready to play!"
+                    }
+
+                    val shouldContinue = onProgress(
+                        PrebufferProgress(
+                            downloadRateBytes = dlRate,
+                            numPeers = peers,
+                            numSeeds = seeds,
+                            piecesReady = readyCount,
+                            totalPieces = totalStartupCount,
+                            progressPercent = progressFraction,
+                            stateDescription = desc
+                        )
+                    )
+                    if (!shouldContinue) {
+                        lease.close()
+                        return PrebufferResult(false, null)
+                    }
+                }
+
+                val hasStartup = plan.startupPieces.all { handle.havePiece(it) }
+                val hasTail = tailPiece == null || handle.havePiece(tailPiece)
+                if (hasStartup && hasTail) break
                 Thread.sleep(100)
                 waitCount++
             }
-            val success = handle.havePiece(firstPiece)
-            Logger.log("TorrentServerManager: Pre-buffering success = $success")
-            return PrebufferResult(success, lease)
+            val success = plan.startupPieces.all { handle.havePiece(it) } && (tailPiece == null || handle.havePiece(tailPiece))
+            Logger.log("TorrentServerManager: Pre-buffering success = $success (startupPieces=${plan.startupPieces.map { handle.havePiece(it) }}, tail=${tailPiece?.let { handle.havePiece(it) }})")
+            return PrebufferResult(success, if (success) lease else null)
         } catch (e: Exception) {
             e.printStackTrace()
             return PrebufferResult(false, null)

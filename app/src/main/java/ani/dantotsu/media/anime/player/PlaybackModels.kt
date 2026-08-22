@@ -36,6 +36,7 @@ data class PlaybackRequest(
     val subtitleStyle: SubtitleStyle = SubtitleStyle(),
     val externalSubtitles: List<ExternalSubtitle> = emptyList(),
     val externalAudioTracks: List<ExternalAudioTrack> = emptyList(),
+    val preferredSubLang: String? = null,
     val metadata: Map<String, String> = emptyMap(),
     val sourceClass: PlaybackSourceClass = PlaybackSourceClass.LOCAL_FILE,
     val sourceLease: AutoCloseable? = null

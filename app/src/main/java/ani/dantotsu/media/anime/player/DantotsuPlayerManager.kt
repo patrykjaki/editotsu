@@ -116,6 +116,7 @@ class DantotsuPlayerManager(
             mimeType = mimeType,
             externalSubtitles = externalSubs,
             externalAudioTracks = externalAudios,
+            preferredSubLang = preferredSubLang,
             sourceClass = sourceClass,
             sourceLease = sourceLease
         )

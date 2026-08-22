@@ -134,6 +134,9 @@ kotlin {
 }
 
 dependencies {
+    // MPV Native Player
+    implementation(libs.mpv)
+
     // ffmpeg-kit
     implementation(libs.ffmpeg.kit)
 
@@ -160,7 +163,6 @@ dependencies {
     ksp(libs.glide.ksp)
 
     implementation(libs.bundles.media3)
-    implementation(libs.mpv)
     implementation(libs.mediarouter)
 
 

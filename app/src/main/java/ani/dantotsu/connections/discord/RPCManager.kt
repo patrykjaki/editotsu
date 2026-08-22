@@ -285,7 +285,7 @@ object RPCManager {
             when (mode) {
                 "anilist" -> Discord.small_Image_AniList to "AniList"
                 "mal" -> Discord.small_Image_MAL to "MyAnimeList"
-                else -> Discord.small_Image to "Dantotsu"
+                else -> Discord.small_Image to "Editotsu"
             }
         } else {
             null to null
@@ -314,7 +314,7 @@ object RPCManager {
             val (userProfileUrl, profileLabel) = when (mode) {
                 "mal" -> (if (malUser.isNotEmpty()) "https://myanimelist.net/profile/$malUser" else null) to "View Profile"
                 "anilist" -> (if (anilistUser.isNotEmpty()) "https://anilist.co/user/$anilistUser/" else null) to "View Profile"
-                "dantotsu" -> (if (anilistUser.isNotEmpty()) "https://dantotsu.app/u/$anilistUser" else null) to "Dantotsu Profile"
+                "dantotsu" -> (if (anilistUser.isNotEmpty()) "https://anilist.co/user/$anilistUser/" else null) to "Editotsu Profile"
                 else -> null to null
             }
 
@@ -327,7 +327,7 @@ object RPCManager {
 
         return DiscordActivity(
             applicationId = data.applicationId,
-            name = data.activityName?.takeIf { it.isNotBlank() } ?: "Dantotsu",
+            name = data.activityName?.takeIf { it.isNotBlank() } ?: "Editotsu",
             platform = "android", // Required by Discord
             type = data.type?.ordinal,
             statusDisplayType = 0,

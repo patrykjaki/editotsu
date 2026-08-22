@@ -66,8 +66,8 @@ class AddonLoader {
                 throw error
             }
 
-            val extName =
-                pkgManager.getApplicationLabel(appInfo).toString().substringAfter("Dantotsu: ")
+            val rawLabel = pkgManager.getApplicationLabel(appInfo).toString()
+            val extName = rawLabel.removePrefix("Editotsu: ").removePrefix("Dantotsu: ")
             val versionName = pkgInfo.versionName
             val versionCode = PackageInfoCompat.getLongVersionCode(pkgInfo)
 
