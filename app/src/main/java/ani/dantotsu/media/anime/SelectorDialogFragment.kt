@@ -543,10 +543,36 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             val epKey = media.anime?.selectedEpisode
                             val targetEp = media.anime?.episodes?.getEpisode(epKey) ?: ep
                             model.setEpisode(targetEp, "startExo launch")
-                            val fm = (act as? androidx.fragment.app.FragmentActivity)?.supportFragmentManager
-                                ?: parentFragmentManager
-                            TorrentBufferingDialogFragment.newInstance(media, targetEp, video, url)
-                                .show(fm, "torrent_buffering_dialog")
+
+                            val index = if (url.contains("index=")) {
+                                url.substringAfter("index=").toIntOrNull() ?: 0
+                            } else 0
+
+                            val hash = try {
+                                if (url.startsWith("magnet:")) torrentManager.parseMagnetHash(url) else ""
+                            } catch (_: Exception) { "" }
+
+                            if (!torrentManager.isRunning()) {
+                                torrentManager.start()
+                            }
+
+                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                try {
+                                    torrentManager.addTorrent(url, video.quality.toString(), "", "", false)
+                                } catch (_: Exception) {}
+                            }
+
+                            if (hash.isNotBlank()) {
+                                video.file.url = torrentManager.getLink(hash, index)
+                            }
+
+                            if (act != null && !act.isFinishing && !act.isDestroyed) {
+                                val intent = Intent(act, ExoplayerView::class.java).apply {
+                                    ExoplayerView.media = media
+                                    ExoplayerView.initialized = true
+                                }
+                                act.startActivity(intent)
+                            }
                         } else {
                             val epKey = media.anime?.selectedEpisode
                             val targetEp = media.anime?.episodes?.getEpisode(epKey) ?: ep

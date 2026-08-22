@@ -710,7 +710,7 @@ class TorrentServerManager(private val context: Context) {
         return startPort
     }
 
-    private fun parseMagnetHash(url: String): String {
+    fun parseMagnetHash(url: String): String {
         val xtIndex = url.indexOf("xt=urn:btih:")
         if (xtIndex != -1) {
             var hash = url.substring(xtIndex + 12)

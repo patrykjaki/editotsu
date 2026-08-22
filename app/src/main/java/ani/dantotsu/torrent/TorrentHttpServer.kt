@@ -111,7 +111,15 @@ class TorrentHttpServer(
             }
 
             val fileIndex = indexStr.toIntOrNull() ?: 0
-            val handle = getTorrentHandle(hash)
+            var handle = getTorrentHandle(hash)
+            if (handle == null) {
+                var waitHandle = 0
+                while (handle == null && waitHandle < 100 && isRunning && !socket.isClosed) {
+                    Thread.sleep(50)
+                    handle = getTorrentHandle(hash)
+                    waitHandle++
+                }
+            }
             if (handle == null || !handle.isValid) {
                 sendError(socket, 404, "Torrent Not Found")
                 return
@@ -123,7 +131,7 @@ class TorrentHttpServer(
             var torrentInfo = handle.torrentFile()
             if (torrentInfo == null) {
                 var waitMeta = 0
-                while (handle.torrentFile() == null && waitMeta < 150 && isRunning) {
+                while (handle.torrentFile() == null && waitMeta < 300 && isRunning && !socket.isClosed) {
                     Thread.sleep(100)
                     waitMeta++
                 }
@@ -204,18 +212,22 @@ class TorrentHttpServer(
                 return
             }
 
-            // Pre-header wait: prioritize first piece and wait up to 15s
+            // Persistent connection hold: prioritize first piece and wait until ready or client disconnects
+            try { handle.resume() } catch (_: Exception) {}
+            try { handle.forceReannounce() } catch (_: Exception) {}
             try { handle.piecePriority(firstPiece, Priority.TOP_PRIORITY) } catch (_: Exception) {}
-            deadlineRegistry?.registerDeadline(firstPiece, clientSessionId, 500L)
+            deadlineRegistry?.registerDeadline(firstPiece, clientSessionId, 0L)
 
             var waitMs = 0
-            while (!handle.havePiece(firstPiece) && waitMs < 15_000 && isRunning && !socket.isClosed) {
+            while (!handle.havePiece(firstPiece) && isRunning && !socket.isClosed) {
                 Thread.sleep(50)
                 waitMs += 50
+                if (waitMs % 2000 == 0) {
+                    try { handle.forceReannounce() } catch (_: Exception) {}
+                }
             }
 
             if (!handle.havePiece(firstPiece)) {
-                send504(socket)
                 return
             }
 
@@ -245,19 +257,36 @@ class TorrentHttpServer(
                 for (p in firstPiece..lastPiece) {
                     if (!isRunning || socket.isClosed || bytesRemaining <= 0) break
 
-                    // Active 24-piece runway scheduling (500ms for p, staggered 1000ms..3200ms for p+1..p+23)
-                    val lookaheadEnd = minOf(p + 23, lastPiece)
+                    // Stremio-grade 30-piece sliding priority window
+                    val lookaheadEnd = minOf(p + 30, lastPiece)
                     for (lp in p..lookaheadEnd) {
-                        try { handle.piecePriority(lp, Priority.TOP_PRIORITY) } catch (_: Exception) {}
-                        val deadline = if (lp == p) 500L else 1000L + ((lp - p - 1) * 100L)
+                        val prio: Priority
+                        val deadline: Long
+                        if (lp == p) {
+                            prio = Priority.TOP_PRIORITY
+                            deadline = 0L
+                        } else if (lp <= p + 5) {
+                            prio = Priority.TOP_PRIORITY
+                            deadline = 250L
+                        } else if (lp <= p + 15) {
+                            prio = Priority.SIX
+                            deadline = 1000L
+                        } else {
+                            prio = Priority.DEFAULT
+                            deadline = 2500L
+                        }
+                        try { handle.piecePriority(lp, prio) } catch (_: Exception) {}
                         deadlineRegistry?.registerDeadline(lp, clientSessionId, deadline)
                     }
-                    deadlineRegistry?.focusPieceWindow(clientSessionId, p, 24, torrentInfo.numPieces())
+                    deadlineRegistry?.focusPieceWindow(clientSessionId, p, 30, torrentInfo.numPieces())
 
                     var pieceWaitMs = 0
-                    while (!handle.havePiece(p) && pieceWaitMs < 15_000 && isRunning && !socket.isClosed) {
+                    while (!handle.havePiece(p) && isRunning && !socket.isClosed) {
                         Thread.sleep(50)
                         pieceWaitMs += 50
+                        if (pieceWaitMs % 3000 == 0) {
+                            try { handle.forceReannounce() } catch (_: Exception) {}
+                        }
                     }
                     if (!handle.havePiece(p)) break
 
