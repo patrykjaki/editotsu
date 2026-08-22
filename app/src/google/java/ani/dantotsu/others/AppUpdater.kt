@@ -157,26 +157,21 @@ object AppUpdater {
     private fun compareVersion(version: String): Boolean {
         val cleanVersion = version.removePrefix("v").substringBefore("-").trim()
         val cleanCurrent = BuildConfig.VERSION_NAME.removePrefix("v").substringBefore("-").trim()
-        return when (BuildConfig.BUILD_TYPE) {
-            "debug" -> BuildConfig.VERSION_NAME != version
-            "alpha" -> false
-            else -> {
-                fun toDoubleSafe(list: List<String>): Double {
-                    return list.mapIndexed { i, s ->
-                        val num = s.toDoubleOrNull() ?: 0.0
-                        when (i) {
-                            0 -> num * 10000
-                            1 -> num * 100
-                            2 -> num
-                            else -> num / 10.0
-                        }
-                    }.sum()
+
+        fun toDoubleSafe(list: List<String>): Double {
+            return list.mapIndexed { i, s ->
+                val num = s.toDoubleOrNull() ?: 0.0
+                when (i) {
+                    0 -> num * 10000
+                    1 -> num * 100
+                    2 -> num
+                    else -> num / 10.0
                 }
-                val new = toDoubleSafe(cleanVersion.split("."))
-                val curr = toDoubleSafe(cleanCurrent.split("."))
-                new > curr
-            }
+            }.sum()
         }
+        val new = toDoubleSafe(cleanVersion.split("."))
+        val curr = toDoubleSafe(cleanCurrent.split("."))
+        return new > curr
     }
 
     //Blatantly kanged from https://github.com/LagradOst/CloudStream-3/blob/master/app/src/main/java/com/lagradost/cloudstream3/utils/InAppUpdater.kt
