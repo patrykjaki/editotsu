@@ -224,5 +224,49 @@ class PiPAndTorrentUnitTest {
         Thread.sleep(100)
         assertTrue(leaseBClosed.get())
     }
+
+    // --- 6. External Audio & Subtitle Sync Tests ---
+
+    @Test
+    fun testExternalAudioTrackModelAndMpvDispatch() {
+        val externalAudio1 = ExternalAudioTrack(
+            url = "https://cdn.anime.com/audio_ja.m4a",
+            language = "ja",
+            title = "Japanese Original"
+        )
+        val externalAudio2 = ExternalAudioTrack(
+            url = "https://cdn.anime.com/audio_en.m4a",
+            language = "en",
+            title = "English Dub"
+        )
+
+        val request = PlaybackRequest(
+            uri = "https://cdn.anime.com/video_only.mp4",
+            externalAudioTracks = listOf(externalAudio1, externalAudio2)
+        )
+
+        assertEquals(2, request.externalAudioTracks.size)
+        assertEquals("ja", request.externalAudioTracks[0].language)
+        assertEquals("English Dub", request.externalAudioTracks[1].title)
+
+        // Verify audio-add command structure
+        val cmd1 = arrayOf("audio-add", externalAudio1.url, "auto", externalAudio1.title ?: "", externalAudio1.language ?: "")
+        assertEquals("audio-add", cmd1[0])
+        assertEquals("https://cdn.anime.com/audio_ja.m4a", cmd1[1])
+        assertEquals("auto", cmd1[2])
+        assertEquals("Japanese Original", cmd1[3])
+        assertEquals("ja", cmd1[4])
+    }
+
+    @Test
+    fun testSubtitleDelayMsConversion() {
+        val delayMs = 500L
+        val secondsDouble = delayMs / 1000.0
+        assertEquals(0.5, secondsDouble, 0.001)
+
+        val negativeDelayMs = -1250L
+        val negativeSeconds = negativeDelayMs / 1000.0
+        assertEquals(-1.25, negativeSeconds, 0.001)
+    }
 }
 

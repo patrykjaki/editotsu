@@ -39,7 +39,16 @@ import ani.dantotsu.NoPaddingArrayAdapter
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
+import ani.dantotsu.connections.discord.Discord
+import ani.dantotsu.connections.discord.RPCManager
+import ani.dantotsu.connections.subtitles.OpenSubRestItem
+import ani.dantotsu.connections.subtitles.OpenSubtitlesRestApi
 import ani.dantotsu.connections.subtitles.StremioSub
+import ani.dantotsu.connections.subtitles.StremioSubtitles
+import ani.dantotsu.connections.subtitles.SubSourceSub
+import ani.dantotsu.connections.subtitles.SubSourceSubtitles
+import ani.dantotsu.connections.subtitles.WyzieSub
+import ani.dantotsu.connections.subtitles.WyzieSubtitles
 import ani.dantotsu.databinding.ActivityExoplayerBinding
 import ani.dantotsu.hideSystemBars
 import ani.dantotsu.isOnline
@@ -824,7 +833,49 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         extractor = ext
         video = ext.videos.getOrNull(episode.selectedVideo) ?: ext.videos.firstOrNull() ?: return
 
+        val subLanguages = arrayOf(
+            "Albanian", "Arabic", "Bosnian", "Bulgarian", "Chinese", "Croatian", "Czech", "Danish", "Dutch", "English",
+            "Estonian", "Finnish", "French", "Georgian", "German", "Greek", "Hebrew", "Hindi", "Indonesian", "Irish",
+            "Italian", "Japanese", "Korean", "Lithuanian", "Luxembourgish", "Macedonian", "Mongolian", "Norwegian",
+            "Polish", "Portuguese", "Punjabi", "Romanian", "Russian", "Serbian", "Slovak", "Slovenian", "Spanish",
+            "Turkish", "Ukrainian", "Urdu", "Vietnamese"
+        )
+        val lang = subLanguages.getOrNull(PrefManager.getVal<Int>(PrefName.SubLanguage)) ?: "English"
+        val savedSubLang: String? = PrefManager.getNullableCustomVal("subLang_${media.id}", null, String::class.java)
+        subtitle = intent.getSerialized("subtitle")
+            ?: when {
+                savedSubLang == null -> when (episode.selectedSubtitle) {
+                    null, -1 -> ext.subtitles.find {
+                        it.language.contains(lang, true) ||
+                        it.language.contains("English", true) ||
+                        it.language.contains("en", true)
+                    } ?: ext.subtitles.firstOrNull()
+                    else -> ext.subtitles.getOrNull(episode.selectedSubtitle!!)
+                }
+                savedSubLang == "None" -> null
+                savedSubLang.startsWith("Online:") -> null
+                savedSubLang.startsWith("[Local]") -> null
+                savedSubLang.startsWith("Embedded:") -> null
+                else -> ext.subtitles.find { it.language == savedSubLang }
+            }
+
         hasExtSubtitles = ext.subtitles.isNotEmpty()
+        if (subtitle == null && hasExtSubtitles && savedSubLang != "None" &&
+            savedSubLang?.startsWith("Online:") != true &&
+            savedSubLang?.startsWith("[Local]") != true &&
+            savedSubLang?.startsWith("Embedded:") != true
+        ) {
+            subtitle = ext.subtitles.find {
+                it.language.contains(lang, true) ||
+                it.language.contains("English", true) ||
+                it.language.contains("en", true)
+            } ?: ext.subtitles.firstOrNull()
+        }
+        subtitleManager.initialSubtitleLabel = subtitle?.language ?: lang
+        if (subtitle != null) {
+            PrefManager.setCustomVal("subLang_${media.id}", subtitle!!.language)
+            subtitleManager.setActiveServerSubtitle(subtitle)
+        }
 
         exoSource.setOnClickListener { sourceClick() }
 
@@ -833,9 +884,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 try {
                     if (media.idIMDB == null) media.idIMDB = IdMappers.getImdbId(media.id)
                     val selectedEpisodeStr = media.anime?.selectedEpisode ?: "1"
-                    val episodeNum = selectedEpisodeStr.toIntOrNull() ?: 1
-                    val currentEp = media.anime?.episodes?.getEpisode(selectedEpisodeStr)
-                    EpisodeMapper.mapEpisode(media, episodeNum, currentEp)
+                    val epObj = if (this@ExoplayerView::episode.isInitialized) episode else media.anime?.episodes?.getEpisode(selectedEpisodeStr)
+                    val episodeNum = MediaNameAdapter.findEpisodeNumber(epObj?.number ?: selectedEpisodeStr)?.toInt()
+                        ?: epObj?.number?.filter { it.isDigit() }?.toIntOrNull()
+                        ?: selectedEpisodeStr.toIntOrNull()
+                        ?: 1
+                    EpisodeMapper.mapEpisode(media, episodeNum, epObj)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -847,6 +901,26 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
         lifecycleScope.launch(Dispatchers.IO) { ext.onVideoPlayed(video) }
 
+        if (ext.server.offline) {
+            val titleName = ext.server.name.split("/").first()
+            val episodeName = ext.server.name.split("/").last()
+            val directory = ani.dantotsu.download.DownloadsManager.getSubDirectory(this, ani.dantotsu.media.MediaType.ANIME, false, titleName, episodeName)
+            if (directory != null) {
+                val file = directory.listFiles()?.firstOrNull {
+                    it.isFile && !it.name.orEmpty().contains("subtitle", ignoreCase = true) && !it.name.orEmpty().startsWith(".") &&
+                    (it.name?.endsWith(".mp4", ignoreCase = true) == true ||
+                     it.name?.endsWith(".mkv", ignoreCase = true) == true ||
+                     it.name?.endsWith(".webm", ignoreCase = true) == true ||
+                     it.name?.endsWith(".ts", ignoreCase = true) == true ||
+                     it.type?.startsWith("video/") == true)
+                } ?: directory.listFiles()?.firstOrNull {
+                    it.isFile && !it.name.orEmpty().contains("subtitle", ignoreCase = true) && !it.name.orEmpty().startsWith(".")
+                }
+                if (file != null) {
+                    video?.file?.url = file.uri.toString()
+                }
+            }
+        }
         castManager.setupCastButton(
             customCastButton, media, video, subtitle, hasExtSubtitles,
             episodeTitleArr.getOrNull(currentEpisodeIndex) ?: episode.number
@@ -930,7 +1004,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             episodeNumber = episode.number,
             coverUrl = media.cover,
             preferredSubLang = savedSubLang,
-            embedUrl = extractor?.server?.embed?.url
+            embedUrl = extractor?.server?.embed?.url,
+            audioTracks = extractor?.audioTracks ?: emptyList()
         )
         engine.loadMedia(request)
 
@@ -1010,15 +1085,19 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         applyLocalSubtitle(Uri.parse(uriString))
     }
 
-    fun applyOnlineSubtitle(subtitle: StremioSub) {
-        subtitleManager.applyOnlineSubtitle(subtitle)
+    fun applyOnlineSubtitle(subtitle: StremioSub, displayName: String = subtitle.lang, provider: String = "OpenSubtitles") {
+        subtitleManager.applyOnlineSubtitle(subtitle, displayName, provider)
     }
 
-    fun applySubSourceSubtitle(sub: ani.dantotsu.connections.subtitles.SubSourceSub) {
+    fun applyWyzieSubtitle(subtitle: WyzieSub) {
+        subtitleManager.applyWyzieSubtitle(subtitle)
+    }
+
+    fun applySubSourceSubtitle(sub: SubSourceSub) {
         subtitleManager.applySubSourceSubtitle(sub)
     }
 
-    fun applyOpenSubRestSubtitle(item: ani.dantotsu.connections.subtitles.OpenSubRestItem) {
+    fun applyOpenSubRestSubtitle(item: OpenSubRestItem) {
         subtitleManager.applyOpenSubRestSubtitle(item)
     }
 

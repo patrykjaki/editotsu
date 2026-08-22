@@ -118,7 +118,7 @@ enum class PrefName(val data: Pref) {
     Subtitles(Pref(Location.Player, Boolean::class, true)),
     UseSourceSubtitleStyling(Pref(Location.Player, Boolean::class, true)),
     OnlineSubtitlesEnabled(Pref(Location.Player, Boolean::class, true)),
-    OnlineSubtitleProviders(Pref(Location.Player, Set::class, setOf("Wyzie", "Stremio"))),
+    OnlineSubtitleProviders(Pref(Location.Player, Set::class, setOf("Wyzie", "Stremio", "SubSource", "OpenSubtitles"))),
     OnlineSubtitleLanguages(Pref(Location.Player, Set::class, setOf("English"))),
     TextviewSubtitles(Pref(Location.Player, Boolean::class, false)),
     SubLanguage(Pref(Location.Player, Int::class, 9)),

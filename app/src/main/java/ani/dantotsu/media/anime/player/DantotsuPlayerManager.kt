@@ -49,7 +49,8 @@ class DantotsuPlayerManager(
         coverUrl: String? = null,
         mimeType: String? = null,
         preferredSubLang: String? = null,
-        embedUrl: String? = null
+        embedUrl: String? = null,
+        audioTracks: List<eu.kanade.tachiyomi.animesource.model.Track> = emptyList()
     ): PlaybackRequest {
         val headers = mutableMapOf<String, String>()
         headers.putAll(defaultHeaders)
@@ -72,6 +73,17 @@ class DantotsuPlayerManager(
             }
         } ?: emptyList()
 
+        val externalAudios = audioTracks.mapNotNull { audioTrack ->
+            val audioUrl = audioTrack.url
+            if (audioUrl.isNotBlank() && audioUrl != video.file.url) {
+                ExternalAudioTrack(
+                    url = audioUrl,
+                    language = audioTrack.lang,
+                    title = audioTrack.lang
+                )
+            } else null
+        }
+
         val uri = video.file.url
         val sourceClass = when {
             uri.contains("127.0.0.1") && (uri.contains("/stream") || uri.contains("hash=")) -> PlaybackSourceClass.TORRENT_LOCALHOST
@@ -93,7 +105,6 @@ class DantotsuPlayerManager(
             }
         } else null
 
-
         return PlaybackRequest(
             uri = video.file.url,
             startPositionMs = startPositionMs,
@@ -104,10 +115,12 @@ class DantotsuPlayerManager(
             coverUrl = coverUrl,
             mimeType = mimeType,
             externalSubtitles = externalSubs,
+            externalAudioTracks = externalAudios,
             sourceClass = sourceClass,
             sourceLease = sourceLease
         )
     }
+
 
 
     fun initPlayer(

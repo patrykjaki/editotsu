@@ -118,6 +118,7 @@ class MpvPlaybackEngine(
         var playlistEntryId: Long? = null,
         var state: LoadOperationState = LoadOperationState.CREATED,
         var externalSubtitlesAttached: Boolean = false,
+        var externalAudioAttached: Boolean = false,
         var durationKnown: Boolean = false,
         var pendingSeekMs: Long? = null,
         var pendingAudioTrackId: Int? = null,
@@ -751,6 +752,26 @@ class MpvPlaybackEngine(
         }
     }
 
+    override fun setSubtitleDelay(delayMs: Long) {
+        engineDispatcher.post {
+            if (releaseRequested.get()) return@post
+            if (!ensureInitialized()) return@post
+            try {
+                mpvClient.setPropertyDouble("sub-delay", delayMs / 1000.0)
+            } catch (_: Exception) {}
+        }
+    }
+
+    override fun setAudioDelay(delayMs: Long) {
+        engineDispatcher.post {
+            if (releaseRequested.get()) return@post
+            if (!ensureInitialized()) return@post
+            try {
+                mpvClient.setPropertyDouble("audio-delay", delayMs / 1000.0)
+            } catch (_: Exception) {}
+        }
+    }
+
     override fun applySubtitleStyle(style: SubtitleStyle) {
         engineDispatcher.post {
             sessionSubtitleStyle = style
@@ -1105,6 +1126,16 @@ class MpvPlaybackEngine(
                                 val flag = if (sub.selected) "select" else "auto"
                                 try {
                                     mpvClient.command("sub-add", sub.url, flag, sub.title ?: "", sub.language ?: "")
+                                } catch (_: Exception) {}
+                            }
+                        }
+
+                        // Attach external audio tracks for this operation once
+                        if (!op.externalAudioAttached) {
+                            op.externalAudioAttached = true
+                            op.request.externalAudioTracks.forEach { audio ->
+                                try {
+                                    mpvClient.command("audio-add", audio.url, "auto", audio.title ?: "", audio.language ?: "")
                                 } catch (_: Exception) {}
                             }
                         }

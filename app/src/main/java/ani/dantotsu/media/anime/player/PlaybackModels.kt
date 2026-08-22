@@ -18,6 +18,12 @@ data class ExternalSubtitle(
     val id: String? = null
 )
 
+data class ExternalAudioTrack(
+    val url: String,
+    val language: String? = null,
+    val title: String? = null
+)
+
 data class PlaybackRequest(
     val uri: String,
     val startPositionMs: Long = 0L,
@@ -29,6 +35,7 @@ data class PlaybackRequest(
     val mimeType: String? = null,
     val subtitleStyle: SubtitleStyle = SubtitleStyle(),
     val externalSubtitles: List<ExternalSubtitle> = emptyList(),
+    val externalAudioTracks: List<ExternalAudioTrack> = emptyList(),
     val metadata: Map<String, String> = emptyMap(),
     val sourceClass: PlaybackSourceClass = PlaybackSourceClass.LOCAL_FILE,
     val sourceLease: AutoCloseable? = null
