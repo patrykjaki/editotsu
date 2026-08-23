@@ -258,6 +258,8 @@ class MpvPlaybackEngine(
             mpvClient.observeProperty("track-list", MPV_FORMAT_NODE)
             mpvClient.observeProperty("sid", MPV_FORMAT_INT64)
             mpvClient.observeProperty("aid", MPV_FORMAT_INT64)
+            mpvClient.observeProperty("video-params/w", MPV_FORMAT_INT64)
+            mpvClient.observeProperty("video-params/h", MPV_FORMAT_INT64)
             mpvClient.observeProperty("dwidth", MPV_FORMAT_INT64)
             mpvClient.observeProperty("dheight", MPV_FORMAT_INT64)
             ani.dantotsu.util.Logger.log("MPVSTEP 10 after observeProperty")
@@ -722,8 +724,10 @@ class MpvPlaybackEngine(
         engineDispatcher.post {
             if (releaseRequested.get()) return@post
             val op = activeOperation
-            if (op != null && op.state < LoadOperationState.LOADED) {
+            if (op != null) {
                 op.pendingSubtitleTrackId = id
+            }
+            if (op != null && op.state < LoadOperationState.LOADED) {
                 return@post
             }
             if (isInitialized) {
@@ -740,6 +744,98 @@ class MpvPlaybackEngine(
                 mpvClient.setPropertyInt("sid", id)
             }
         } catch (_: Exception) {}
+    }
+
+    private fun isSignsOrSongsTrack(track: PlayerTrack): Boolean {
+        if (track.forced) return true
+        val name = track.name?.lowercase() ?: ""
+        val signsKeywords = listOf(
+            "sign", "song", "s&s", "s/s", "forced", "op/ed", "oped", "insert",
+            "signs & songs", "signs/songs", "signs and songs"
+        )
+        return signsKeywords.any { kw ->
+            name.contains(kw) && !name.contains("dialogue") && !name.contains("full")
+        }
+    }
+
+    private fun isFullDialogueTrack(track: PlayerTrack): Boolean {
+        val name = track.name?.lowercase() ?: ""
+        val dialogueKeywords = listOf("dialogue", "dialog", "full", "complete", "main", "subs", "subtitles")
+        return dialogueKeywords.any { name.contains(it) }
+    }
+
+    private fun matchesLanguage(track: PlayerTrack, targetLang: String): Boolean {
+        val trackLang = track.language?.lowercase() ?: ""
+        val trackName = track.name?.lowercase() ?: ""
+        val target = targetLang.lowercase().trim()
+
+        if (trackLang.equals(target, ignoreCase = true) || trackName.contains(target, ignoreCase = true)) {
+            return true
+        }
+
+        // Common ISO 639-1/2 language alias mappings
+        val langAliases = mapOf(
+            "en" to listOf("eng", "english", "en-us", "en-gb"),
+            "eng" to listOf("en", "english", "en-us", "en-gb"),
+            "english" to listOf("en", "eng", "en-us", "en-gb"),
+            "es" to listOf("spa", "spanish", "es-es", "es-419", "español"),
+            "spa" to listOf("es", "spanish", "es-es", "es-419", "español"),
+            "spanish" to listOf("es", "spa", "es-es", "es-419", "español"),
+            "pt" to listOf("por", "portuguese", "pt-br", "pt-pt", "português"),
+            "por" to listOf("pt", "portuguese", "pt-br", "pt-pt", "português"),
+            "portuguese" to listOf("pt", "por", "pt-br", "pt-pt", "português"),
+            "fr" to listOf("fre", "fra", "french", "français"),
+            "fre" to listOf("fr", "fra", "french", "français"),
+            "fra" to listOf("fr", "fre", "french", "français"),
+            "french" to listOf("fr", "fra", "fre", "français"),
+            "de" to listOf("ger", "deu", "german", "deutsch"),
+            "deu" to listOf("de", "ger", "german", "deutsch"),
+            "ger" to listOf("de", "deu", "german", "deutsch"),
+            "german" to listOf("de", "deu", "ger", "deutsch"),
+            "it" to listOf("ita", "italian", "italiano"),
+            "ita" to listOf("it", "italian", "italiano"),
+            "italian" to listOf("it", "ita", "italiano"),
+            "ru" to listOf("rus", "russian", "русский"),
+            "rus" to listOf("ru", "russian", "русский"),
+            "russian" to listOf("ru", "rus", "русский"),
+            "pl" to listOf("pol", "polish", "polski"),
+            "pol" to listOf("pl", "polish", "polski"),
+            "polish" to listOf("pl", "pol", "polski"),
+            "ja" to listOf("jpn", "japanese", "日本語"),
+            "jpn" to listOf("ja", "japanese", "日本語"),
+            "japanese" to listOf("ja", "jpn", "日本語"),
+            "ar" to listOf("ara", "arabic", "العربية"),
+            "ara" to listOf("ar", "arabic", "العربية"),
+            "arabic" to listOf("ar", "ara", "العربية")
+        )
+
+        val aliases = langAliases[target] ?: emptyList()
+        return aliases.any { alias ->
+            trackLang.contains(alias) || trackName.contains(alias)
+        }
+    }
+
+    private fun scoreSubtitleTrack(track: PlayerTrack, preferredSubLang: String?): Int {
+        var score = 0
+        val isSigns = isSignsOrSongsTrack(track)
+        val isFull = isFullDialogueTrack(track)
+
+        if (preferredSubLang != null && !preferredSubLang.equals("None", ignoreCase = true)) {
+            if (matchesLanguage(track, preferredSubLang)) {
+                score += 1000
+            }
+        } else {
+            if (matchesLanguage(track, "English")) {
+                score += 500
+            }
+        }
+
+        if (isFull) score += 200
+        if (isSigns) score -= 600
+        if (track.forced) score -= 400
+        if (track.default) score += 50
+
+        return score
     }
 
     private fun findBestMatchingSubtitleTrack(tracks: List<PlayerTrack>, preferredSubLang: String?): PlayerTrack? {
@@ -760,31 +856,23 @@ class MpvPlaybackEngine(
                 }
                 if (byLang != null) return byLang
             }
-            val match = subTracks.find {
-                it.language?.contains(preferredSubLang, ignoreCase = true) == true ||
-                it.name?.contains(preferredSubLang, ignoreCase = true) == true
-            }
-            if (match != null) return match
         }
 
-        // Default fallback: English tracks (prioritize full dialogue over Signs/Songs)
-        val englishTracks = subTracks.filter {
-            val l = it.language?.lowercase() ?: ""
-            val n = it.name?.lowercase() ?: ""
-            l.contains("eng") || l.contains("en") || n.contains("english") || n.contains("eng")
-        }
-        if (englishTracks.isNotEmpty()) {
-            val fullTrack = englishTracks.firstOrNull {
-                val n = it.name?.lowercase() ?: ""
-                !n.contains("sign") && !n.contains("song") && !it.forced
-            }
-            return fullTrack ?: englishTracks.first()
+        // Score all tracks and select the highest-scoring dialogue track
+        val sorted = subTracks.map { track ->
+            track to scoreSubtitleTrack(track, preferredSubLang)
+        }.sortedWith(compareByDescending<Pair<PlayerTrack, Int>> { it.second }.thenBy { it.first.id })
+
+        val best = sorted.firstOrNull()
+        if (best != null && best.second > -300) {
+            return best.first
         }
 
-        val defaultTrack = subTracks.firstOrNull { it.default }
-        if (defaultTrack != null) return defaultTrack
-
-        return subTracks.firstOrNull { !it.forced } ?: subTracks.firstOrNull()
+        // Fallback: non-forced default or first non-signs track
+        return subTracks.firstOrNull { it.default && !isSignsOrSongsTrack(it) }
+            ?: subTracks.firstOrNull { !isSignsOrSongsTrack(it) }
+            ?: subTracks.firstOrNull { !it.forced }
+            ?: subTracks.firstOrNull()
     }
 
     override fun addExternalSubtitle(
@@ -1094,7 +1182,7 @@ class MpvPlaybackEngine(
                 val audioId = parsedTracks.firstOrNull { it.type == TrackType.AUDIO && it.selected }?.id
                 var subId = parsedTracks.firstOrNull { it.type == TrackType.SUBTITLE && it.selected }?.id
 
-                // Auto-select preferred/English subtitle track if none is currently selected in MPV
+                // Auto-select preferred/dialogue subtitle track if no subtitle is currently selected in MPV
                 val preferred = activeOperation?.request?.preferredSubLang
                 if (subId == null && preferred != "None" && activeOperation?.pendingSubtitleTrackId == null) {
                     val autoSub = findBestMatchingSubtitleTrack(parsedTracks, preferred)
@@ -1119,14 +1207,16 @@ class MpvPlaybackEngine(
                 val sid = mpvClient.getPropertyInt("sid")
                 updateSnapshot(currentSnapshot.copy(selectedSubtitleTrackId = sid))
             }
-            "dwidth", "dheight" -> {
-                val w = mpvClient.getPropertyInt("dwidth") ?: 0
-                val h = mpvClient.getPropertyInt("dheight") ?: 0
-                if (w > 0 && h > 0) {
-                    val dims = VideoDimensions(w, h)
+            "video-params/w", "video-params/h", "dwidth", "dheight" -> {
+                val realW = mpvClient.getPropertyInt("video-params/w")?.takeIf { it > 0 }
+                    ?: mpvClient.getPropertyInt("dwidth") ?: 0
+                val realH = mpvClient.getPropertyInt("video-params/h")?.takeIf { it > 0 }
+                    ?: mpvClient.getPropertyInt("dheight") ?: 0
+                if (realW > 0 && realH > 0) {
+                    val dims = VideoDimensions(realW, realH)
                     if (currentSnapshot.videoDimensions != dims) {
                         updateSnapshot(currentSnapshot.copy(videoDimensions = dims))
-                        notifyVideoSizeChanged(w, h)
+                        notifyVideoSizeChanged(realW, realH)
                     }
                 }
             }

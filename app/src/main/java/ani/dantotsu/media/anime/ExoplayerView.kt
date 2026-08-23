@@ -932,30 +932,19 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             val torrentManager = Injekt.get<ani.dantotsu.torrent.TorrentServerManager>()
             if (torrentManager.isAvailable()) {
                 val url = currentVideo.file.url
-                exoBufferingIndicator.visibility = View.VISIBLE
-                lifecycleScope.launch(Dispatchers.IO) {
-                    try {
-                        val index = if (url.contains("index=")) {
-                            url.substringAfter("index=").toIntOrNull() ?: 0
-                        } else 0
-                        val currentTorrent = torrentManager.addTorrent(
-                            url, currentVideo.quality.toString(), "", "", false
-                        )
-                        torrentManager.activeTorrentHash = currentTorrent.hash
-                        torrentManager.prebuffer(currentTorrent.hash!!, index)
-                        currentVideo.file.url = torrentManager.getLink(currentTorrent, index)
-                        withContext(Dispatchers.Main) {
-                            buildMpvPlayer()
-                        }
-                    } catch (e: Exception) {
-                        Injekt.get<CrashlyticsInterface>().logException(e)
-                        withContext(Dispatchers.Main) {
-                            toast("Error starting torrent: ${e.message}")
-                            sourceClick()
-                        }
-                    }
+                val index = if (url.contains("index=")) {
+                    url.substringAfter("index=").toIntOrNull() ?: 0
+                } else 0
+                val hash = try {
+                    if (url.startsWith("magnet:")) torrentManager.parseMagnetHash(url) else ""
+                } catch (_: Exception) { "" }
+
+                // Warmup in background
+                torrentManager.prebufferTorrent(url, index, currentVideo.quality.toString())
+
+                if (hash.isNotBlank()) {
+                    currentVideo.file.url = torrentManager.getLink(hash, index)
                 }
-                return
             }
         }
 
@@ -991,6 +980,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             currentSpeed,
             this
         )
+        videoInfo.text = video?.quality?.toString()?.takeIf { it.isNotBlank() && !it.equals("null", true) } ?: ""
 
         val episodeDisplayName = episodeTitleArr.getOrNull(currentEpisodeIndex) ?: episode.number
         val savedSubLang = PrefManager.getNullableCustomVal("subLang_${media.id}", null, String::class.java)

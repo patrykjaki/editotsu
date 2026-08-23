@@ -23,12 +23,14 @@ class TorrentHttpServer(
     private val port: Int,
     private val getTorrentHandle: (String) -> TorrentHandle?,
     private val getSavePath: () -> String,
-    private val getTorrentDeadlineRegistry: (String) -> TorrentDeadlineRegistry? = { null }
+    private val getTorrentDeadlineRegistry: (String) -> TorrentDeadlineRegistry? = { null },
+    private val getTorrentLock: (String) -> Any = { it }
 ) {
     private var serverSocket: ServerSocket? = null
     @Volatile private var isRunning = false
     private val streamSessionCounter = AtomicLong(0L)
     private val activeSockets = ConcurrentHashMap.newKeySet<Socket>()
+    private val activeStreamOwners = ConcurrentHashMap<Pair<String, Int>, String>()
     private val executor = ThreadPoolExecutor(
         8, 32, 60L, TimeUnit.SECONDS,
         ArrayBlockingQueue(64),
@@ -68,6 +70,7 @@ class TorrentHttpServer(
     private fun handleClient(socket: Socket) {
         val clientSessionId = "http_${streamSessionCounter.incrementAndGet()}"
         var currentHash: String? = null
+        var currentFileIndex: Int? = null
         var deadlineRegistry: TorrentDeadlineRegistry? = null
 
         try {
@@ -111,6 +114,7 @@ class TorrentHttpServer(
             }
 
             val fileIndex = indexStr.toIntOrNull() ?: 0
+            currentFileIndex = fileIndex
             var handle = getTorrentHandle(hash)
             if (handle == null) {
                 var waitHandle = 0
@@ -125,21 +129,25 @@ class TorrentHttpServer(
                 return
             }
 
+            val lock = getTorrentLock(hash)
             currentHash = hash
             deadlineRegistry = getTorrentDeadlineRegistry(hash)
 
-            var torrentInfo = handle.torrentFile()
+            var torrentInfo = synchronized(lock) { if (handle.isValid) handle.torrentFile() else null }
             if (torrentInfo == null) {
                 var waitMeta = 0
-                while (handle.torrentFile() == null && waitMeta < 600 && isRunning && !socket.isClosed) {
+                while (waitMeta < 600 && isRunning && !socket.isClosed) {
+                    val currentInfo = synchronized(lock) { if (handle.isValid) handle.torrentFile() else null }
+                    if (currentInfo != null) {
+                        torrentInfo = currentInfo
+                        break
+                    }
                     Thread.sleep(50)
                     waitMeta++
                     if (waitMeta % 10 == 0) {
-                        try { handle.resume() } catch (_: Exception) {}
-                        try { handle.forceReannounce() } catch (_: Exception) {}
+                        try { synchronized(lock) { if (handle.isValid) { handle.resume(); handle.forceReannounce() } } } catch (_: Exception) {}
                     }
                 }
-                torrentInfo = handle.torrentFile()
             }
             if (torrentInfo == null) {
                 send504(socket)
@@ -158,11 +166,12 @@ class TorrentHttpServer(
             if (fileIndex in 0 until numFiles) {
                 filePriorities[fileIndex] = Priority.TOP_PRIORITY
             }
-            try { handle.prioritizeFiles(filePriorities) } catch (_: Exception) {}
+            try { synchronized(lock) { if (handle.isValid) handle.prioritizeFiles(filePriorities) } } catch (_: Exception) {}
 
             val fileSize = fileStorage.fileSize(fileIndex)
             val fileOffset = fileStorage.fileOffset(fileIndex)
             val pieceLen = torrentInfo.pieceLength().toLong()
+            val totalPieces = torrentInfo.numPieces()
 
             val fileFirstPiece = (fileOffset / pieceLen).toInt()
             val fileLastPiece = ((fileOffset + fileSize - 1) / pieceLen).toInt()
@@ -172,12 +181,12 @@ class TorrentHttpServer(
             val protectedTail = (tailStart..fileLastPiece).filter { it > fileFirstPiece + 5 }.toSet()
 
             for (i in fileFirstPiece..minOf(fileFirstPiece + 3, fileLastPiece)) {
-                try { handle.piecePriority(i, Priority.TOP_PRIORITY) } catch (_: Exception) {}
+                try { synchronized(lock) { if (handle.isValid) handle.piecePriority(i, Priority.TOP_PRIORITY) } } catch (_: Exception) {}
                 deadlineRegistry?.registerDeadline(i, clientSessionId, if (i == fileFirstPiece) 0L else 100L)
             }
 
             protectedTail.forEach { tailPiece ->
-                try { handle.piecePriority(tailPiece, Priority.TOP_PRIORITY) } catch (_: Exception) {}
+                try { synchronized(lock) { if (handle.isValid) handle.piecePriority(tailPiece, Priority.TOP_PRIORITY) } } catch (_: Exception) {}
                 deadlineRegistry?.registerDeadline(tailPiece, clientSessionId, 0L)
             }
 
@@ -241,6 +250,59 @@ class TorrentHttpServer(
                 return
             }
 
+            val streamKey = Pair(hash.uppercase(), fileIndex)
+            if (method == "GET") {
+                val oldOwnerId = activeStreamOwners.put(streamKey, clientSessionId)
+                if (oldOwnerId != null && oldOwnerId != clientSessionId) {
+                    deadlineRegistry?.unregisterOwner(oldOwnerId)
+                }
+            }
+
+            // Immediate seek & range priority scheduling: wipe out-of-window deadlines and prioritize immediate runway
+            try { synchronized(lock) { if (handle.isValid) { handle.resume(); handle.forceReannounce() } } } catch (_: Exception) {}
+            deadlineRegistry?.focusPieceWindow(clientSessionId, firstPiece, 30, totalPieces, protectedTail)
+
+            val initialLookahead = minOf(firstPiece + 30, fileLastPiece)
+            for (lp in firstPiece..initialLookahead) {
+                val prio: Priority
+                val deadline: Long
+                if (lp == firstPiece) {
+                    prio = Priority.TOP_PRIORITY
+                    deadline = 0L
+                } else if (lp <= firstPiece + 2) {
+                    prio = Priority.TOP_PRIORITY
+                    deadline = 100L
+                } else if (lp <= firstPiece + 5) {
+                    prio = Priority.TOP_PRIORITY
+                    deadline = 250L
+                } else if (lp <= firstPiece + 15) {
+                    prio = Priority.SIX
+                    deadline = 800L
+                } else {
+                    prio = Priority.DEFAULT
+                    deadline = 2000L
+                }
+                try { synchronized(lock) { if (handle.isValid) handle.piecePriority(lp, prio) } } catch (_: Exception) {}
+                deadlineRegistry?.registerDeadline(lp, clientSessionId, deadline)
+            }
+
+            // Pre-header wait on first requested piece (up to 15s) with 504 on timeout before sending 200/206 headers
+            var firstPieceWaitMs = 0
+            var firstPieceReady = synchronized(lock) { if (handle.isValid) handle.havePiece(firstPiece) else false }
+            while (!firstPieceReady && firstPieceWaitMs < 15_000 && isRunning && !socket.isClosed) {
+                Thread.sleep(30)
+                firstPieceWaitMs += 30
+                if (firstPieceWaitMs % 2000 == 0) {
+                    try { synchronized(lock) { if (handle.isValid) handle.forceReannounce() } } catch (_: Exception) {}
+                }
+                firstPieceReady = synchronized(lock) { if (handle.isValid) handle.havePiece(firstPiece) else false }
+            }
+
+            if (!firstPieceReady) {
+                send504(socket)
+                return
+            }
+
             // Socket tuning & buffered output stream
             try {
                 socket.tcpNoDelay = true
@@ -255,11 +317,6 @@ class TorrentHttpServer(
             }
             out.write(headers.toByteArray())
             out.flush()
-
-            // Prioritize first piece with urgency (deadline 0)
-            try { handle.resume() } catch (_: Exception) {}
-            try { handle.piecePriority(firstPiece, Priority.TOP_PRIORITY) } catch (_: Exception) {}
-            deadlineRegistry?.registerDeadline(firstPiece, clientSessionId, 0L)
 
             val savePath = getSavePath()
             val diskFile = File(fileStorage.filePath(fileIndex, savePath))
@@ -290,20 +347,22 @@ class TorrentHttpServer(
                             prio = Priority.DEFAULT
                             deadline = 2000L
                         }
-                        try { handle.piecePriority(lp, prio) } catch (_: Exception) {}
+                        try { synchronized(lock) { if (handle.isValid) handle.piecePriority(lp, prio) } } catch (_: Exception) {}
                         deadlineRegistry?.registerDeadline(lp, clientSessionId, deadline)
                     }
-                    deadlineRegistry?.focusPieceWindow(clientSessionId, p, 30, torrentInfo.numPieces(), protectedTail)
+                    deadlineRegistry?.focusPieceWindow(clientSessionId, p, 30, totalPieces, protectedTail)
 
                     var pieceWaitMs = 0
-                    while (!handle.havePiece(p) && isRunning && !socket.isClosed) {
+                    var currentPieceReady = synchronized(lock) { if (handle.isValid) handle.havePiece(p) else false }
+                    while (!currentPieceReady && isRunning && !socket.isClosed) {
                         Thread.sleep(30)
                         pieceWaitMs += 30
                         if (pieceWaitMs % 2000 == 0) {
-                            try { handle.forceReannounce() } catch (_: Exception) {}
+                            try { synchronized(lock) { if (handle.isValid) handle.forceReannounce() } } catch (_: Exception) {}
                         }
+                        currentPieceReady = synchronized(lock) { if (handle.isValid) handle.havePiece(p) else false }
                     }
-                    if (!handle.havePiece(p)) break
+                    if (!currentPieceReady) break
 
                     val pieceStartOffset = maxOf(rangeStart, p * pieceLen - fileOffset)
                     val pieceEndOffset = minOf(rangeEnd, (p + 1) * pieceLen - 1 - fileOffset)
@@ -351,6 +410,9 @@ class TorrentHttpServer(
         } catch (_: Exception) {
         } finally {
             activeSockets.remove(socket)
+            if (currentHash != null && currentFileIndex != null) {
+                activeStreamOwners.remove(Pair(currentHash.uppercase(), currentFileIndex), clientSessionId)
+            }
             deadlineRegistry?.unregisterOwner(clientSessionId)
             try { socket.close() } catch (_: Exception) {}
         }

@@ -465,6 +465,154 @@ class PiPAndTorrentUnitTest {
         assertEquals(3, readAttempts)
         assertEquals(256 * 1024, bytesRead)
     }
+
+    // --- 11. Seek Owner Handoff & Deadline Isolation ---
+
+    @Test
+    fun testSeekOwnerHandoffAndDeadlineIsolation() {
+        val adapter = object : TorrentDeadlineAdapter {
+            override val isValid: Boolean = true
+            val setCalls = mutableMapOf<Int, Int>()
+            val resetCalls = mutableSetOf<Int>()
+
+            override fun setPieceDeadline(index: Int, deadline: Int) {
+                setCalls[index] = deadline
+                resetCalls.remove(index)
+            }
+
+            override fun resetPieceDeadline(index: Int) {
+                setCalls.remove(index)
+                resetCalls.add(index)
+            }
+        }
+
+        val registry = TorrentDeadlineRegistry("TEST_HASH", adapter)
+        val activeStreamOwners = ConcurrentHashMap<Pair<String, Int>, String>()
+        val streamKey = Pair("TEST_HASH", 0)
+
+        // 1. Initial stream request (owner http_1) requests pieces 0..5
+        val owner1 = "http_1"
+        activeStreamOwners.put(streamKey, owner1)
+        for (p in 0..5) {
+            registry.registerDeadline(p, owner1, (p * 100).toLong())
+        }
+
+        // Verify adapter received piece 0..5
+        assertEquals(6, adapter.setCalls.size)
+        assertTrue(adapter.setCalls.containsKey(0))
+
+        // Also add a prebuffer lease owner on piece 0 and 99
+        val prebufferOwner = "prebuffer_lease_1"
+        registry.registerDeadline(0, prebufferOwner, 0L)
+        registry.registerDeadline(99, prebufferOwner, 50L)
+
+        // 2. Seek occurs: new Range request (owner http_2) arrives for pieces 50..55
+        val owner2 = "http_2"
+        val oldOwner = activeStreamOwners.put(streamKey, owner2)
+        assertEquals(owner1, oldOwner)
+
+        // Unregister old HTTP owner
+        if (oldOwner != null && oldOwner != owner2) {
+            registry.unregisterOwner(oldOwner)
+        }
+
+        // Verify pieces 1..5 (owned only by http_1) are reset
+        for (p in 1..5) {
+            assertTrue("Piece $p should be reset", adapter.resetCalls.contains(p))
+            assertFalse("Piece $p should not be in setCalls", adapter.setCalls.containsKey(p))
+        }
+
+        // Verify piece 0 and 99 (owned by prebuffer) remain set!
+        assertTrue("Piece 0 should remain set by prebuffer", adapter.setCalls.containsKey(0))
+        assertTrue("Piece 99 should remain set by prebuffer", adapter.setCalls.containsKey(99))
+
+        // Register new seek deadlines for owner2
+        for (p in 50..55) {
+            registry.registerDeadline(p, owner2, ((p - 50) * 100).toLong())
+        }
+
+        // Verify piece 50..55 are now set
+        for (p in 50..55) {
+            assertTrue("Piece $p should be set for owner2", adapter.setCalls.containsKey(p))
+        }
+    }
+
+    // --- 12. Window Focusing Preserves Protected Tail ---
+
+    @Test
+    fun testWindowFocusingPreservesProtectedTail() {
+        val adapter = object : TorrentDeadlineAdapter {
+            override val isValid: Boolean = true
+            val setCalls = mutableMapOf<Int, Int>()
+            val resetCalls = mutableSetOf<Int>()
+
+            override fun setPieceDeadline(index: Int, deadline: Int) {
+                setCalls[index] = deadline
+                resetCalls.remove(index)
+            }
+
+            override fun resetPieceDeadline(index: Int) {
+                setCalls.remove(index)
+                resetCalls.add(index)
+            }
+        }
+
+        val registry = TorrentDeadlineRegistry("TEST_HASH", adapter)
+        val owner = "http_client"
+
+        // Register pieces 0..99
+        for (p in 0..99) {
+            registry.registerDeadline(p, owner, 1000L)
+        }
+
+        // Focus window around piece 40, count 30 (pieces 40..69), protecting tail piece 99
+        val protectedTail = setOf(99)
+        registry.focusPieceWindow(owner, 40, 30, 100, protectedTail)
+
+        // Pieces 0..39 should be reset
+        for (p in 0..39) {
+            assertTrue("Piece $p should be reset", adapter.resetCalls.contains(p))
+        }
+
+        // Pieces 40..69 should remain set
+        for (p in 40..69) {
+            assertTrue("Piece $p should remain set in window", adapter.setCalls.containsKey(p))
+        }
+
+        // Pieces 70..98 should be reset
+        for (p in 70..98) {
+            assertTrue("Piece $p should be reset outside window", adapter.resetCalls.contains(p))
+        }
+
+        // Tail piece 99 should remain set!
+        assertTrue("Tail piece 99 should remain set", adapter.setCalls.containsKey(99))
+    }
+
+    // --- 13. Prebuffer Single Flight Replacement ---
+
+    @Test
+    fun testPrebufferSingleFlightReplacement() {
+        val activeLeases = ConcurrentHashMap<Pair<String, Int>, PrebufferLease>()
+        val key = Pair("HASH", 0)
+        var closedLeaseId: String? = null
+
+        val lease1 = PrebufferLease("lease_1", "HASH", 0) {
+            closedLeaseId = it.sessionId
+        }
+        activeLeases[key] = lease1
+        assertFalse(lease1.isClosed)
+
+        // Replace with lease2
+        val existing = activeLeases[key]
+        existing?.close()
+
+        val lease2 = PrebufferLease("lease_2", "HASH", 0) {}
+        activeLeases[key] = lease2
+
+        assertTrue(lease1.isClosed)
+        assertEquals("lease_1", closedLeaseId)
+        assertFalse(lease2.isClosed)
+    }
 }
 
 

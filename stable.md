@@ -1,3 +1,11 @@
+# 0.2.1-alpha
+
+- **Torrent Speedup Engine & Smart Subtitles:**
+  - Background pre-buffering on episode tap (overlaps metadata and swarm connection with UI launch)
+  - Instant 0ms seek scheduling with immediate deadline window focusing
+  - Smart dialogue subtitle auto-prioritization (prioritizes full dialogue tracks over signs/songs/forced tracks based on user language preference)
+  - Defensive font extraction and mobile swarm tuning
+
 # 0.2.0-alpha
 
 - **Performance & Torrent Fast-Path:**

@@ -552,18 +552,13 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                 if (url.startsWith("magnet:")) torrentManager.parseMagnetHash(url) else ""
                             } catch (_: Exception) { "" }
 
-                            if (!torrentManager.isRunning()) {
-                                torrentManager.start()
-                            }
-
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                try {
-                                    torrentManager.addTorrent(url, video.quality.toString(), "", "", false)
-                                } catch (_: Exception) {}
-                            }
+                            // Trigger immediate background pre-buffering on stream selection
+                            torrentManager.prebufferTorrent(url, index, video.quality.toString())
 
                             if (hash.isNotBlank()) {
-                                video.file.url = torrentManager.getLink(hash, index)
+                                val link = torrentManager.getLink(hash, index)
+                                video.file.url = link
+                                targetEp.extractors?.find { it.server.name == targetEp.selectedExtractor }?.videos?.getOrNull(targetEp.selectedVideo)?.file?.url = link
                             }
 
                             if (act != null && !act.isFinishing && !act.isDestroyed) {

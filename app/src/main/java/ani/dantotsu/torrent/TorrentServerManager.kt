@@ -9,6 +9,9 @@ import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.Logger
 import eu.kanade.tachiyomi.data.torrentServer.model.FileStat
 import eu.kanade.tachiyomi.data.torrentServer.model.Torrent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.libtorrent4j.*
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -52,13 +55,24 @@ interface TorrentDeadlineAdapter {
     fun resetPieceDeadline(index: Int)
 }
 
-class LibtorrentDeadlineAdapter(private val handle: TorrentHandle) : TorrentDeadlineAdapter {
-    override val isValid: Boolean get() = handle.isValid
+class LibtorrentDeadlineAdapter(
+    private val handle: TorrentHandle,
+    private val lock: Any = handle
+) : TorrentDeadlineAdapter {
+    override val isValid: Boolean get() = synchronized(lock) { handle.isValid }
     override fun setPieceDeadline(index: Int, deadline: Int) {
-        handle.setPieceDeadline(index, deadline)
+        synchronized(lock) {
+            if (handle.isValid) {
+                handle.setPieceDeadline(index, deadline)
+            }
+        }
     }
     override fun resetPieceDeadline(index: Int) {
-        handle.resetPieceDeadline(index)
+        synchronized(lock) {
+            if (handle.isValid) {
+                handle.resetPieceDeadline(index)
+            }
+        }
     }
 }
 
@@ -67,7 +81,7 @@ class TorrentDeadlineRegistry(
     private val adapter: TorrentDeadlineAdapter,
     private val timeProvider: () -> Long = { System.currentTimeMillis() }
 ) {
-    constructor(torrentHash: String, handle: TorrentHandle) : this(torrentHash, LibtorrentDeadlineAdapter(handle))
+    constructor(torrentHash: String, handle: TorrentHandle, lock: Any = handle) : this(torrentHash, LibtorrentDeadlineAdapter(handle, lock))
 
     private val pieceDeadlines = mutableMapOf<Int, MutableMap<String, Long>>()
     private var isDisposed = false
@@ -199,10 +213,13 @@ class TorrentServerManager(private val context: Context) {
         private set
 
     private val registries = ConcurrentHashMap<String, TorrentDeadlineRegistry>()
+    private val handleLocks = ConcurrentHashMap<String, Any>()
     private val activePrebufferLeases = ConcurrentHashMap<Pair<String, Int>, PrebufferLease>()
     private val scheduledTtls = ConcurrentHashMap<String, Runnable>()
     private val ttlHandler = Handler(Looper.getMainLooper())
     private val leaseCounter = AtomicLong(0L)
+
+    fun getHandleLock(hash: String): Any = handleLocks.computeIfAbsent(hash.uppercase()) { Any() }
 
     fun start() {
         if (sessionManager.isRunning) return
@@ -331,6 +348,9 @@ class TorrentServerManager(private val context: Context) {
                 },
                 { hash ->
                     getDeadlineRegistry(hash)
+                },
+                { hash ->
+                    getHandleLock(hash)
                 }
             )
             httpServer?.start()
@@ -347,8 +367,9 @@ class TorrentServerManager(private val context: Context) {
         return try {
             val sha1 = Sha1Hash.parseHex(normalized)
             val handle = sessionManager.find(sha1)
+            val lock = getHandleLock(normalized)
             if (handle != null && handle.isValid) {
-                val reg = TorrentDeadlineRegistry(normalized, handle)
+                val reg = TorrentDeadlineRegistry(normalized, handle, lock)
                 registries.putIfAbsent(normalized, reg) ?: reg
             } else null
         } catch (_: Exception) {
@@ -546,6 +567,25 @@ class TorrentServerManager(private val context: Context) {
         return prebufferWithResult(torrentHash, fileIndex).ready
     }
 
+    fun prebufferTorrent(
+        url: String,
+        fileIndex: Int,
+        title: String = ""
+    ) {
+        if (!isAvailable()) return
+        start()
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val currentTorrent = addTorrent(url, title, "", "", false)
+                val hash = currentTorrent.hash ?: return@launch
+                activeTorrentHash = hash
+                prebufferWithResult(hash, fileIndex)
+            } catch (e: Exception) {
+                Logger.log("TorrentServerManager: Background prebuffer failed: ${e.message}")
+            }
+        }
+    }
+
     fun prebufferWithResult(
         torrentHash: String,
         fileIndex: Int,
@@ -557,13 +597,17 @@ class TorrentServerManager(private val context: Context) {
         try {
             val normHash = torrentHash.uppercase()
             val sha1 = Sha1Hash.parseHex(normHash)
+            val lock = getHandleLock(normHash)
             var handle = sessionManager.find(sha1) ?: return PrebufferResult(false, null)
 
             var waitTime = 0
-            while ((!handle.isValid || handle.torrentFile() == null) && waitTime < 300) {
+            while (waitTime < 300) {
                 if (!sessionManager.isRunning) return PrebufferResult(false, null)
+                val isValidAndHasMeta = synchronized(lock) { handle.isValid && handle.torrentFile() != null }
+                if (isValidAndHasMeta) break
+
                 if (onProgress != null) {
-                    val status = try { if (handle.isValid) handle.status() else null } catch (_: Throwable) { null }
+                    val status = try { synchronized(lock) { if (handle.isValid) handle.status() else null } } catch (_: Throwable) { null }
                     val shouldContinue = onProgress(
                         PrebufferProgress(
                             downloadRateBytes = status?.downloadPayloadRate()?.toLong() ?: 0L,
@@ -582,11 +626,11 @@ class TorrentServerManager(private val context: Context) {
                 waitTime++
             }
 
-            val torrentInfo = handle.torrentFile() ?: return PrebufferResult(false, null)
+            val torrentInfo = synchronized(lock) { if (handle.isValid) handle.torrentFile() else null } ?: return PrebufferResult(false, null)
             val fileStorage = torrentInfo.files()
             if (fileIndex < 0 || fileIndex >= fileStorage.numFiles()) return PrebufferResult(false, null)
 
-            val registry = getDeadlineRegistry(normHash) ?: TorrentDeadlineRegistry(normHash, handle).also { registries[normHash] = it }
+            val registry = getDeadlineRegistry(normHash) ?: TorrentDeadlineRegistry(normHash, handle, lock).also { registries[normHash] = it }
             val fileOffset = fileStorage.fileOffset(fileIndex)
             val fileSize = fileStorage.fileSize(fileIndex)
             val pieceLength = torrentInfo.pieceLength().toLong()
@@ -597,7 +641,7 @@ class TorrentServerManager(private val context: Context) {
             if (fileIndex in 0 until numFiles) {
                 filePriorities[fileIndex] = Priority.TOP_PRIORITY
             }
-            try { handle.prioritizeFiles(filePriorities) } catch (_: Exception) {}
+            try { synchronized(lock) { if (handle.isValid) handle.prioritizeFiles(filePriorities) } } catch (_: Exception) {}
 
             val plan = computeStreamingPiecePlan(fileOffset, fileSize, pieceLength, totalPieces)
             if (plan.startupPieces.isEmpty()) return PrebufferResult(false, null)
@@ -622,30 +666,30 @@ class TorrentServerManager(private val context: Context) {
 
             // Prioritize head pieces
             val firstPiece = plan.startupPieces.first()
-            try { handle.piecePriority(firstPiece, Priority.TOP_PRIORITY) } catch (_: Exception) {}
+            try { synchronized(lock) { if (handle.isValid) handle.piecePriority(firstPiece, Priority.TOP_PRIORITY) } } catch (_: Exception) {}
             registry.registerDeadline(firstPiece, sessionId, 0L)
 
             plan.startupPieces.drop(1).forEachIndexed { idx, piece ->
                 val prio = if (idx < 3) Priority.TOP_PRIORITY else Priority.SIX
-                try { handle.piecePriority(piece, prio) } catch (_: Exception) {}
+                try { synchronized(lock) { if (handle.isValid) handle.piecePriority(piece, prio) } } catch (_: Exception) {}
                 registry.registerDeadline(piece, sessionId, (150L + idx * 100L))
             }
 
             // Prioritize tail pieces (critical for MKV Cues and MP4 Moov container index)
             val tailRunway = if (plan.tailPieces.isNotEmpty()) plan.tailPieces else plan.opportunisticTail?.let { listOf(it) } ?: emptyList()
             tailRunway.forEachIndexed { idx, tailPiece ->
-                try { handle.piecePriority(tailPiece, Priority.TOP_PRIORITY) } catch (_: Exception) {}
+                try { synchronized(lock) { if (handle.isValid) handle.piecePriority(tailPiece, Priority.TOP_PRIORITY) } } catch (_: Exception) {}
                 registry.registerDeadline(tailPiece, sessionId, (50L + idx * 100L))
             }
 
             // Fast start: wait up to 15s for the first requested piece
             var waitCount = 0
             while (waitCount < 150) {
-                if (!sessionManager.isRunning || !handle.isValid) break
-                val isFirstPieceReady = handle.havePiece(firstPiece)
+                if (!sessionManager.isRunning) break
+                val isFirstPieceReady = synchronized(lock) { if (handle.isValid) handle.havePiece(firstPiece) else false }
 
                 if (onProgress != null) {
-                    val status = try { if (handle.isValid) handle.status() else null } catch (_: Throwable) { null }
+                    val status = try { synchronized(lock) { if (handle.isValid) handle.status() else null } } catch (_: Throwable) { null }
                     val dlRate = status?.downloadPayloadRate()?.toLong() ?: 0L
                     val peers = status?.numPeers() ?: 0
                     val seeds = status?.numSeeds() ?: 0
@@ -674,7 +718,7 @@ class TorrentServerManager(private val context: Context) {
                 waitCount++
             }
 
-            val success = handle.havePiece(firstPiece)
+            val success = synchronized(lock) { if (handle.isValid) handle.havePiece(firstPiece) else false }
             if (success) {
                 transferredToResult = true
                 return PrebufferResult(true, createdLease)
