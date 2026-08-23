@@ -257,6 +257,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         ThemeManager(this).applyTheme()
         binding = ActivityExoplayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         playerView = binding.playerView
         hideSystemBars()

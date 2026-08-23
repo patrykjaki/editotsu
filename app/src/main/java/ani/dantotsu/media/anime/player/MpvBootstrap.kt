@@ -95,6 +95,30 @@ fun prepareMpvDirectories(context: Context): ResolvedMpvPaths {
     val fontsDir = if (filesDir != null) {
         val f = File(filesDir, "fonts")
         if (!f.exists()) f.mkdirs()
+        try {
+            val fontMap = mapOf(
+                "Poppins-SemiBold.ttf" to ani.dantotsu.R.font.poppins_semi_bold,
+                "Poppins-Bold.ttf" to ani.dantotsu.R.font.poppins_bold,
+                "Poppins.ttf" to ani.dantotsu.R.font.poppins,
+                "Poppins-Thin.ttf" to ani.dantotsu.R.font.poppins_thin,
+                "Century-Gothic.ttf" to ani.dantotsu.R.font.century_gothic_regular,
+                "Levenim-MT.ttf" to ani.dantotsu.R.font.levenim_mt_bold,
+                "Blocky.ttf" to ani.dantotsu.R.font.blocky,
+                "sans-serif.ttf" to ani.dantotsu.R.font.poppins_semi_bold
+            )
+            fontMap.forEach { (name, resId) ->
+                val target = File(f, name)
+                if (!target.exists() || target.length() == 0L) {
+                    try {
+                        context.resources.openRawResource(resId).use { input ->
+                            target.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        } catch (_: Exception) {}
         if (f.exists() && f.isDirectory && f.canRead()) f else null
     } else null
 
@@ -167,7 +191,7 @@ fun buildCurrentBootstrapSettings(context: Context): List<ResolvedInitSetting> {
         MpvInitOption("slang", MpvSettingValue.StringValue("eng,en,enUS,en-US,English,enm")),
         MpvInitOption("alang", MpvSettingValue.StringValue("jpn,ja,eng,en,Japanese,English")),
         MpvInitOption("sub-font-provider", MpvSettingValue.StringValue("none")),
-        MpvInitOption("sub-font", MpvSettingValue.StringValue("sans-serif")),
+        MpvInitOption("sub-font", MpvSettingValue.StringValue("Poppins-SemiBold")),
         MpvInitOption("embeddedfonts", MpvSettingValue.StringValue("yes")),
         MpvInitOption("keep-open", MpvSettingValue.StringValue("no")),
         MpvInitOption("ytdl", MpvSettingValue.StringValue("no")),

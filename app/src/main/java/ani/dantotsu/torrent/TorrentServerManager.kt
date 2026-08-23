@@ -17,7 +17,8 @@ import java.util.concurrent.atomic.AtomicLong
 
 data class StreamingPiecePlan(
     val startupPieces: List<Int>,
-    val opportunisticTail: Int?
+    val opportunisticTail: Int?,
+    val tailPieces: List<Int> = opportunisticTail?.let { listOf(it) } ?: emptyList()
 )
 
 fun computeStreamingPiecePlan(
@@ -27,20 +28,22 @@ fun computeStreamingPiecePlan(
     totalPieces: Int
 ): StreamingPiecePlan {
     if (fileOffset < 0 || fileSize <= 0 || pieceLength <= 0 || totalPieces <= 0) {
-        return StreamingPiecePlan(emptyList(), null)
+        return StreamingPiecePlan(emptyList(), null, emptyList())
     }
     val firstPiece = (fileOffset / pieceLength).toInt()
     val lastPiece = ((fileOffset + fileSize - 1) / pieceLength).toInt()
 
     if (firstPiece < 0 || firstPiece >= totalPieces || lastPiece < 0 || lastPiece >= totalPieces || firstPiece > lastPiece) {
-        return StreamingPiecePlan(emptyList(), null)
+        return StreamingPiecePlan(emptyList(), null, emptyList())
     }
 
     val candidates = listOf(firstPiece, firstPiece + 1, firstPiece + 2, firstPiece + 3)
     val boundedStartup = candidates.filter { it <= lastPiece && it < totalPieces }.distinct()
+    val tailStart = maxOf(firstPiece, lastPiece - 2)
+    val tailCandidates = (tailStart..lastPiece).filter { it !in boundedStartup && it < totalPieces }.distinct()
     val tail = if (lastPiece !in boundedStartup) lastPiece else null
 
-    return StreamingPiecePlan(boundedStartup, tail)
+    return StreamingPiecePlan(boundedStartup, tail, tailCandidates)
 }
 
 interface TorrentDeadlineAdapter {
@@ -79,7 +82,13 @@ class TorrentDeadlineRegistry(
         }
     }
 
-    fun focusPieceWindow(ownerId: String, startPiece: Int, count: Int, totalPieces: Int) {
+    fun focusPieceWindow(
+        ownerId: String,
+        startPiece: Int,
+        count: Int,
+        totalPieces: Int,
+        protectedPieces: Set<Int> = emptySet()
+    ) {
         synchronized(this) {
             if (isDisposed || !adapter.isValid) return
             val windowEnd = minOf(startPiece + count, totalPieces)
@@ -87,7 +96,7 @@ class TorrentDeadlineRegistry(
             while (iterator.hasNext()) {
                 val entry = iterator.next()
                 val piece = entry.key
-                if (piece < startPiece || piece >= windowEnd) {
+                if ((piece < startPiece || piece >= windowEnd) && piece !in protectedPieces) {
                     val map = entry.value
                     if (map.remove(ownerId) != null) {
                         if (map.isEmpty()) {
@@ -200,29 +209,35 @@ class TorrentServerManager(private val context: Context) {
         Logger.log("Starting built-in TorrentServerManager...")
         try {
             val settings = SettingsPack()
+            // 1. Connectivity & NAT Traversal
             settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.enable_upnp.swigValue(), true)
             settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.enable_natpmp.swigValue(), true)
             settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.enable_lsd.swigValue(), true)
             settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.enable_dht.swigValue(), true)
+
+            // 2. High-Speed Torrent Swarm & Pipelining Limits
             settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.announce_to_all_trackers.swigValue(), true)
             settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.announce_to_all_tiers.swigValue(), true)
             settings.setString(
                 org.libtorrent4j.swig.settings_pack.string_types.dht_bootstrap_nodes.swigValue(),
-                "router.bittorrent.com:6881,dht.transmissionbt.com:6881,router.utorrent.com:6881,dht.libtorrent.org:25401,dht.aelitis.com:6881"
+                "router.bittorrent.com:6881,dht.transmissionbt.com:6881,router.utorrent.com:6881,dht.libtorrent.org:25401,dht.aelitis.com:6881,dht.ip2location.io:6881"
             )
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.active_downloads.swigValue(), 20)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.active_seeds.swigValue(), 20)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.active_limit.swigValue(), 100)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.connections_limit.swigValue(), 300)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.unchoke_slots_limit.swigValue(), 64)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_out_request_queue.swigValue(), 2000)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.torrent_connect_boost.swigValue(), 50)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_peerlist_size.swigValue(), 1000)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_paused_peerlist_size.swigValue(), 500)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.request_timeout.swigValue(), 5)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.peer_connect_timeout.swigValue(), 5)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.aio_threads.swigValue(), 2)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.hashing_threads.swigValue(), 1)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.active_downloads.swigValue(), 10)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.active_seeds.swigValue(), 10)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.active_limit.swigValue(), 50)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.connections_limit.swigValue(), 80)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.unchoke_slots_limit.swigValue(), 32)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.connection_speed.swigValue(), 30)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.torrent_connect_boost.swigValue(), 30)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_out_request_queue.swigValue(), 1000)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_allowed_in_request_queue.swigValue(), 500)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_peerlist_size.swigValue(), 500)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_paused_peerlist_size.swigValue(), 200)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.request_timeout.swigValue(), 10)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.peer_connect_timeout.swigValue(), 15)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.piece_timeout.swigValue(), 5)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.aio_threads.swigValue(), 4)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.hashing_threads.swigValue(), 2)
 
             // Disable UDP (uTP) if configured
             val disableUtp = PrefManager.getVal<Boolean>(PrefName.TorrentDisableUtp)
@@ -386,6 +401,20 @@ class TorrentServerManager(private val context: Context) {
         }
     }
 
+    private fun buildEnrichedMagnetUri(rawMagnet: String, trackers: List<String>): String {
+        val existingTrackers = Regex("""[&?]tr=([^&]+)""").findAll(rawMagnet).map {
+            try { java.net.URLDecoder.decode(it.groupValues[1], "UTF-8") } catch (_: Exception) { it.groupValues[1] }
+        }.toSet()
+        val builder = StringBuilder(rawMagnet)
+        trackers.forEach { trk ->
+            if (trk !in existingTrackers) {
+                val encoded = try { java.net.URLEncoder.encode(trk, "UTF-8") } catch (_: Exception) { trk }
+                builder.append("&tr=").append(encoded)
+            }
+        }
+        return builder.toString()
+    }
+
     fun addTorrent(
         url: String,
         title: String,
@@ -413,7 +442,20 @@ class TorrentServerManager(private val context: Context) {
             "udp://opentracker.i2p.rocks:6969/announce",
             "udp://tracker.moeking.me:6969/announce",
             "udp://p4p.arenabg.com:1337/announce",
-            "https://tracker.tamersunion.org:443/announce"
+            "https://tracker.tamersunion.org:443/announce",
+            "udp://tracker.dler.org:6969/announce",
+            "udp://open.demonii.com:1337/announce",
+            "udp://tracker.coppersurfer.tk:6969/announce",
+            "udp://tracker.leechers-paradise.org:6969/announce",
+            "udp://movies.zsw.ca:6969/announce",
+            "udp://tracker.cyberia.is:6969/announce",
+            "udp://retracker.lanta-net.ru:2710/announce",
+            "udp://tracker.theoks.net:6969/announce",
+            "udp://tracker-udp.gbitt.info:80/announce",
+            "http://tracker.renfed.com:80/announce",
+            "udp://ttk2.n1ed.com:6969/announce",
+            "udp://tracker.altrosky.nl:6969/announce",
+            "udp://tracker.bittor.pw:1337/announce"
         )
 
         if (url.startsWith("magnet:")) {
@@ -421,7 +463,8 @@ class TorrentServerManager(private val context: Context) {
             val sha1 = Sha1Hash.parseHex(infoHash)
             handle = sessionManager.find(sha1)
             if (handle == null) {
-                sessionManager.download(url, cacheDir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                val enrichedUrl = buildEnrichedMagnetUri(url, defaultTrackers)
+                sessionManager.download(enrichedUrl, cacheDir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
                 handle = sessionManager.find(sha1)
             }
 
@@ -437,7 +480,7 @@ class TorrentServerManager(private val context: Context) {
             while ((handle == null || handle.torrentFile() == null) && waitTime < 400) {
                 Thread.sleep(50)
                 handle = sessionManager.find(sha1)
-                if (handle != null && waitTime % 20 == 0) {
+                if (handle != null && waitTime % 15 == 0) {
                     try { handle.forceReannounce() } catch (_: Exception) {}
                 }
                 waitTime++
@@ -577,19 +620,22 @@ class TorrentServerManager(private val context: Context) {
             scheduledTtls[sessionId] = ttlRunnable
             ttlHandler.postDelayed(ttlRunnable, 30_000L)
 
-            // Prioritize pieces
+            // Prioritize head pieces
             val firstPiece = plan.startupPieces.first()
             try { handle.piecePriority(firstPiece, Priority.TOP_PRIORITY) } catch (_: Exception) {}
-            registry.registerDeadline(firstPiece, sessionId, 500L)
+            registry.registerDeadline(firstPiece, sessionId, 0L)
 
             plan.startupPieces.drop(1).forEachIndexed { idx, piece ->
-                try { handle.piecePriority(piece, Priority.SIX) } catch (_: Exception) {}
-                registry.registerDeadline(piece, sessionId, (1000L + idx * 100L))
+                val prio = if (idx < 3) Priority.TOP_PRIORITY else Priority.SIX
+                try { handle.piecePriority(piece, prio) } catch (_: Exception) {}
+                registry.registerDeadline(piece, sessionId, (150L + idx * 100L))
             }
 
-            plan.opportunisticTail?.let { tail ->
-                try { handle.piecePriority(tail, Priority.SIX) } catch (_: Exception) {}
-                registry.registerDeadline(tail, sessionId, 3000L)
+            // Prioritize tail pieces (critical for MKV Cues and MP4 Moov container index)
+            val tailRunway = if (plan.tailPieces.isNotEmpty()) plan.tailPieces else plan.opportunisticTail?.let { listOf(it) } ?: emptyList()
+            tailRunway.forEachIndexed { idx, tailPiece ->
+                try { handle.piecePriority(tailPiece, Priority.TOP_PRIORITY) } catch (_: Exception) {}
+                registry.registerDeadline(tailPiece, sessionId, (50L + idx * 100L))
             }
 
             // Fast start: wait up to 15s for the first requested piece
@@ -710,17 +756,57 @@ class TorrentServerManager(private val context: Context) {
         return startPort
     }
 
+    private fun base32ToHex(base32: String): String {
+        val base32Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+        val clean = base32.uppercase().trim()
+        var bits = 0L
+        var bitCount = 0
+        val bytes = ArrayList<Byte>()
+        for (c in clean) {
+            val valIndex = base32Chars.indexOf(c)
+            if (valIndex == -1) continue
+            bits = (bits shl 5) or valIndex.toLong()
+            bitCount += 5
+            if (bitCount >= 8) {
+                bitCount -= 8
+                bytes.add(((bits shr bitCount) and 0xFF).toByte())
+            }
+        }
+        return bytes.joinToString("") { "%02X".format(it) }
+    }
+
     fun parseMagnetHash(url: String): String {
-        val xtIndex = url.indexOf("xt=urn:btih:")
+        val decoded = try { java.net.URLDecoder.decode(url, "UTF-8") } catch (_: Exception) { url }
+        val xtIndex = decoded.indexOf("xt=urn:btih:", ignoreCase = true)
         if (xtIndex != -1) {
-            var hash = url.substring(xtIndex + 12)
+            var hash = decoded.substring(xtIndex + 12)
             val ampersandIndex = hash.indexOf("&")
             if (ampersandIndex != -1) {
                 hash = hash.substring(0, ampersandIndex)
             }
-            return hash.uppercase()
+            hash = hash.trim().uppercase()
+            if (hash.length == 32) {
+                return base32ToHex(hash)
+            }
+            return hash
         }
-        throw IllegalArgumentException("Invalid magnet link")
+        val btmhIndex = decoded.indexOf("xt=urn:btmh:", ignoreCase = true)
+        if (btmhIndex != -1) {
+            var hash = decoded.substring(btmhIndex + 12)
+            val ampersandIndex = hash.indexOf("&")
+            if (ampersandIndex != -1) {
+                hash = hash.substring(0, ampersandIndex)
+            }
+            return hash.trim().uppercase()
+        }
+        val clean = decoded.trim().uppercase()
+        if (clean.length == 40 && clean.all { it in "0123456789ABCDEF" }) {
+            return clean
+        }
+        if (clean.length == 32 && clean.all { it in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" }) {
+            return base32ToHex(clean)
+        }
+        throw IllegalArgumentException("Invalid magnet link: $url")
     }
 
     private fun downloadTorrentFile(url: String): File? {

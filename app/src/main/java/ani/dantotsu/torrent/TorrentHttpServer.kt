@@ -131,9 +131,13 @@ class TorrentHttpServer(
             var torrentInfo = handle.torrentFile()
             if (torrentInfo == null) {
                 var waitMeta = 0
-                while (handle.torrentFile() == null && waitMeta < 300 && isRunning && !socket.isClosed) {
-                    Thread.sleep(100)
+                while (handle.torrentFile() == null && waitMeta < 600 && isRunning && !socket.isClosed) {
+                    Thread.sleep(50)
                     waitMeta++
+                    if (waitMeta % 10 == 0) {
+                        try { handle.resume() } catch (_: Exception) {}
+                        try { handle.forceReannounce() } catch (_: Exception) {}
+                    }
                 }
                 torrentInfo = handle.torrentFile()
             }
@@ -148,9 +152,34 @@ class TorrentHttpServer(
                 return
             }
 
+            // Prioritize active file and ignore all other files in multi-file torrents
+            val numFiles = fileStorage.numFiles()
+            val filePriorities = Priority.array(Priority.IGNORE, numFiles)
+            if (fileIndex in 0 until numFiles) {
+                filePriorities[fileIndex] = Priority.TOP_PRIORITY
+            }
+            try { handle.prioritizeFiles(filePriorities) } catch (_: Exception) {}
+
             val fileSize = fileStorage.fileSize(fileIndex)
             val fileOffset = fileStorage.fileOffset(fileIndex)
             val pieceLen = torrentInfo.pieceLength().toLong()
+
+            val fileFirstPiece = (fileOffset / pieceLen).toInt()
+            val fileLastPiece = ((fileOffset + fileSize - 1) / pieceLen).toInt()
+
+            // Pre-seed Head pieces (0..5) and Tail pieces (lastPiece-3..lastPiece for MKV Cues / MP4 Moov)
+            val tailStart = maxOf(fileFirstPiece, fileLastPiece - 3)
+            val protectedTail = (tailStart..fileLastPiece).filter { it > fileFirstPiece + 5 }.toSet()
+
+            for (i in fileFirstPiece..minOf(fileFirstPiece + 3, fileLastPiece)) {
+                try { handle.piecePriority(i, Priority.TOP_PRIORITY) } catch (_: Exception) {}
+                deadlineRegistry?.registerDeadline(i, clientSessionId, if (i == fileFirstPiece) 0L else 100L)
+            }
+
+            protectedTail.forEach { tailPiece ->
+                try { handle.piecePriority(tailPiece, Priority.TOP_PRIORITY) } catch (_: Exception) {}
+                deadlineRegistry?.registerDeadline(tailPiece, clientSessionId, 0L)
+            }
 
             var rangeStart = 0L
             var rangeEnd = fileSize - 1
@@ -212,29 +241,10 @@ class TorrentHttpServer(
                 return
             }
 
-            // Persistent connection hold: prioritize first piece and wait until ready or client disconnects
-            try { handle.resume() } catch (_: Exception) {}
-            try { handle.forceReannounce() } catch (_: Exception) {}
-            try { handle.piecePriority(firstPiece, Priority.TOP_PRIORITY) } catch (_: Exception) {}
-            deadlineRegistry?.registerDeadline(firstPiece, clientSessionId, 0L)
-
-            var waitMs = 0
-            while (!handle.havePiece(firstPiece) && isRunning && !socket.isClosed) {
-                Thread.sleep(50)
-                waitMs += 50
-                if (waitMs % 2000 == 0) {
-                    try { handle.forceReannounce() } catch (_: Exception) {}
-                }
-            }
-
-            if (!handle.havePiece(firstPiece)) {
-                return
-            }
-
             // Socket tuning & buffered output stream
             try {
                 socket.tcpNoDelay = true
-                socket.sendBufferSize = 512 * 1024
+                socket.sendBufferSize = 1024 * 1024
             } catch (_: Exception) {}
 
             val out = BufferedOutputStream(socket.getOutputStream(), 256 * 1024)
@@ -245,6 +255,11 @@ class TorrentHttpServer(
             }
             out.write(headers.toByteArray())
             out.flush()
+
+            // Prioritize first piece with urgency (deadline 0)
+            try { handle.resume() } catch (_: Exception) {}
+            try { handle.piecePriority(firstPiece, Priority.TOP_PRIORITY) } catch (_: Exception) {}
+            deadlineRegistry?.registerDeadline(firstPiece, clientSessionId, 0L)
 
             val savePath = getSavePath()
             val diskFile = File(fileStorage.filePath(fileIndex, savePath))
@@ -258,7 +273,7 @@ class TorrentHttpServer(
                     if (!isRunning || socket.isClosed || bytesRemaining <= 0) break
 
                     // Stremio-grade 30-piece sliding priority window
-                    val lookaheadEnd = minOf(p + 30, lastPiece)
+                    val lookaheadEnd = minOf(p + 30, fileLastPiece)
                     for (lp in p..lookaheadEnd) {
                         val prio: Priority
                         val deadline: Long
@@ -267,24 +282,24 @@ class TorrentHttpServer(
                             deadline = 0L
                         } else if (lp <= p + 5) {
                             prio = Priority.TOP_PRIORITY
-                            deadline = 250L
+                            deadline = 200L
                         } else if (lp <= p + 15) {
                             prio = Priority.SIX
-                            deadline = 1000L
+                            deadline = 800L
                         } else {
                             prio = Priority.DEFAULT
-                            deadline = 2500L
+                            deadline = 2000L
                         }
                         try { handle.piecePriority(lp, prio) } catch (_: Exception) {}
                         deadlineRegistry?.registerDeadline(lp, clientSessionId, deadline)
                     }
-                    deadlineRegistry?.focusPieceWindow(clientSessionId, p, 30, torrentInfo.numPieces())
+                    deadlineRegistry?.focusPieceWindow(clientSessionId, p, 30, torrentInfo.numPieces(), protectedTail)
 
                     var pieceWaitMs = 0
                     while (!handle.havePiece(p) && isRunning && !socket.isClosed) {
-                        Thread.sleep(50)
-                        pieceWaitMs += 50
-                        if (pieceWaitMs % 3000 == 0) {
+                        Thread.sleep(30)
+                        pieceWaitMs += 30
+                        if (pieceWaitMs % 2000 == 0) {
                             try { handle.forceReannounce() } catch (_: Exception) {}
                         }
                     }

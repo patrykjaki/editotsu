@@ -17,12 +17,29 @@ private val DEFAULT_CACHE_CONTROL = CacheControl.Builder().maxAge(10, MINUTES).b
 private val DEFAULT_HEADERS = Headers.Builder().build()
 private val DEFAULT_BODY: RequestBody = FormBody.Builder().build()
 
+private fun sanitizeUrl(url: String): String {
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return url
+    val schemeEnd = url.indexOf("://")
+    if (schemeEnd == -1) return url
+    val rest = url.substring(schemeEnd + 3)
+    val firstSlash = rest.indexOf('/')
+    if (firstSlash == -1) {
+        val match = Regex("""^([^/]+?\.(?:fun|com|org|net|io|me|to|app|tv|wf|si|ru|is|nl|ca|info|rocks|cc|co|xyz|site|online))(\d+.*)$""", RegexOption.IGNORE_CASE).find(rest)
+        if (match != null) {
+            val domain = match.groupValues[1]
+            val path = match.groupValues[2]
+            return "${url.substring(0, schemeEnd + 3)}$domain/$path"
+        }
+    }
+    return url
+}
+
 fun GET(
     url: String,
     headers: Headers = DEFAULT_HEADERS,
     cache: CacheControl = DEFAULT_CACHE_CONTROL,
 ): Request {
-    return GET(url.toHttpUrl(), headers, cache)
+    return GET(sanitizeUrl(url).toHttpUrl(), headers, cache)
 }
 
 /**
@@ -47,7 +64,7 @@ fun POST(
     cache: CacheControl = DEFAULT_CACHE_CONTROL,
 ): Request {
     return Request.Builder()
-        .url(url)
+        .url(sanitizeUrl(url))
         .post(body)
         .headers(headers)
         .cacheControl(cache)
@@ -61,7 +78,7 @@ fun PUT(
     cache: CacheControl = DEFAULT_CACHE_CONTROL,
 ): Request {
     return Request.Builder()
-        .url(url)
+        .url(sanitizeUrl(url))
         .put(body)
         .headers(headers)
         .cacheControl(cache)
@@ -75,7 +92,7 @@ fun DELETE(
     cache: CacheControl = DEFAULT_CACHE_CONTROL,
 ): Request {
     return Request.Builder()
-        .url(url)
+        .url(sanitizeUrl(url))
         .delete(body)
         .headers(headers)
         .cacheControl(cache)

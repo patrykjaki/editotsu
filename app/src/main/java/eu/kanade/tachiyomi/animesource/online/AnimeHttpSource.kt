@@ -243,6 +243,13 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
             }
     }
 
+    protected open fun buildUrl(base: String, path: String): String {
+        if (path.startsWith("http://") || path.startsWith("https://")) return path
+        if (base.endsWith("/") && path.startsWith("/")) return base + path.substring(1)
+        if (!base.endsWith("/") && !path.startsWith("/")) return "$base/$path"
+        return base + path
+    }
+
     /**
      * Returns the request for the details of an anime. Override only if it's needed to change the
      * url, send different headers or request method like POST.
@@ -250,7 +257,7 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
      * @param anime the anime to be updated.
      */
     open fun animeDetailsRequest(anime: SAnime): Request {
-        return GET(baseUrl + anime.url, headers)
+        return GET(buildUrl(baseUrl, anime.url), headers)
     }
 
     /**
@@ -456,7 +463,7 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
      * @param episode the episode to look for links.
      */
     protected open fun videoListRequest(episode: SEpisode): Request {
-        return GET(baseUrl + episode.url, headers)
+        return GET(buildUrl(baseUrl, episode.url), headers)
     }
 
     /**
