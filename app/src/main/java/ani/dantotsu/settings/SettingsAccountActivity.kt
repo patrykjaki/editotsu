@@ -114,7 +114,7 @@ class SettingsAccountActivity : AppCompatActivity() {
                     settingsMALLogin.visibility = View.VISIBLE
                     settingsMALUsername.visibility = View.VISIBLE
 
-                    if (MAL.token != null) {
+                    if (MAL.isLoggedIn()) {
                         settingsMALLogin.setText(R.string.logout)
                         settingsMALLogin.setOnClickListener {
                             MAL.removeSavedToken()
@@ -123,13 +123,23 @@ class SettingsAccountActivity : AppCompatActivity() {
                         }
                         settingsMALUsername.visibility = View.VISIBLE
                         settingsMALUsername.text = MAL.username
-                        settingsMALAvatar.loadImage(MAL.avatar)
+                        if (!MAL.avatar.isNullOrBlank()) {
+                            settingsMALAvatar.loadImage(MAL.avatar)
+                        } else {
+                            settingsMALAvatar.setImageResource(R.drawable.ic_round_person_24)
+                        }
                         settingsMALAvatar.setOnClickListener {
-                            it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                            openLinkInBrowser(getString(R.string.myanilist_link, MAL.username))
+                            val uname = MAL.username
+                            if (!uname.isNullOrBlank()) {
+                                it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                openLinkInBrowser(getString(R.string.myanilist_link, uname))
+                            }
                         }
                     } else {
                         settingsMALAvatar.setImageResource(R.drawable.ic_round_person_24)
+                        settingsMALAvatar.setOnClickListener {
+                            MAL.loginIntent(context)
+                        }
                         settingsMALUsername.visibility = View.GONE
                         settingsMALLogin.setText(R.string.login)
                         settingsMALLogin.setOnClickListener {

@@ -24,7 +24,11 @@ import kotlin.system.exitProcess
 
 object Logger {
     var file: File? = null
-    private val loggerExecutor = Executors.newSingleThreadExecutor()
+    private val loggerExecutor by lazy {
+        Executors.newSingleThreadExecutor { r ->
+            Thread(r, "LoggerExecutor").apply { isDaemon = true }
+        }
+    }
 
     fun init(context: Context) {
         try {
@@ -47,17 +51,20 @@ object Logger {
         }
     }
 
+    internal var testLogSink: ((String) -> Unit)? = null
+
     fun log(message: String) {
-        val trace = Thread.currentThread().stackTrace[3]
+        testLogSink?.invoke(message)
+        val targetFile = file ?: run {
+            try { Log.d("Internal Logger", message) } catch (e: Throwable) {}
+            return
+        }
+        val trace = Thread.currentThread().stackTrace.getOrNull(3)
         loggerExecutor.execute {
-            if (file == null) Log.d("Internal Logger", message)
-            else {
-                val className = trace.className
-                val methodName = trace.methodName
-                val lineNumber = trace.lineNumber
-                file?.appendText("date/time: ${Date()} | $className.$methodName($lineNumber)\n")
-                file?.appendText("message: $message\n-\n")
-            }
+            val className = trace?.className ?: "Unknown"
+            val methodName = trace?.methodName ?: "Unknown"
+            val lineNumber = trace?.lineNumber ?: 0
+            targetFile.appendText("${Date()} [$className.$methodName:$lineNumber]: $message\n")
         }
     }
 

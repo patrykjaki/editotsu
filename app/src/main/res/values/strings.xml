@@ -562,6 +562,9 @@
     <string name="mal_login_uri_not_found">Mal Login : Uri not Found</string>
     <string name="mal_login_code_challenge_not_found">Mal Login : codeChallenge not found</string>
     <string name="mal_login_code_not_present">Mal Login : Code not present in redirected URI</string>
+    <string name="mal_login_cancelled">MAL Login cancelled</string>
+    <string name="mal_login_failed">MAL Login failed</string>
+    <string name="mal_login_session_invalid">Invalid or expired MAL login session</string>
     <string name="refresh_token_load_failed">Refresh Token : Failed to load saved token</string>
     <string name="refreshing_token_failed">Refreshing Token Failed</string>
     <string name="episode_release_countdown">Episode %1$d will be released in</string>

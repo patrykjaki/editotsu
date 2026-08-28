@@ -264,6 +264,8 @@ enum class PrefName(val data: Pref) {
     MALUserName(Pref(Location.Protected, String::class, "")),
     MALAvatar(Pref(Location.Protected, String::class, "")),
     MALCodeChallenge(Pref(Location.Protected, String::class, "")),
+    MALAuthSession(Pref(Location.Protected, String::class, "")),
+    MALEncryptedToken(Pref(Location.Protected, String::class, "")),
     MALToken(Pref(Location.Protected, MAL.ResponseToken::class, "")),
     AppPassword(Pref(Location.Protected, String::class, "")),
     BiometricToken(Pref(Location.Protected, String::class, "")),

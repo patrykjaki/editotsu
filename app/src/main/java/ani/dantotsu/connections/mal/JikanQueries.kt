@@ -11,12 +11,17 @@ class JikanQueries {
     private val apiUrl = "https://api.jikan.moe/v4"
 
     companion object {
+        internal var testHttpHandler: (suspend (url: String) -> com.lagradost.nicehttp.NiceResponse)? = null
         private val rateMutex = Mutex()
         private var lastRequestTime = 0L
         private const val MIN_INTERVAL_MS = 350L
     }
 
     private suspend fun rateLimitedGet(url: String): com.lagradost.nicehttp.NiceResponse {
+        val handler = testHttpHandler
+        if (handler != null) {
+            return handler(url)
+        }
         var lastResponse: com.lagradost.nicehttp.NiceResponse? = null
         var lastException: Exception? = null
         var delayMs = 1000L
