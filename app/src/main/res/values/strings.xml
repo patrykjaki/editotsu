@@ -1000,6 +1000,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
 
     <string name="notifications_desc">Customise your news and updates</string>
     <string name="about_desc">Learn more about Editotsu</string>
+    <string name="workstream_build">Build</string>
     <string name="faq_desc">General questions about Editotsu</string>
     <string name="check_app_updates_desc">Check Github for app updates</string>
     <string name="share_username_in_crash_reports_desc">Share username in crash reports</string>

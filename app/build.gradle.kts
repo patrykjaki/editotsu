@@ -21,6 +21,17 @@ val gitCommitHash = if (rootProject.file(".git").exists()) {
     "nogit"
 }
 
+val workstreamId = providers.gradleProperty("editotsu.workstreamId")
+    .orNull
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: "local-debug"
+val workstreamIdPattern = Regex("^[A-Za-z0-9][A-Za-z0-9._-]*-[A-Za-z0-9][A-Za-z0-9._-]*@[0-9a-fA-F]{8}\\+[0-9a-fA-F]{8}$")
+require(workstreamId == "local-debug" || workstreamIdPattern.matches(workstreamId)) {
+    "editotsu.workstreamId must match <workstream>-<revision>@<base8>+<diff8>"
+}
+val shortWorkstreamId = workstreamId.substringBefore("@")
+
 android {
     namespace = "ani.dantotsu"
     compileSdk = 37
@@ -32,6 +43,9 @@ android {
 
         versionName = "0.2.1"
         versionCode = 1000002
+
+        buildConfigField("String", "EDITOTSU_BUILD_ID", "\"\"")
+        resValue("string", "app_build_label", "Editotsu")
 
         signingConfig = signingConfigs.getByName("debug")
     }
@@ -63,6 +77,8 @@ android {
         create("alpha") {
             applicationIdSuffix = ".beta"
             versionNameSuffix = "-alpha01-$gitCommitHash"
+            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$workstreamId\"")
+            resValue("string", "app_build_label", "Editotsu [$shortWorkstreamId]")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_alpha"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_alpha_round"
             isDebuggable = true
@@ -75,6 +91,8 @@ android {
         getByName("debug") {
             applicationIdSuffix = ".beta"
             versionNameSuffix = "-beta01"
+            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$workstreamId\"")
+            resValue("string", "app_build_label", "Editotsu [$shortWorkstreamId]")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_beta"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_beta_round"
             isDebuggable = false
@@ -96,6 +114,7 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+        resValues = true
         aidl = true
     }
 

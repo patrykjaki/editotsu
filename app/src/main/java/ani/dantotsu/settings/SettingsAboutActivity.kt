@@ -49,6 +49,13 @@ class SettingsAboutActivity : AppCompatActivity() {
                 arrayListOf(
                     Settings(
                         type = 1,
+                        name = getString(R.string.workstream_build),
+                        desc = BuildConfig.EDITOTSU_BUILD_ID,
+                        icon = R.drawable.ic_round_info_24,
+                        isVisible = BuildConfig.EDITOTSU_BUILD_ID.isNotBlank()
+                    ),
+                    Settings(
+                        type = 1,
                         name = getString(R.string.faq),
                         desc = getString(R.string.faq_desc),
                         icon = R.drawable.ic_round_help_24,
