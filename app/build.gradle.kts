@@ -1,3 +1,6 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android)
     alias(libs.plugins.serialization)
@@ -21,6 +24,22 @@ val gitCommitHash = if (rootProject.file(".git").exists()) {
     "nogit"
 }
 
+val malClientId: String = (project.findProperty("malClientId") as? String)
+    ?.takeIf { it.isNotBlank() }
+    ?: System.getenv("MAL_CLIENT_ID")?.takeIf { it.isNotBlank() }
+    ?: run {
+        val userHome = System.getProperty("user.home")
+        val credFile = File(userHome, ".editotsu/credentials/mal.properties")
+        if (credFile.exists()) {
+            val props = Properties()
+            credFile.inputStream().use { stream -> props.load(stream) }
+            props.getProperty("mal.clientId")?.takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
+    }
+    ?: ""
+
 android {
     namespace = "ani.dantotsu"
     compileSdk = 37
@@ -32,6 +51,8 @@ android {
 
         versionName = "0.2.1"
         versionCode = 1000002
+
+        buildConfigField("String", "MAL_CLIENT_ID", "\"${malClientId.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
 
         signingConfig = signingConfigs.getByName("debug")
     }

@@ -122,6 +122,7 @@ class MALOAuthTest {
         MALOAuth.SessionStore.storage = inMemorySessionStorage
         MALOAuth.SessionStore.clear()
         MAL.resetForTests()
+        MAL.testClientId = "test_mal_client_id"
         MAL.tokenStore = fakeTokenStore
         MAL.networkClient = fakeNetworkClient
     }
@@ -139,6 +140,7 @@ class MALOAuthTest {
         MALKeystore.resetForTests()
         MALOAuth.SessionStore.resetForTests()
         MAL.resetForTests()
+        MAL.testClientId = null
         fakeTokenStore.storedToken = null
         fakeTokenStore.username = null
         fakeTokenStore.avatar = null
@@ -166,12 +168,16 @@ class MALOAuthTest {
     }
 
     @Test
-    fun `production MAL clientId invariant is pinned to Editotsu client ID`() {
-        // Must match the Editotsu MAL Client ID exactly
-        assertEquals("b70e05dccba4c13e5174a7858426ee47", MAL.clientId)
+    fun `MAL clientId is wired to BuildConfig and OAuth URL uses supplied client ID`() {
+        MAL.testClientId = null
+        // MAL.clientId delegates to configured BuildConfig.MAL_CLIENT_ID
+        assertEquals(ani.dantotsu.BuildConfig.MAL_CLIENT_ID, MAL.clientId)
+        MAL.testClientId = "test_mal_client_id"
 
-        // Production authorize URL must contain the exact client ID
+        // Authorize URL uses supplied client ID
+        val syntheticClientId = "test_mal_client_id_987"
         val authUrl = MALOAuth.buildAuthorizeUrl(
+            clientId = syntheticClientId,
             codeChallenge = "challenge123",
             state = "state123"
         )
@@ -180,11 +186,47 @@ class MALOAuthTest {
             val parts = it.split("=")
             parts[0] to URLDecoder.decode(parts[1], "UTF-8")
         }
-        assertEquals("b70e05dccba4c13e5174a7858426ee47", queryParams["client_id"])
+        assertEquals(syntheticClientId, queryParams["client_id"])
         assertEquals("plain", queryParams["code_challenge_method"])
         assertEquals("code", queryParams["response_type"])
         assertEquals("challenge123", queryParams["code_challenge"])
         assertEquals("state123", queryParams["state"])
+    }
+
+    @Test
+    fun `token exchange and refresh post bodies supply client ID`() = runBlocking {
+        var capturedExchangeData: Map<String, String>? = null
+        var capturedRefreshData: Map<String, String>? = null
+
+        fakeNetworkClient.responseProvider = { _, data ->
+            if (data["grant_type"] == "authorization_code") {
+                capturedExchangeData = data
+                MAL.MALNetworkResponse(
+                    code = 200,
+                    bodyString = """{"token_type":"Bearer","expires_in":2592000,"access_token":"new_acc","refresh_token":"new_ref"}"""
+                )
+            } else if (data["grant_type"] == "refresh_token") {
+                capturedRefreshData = data
+                MAL.MALNetworkResponse(
+                    code = 200,
+                    bodyString = """{"token_type":"Bearer","expires_in":2592000,"access_token":"refreshed_acc","refresh_token":"refreshed_ref"}"""
+                )
+            } else {
+                MAL.MALNetworkResponse(code = 500, bodyString = "{}")
+            }
+        }
+
+        MAL.exchangeAuthorizationCode("test_code", "test_verifier")
+        assertNotNull(capturedExchangeData)
+        assertEquals(MAL.clientId, capturedExchangeData?.get("client_id"))
+        assertEquals("test_code", capturedExchangeData?.get("code"))
+        assertEquals("test_verifier", capturedExchangeData?.get("code_verifier"))
+
+        fakeTokenStore.storedToken = MAL.ResponseToken("Bearer", 1000L, "exp_acc", "valid_refresh_token")
+        MAL.refreshToken(force = true)
+        assertNotNull(capturedRefreshData)
+        assertEquals(MAL.clientId, capturedRefreshData?.get("client_id"))
+        assertEquals("valid_refresh_token", capturedRefreshData?.get("refresh_token"))
     }
 
     @Test
@@ -1546,5 +1588,26 @@ class MALOAuthTest {
         assertNull("token must be null after logout", MAL.token)
         assertNull("avatar must be null after logout", MAL.avatar)
         assertFalse("isLoggedIn must return false", MAL.isLoggedIn())
+    }
+
+    @Test
+    fun `missing client ID behavior is deterministic and safe across all OAuth paths`() = runBlocking {
+        MAL.testClientId = ""
+
+        // Query header behavior: emptyMap when clientId is blank
+        val queries = MALQueries()
+        MALQueries.testHttpHandler = { _, headers, _, _ ->
+            assertFalse("Unconfigured build must not include X-MAL-CLIENT-ID header", headers.containsKey("X-MAL-CLIENT-ID"))
+            createNiceResponse(200, """{"data":[]}""")
+        }
+        val res = queries.getSeasonalAnime(2026, "summer")
+        assertNotNull(res)
+
+        // Token exchange and refresh with missing credentials fail safely without crashing
+        val exchangeSuccess = MAL.exchangeAuthorizationCode("some_code", "some_verifier")
+        assertFalse(exchangeSuccess)
+
+        val refreshResult = MAL.refreshToken(force = true)
+        assertNull(refreshResult)
     }
 }

@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
+import ani.dantotsu.BuildConfig
 import ani.dantotsu.Mapper
 import ani.dantotsu.R
 import ani.dantotsu.client
@@ -21,7 +22,9 @@ import kotlinx.serialization.Serializable
 object MAL {
     val query: MALQueries = MALQueries()
     val jikan: JikanQueries = JikanQueries()
-    const val clientId = "b70e05dccba4c13e5174a7858426ee47"
+    internal var testClientId: String? = null
+    val clientId: String
+        get() = testClientId ?: BuildConfig.MAL_CLIENT_ID
     var username: String? = null
     var avatar: String? = null
     var token: String? = null
@@ -41,6 +44,7 @@ object MAL {
     internal var onPreAuthLockHook: (() -> Unit)? = null
 
     internal fun resetForTests() {
+        testClientId = null
         tokenStore = DefaultMALTokenStore()
         networkClient = DefaultMALNetworkClient()
         onRefreshWaitingForLock = null
@@ -53,6 +57,11 @@ object MAL {
     }
 
     fun loginIntent(context: Context) {
+        if (clientId.isBlank()) {
+            Logger.log("MAL: Client ID is missing/unconfigured, aborting login")
+            snackString(context.getString(R.string.mal_login_failed))
+            return
+        }
         val session = MALOAuth.SessionStore.createSession()
         if (session == null) {
             Logger.log("MAL: Failed to securely persist OAuth session, aborting login")
@@ -99,6 +108,10 @@ object MAL {
     }
 
     suspend fun exchangeAuthorizationCode(code: String, codeVerifier: String): Boolean {
+        if (clientId.isBlank()) {
+            Logger.log("MAL: Token exchange aborted because Client ID is missing/unconfigured")
+            return false
+        }
         val generationAtStart = currentAuthGeneration
         return try {
             val response = networkClient.post(
@@ -133,6 +146,10 @@ object MAL {
         force: Boolean = false,
         failedAccessToken: String? = null,
     ): ResponseToken? {
+        if (clientId.isBlank()) {
+            Logger.log("MAL: Token refresh aborted because Client ID is missing/unconfigured")
+            return null
+        }
         onRefreshWaitingForLock?.invoke()
         return refreshMutex.withLock {
             onRefreshLockAcquired?.invoke()

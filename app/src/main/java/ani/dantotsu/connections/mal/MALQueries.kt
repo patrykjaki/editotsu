@@ -46,7 +46,7 @@ class MALQueries {
             return mapOf("Authorization" to "Bearer ${MAL.token ?: return null}")
         }
     private val clientIdHeader: Map<String, String>
-        get() = mapOf("X-MAL-CLIENT-ID" to MAL.clientId)
+        get() = if (MAL.clientId.isNotBlank()) mapOf("X-MAL-CLIENT-ID" to MAL.clientId) else emptyMap()
 
     private fun preferredHeader(): Map<String, String> = authHeader ?: clientIdHeader
 

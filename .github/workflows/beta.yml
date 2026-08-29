@@ -101,6 +101,16 @@ jobs:
       if: ${{ env.SKIP_BUILD != 'true' }}
       run: chmod +x ./gradlew
 
+    - name: Validate MAL Configuration for Release
+      if: ${{ startsWith(github.ref, 'refs/tags/') && env.SKIP_BUILD != 'true' }}
+      run: |
+        if [ -z "$MAL_CLIENT_ID" ]; then
+          echo "ERROR: Required MAL_CLIENT_ID secret is missing or empty for tagged release build." >&2
+          exit 1
+        fi
+      env:
+        MAL_CLIENT_ID: ${{ secrets.MAL_CLIENT_ID }}
+
     - name: Build with Gradle
       if: ${{ env.SKIP_BUILD != 'true' }}
       run: |
@@ -113,6 +123,8 @@ jobs:
         else
           ./gradlew assembleGoogleAlpha;
         fi
+      env:
+        MAL_CLIENT_ID: ${{ startsWith(github.ref, 'refs/tags/') && secrets.MAL_CLIENT_ID || '' }}
 
     - name: Generate APK checksum
       if: ${{ env.SKIP_BUILD != 'true' }}
