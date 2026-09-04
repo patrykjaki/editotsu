@@ -215,13 +215,7 @@ enum class PrefName(val data: Pref) {
     PendingProgressUpdates(Pref(Location.Irrelevant, List::class, listOf<PendingProgressUpdate>())),
     PendingDeletions(Pref(Location.Irrelevant, List::class, listOf<PendingDeletion>())),
     OfflineMode(Pref(Location.Irrelevant, Boolean::class, false)),
-    DiscordStatus(Pref(Location.Irrelevant, String::class, "online")),
-    DiscordRPCModeAnime(Pref(Location.Irrelevant, String::class, "dantotsu")),
-    DiscordRPCModeManga(Pref(Location.Irrelevant, String::class, "dantotsu")),
-    DiscordRPCShowIconAnime(Pref(Location.Irrelevant, Boolean::class, true)),
-    DiscordRPCShowIconManga(Pref(Location.Irrelevant, Boolean::class, true)),
     DiscordRPCDisableAdultMedia(Pref(Location.Irrelevant, Boolean::class, false)),
-    DiscordShowButtons(Pref(Location.Irrelevant, Boolean::class, true)),
     DownloadsKeys(Pref(Location.Irrelevant, String::class, "")),
     NovelLastExtCheck(Pref(Location.Irrelevant, Long::class, 0L)),
     ImageUrl(Pref(Location.Irrelevant, String::class, "")),
@@ -251,13 +245,11 @@ enum class PrefName(val data: Pref) {
     LocalDir(Pref(Location.Irrelevant, String::class, "")),
     OC(Pref(Location.Irrelevant, Boolean::class, false)),
     RefreshStatus(Pref(Location.Irrelevant, Boolean::class, false)),
-    rpcEnabled(Pref(Location.Irrelevant, Boolean::class, true)),
+    // Phase 2 user-facing Rich Presence master switch (tokenless). Default OFF so presence is strictly
+    // opt-in. This is the sole persisted enable gate for Discord presence publishing.
+    DiscordRichPresenceEnabled(Pref(Location.Irrelevant, Boolean::class, false)),
 
     //Protected
-    DiscordToken(Pref(Location.Protected, String::class, "")),
-    DiscordId(Pref(Location.Protected, String::class, "")),
-    DiscordUserName(Pref(Location.Protected, String::class, "")),
-    DiscordAvatar(Pref(Location.Protected, String::class, "")),
     AnilistToken(Pref(Location.Protected, String::class, "")),
     AnilistUserName(Pref(Location.Protected, String::class, "")),
     AnilistUserId(Pref(Location.Protected, String::class, "")),

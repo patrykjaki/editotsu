@@ -1,21 +1,21 @@
 package ani.dantotsu.media.anime.player
 
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import ani.dantotsu.R
-import ani.dantotsu.connections.discord.Discord
-import ani.dantotsu.connections.discord.RPC
-import ani.dantotsu.connections.discord.RPCManager
+import ani.dantotsu.connections.discord.rpc.DiscordPresenceOwnership
+import ani.dantotsu.connections.discord.rpc.DiscordRpcPublisher
+import ani.dantotsu.connections.discord.rpc.DiscordRpcUtils
 import ani.dantotsu.isOnline
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.anime.Episode
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
-import kotlinx.coroutines.launch
 
 class PlayerDiscordManager(
     private val activity: AppCompatActivity
 ) {
+    // Unique per-instance owner token: protects against a stale player manager (recreation / backgrounding)
+    // clearing a newer anime presence (review Blocker 2 — same-kind ownership).
+    private val token: DiscordPresenceOwnership.OwnerToken = DiscordRpcPublisher.createAnimeToken()
 
     fun updatePresence(
         media: Media?,
@@ -24,55 +24,34 @@ class PlayerDiscordManager(
         durationMs: Long,
         isPlaying: Boolean
     ) {
-        if (media == null || episode == null) return
-        val context = activity
-        val offline = PrefManager.getVal<Boolean>(PrefName.OfflineMode)
-        val incognito = PrefManager.getVal<Boolean>(PrefName.Incognito)
-        val rpcEnabled = PrefManager.getVal<Boolean>(PrefName.rpcEnabled)
-
-        if (RPCManager.shouldSuppressForAdultMedia(media.isAdult)) {
-            RPCManager.clearPresence(context)
-            return
-        }
-
-        if (isOnline(context) && !offline && Discord.token != null && !incognito && rpcEnabled) {
-            activity.lifecycleScope.launch {
-                val buttons = mutableListOf<RPC.Link>()
-                buttons.add(RPC.Link("View Anime", "https://anilist.co/anime/${media.id}/"))
-                media.idMAL?.let {
-                    buttons.add(RPC.Link("View on MyAnimeList", "https://myanimelist.net/anime/$it"))
-                }
-
-                val now = System.currentTimeMillis()
-                val currentPosMs = if (positionMs > 0) positionMs else 0L
-                val safeDurationMs = if (durationMs > 0) durationMs else 1440000L // default 24 mins
-
-                val isPaused = !isPlaying
-                val startTimestamp = if (isPaused) null else now - currentPosMs
-                val endTimestamp = if (isPaused) null else (now - currentPosMs) + safeDurationMs
-
-                val stateText = "Episode : ${episode.number}/${media.anime?.totalEpisodes ?: "??"}"
-                val finalState = if (isPaused) "Paused - $stateText" else stateText
-
-                val rpcData = RPC.Companion.RPCData(
-                    applicationId = Discord.application_Id,
-                    type = RPC.Type.WATCHING,
-                    activityName = media.userPreferredName,
-                    details = episode.title?.takeIf { it.isNotEmpty() }
-                        ?: context.getString(R.string.episode_num, episode.number),
-                    startTimestamp = startTimestamp,
-                    stopTimestamp = endTimestamp,
-                    state = finalState,
-                    largeImage = media.cover?.let { RPC.Link(media.userPreferredName, it) },
-                    smallImage = RPC.Link("Editotsu", Discord.small_Image),
-                    buttons = buttons,
-                )
-                RPCManager.setPresence(context, rpcData)
+        activity.runOnUiThread {
+            if (media == null || episode == null) {
+                DiscordRpcPublisher.clearAnime(token)
+                return@runOnUiThread
             }
+            val context = activity
+            val offline = PrefManager.getVal<Boolean>(PrefName.OfflineMode)
+            val incognito = PrefManager.getVal<Boolean>(PrefName.Incognito)
+            val richPresenceEnabled = PrefManager.getVal<Boolean>(PrefName.DiscordRichPresenceEnabled)
+
+            // Adult-media suppression: clear and do not publish.
+            if (DiscordRpcUtils.shouldSuppressForAdultMedia(media.isAdult)) {
+                DiscordRpcPublisher.clearAnime(token)
+                return@runOnUiThread
+            }
+            // Discord Rich Presence disabled / offline / incognito: clear any existing presence, do not publish.
+            if (!(isOnline(context) && !offline && !incognito && richPresenceEnabled)) {
+                DiscordRpcPublisher.clearAnime(token)
+                return@runOnUiThread
+            }
+            // Tokenless transport: the legacy Discord.token requirement is intentionally dropped.
+            DiscordRpcPublisher.publishAnime(token, context, media, episode, positionMs, durationMs, isPlaying)
         }
     }
 
     fun clear() {
-        RPCManager.clearPresence(activity)
+        activity.runOnUiThread {
+            DiscordRpcPublisher.clearAnime(token)
+        }
     }
 }

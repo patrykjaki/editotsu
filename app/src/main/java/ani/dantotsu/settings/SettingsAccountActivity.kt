@@ -14,7 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
-import ani.dantotsu.connections.discord.Discord
+import ani.dantotsu.connections.discord.rpc.DiscordRpcPublisher
 import ani.dantotsu.connections.mal.MAL
 import ani.dantotsu.databinding.ActivitySettingsAccountsBinding
 import ani.dantotsu.initActivity
@@ -151,103 +151,26 @@ class SettingsAccountActivity : AppCompatActivity() {
                     settingsMALLogin.visibility = View.GONE
                     settingsMALUsername.visibility = View.GONE
                 }
-
-                if (Discord.token != null) {
-                    val id = PrefManager.getVal(PrefName.DiscordId, null as String?)
-                    val avatar = PrefManager.getVal(PrefName.DiscordAvatar, null as String?)
-                    val username = PrefManager.getVal(PrefName.DiscordUserName, null as String?)
-                    if (id != null && avatar != null) {
-                        settingsDiscordAvatar.loadImage("https://cdn.discordapp.com/avatars/$id/$avatar.png")
-                        settingsDiscordAvatar.setOnClickListener {
-                            it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                            val discordLink = getString(R.string.discord_link, id)
-                            openLinkInBrowser(discordLink)
-                        }
-                    }
-                    settingsDiscordUsername.visibility = View.VISIBLE
-                    settingsDiscordUsername.text =
-                        username ?: Discord.token?.replace(Regex("."), "*")
-                    settingsDiscordLogin.setText(R.string.logout)
-                    settingsDiscordLogin.setOnClickListener {
-                        Discord.removeSavedToken(context)
-                        restartMainActivity.isEnabled = true
-                        reload()
-                    }
-
-                    settingsPresenceSwitcher.visibility = View.VISIBLE
-                    var initialStatus = when (PrefManager.getVal<String>(PrefName.DiscordStatus)) {
-                        "online" -> R.drawable.discord_status_online
-                        "idle" -> R.drawable.discord_status_idle
-                        "dnd" -> R.drawable.discord_status_dnd
-                        "invisible" -> R.drawable.discord_status_invisible
-                        else -> R.drawable.discord_status_online
-                    }
-                    settingsPresenceSwitcher.setImageResource(initialStatus)
-
-                    val zoomInAnimation =
-                        AnimationUtils.loadAnimation(context, R.anim.bounce_zoom)
-                    settingsPresenceSwitcher.setOnClickListener {
-                        var status = "online"
-                        initialStatus = when (initialStatus) {
-                            R.drawable.discord_status_online -> {
-                                status = "idle"
-                                R.drawable.discord_status_idle
-                            }
-
-                            R.drawable.discord_status_idle -> {
-                                status = "dnd"
-                                R.drawable.discord_status_dnd
-                            }
-
-                            R.drawable.discord_status_dnd -> {
-                                status = "invisible"
-                                R.drawable.discord_status_invisible
-                            }
-
-                            R.drawable.discord_status_invisible -> {
-                                status = "online"
-                                R.drawable.discord_status_online
-                            }
-
-                            else -> R.drawable.discord_status_online
-                        }
-
-                        PrefManager.setVal(PrefName.DiscordStatus, status)
-                        settingsPresenceSwitcher.setImageResource(initialStatus)
-                        settingsPresenceSwitcher.startAnimation(zoomInAnimation)
-                    }
-                    settingsPresenceSwitcher.setOnLongClickListener {
-                        it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                        DiscordDialogFragment().show(supportFragmentManager, "dialog")
-                        true
-                    }
-                } else {
-                    settingsPresenceSwitcher.visibility = View.GONE
-                    settingsDiscordAvatar.setImageResource(R.drawable.ic_round_person_24)
-                    settingsDiscordUsername.visibility = View.GONE
-                    settingsDiscordLogin.setText(R.string.login)
-                    settingsDiscordLogin.setOnClickListener {
-                        Discord.warning(context)
-                            .show(supportFragmentManager, "dialog")
-                    }
-                }
             }
             reload()
         }
         val highlightKey = intent.getStringExtra(ani.dantotsu.settings.search.SettingsSearchAdapter.EXTRA_HIGHLIGHT_KEY)
-        binding.settingsRecyclerView.adapter = SettingsAdapter(
-            arrayListOf(
-                Settings(
-                    type = 2,
-                    name = getString(R.string.enable_rpc),
-                    desc = getString(R.string.enable_rpc_desc),
-                    icon = R.drawable.interests_24,
-                    isChecked = PrefManager.getVal(PrefName.rpcEnabled),
-                    switch = { isChecked, _ ->
-                        PrefManager.setVal(PrefName.rpcEnabled, isChecked)
-                    },
-                    isVisible = Discord.token != null
-                ),
+            binding.settingsRecyclerView.adapter = SettingsAdapter(
+                arrayListOf(
+                    Settings(
+                        type = 2,
+                        name = getString(R.string.discord_rich_presence),
+                        desc = getString(R.string.discord_rich_presence_desc),
+                        icon = R.drawable.interests_24,
+                        isChecked = PrefManager.getVal(PrefName.DiscordRichPresenceEnabled),
+                        switch = { isChecked, _ ->
+                            PrefManager.setVal(PrefName.DiscordRichPresenceEnabled, isChecked)
+                            // OFF -> clear presence + shutdown/unbind immediately (no restart needed).
+                            if (!isChecked) DiscordRpcPublisher.teardown()
+                        },
+                        // Visible without a Discord account login; tokenless transport needs no token.
+                        isVisible = true
+                    ),
                 Settings(
                     type = 1,
                     name = getString(R.string.anilist_settings),

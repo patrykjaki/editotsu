@@ -12,9 +12,6 @@ import ani.dantotsu.aniyomi.anime.custom.AppModule
 import ani.dantotsu.aniyomi.anime.custom.PreferenceModule
 import ani.dantotsu.connections.comments.CommentsAPI
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
-import ani.dantotsu.connections.discord.Discord
-import ani.dantotsu.connections.discord.RPC
-import ani.dantotsu.connections.discord.RPCManager
 import ani.dantotsu.notifications.TaskScheduler
 import ani.dantotsu.others.DisabledReports
 import ani.dantotsu.parsers.AnimeSources
@@ -62,6 +59,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         PrefManager.init(this)
+        ani.dantotsu.connections.discord.DiscordLegacyCleanup.cleanOnce(this)
 
         val crashlytics =
             ani.dantotsu.connections.crashlytics.CrashlyticsFactory.createCrashlytics()
@@ -84,11 +82,7 @@ class App : Application() {
         crashlytics.setCrashlyticsCollectionEnabled(!DisabledReports)
         (PrefManager.getVal(PrefName.SharedUserID) as Boolean).let {
             if (!it) return@let
-            val dUsername = PrefManager.getVal(PrefName.DiscordUserName, null as String?)
             val aUsername = PrefManager.getVal(PrefName.AnilistUserName, null as String?)
-            if (dUsername != null) {
-                crashlytics.setCustomKey("dUsername", dUsername)
-            }
             if (aUsername != null) {
                 crashlytics.setCustomKey("aUsername", aUsername)
             }
@@ -166,74 +160,6 @@ class App : Application() {
         }
     }
 
-    fun updateDiscordPresence(activity: Activity) {
-        val rpcEnabled = PrefManager.getVal(PrefName.rpcEnabled, true)
-        if (!rpcEnabled || Discord.token == null) {
-            return
-        }
-
-        val incognito = PrefManager.getVal(PrefName.Incognito, false)
-        if (incognito) {
-            return
-        }
-
-        val activityName = activity.javaClass.simpleName
-        if (activityName == "ExoplayerView" || activityName == "MangaReaderActivity" || activityName == "NovelReaderActivity") {
-            // These activities manage their own Discord presence
-            return
-        }
-
-        var details = "Browsing"
-        var state = "In Menus"
-        var largeImage: RPC.Link? = RPC.Link("Editotsu", Discord.small_Image)
-
-        when {
-            activityName == "MainActivity" -> {
-                details = "Browsing Home"
-            }
-            activityName == "MediaDetailsActivity" -> {
-                details = "Browsing Info"
-                runCatching {
-                    val mediaDetailsActivity = activity as? ani.dantotsu.media.MediaDetailsActivity
-                    val media = mediaDetailsActivity?.media
-                    if (media != null) {
-                        details = if (media.anime != null) "Browsing Anime Info" else "Browsing Manga Info"
-                        state = media.userPreferredName
-                        media.cover?.let {
-                            if (it.isNotEmpty()) {
-                                largeImage = RPC.Link(media.userPreferredName, it)
-                            }
-                        }
-                    }
-                }
-            }
-            activityName == "SearchActivity" -> {
-                details = "Searching Media"
-            }
-            activityName == "ProfileActivity" -> {
-                details = "Viewing Profile"
-            }
-            activityName.contains("Settings", ignoreCase = true) -> {
-                details = "Adjusting Settings"
-            }
-            else -> {
-                details = "Browsing"
-            }
-        }
-
-        // Otherwise, we are browsing!
-        val rpcData = RPC.Companion.RPCData(
-            applicationId = Discord.application_Id,
-            type = RPC.Type.PLAYING,
-            activityName = "Editotsu",
-            details = details,
-            state = state,
-            largeImage = largeImage,
-            buttons = mutableListOf()
-        )
-        RPCManager.setPresence(activity, rpcData)
-    }
-
     inner class FTActivityLifecycleCallbacks : ActivityLifecycleCallbacks {
         var currentActivity: Activity? = null
         var lastActivity: String? = null
@@ -246,21 +172,16 @@ class App : Application() {
         override fun onActivityStarted(p0: Activity) {
             currentActivity = p0
             startedActivityCount++
-            updateDiscordPresence(p0)
         }
 
         override fun onActivityResumed(p0: Activity) {
             currentActivity = p0
-            updateDiscordPresence(p0)
         }
 
         override fun onActivityPaused(p0: Activity) {}
 
         override fun onActivityStopped(p0: Activity) {
             startedActivityCount--
-            if (startedActivityCount == 0) {
-                RPCManager.clearPresence(p0)
-            }
         }
 
         override fun onActivitySaveInstanceState(p0: Activity, p1: Bundle) {}

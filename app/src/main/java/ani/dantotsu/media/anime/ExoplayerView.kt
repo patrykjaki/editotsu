@@ -39,8 +39,7 @@ import ani.dantotsu.NoPaddingArrayAdapter
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
-import ani.dantotsu.connections.discord.Discord
-import ani.dantotsu.connections.discord.RPCManager
+import ani.dantotsu.connections.discord.rpc.DiscordPresenceThrottle
 import ani.dantotsu.connections.subtitles.OpenSubRestItem
 import ani.dantotsu.connections.subtitles.OpenSubtitlesRestApi
 import ani.dantotsu.connections.subtitles.StremioSub
@@ -176,6 +175,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private var playbackPosition: Long = 0
     private var isFullscreen: Int = 0
     private var isPlayerPlaying = true
+    // Discontinuity-based throttle: publishes only on seeks, scrub stops, and play/pause —
+    // NOT during ordinary linear playback. Replaces the previous 2-second periodic approach
+    // that could exhaust Discord's ~5 updates / 20 seconds rate limit.
+    private val discordThrottle = DiscordPresenceThrottle()
     private var changingServer = false
     private var interacted = false
     private var pipEnabled = false
@@ -301,6 +304,16 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             override fun onScrubStop(timeBar: TimeBar, position: Long, canceled: Boolean) {
                 if (!canceled) {
                     playerManager.playbackEngine?.seekTo(position)
+                    // Use the scrub target directly — seekTo is async on mpv, so
+                    // playbackEngine.positionMs may still return the pre-seek value.
+                    if (this@ExoplayerView::episode.isInitialized && discordThrottle.onScrubStop(position)) {
+                        discordManager.updatePresence(
+                            media, this@ExoplayerView.episode,
+                            position,
+                            playerManager.playbackEngine?.durationMs ?: 0L,
+                            isPlayerPlaying
+                        )
+                    }
                 }
             }
         })
@@ -708,6 +721,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     val speed = speeds.getOrNull(i) ?: 1f
                     curSpeed = i
                     playerManager.playbackEngine?.setPlaybackSpeed(speed)
+                    discordThrottle.onPlaybackSpeedChanged()
                     hideSystemBars()
                 }
                 setOnCancelListener { hideSystemBars() }
@@ -784,6 +798,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private fun changeEpisode(index: Int) {
         if (this::playerManager.isInitialized && playerManager.isInitialized && this::episodeArr.isInitialized && index in episodeArr.indices) {
             changingServer = false
+            // Reset Discord throttle baseline so the new episode's first position
+            // callback is not misdetected as a seek/discontinuity.
+            discordThrottle.onOwnershipChange()
             val prevEpKey = episodeArr.getOrNull(currentEpisodeIndex)
             if (prevEpKey != null) {
                 playerManager.playbackEngine?.let { engine ->
@@ -1111,6 +1128,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         timeline.setDuration(durationMs)
         exoPositionText.text = formatTime(positionMs)
         exoDurationText.text = formatTime(durationMs)
+        // Discontinuity-based Discord re-publish: only fires on real seeks, not during normal playback.
+        val currentSpeed = playerManager.playbackEngine?.playbackSpeed ?: 1.0f
+        if (this::episode.isInitialized && isPlayerPlaying && discordThrottle.onPlaybackPositionChanged(positionMs, currentSpeed)) {
+            discordManager.updatePresence(media, episode, positionMs, durationMs, true)
+        }
     }
 
     override fun onTracksChanged(tracks: List<PlayerTrack>) {
@@ -1218,7 +1240,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     .load(if (isPlaying) R.drawable.anim_play_to_pause else R.drawable.anim_pause_to_play)
                     .into(exoPlay)
             }
-            if (this::episode.isInitialized) {
+            if (this::episode.isInitialized && discordThrottle.onPlayPause()) {
                 discordManager.updatePresence(
                     media, episode,
                     playerManager.playbackEngine?.positionMs ?: 0L,
