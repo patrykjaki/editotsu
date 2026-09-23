@@ -152,6 +152,16 @@ class SettingsActivity : AppCompatActivity() {
                     ),
                     Settings(
                         type = 1,
+                        name = getString(R.string.torrent_settings),
+                        desc = getString(R.string.torrent_settings_desc),
+                        icon = R.drawable.ic_download_24,
+                        onClick = {
+                            startActivity(Intent(context, TorrentSettingsActivity::class.java))
+                        },
+                        isActivity = true
+                    ),
+                    Settings(
+                        type = 1,
                         name = getString(R.string.addons),
                         desc = getString(R.string.addons_desc),
                         icon = R.drawable.ic_round_restaurant_24,

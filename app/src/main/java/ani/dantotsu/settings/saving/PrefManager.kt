@@ -42,9 +42,17 @@ object PrefManager {
         Compat.importOldPrefs(context)
     }
 
+    /** True when a value was ever persisted for [prefName] (vs. default). */
+    fun contains(prefName: PrefName): Boolean {
+        return try {
+            getPrefLocation(prefName.data.prefLocation).contains(prefName.name)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
-    fun <T> setVal(prefName: PrefName, value: T?) {
-        val pref = getPrefLocation(prefName.data.prefLocation)
+    fun <T> setVal(prefName: PrefName, value: T?) {        val pref = getPrefLocation(prefName.data.prefLocation)
         with(pref.edit()) {
             when (value) {
                 is Boolean -> putBoolean(prefName.name, value)

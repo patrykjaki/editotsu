@@ -373,6 +373,100 @@ class PlayerSettingsActivity :
             }
         }
 
+        // ---- Debanding (live re-applied via ActiveVideoPipeline) ----
+        val debandModes = arrayOf("None", "CPU (gradfun)", "GPU (libmpv)")
+        val debandModeKeys = arrayOf("None", "CPU", "GPU")
+        val currentDeband = PrefManager.getVal<String>(PrefName.VideoDebandMode)
+        val currentDebandIndex = debandModeKeys.indexOf(currentDeband).let { if (it >= 0) it else 0 }
+        binding.playerSettingsDebandMode.text = "Debanding: ${debandModes[currentDebandIndex]}"
+
+        binding.playerSettingsDebandMode.setOnClickListener {
+            val selected = debandModeKeys.indexOf(PrefManager.getVal<String>(PrefName.VideoDebandMode)).let { if (it >= 0) it else 0 }
+            customAlertDialog().apply {
+                setTitle("Select Debanding Mode")
+                singleChoiceItems(debandModes, selected) { index ->
+                    PrefManager.setVal(PrefName.VideoDebandMode, debandModeKeys[index])
+                    binding.playerSettingsDebandMode.text = "Debanding: ${debandModes[index]}"
+                    ani.dantotsu.media.anime.player.ActiveVideoPipeline.refreshFromPrefs()
+                }
+                show()
+            }
+        }
+
+        val colorThemes = arrayOf("Default", "Vivid (Punchy)", "Cinema (Contrast)", "Vintage (Warm)")
+        binding.playerSettingsVideoTheme.text = "Color Profile: Default"
+        binding.playerSettingsVideoTheme.setOnClickListener {
+            customAlertDialog().apply {
+                setTitle("Select Color Profile")
+                singleChoiceItems(colorThemes, 0) { index ->
+                    val theme = when (index) {
+                        1 -> ani.dantotsu.media.anime.player.VideoFilterTheme.Vivid
+                        2 -> ani.dantotsu.media.anime.player.VideoFilterTheme.Cinema
+                        3 -> ani.dantotsu.media.anime.player.VideoFilterTheme.Vintage
+                        else -> ani.dantotsu.media.anime.player.VideoFilterTheme.Default
+                    }
+                    PrefManager.setVal(PrefName.VideoBrightness, theme.brightness)
+                    PrefManager.setVal(PrefName.VideoContrast, theme.contrast)
+                    PrefManager.setVal(PrefName.VideoSaturation, theme.saturation)
+                    PrefManager.setVal(PrefName.VideoGamma, theme.gamma)
+                    PrefManager.setVal(PrefName.VideoHue, theme.hue)
+                    PrefManager.setVal(PrefName.VideoSharpen, theme.sharpen)
+                    binding.playerSettingsVideoTheme.text = "Color Profile: ${colorThemes[index]}"
+                    ani.dantotsu.media.anime.player.ActiveVideoPipeline.refreshFromPrefs()
+                    toast("Applied ${colorThemes[index]} profile")
+                }
+                show()
+            }
+        }
+
+        val audioDelay = PrefManager.getVal<Int>(PrefName.AudioDelayMs)
+        val subDelay = PrefManager.getVal<Int>(PrefName.SubtitleDelayMs)
+        binding.playerSettingsAudioSubSync.text = "Sync: Audio ${audioDelay}ms, Sub ${subDelay}ms"
+        binding.playerSettingsAudioSubSync.setOnClickListener {
+            val syncOptions = arrayOf(
+                "Audio Delay (ms)",
+                "Subtitle Delay (ms)",
+                "Subtitle Speed Multiplier",
+                "Volume Boost Cap (+30%)"
+            )
+            customAlertDialog().apply {
+                setTitle("Audio & Subtitle Sync")
+                singleChoiceItems(syncOptions, -1) { index ->
+                    when (index) {
+                        0 -> showNumberSyncDialog("Audio Delay (ms)", PrefName.AudioDelayMs, -5000, 5000)
+                        1 -> showNumberSyncDialog("Subtitle Delay (ms)", PrefName.SubtitleDelayMs, -5000, 5000)
+                        2 -> {
+                            val speeds = arrayOf("0.5x", "0.75x", "1.0x (Normal)", "1.25x", "1.5x", "2.0x")
+                            val speedVals = arrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                            customAlertDialog().apply {
+                                setTitle("Subtitle Speed")
+                                singleChoiceItems(speeds, 2) { sIdx ->
+                                    PrefManager.setVal(PrefName.SubtitleSpeed, speedVals[sIdx])
+                                    ani.dantotsu.media.anime.player.ActiveVideoPipeline.refreshFromPrefs()
+                                    toast("Subtitle speed set to ${speeds[sIdx]}")
+                                }
+                                show()
+                            }
+                        }
+                        3 -> {
+                            val boosts = arrayOf("None (+0%)", "Low (+15%)", "Medium (+30%)", "High (+50%)")
+                            val boostVals = arrayOf(0, 15, 30, 50)
+                            customAlertDialog().apply {
+                                setTitle("Volume Boost Cap")
+                                singleChoiceItems(boosts, 2) { bIdx ->
+                                    PrefManager.setVal(PrefName.VolumeBoostCap, boostVals[bIdx])
+                                    ani.dantotsu.media.anime.player.ActiveVideoPipeline.refreshFromPrefs()
+                                    toast("Volume boost cap set to ${boosts[bIdx]}")
+                                }
+                                show()
+                            }
+                        }
+                    }
+                }
+                show()
+            }
+        }
+
         fun toggleSubOptions(isChecked: Boolean) {
             arrayOf(
                 binding.videoSubColorPrimary,
@@ -422,10 +516,57 @@ class PlayerSettingsActivity :
         }
         toggleSubOptions(binding.subSwitch.isChecked)
 
-        binding.useSourceSubSwitch.isChecked = PrefManager.getVal(PrefName.UseSourceSubtitleStyling)
-        binding.useSourceSubSwitch.setOnCheckedChangeListener { _, isChecked ->
-            PrefManager.setVal(PrefName.UseSourceSubtitleStyling, isChecked)
+        // Beta07 subtitle-styling policy: 4-mode selector (Automatic by
+        // source / Editotsu / Source / Custom) replacing the old global
+        // boolean. CUSTOM reveals two independent per-origin switches.
+        fun subtitleStylingModeLabel(mode: ani.dantotsu.media.anime.player.SubtitleStylingMode): String {
+            return when (mode) {
+                ani.dantotsu.media.anime.player.SubtitleStylingMode.AUTO_BY_SOURCE ->
+                    getString(R.string.subtitle_styling_automatic)
+                ani.dantotsu.media.anime.player.SubtitleStylingMode.EDITOTSU_ALWAYS ->
+                    getString(R.string.subtitle_styling_editotsu)
+                ani.dantotsu.media.anime.player.SubtitleStylingMode.SOURCE_ALWAYS ->
+                    getString(R.string.subtitle_styling_source)
+                ani.dantotsu.media.anime.player.SubtitleStylingMode.CUSTOM ->
+                    getString(R.string.subtitle_styling_custom)
+            }
         }
+        fun refreshSubtitleStylingRows() {
+            val mode = ani.dantotsu.media.anime.player.SubtitleStylingStore.currentMode()
+            binding.subtitleStylingMode.text =
+                "${getString(R.string.subtitle_styling)}: ${subtitleStylingModeLabel(mode)}"
+            val custom =
+                mode == ani.dantotsu.media.anime.player.SubtitleStylingMode.CUSTOM
+            binding.customStreamSourceStylingSwitch.visibility =
+                if (custom) android.view.View.VISIBLE else android.view.View.GONE
+            binding.customLocalSourceStylingSwitch.visibility =
+                if (custom) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        binding.subtitleStylingMode.setOnClickListener {
+            val modes = ani.dantotsu.media.anime.player.SubtitleStylingMode.entries.toTypedArray()
+            customAlertDialog().apply {
+                setTitle(getString(R.string.subtitle_styling))
+                singleChoiceItems(
+                    modes.map { subtitleStylingModeLabel(it) }.toTypedArray(),
+                    modes.indexOf(ani.dantotsu.media.anime.player.SubtitleStylingStore.currentMode()),
+                ) { index ->
+                    ani.dantotsu.media.anime.player.SubtitleStylingStore.setMode(modes[index])
+                    refreshSubtitleStylingRows()
+                }
+                show()
+            }
+        }
+        binding.customStreamSourceStylingSwitch.isChecked =
+            PrefManager.getVal(PrefName.CustomStreamSourceStyling)
+        binding.customStreamSourceStylingSwitch.setOnCheckedChangeListener { _, isChecked ->
+            PrefManager.setVal(PrefName.CustomStreamSourceStyling, isChecked)
+        }
+        binding.customLocalSourceStylingSwitch.isChecked =
+            PrefManager.getVal(PrefName.CustomLocalSourceStyling)
+        binding.customLocalSourceStylingSwitch.setOnCheckedChangeListener { _, isChecked ->
+            PrefManager.setVal(PrefName.CustomLocalSourceStyling, isChecked)
+        }
+        refreshSubtitleStylingRows()
 
         binding.subTextSwitch.isChecked = PrefManager.getVal(PrefName.TextviewSubtitles)
         binding.subTextSwitch.setOnCheckedChangeListener { _, isChecked ->
@@ -645,6 +786,20 @@ class PlayerSettingsActivity :
                 override fun onRetract() {}
             },
         )
+        // Beta07 fix: the subtitles section Xpandable forces every child
+        // VISIBLE on expand, which leaked the CUSTOM-only granular switches
+        // into non-CUSTOM modes. Tagged rows opt out (see KEEP_HIDDEN_TAG),
+        // and expand re-applies the mode truth (covers collapse-while-custom
+        // followed by expand).
+        binding.subtitleSectionXpandable.addOnChangeListener(
+            object : Xpandable.OnChangeListener {
+                override fun onExpand() {
+                    refreshSubtitleStylingRows()
+                }
+
+                override fun onRetract() {}
+            },
+        )
         updateSubPreview()
     }
 
@@ -701,6 +856,34 @@ class PlayerSettingsActivity :
             setTextColor(PrefManager.getVal<Int>(PrefName.PrimaryColor))
 
             setBackgroundColor(PrefManager.getVal<Int>(PrefName.SubBackground))
+        }
+    }
+
+    private fun showNumberSyncDialog(title: String, pref: PrefName, min: Int, max: Int) {
+        val input = android.widget.EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+            setText(PrefManager.getVal<Int>(pref).toString())
+            setSelection(text.length)
+        }
+        val container = android.widget.FrameLayout(this).apply {
+            val margin = (24 * resources.displayMetrics.density).toInt()
+            setPadding(margin, margin / 2, margin, margin / 2)
+            addView(input)
+        }
+        customAlertDialog().apply {
+            setTitle(title)
+            setCustomView(container)
+            setPosButton(R.string.yes) {
+                val value = input.text.toString().toIntOrNull()?.coerceIn(min, max) ?: 0
+                PrefManager.setVal(pref, value)
+                val audioD = PrefManager.getVal<Int>(PrefName.AudioDelayMs)
+                val subD = PrefManager.getVal<Int>(PrefName.SubtitleDelayMs)
+                binding.playerSettingsAudioSubSync.text = "Sync: Audio ${audioD}ms, Sub ${subD}ms"
+                ani.dantotsu.media.anime.player.ActiveVideoPipeline.refreshFromPrefs()
+                toast("Saved: $value ms")
+            }
+            setNegButton(R.string.no)
+            show()
         }
     }
 }

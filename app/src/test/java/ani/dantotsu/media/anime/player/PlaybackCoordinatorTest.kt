@@ -68,7 +68,7 @@ class PlaybackCoordinatorTest {
         override fun setVideoSurfaceSize(width: Int, height: Int) {}
         override fun selectAudioTrack(id: Int?) {}
         override fun selectSubtitleTrack(id: Int?) {}
-        override fun addExternalSubtitle(uri: String, title: String?, language: String?, select: Boolean) {}
+        override fun addExternalSubtitle(uri: String, title: String?, language: String?, select: Boolean, explicitUserAction: Boolean) {}
         override fun applySubtitleStyle(style: SubtitleStyle) {}
         override fun setResizeMode(mode: ResizeMode) {}
         override fun loadMedia(request: PlaybackRequest) {}

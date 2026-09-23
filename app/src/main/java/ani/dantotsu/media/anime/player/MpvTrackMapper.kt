@@ -22,6 +22,7 @@ object MpvTrackMapper {
             val codec = item["codec"] as? String
             val selected = (item["selected"] as? Boolean) == true
             val external = (item["external"] as? Boolean) == true
+            val externalFilename = item["external-filename"] as? String
             val default = (item["default"] as? Boolean) == true
             val forced = (item["forced"] as? Boolean) == true
 
@@ -34,6 +35,7 @@ object MpvTrackMapper {
                     codec = codec,
                     selected = selected,
                     external = external,
+                    externalFilename = externalFilename,
                     default = default,
                     forced = forced
                 )

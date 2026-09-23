@@ -343,8 +343,8 @@ class TorrentServerManager(private val context: Context) {
                         null
                     }
                 },
-                {
-                    getTorrentCacheDir().absolutePath
+                { hash ->
+                    getSavePathForHash(hash)
                 },
                 { hash ->
                     getDeadlineRegistry(hash)
@@ -448,7 +448,8 @@ class TorrentServerManager(private val context: Context) {
         }
         start() // Ensure running
 
-        val cacheDir = getTorrentCacheDir()
+        var claimToken: CacheClaimToken? = null
+        var claimCommitted = false
         var handle: TorrentHandle? = null
 
         val defaultTrackers = listOf(
@@ -479,92 +480,138 @@ class TorrentServerManager(private val context: Context) {
             "udp://tracker.bittor.pw:1337/announce"
         )
 
-        if (url.startsWith("magnet:")) {
-            val infoHash = parseMagnetHash(url)
-            val sha1 = Sha1Hash.parseHex(infoHash)
-            handle = sessionManager.find(sha1)
-            if (handle == null) {
-                val enrichedUrl = buildEnrichedMagnetUri(url, defaultTrackers)
-                sessionManager.download(enrichedUrl, cacheDir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
-                handle = sessionManager.find(sha1)
-            }
-
-            if (handle != null) {
-                defaultTrackers.forEach { trk ->
-                    try { handle.addTracker(AnnounceEntry(trk)) } catch (_: Exception) {}
-                }
-                try { handle.forceReannounce() } catch (_: Exception) {}
-            }
-
-            // Fast polling for metadata (up to 20 seconds, reannouncing every second)
-            var waitTime = 0
-            while ((handle == null || handle.torrentFile() == null) && waitTime < 400) {
-                Thread.sleep(50)
-                handle = sessionManager.find(sha1)
-                if (handle != null && waitTime % 15 == 0) {
-                    try { handle.forceReannounce() } catch (_: Exception) {}
-                }
-                waitTime++
-            }
-        } else if (url.startsWith("http://") || url.startsWith("https://")) {
-            val tempFile = downloadTorrentFile(url)
-            if (tempFile != null) {
-                val ti = TorrentInfo(tempFile)
-                val p = Priority.array(Priority.IGNORE, ti.numFiles())
-                sessionManager.download(ti, cacheDir, null, p, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
-                handle = sessionManager.find(ti.infoHash())
-            }
-        } else {
-            val file = File(url)
-            if (file.exists()) {
-                val ti = TorrentInfo(file)
-                val p = Priority.array(Priority.IGNORE, ti.numFiles())
-                sessionManager.download(ti, cacheDir, null, p, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
-                handle = sessionManager.find(ti.infoHash())
-            }
-        }
-
-        if (handle == null) {
-            throw Exception("Failed to add torrent: $url")
-        }
-
-        // Explicitly resume to ensure downloading starts
-        handle.resume()
-
-        defaultTrackers.forEach { trk ->
-            try {
-                handle.addTracker(AnnounceEntry(trk))
-            } catch (_: Exception) {}
-        }
         try {
-            handle.forceReannounce()
-        } catch (_: Exception) {}
+            // ---- Phase 1 (no lifecycle lock): resolve info-hash / fetch metadata ----
+            var resolvedHash: String? = null
+            var resolvedTorrentInfo: TorrentInfo? = null
+            when {
+                url.startsWith("magnet:") -> resolvedHash = parseMagnetHash(url)
+                url.startsWith("http://") || url.startsWith("https://") -> {
+                    val fetched = downloadTorrentFile(url)
+                    if (fetched != null) {
+                        resolvedTorrentInfo = TorrentInfo(fetched)
+                        resolvedHash = resolvedTorrentInfo.infoHash().toHex()
+                    }
+                }
+                else -> {
+                    val file = File(url)
+                    if (file.exists()) {
+                        resolvedTorrentInfo = TorrentInfo(file)
+                        resolvedHash = resolvedTorrentInfo.infoHash().toHex()
+                    }
+                }
+            }
+            if (resolvedHash == null) {
+                throw Exception("Failed to resolve torrent metadata: $url")
+            }
+            val infoHash = normalizeInfoHash(resolvedHash)
 
-        val infoHash = handle.infoHash().toHex()
-        val name = handle.getName() ?: title
-        val size = handle.torrentFile()?.totalSize() ?: 0L
+            // ---- Phase 2: per-hash LIFECYCLE CRITICAL SECTION (CP1v9-01/02) ----
+            // Covers the entire handle-generation decision atomically against same-hash removal:
+            // durable claim -> find/create handle -> download -> obtain generation owner ->
+            // promote. Same-hash removeTorrent waits here; other hashes are independent.
+            return synchronized(sessionOwnerRegistry.lifecycleLockFor(infoHash)) {
+                claimToken = beginCacheClaim(infoHash)
+                val saveDir = payloadDirFor(infoHash)
+                val sha1 = Sha1Hash.parseHex(infoHash)
 
-        val fileStats = handle.torrentFile()?.files()?.let { fileStorage ->
-            List(fileStorage.numFiles()) { i ->
-                FileStat(
-                    id = i,
-                    path = fileStorage.filePath(i),
-                    length = fileStorage.fileSize(i)
+                if (resolvedTorrentInfo != null) {
+                    val ti = resolvedTorrentInfo
+                    val p = Priority.array(Priority.IGNORE, ti.numFiles())
+                    sessionManager.download(ti, saveDir, null, p, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                    handle = sessionManager.find(sha1)
+                } else {
+                    handle = sessionManager.find(sha1)
+                    if (handle == null) {
+                        val enrichedUrl = buildEnrichedMagnetUri(url, defaultTrackers)
+                        sessionManager.download(enrichedUrl, saveDir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                        handle = sessionManager.find(sha1)
+                    }
+
+                    handle?.let { initial ->
+                        defaultTrackers.forEach { trk ->
+                            try { initial.addTracker(AnnounceEntry(trk)) } catch (_: Exception) {}
+                        }
+                        try { initial.forceReannounce() } catch (_: Exception) {}
+                    }
+
+                    // Metadata wait (<=20 s) INSIDE the lifecycle section by design: a concurrent
+                    // same-hash removal must not invalidate the handle being established.
+                    var waitTime = 0
+                    while ((handle == null || handle?.torrentFile() == null) && waitTime < 400) {
+                        Thread.sleep(50)
+                        handle = sessionManager.find(sha1)
+                        val polled = handle
+                        if (polled != null && waitTime % 15 == 0) {
+                            try { polled.forceReannounce() } catch (_: Exception) {}
+                        }
+                        waitTime++
+                    }
+                }
+
+                val liveHandle = handle ?: throw Exception("Failed to add torrent: $url")
+
+                // Bind to the LIVE GENERATION owner (get-or-create; overlapping successful adds
+                // converge onto the same identity — CP1v7-02).
+                val liveOwnerId = sessionOwnerRegistry.getOrCreateLiveOwner(infoHash)
+                var promoted = false
+                claimToken?.let {
+                    promoted = kotlinx.coroutines.runBlocking {
+                        TorrentCacheManager.getInstance(context).promoteClaimToLiveOwner(it, liveOwnerId)
+                    }
+                    if (!promoted) {
+                        // Provisional owner stays committed; removal releases it later (CP1v8).
+                        sessionOwnerRegistry.registerFallback(infoHash, it.ownerId)
+                        Logger.log("addTorrent: live-owner promotion failed; provisional owner retained for $infoHash")
+                    }
+                    claimCommitted = true
+                }
+
+                liveHandle.resume()
+                defaultTrackers.forEach { trk ->
+                    try { liveHandle.addTracker(AnnounceEntry(trk)) } catch (_: Exception) {}
+                }
+                try { liveHandle.forceReannounce() } catch (_: Exception) {}
+
+                val finalInfoHash = liveHandle.infoHash().toHex()
+                val name = liveHandle.getName() ?: title
+                val size = liveHandle.torrentFile()?.totalSize() ?: 0L
+                val fileStats = liveHandle.torrentFile()?.files()?.let { fs ->
+                    List(fs.numFiles()) { i ->
+                        FileStat(id = i, path = fs.filePath(i), length = fs.fileSize(i))
+                    }
+                } ?: emptyList()
+
+                val quota = PrefManager.getVal<Long>(PrefName.TorrentRetainedCacheQuota)
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        TorrentCacheManager.getInstance(context).evictIfNeeded(quota)
+                    } catch (e: Exception) {
+                        Logger.log("TorrentServerManager: Cache eviction error: ${e.message}")
+                    }
+                }
+
+                Torrent(
+                    title = title,
+                    name = name,
+                    hash = finalInfoHash,
+                    torrent_size = size,
+                    file_stats = fileStats
                 )
             }
-        } ?: emptyList()
-
-        return Torrent(
-            title = title,
-            name = name,
-            hash = infoHash,
-            torrent_size = size,
-            file_stats = fileStats
-        )
-    }
-
-    fun prebuffer(torrentHash: String, fileIndex: Int): Boolean {
-        return prebufferWithResult(torrentHash, fileIndex).ready
+        } catch (t: Throwable) {
+            // Scoped transaction (CP1v4-01): roll back on EVERY exceptional exit after the claim
+            // begins — including download/TorrentInfo/payloadDirFor/lifecycle-section throws.
+            if (!claimCommitted) {
+                val token = claimToken
+                if (token != null && !abortCacheClaim(token)) {
+                    t.addSuppressed(
+                        CachePersistenceException("cache claim rollback incomplete for ${token.hash}")
+                    )
+                }
+            }
+            throw t
+        }
     }
 
     fun prebufferTorrent(
@@ -759,8 +806,17 @@ class TorrentServerManager(private val context: Context) {
     }
 
     fun removeTorrent(torrentHash: String) {
-        try {
-            val normHash = torrentHash.uppercase()
+        val normHash = torrentHash.uppercase()
+
+        // CP1v9-01/02 + CP1v10-01: per-hash LIFECYCLE CRITICAL SECTION — the synchronous
+        // handle-generation transition is atomic relative to addTorrent's find/create → promote
+        // section. ORDER MATTERS: everything that can throw runs FIRST; the destructive registry
+        // capture commits ONLY AFTER the old handle transition succeeded, so a failed removal
+        // keeps its generation registered and can be retried. The later cache-owner release stays
+        // asynchronous (generation ids are unique).
+        synchronized(sessionOwnerRegistry.lifecycleLockFor(normHash)) {
+
+            // 1. Synchronous cleanup that may throw (registry state untouched on failure).
             registries.remove(normHash)?.dispose()
             activePrebufferLeases.entries.removeIf { entry ->
                 if (entry.key.first == normHash) {
@@ -768,14 +824,45 @@ class TorrentServerManager(private val context: Context) {
                     true
                 } else false
             }
+
+            // 2. Remove the corresponding libtorrent handle (may throw — still retriable).
             val sha1 = Sha1Hash.parseHex(normHash)
             val handle = sessionManager.find(sha1)
             if (handle != null && handle.isValid) {
                 sessionManager.remove(handle)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
+
+            // 3. COMMIT the generation transition: capture-and-remove the live owner only after
+            //    the handle transition succeeded. A same-hash add cannot enter between this and
+            //    the handle removal because the lifecycle lock is still held.
+            val ownersToRelease = sessionOwnerRegistry.captureForRemoval(normHash)
+
+            // 4. Delayed async release of ONLY the captured generation ids.
+            if (ownersToRelease.isNotEmpty()) {
+                val cacheManager = TorrentCacheManager.getInstance(context)
+                val quota = PrefManager.getVal<Long>(PrefName.TorrentRetainedCacheQuota)
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        ownersToRelease.forEach { ownerId ->
+                            cacheManager.releaseLease(normHash, ownerId, keepRetained = true)
+                        }
+                        cacheManager.evictIfNeeded(quota)
+                    } catch (e: Exception) {
+                        Logger.log("TorrentServerManager: Cache lease release error: ${e.message}")
+                    }
+                }
+            }
         }
+    }
+
+    fun getActiveTorrentHashes(): Set<String> {
+        val hashes = mutableSetOf<String>()
+        try {
+            activeTorrentHash?.let { hashes.add(it.uppercase()) }
+            registries.keys().toList().forEach { hashes.add(it.uppercase()) }
+            activePrebufferLeases.keys().toList().forEach { hashes.add(it.first.uppercase()) }
+        } catch (_: Exception) {}
+        return hashes
     }
 
     private fun getTorrentCacheDir(): File {
@@ -784,6 +871,82 @@ class TorrentServerManager(private val context: Context) {
             dir.mkdirs()
         }
         return dir
+    }
+
+    /**
+     * Begin a scoped cache claim (CP1v3-01). The token captures the exact prior metadata state;
+     * on ANY failure path call [abortCacheClaim] to restore it, on success call
+     * [commitCacheClaim]. Throws when the durable claim cannot be persisted — callers must abort
+     * the download, otherwise new-layout data could escape quota/accounting forever.
+     */
+    /**
+     * Live-owner lifecycle registry (CP1v8-01): generation-specific owners with get-or-create
+     * semantics; removal captures-and-removes atomically so a delayed async release can never
+     * strip ownership from a newer same-hash torrent generation.
+     */
+    private val sessionOwnerRegistry = TorrentSessionOwnerRegistry()
+
+    private fun beginCacheClaim(rawHash: String): CacheClaimToken {
+        val hash = normalizeInfoHash(rawHash)
+        // Unique identity per live add attempt; never reused across attempts.
+        val ownerId = "session_${hash}_" + java.util.UUID.randomUUID().toString().substring(0, 8)
+        return try {
+            kotlinx.coroutines.runBlocking {
+                TorrentCacheManager.getInstance(context).beginClaim(hash, ownerId)
+            }
+        } catch (e: Exception) {
+            Logger.log("beginCacheClaim failed for $rawHash: ${e.message}")
+            throw Exception("Torrent storage unavailable: ${e.message}")
+        }
+    }
+
+
+    /** @return true when the rollback durably completed; false ⇒ recovery pass still required. */
+    private fun abortCacheClaim(token: CacheClaimToken): Boolean {
+        return try {
+            kotlinx.coroutines.runBlocking {
+                TorrentCacheManager.getInstance(context).abortClaim(token)
+            }
+        } catch (e: Exception) {
+            Logger.log("abortCacheClaim failed for ${token.hash}: ${e.message}")
+            false
+        }
+    }
+
+    private fun commitCacheClaim(token: CacheClaimToken) {
+        try {
+            kotlinx.coroutines.runBlocking {
+                TorrentCacheManager.getInstance(context).commitClaim(token)
+            }
+        } catch (e: Exception) {
+            Logger.log("commitCacheClaim failed for ${token.hash}: ${e.message}")
+        }
+    }
+
+    /**
+     * Canonical per-torrent payload directory (REPO_REVIEW §3.0 ownership model).
+     * Each torrent downloads into `<torrent_cache>/<infoHash>` so metadata paths are authoritative.
+     */
+    fun payloadDirFor(infoHash: String): File {
+        val norm = normalizeInfoHash(infoHash)
+        val dir = File(getTorrentCacheDir(), norm)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
+
+    /**
+     * Save-path resolution for the streaming HTTP server (CP1-06).
+     *
+     * Every torrent added by this manager downloads into its owned per-hash directory, so the
+     * handle's save path is ALWAYS `torrent_cache/<infoHash>` — we resolve exactly that and never
+     * guess an alternative. Legacy shared-root bytes from before the ownership fix are preserved
+     * on disk but are NOT reused/streamed automatically (no session restore mechanism exists, so
+     * no live handle can still point at the legacy root).
+     */
+    private fun getSavePathForHash(hash: String): String {
+        return payloadDirFor(hash).absolutePath
     }
 
     private fun findFreePort(startPort: Int): Int {

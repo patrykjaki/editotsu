@@ -1,13 +1,14 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android)
     alias(libs.plugins.serialization)
     alias(libs.plugins.ksp)
 }
 
-if (gradle.startParameter.taskNames.any { it.contains("google", true) }) {
-    apply(plugin = "com.google.gms.google-services")
-    apply(plugin = "com.google.firebase.crashlytics")
-}
+// CP4-C (REPO_REVIEW §3.7): Firebase google-services/Crashlytics plugins are DISABLED.
+// Telemetry is off fork-wide until an Editotsu-owned Firebase project exists.
 
 val gitCommitHash = if (rootProject.file(".git").exists()) {
     try {
@@ -21,6 +22,22 @@ val gitCommitHash = if (rootProject.file(".git").exists()) {
     "nogit"
 }
 
+val malClientId: String = (project.findProperty("malClientId") as? String)
+    ?.takeIf { it.isNotBlank() }
+    ?: System.getenv("MAL_CLIENT_ID")?.takeIf { it.isNotBlank() }
+    ?: run {
+        val userHome = System.getProperty("user.home")
+        val credFile = File(userHome, ".editotsu/credentials/mal.properties")
+        if (credFile.exists()) {
+            val props = Properties()
+            credFile.inputStream().use { stream -> props.load(stream) }
+            props.getProperty("mal.clientId")?.takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
+    }
+    ?: ""
+
 android {
     namespace = "ani.dantotsu"
     compileSdk = 37
@@ -30,10 +47,73 @@ android {
         minSdk = 26
         targetSdk = 36
 
-        versionName = "0.2.1"
-        versionCode = 1000002
+        versionName = "0.5.0-beta01"
+        versionCode = 1000510
 
-        signingConfig = signingConfigs.getByName("debug")
+        buildConfigField("String", "MAL_CLIENT_ID", "\"${malClientId.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+    }
+
+    // ------------------------------------------------------------------
+    // CP4-A (REPO_REVIEW §3.5): stable fork-owned release signing.
+    //
+    // Keystore material is read from (first match wins):
+    //   1. Gradle properties:  EDITOTSU_STORE_FILE / _STORE_PASSWORD /
+    //      _KEY_ALIAS / _KEY_PASSWORD   (-P on CI, injected by beta.yml)
+    //   2. Environment variables of the same names
+    //   3. A local `keystore.properties` file in the repo root (git-ignored)
+    //
+    // When material IS present, alpha/release builds are signed with the
+    // stable fork key. When it is ABSENT, builds fall back to an UNSIGNED
+    // config and emit a loud warning — we NEVER silently sign releases with
+    // the random debug keystore again.
+    // ------------------------------------------------------------------
+    val keystoreProperties = Properties().apply {
+        val f = rootProject.file("keystore.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+
+    fun editotsuSigningProp(name: String): String? {
+        return (project.findProperty(name) as String?)
+            ?: System.getenv(name)
+            ?: keystoreProperties.getProperty(name)
+    }
+
+    val ksFile = editotsuSigningProp("EDITOTSU_STORE_FILE")
+    val ksPass = editotsuSigningProp("EDITOTSU_STORE_PASSWORD")
+    val aliasName = editotsuSigningProp("EDITOTSU_KEY_ALIAS")
+    val keyPass = editotsuSigningProp("EDITOTSU_KEY_PASSWORD")
+
+    // CP4v1-03: ALL FOUR fields are required for stable signing — a partial configuration
+    // (e.g. missing alias/key password) must never be classified as "keystore available".
+    val providedSigningFields = listOf(
+        "EDITOTSU_STORE_FILE" to ksFile,
+        "EDITOTSU_STORE_PASSWORD" to ksPass,
+        "EDITOTSU_KEY_ALIAS" to aliasName,
+        "EDITOTSU_KEY_PASSWORD" to keyPass
+    )
+    val haveReleaseKeystore = providedSigningFields.all { !it.second.isNullOrBlank() }
+
+    // CP4v1-03: signing policy must NOT fail global configuration — a clean checkout stays
+    // usable for help/tests/lint/debug/fdroid work without release credentials. The hard
+    // failure happens ONLY when a publishable variant is actually PACKAGED (AGP refuses a
+    // SigningConfig without storeFile), which keeps the tagged-CI gate intact.
+    val devDebugSigningRequested =
+        (project.findProperty("editotsu.devSigning") as String?) == "debug"
+
+    signingConfigs {
+        if (haveReleaseKeystore) {
+            create("editotsuRelease") {
+                storeFile = rootProject.file(ksFile!!)
+                storePassword = ksPass
+                keyAlias = aliasName
+                keyPassword = keyPass
+            }
+        } else {
+            // Deliberately INCOMPLETE placeholder: assigning it makes packaging of publishable
+            // variants fail deterministically ("missing required property storeFile") while
+            // everything else keeps working.
+            create("editotsu_RELEASE_KEYSTORE_MISSING") {}
+        }
     }
 
 
@@ -49,13 +129,38 @@ android {
     flavorDimensions += "store"
 
     productFlavors {
+        // 0.5 release: NO versionNameSuffix on either flavor. Both release
+        // APKs badge versionName 0.5.0-beta01; the flavor distinction lives
+        // in BuildConfig.FLAVOR, packaged features, and asset filenames.
+        // The fdroid flavor is our internal degoogled build (built and
+        // distributed by us, not official F-Droid infrastructure).
         create("fdroid") {
             dimension = "store"
-            versionNameSuffix = "-fdroid"
         }
         create("google") {
             dimension = "store"
             isDefault = true
+        }
+    }
+
+    val releaseSigningConfig = when {
+        haveReleaseKeystore -> signingConfigs.getByName("editotsuRelease")
+        devDebugSigningRequested -> {
+            logger.warn(
+                "EDITOTSU SIGNING: EXPLICIT dev-only fallback to the DEBUG keystore " +
+                    "(-Peditotsu.devSigning=debug). These artifacts are NOT publishable."
+            )
+            signingConfigs.getByName("debug")
+        }
+        else -> {
+            val missing = providedSigningFields.filter { it.second.isNullOrBlank() }.map { it.first }
+            logger.error(
+                "EDITOTSU SIGNING: release keystore material incomplete (missing: " +
+                    missing.joinToString(", ") + "). Packaging alpha/release will FAIL.\n" +
+                    "Provide all four EDITOTSU_* properties/env vars or a git-ignored keystore.properties. " +
+                    "For THROWAWAY local dev builds only: -Peditotsu.devSigning=debug."
+            )
+            signingConfigs.getByName("editotsu_RELEASE_KEYSTORE_MISSING")
         }
     }
 
@@ -70,11 +175,36 @@ android {
             isMinifyEnabled = false
             isShrinkResources = false
             isDefault = true
+            signingConfig = releaseSigningConfig
+        }
+
+        // 0.5 prerelease line: release-quality behavior with the beta
+        // application identity (ani.editotsu.beta), so betas coexist with
+        // stable Editotsu. Chosen over suffixing `release` (which would
+        // corrupt future stable semantics) and over `alpha` (debuggable,
+        // unoptimized). Stable `release` is untouched for 0.5.0+.
+        // No versionNameSuffix: inherits the exact public version.
+        create("beta") {
+            applicationIdSuffix = ".beta"
+            manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_beta"
+            manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_beta_round"
+            isDebuggable = false
+            isJniDebuggable = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = releaseSigningConfig
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
 
         getByName("debug") {
             applicationIdSuffix = ".beta"
-            versionNameSuffix = "-beta01"
+            // Friend-test betaNN suffixes retired for the 0.5 release line:
+            // dev builds carry the commit hash so no betaNN identity can
+            // leak into the public release.
+            versionNameSuffix = "-dev-$gitCommitHash"
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_beta"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_beta_round"
             isDebuggable = false
@@ -86,6 +216,7 @@ android {
             isDebuggable = false
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = releaseSigningConfig
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -141,8 +272,6 @@ dependencies {
     implementation(libs.ffmpeg.kit)
 
     // Firebase
-    add("googleImplementation", platform(libs.firebase.bom))
-    add("googleImplementation", libs.bundles.firebase)
 
     // AndroidX
     implementation(libs.bundles.androidx)

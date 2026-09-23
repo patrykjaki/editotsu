@@ -15,13 +15,18 @@ data class ExternalSubtitle(
     val title: String? = null,
     val language: String? = null,
     val selected: Boolean = false,
-    val id: String? = null
+    val id: String? = null,
+    // Beta03: source transport context (video/source headers incl. referer).
+    // Applied to mpv before `sub-add` so header-gated softsubs fetch correctly.
+    val headers: Map<String, String> = emptyMap()
 )
 
 data class ExternalAudioTrack(
     val url: String,
     val language: String? = null,
-    val title: String? = null
+    val title: String? = null,
+    // Beta03: source transport context, applied to mpv before `audio-add`.
+    val headers: Map<String, String> = emptyMap()
 )
 
 data class PlaybackRequest(
@@ -39,6 +44,9 @@ data class PlaybackRequest(
     val preferredSubLang: String? = null,
     val metadata: Map<String, String> = emptyMap(),
     val sourceClass: PlaybackSourceClass = PlaybackSourceClass.LOCAL_FILE,
+    // Beta03: validated extension mpv per-file options (e.g. demuxer-lavf-o),
+    // appended to the loadfile options string. Empty = no extension options.
+    val extraMpvOptions: String = "",
     val sourceLease: AutoCloseable? = null
 )
 
@@ -56,6 +64,7 @@ data class PlayerTrack(
     val codec: String? = null,
     val selected: Boolean = false,
     val external: Boolean = false,
+    val externalFilename: String? = null,
     val default: Boolean = false,
     val forced: Boolean = false
 )

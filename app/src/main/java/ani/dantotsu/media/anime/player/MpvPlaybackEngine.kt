@@ -9,6 +9,7 @@ import android.os.ParcelFileDescriptor
 import android.view.Surface
 import `is`.xyz.mpv.MPV
 import `is`.xyz.mpv.MPVNode
+import ani.dantotsu.media.anime.player.upscaler.UpscalerBundleManager
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
@@ -64,7 +65,9 @@ class MpvPlaybackEngine(
     private val context: Context? = null,
     private val clientFactory: MpvClientFactory = RealMpvClientFactory(),
     private val engineDispatcher: EngineDispatcher = if (context != null) HandlerEngineDispatcher() else DirectEngineDispatcher(),
-    private val postToMain: (Runnable) -> Unit = createDefaultMainDispatcher(context)
+    private val postToMain: (Runnable) -> Unit = createDefaultMainDispatcher(context),
+    /** Injectable upscaler provider lookup; defaults to the installed-bundle registry. */
+    private val upscalerProviderLookup: ((providerId: String) -> ani.dantotsu.media.anime.player.upscaler.UpscalerProvider?)? = null
 ) : PlaybackEngine, MPV.EventObserver {
 
     // Backward-compatible constructor for direct MpvClient injection (e.g. testing)
@@ -79,10 +82,24 @@ class MpvPlaybackEngine(
             override fun createFresh(): MpvClient = mpvClient
         },
         engineDispatcher = engineDispatcher,
-        postToMain = postToMain
+        postToMain = postToMain,
+        upscalerProviderLookup = null
     )
 
     companion object {
+        /**
+         * CP4v1-04: single source for content-URI open-failure diagnostics — BOTH the cause
+         * message and the URI are scrubbed before the text can reach logs/share files.
+         */
+        internal fun contentOpenFailureMessage(operation: String, uri: String, causeMessage: String?): String =
+            "$operation (${MpvLogRedactor.redactDiagnosticText(causeMessage)}): ${MpvLogRedactor.redactUri(uri)}"
+
+        /**
+         * CP4v2-02: single source for the OUTER load-media failure message (PlaybackError +
+         * log share one scrubbed builder so they can never diverge).
+         */
+        internal fun loadMediaFailureMessage(causeMessage: String?): String =
+            "Failed to load media: ${MpvLogRedactor.redactDiagnosticText(causeMessage)}"
         const val MPV_FORMAT_NONE = 0
         const val MPV_FORMAT_STRING = 1
         const val MPV_FORMAT_OSD_STRING = 2
@@ -122,7 +139,34 @@ class MpvPlaybackEngine(
         var durationKnown: Boolean = false,
         var pendingSeekMs: Long? = null,
         var pendingAudioTrackId: Int? = null,
-        var pendingSubtitleTrackId: Int? = null
+        var pendingSubtitleTrackId: Int? = null,
+        // CP3: explicit subtitle-selection state, bound to THIS load operation / generation.
+        // It is the authoritative owner of subtitle intent so that stale callbacks from a
+        // superseded load cannot mutate the current operation's intent.
+        var subtitleSelection: SubtitleSelection = SubtitleSelection.Unset,
+        // Initialized from the request preference exactly once per file load.
+        var subtitleSelectionInitialized: Boolean = false,
+        // Whether the current track-list is authoritative for this generation (true only
+        // after FILE_LOADED + external subtitle attachment has produced a complete list).
+        // Prevents a transient/incomplete list from prematurely downgrading Track -> Off.
+        var tracksAuthoritative: Boolean = false,
+        // Handshake for external subtitles: mpv assigns the track id only after `sub-add`,
+        // so we record the explicit intent and adopt Track(id) once the selected external
+        // track appears in an authoritative track-list.
+        var pendingExternalSelection: Boolean = false,
+        // CP3 (review v2 P1): distinguishes a LIVE explicit user external-subtitle selection
+        // (which MAY override a prior Off) from a request-carried/automatic external attachment
+        // (which must NOT override a persisted Off). Only this flag is allowed to beat Off.
+        var liveExternalSelectionPending: Boolean = false,
+        // The URI of the LIVE explicit external subtitle we are waiting to materialize (review v3
+        // P1). Lets the handshake match the exact requested track so that, when two live external
+        // selections are issued before the first appears, the LATEST request's track wins.
+        var liveExternalRequestedUri: String? = null,
+        // External subtitle ids known when a pending external selection was recorded, so the
+        // handshake adopts only a NEWLY added external track and never an already-selected
+        // older one (review v2 P1/P2).
+        var pendingExternalBaselineExternalIds: Set<Int> = emptySet(),
+        var knownExternalTrackIds: Set<Int> = emptySet()
     ) {
         fun closeLeases() {
             leases.forEach { lease ->
@@ -152,6 +196,15 @@ class MpvPlaybackEngine(
     private val supersededLeases = mutableListOf<AutoCloseable>()
     private var activeOperation: LoadOperation? = null
     private var activeEntryId: Long? = null
+    /**
+     * Native-event playlist-entry provenance (review v3 P0). Published synchronously from the
+     * native `START_FILE` callback (before the engine dispatcher processes it) and captured by each
+     * property callback at observe time. This lets a property callback for the *next* load be
+     * recognized as legitimate during the START_FILE→dispatcher gap, while a callback observed for
+     * a superseded load is rejected once the entry it belongs to is no longer playing. It does NOT
+     * depend on `activeOperation` having already been advanced by the dispatcher.
+     */
+    private @Volatile var observedEntryId: Long? = null
 
     // Stage A Pre-Ready Desired State Accumulators
     private var pendingSurface: Surface? = null
@@ -162,9 +215,26 @@ class MpvPlaybackEngine(
     private var pendingPlayIntent: Boolean? = null
     private var pendingLoadRequest: PlaybackRequest? = null
 
+    /**
+     * Authoritative explicit subtitle-selection state for the CURRENT playback context.
+     *
+     * The real owner is the active [LoadOperation] (generation/playlist-entry bound), which
+     * prevents stale callbacks from a superseded load from mutating the current intent. This
+     * convenience accessor simply reads the active operation's selection.
+     *
+     * All transitions run serialized on [engineDispatcher], so the read-decide-apply sequence
+     * is atomic with respect to [selectSubtitleTrack] and the FILE_LOADED/track-list handlers.
+     */
+    fun getCurrentSubtitleSelection(): SubtitleSelection =
+        activeOperation?.subtitleSelection ?: SubtitleSelection.Unset
+
+    private fun subtitleSelectionState(): SubtitleSelection =
+        activeOperation?.subtitleSelection ?: SubtitleSelection.Unset
+
     private var pausedForCache = false
     private var isPausedInternal = true
     private var sessionSubtitleStyle: SubtitleStyle = SubtitleStyle()
+    private var sessionVideoPipelineConfig: VideoPipelineConfig? = null
 
     @Volatile
     var currentSnapshot: PlaybackSnapshot = PlaybackSnapshot()
@@ -224,7 +294,7 @@ class MpvPlaybackEngine(
                     ResolvedInitSetting.Apply(MpvInitOption("slang", MpvSettingValue.StringValue("eng,en,enUS,en-US,English,enm"))),
                     ResolvedInitSetting.Apply(MpvInitOption("alang", MpvSettingValue.StringValue("jpn,ja,eng,en,Japanese,English"))),
                     ResolvedInitSetting.Apply(MpvInitOption("sub-font-provider", MpvSettingValue.StringValue("none"))),
-                    ResolvedInitSetting.Apply(MpvInitOption("sub-font", MpvSettingValue.StringValue("sans-serif"))),
+                    ResolvedInitSetting.Apply(MpvInitOption("sub-font", MpvSettingValue.StringValue(MpvSubtitleFonts.DEFAULT.family))),
                     ResolvedInitSetting.Apply(MpvInitOption("embeddedfonts", MpvSettingValue.StringValue("yes"))),
                     ResolvedInitSetting.Apply(MpvInitOption("keep-open", MpvSettingValue.StringValue("no"))),
                     ResolvedInitSetting.Apply(MpvInitOption("ytdl", MpvSettingValue.StringValue("no"))),
@@ -277,6 +347,7 @@ class MpvPlaybackEngine(
             pendingSpeed?.let { setPlaybackSpeedInternal(it) }
             pendingResizeMode?.let { setResizeModeInternal(it) }
             applySubtitleStyleInternal(sessionSubtitleStyle)
+            sessionVideoPipelineConfig?.let { applyVideoPipelineInternal(it) }
 
             isInitialized = true
             engineLifecycle = EngineLifecycle.Ready
@@ -306,7 +377,7 @@ class MpvPlaybackEngine(
             engineLifecycle = EngineLifecycle.Failed(t)
             val error = PlaybackError(
                 category = ErrorCategory.UNKNOWN,
-                message = "Failed to initialize MPV: ${t.message}"
+                message = "Failed to initialize MPV: ${MpvLogRedactor.redactDiagnosticText(t.message)}"
             )
             updateSnapshot(currentSnapshot.copy(
                 playbackState = PlaybackState.Error(error),
@@ -554,7 +625,7 @@ class MpvPlaybackEngine(
     }
 
     private fun loadMediaInternal(request: PlaybackRequest) {
-        ani.dantotsu.util.Logger.log("MPVSTEP 40 before loadMedia uri=${request.uri}")
+        ani.dantotsu.util.Logger.log("MPVSTEP 40 before loadMedia uri=${MpvLogRedactor.redactUri(request.uri)}")
 
         generationCounter++
         val genId = generationCounter
@@ -569,7 +640,7 @@ class MpvPlaybackEngine(
                 if (pfd == null) {
                     val error = PlaybackError(
                         category = ErrorCategory.SOURCE,
-                        message = "Could not open content descriptor: ${request.uri}",
+                        message = "Could not open content descriptor: ${MpvLogRedactor.redactUri(request.uri)}",
                         fatal = true,
                         retryable = false
                     )
@@ -585,7 +656,7 @@ class MpvPlaybackEngine(
             } catch (e: Exception) {
                 val error = PlaybackError(
                     category = ErrorCategory.SOURCE,
-                    message = "Failed to open content URI (${e.message}): ${request.uri}",
+                    message = contentOpenFailureMessage("Failed to open content URI", request.uri, e.message),
                     fatal = true,
                     retryable = false
                 )
@@ -640,8 +711,15 @@ class MpvPlaybackEngine(
             applySubtitleStyleInternal(sessionSubtitleStyle)
 
             ani.dantotsu.util.Logger.log("MPVSTEP 41 before loadfile command (${MpvNetworkOptions.getRedactedOptionsDescription(request.headers, request.startPositionMs, request.sourceClass)})")
-            if (perFileOptions.isNotBlank()) {
-                mpvClient.command("loadfile", loadUri, "replace", "-1", perFileOptions)
+            // Beta03: append validated extension mpv per-file options (e.g.
+            // AniKoto's demuxer-lavf-o). Already sanitized at the adapter seam;
+            // blank for extractors without extension options.
+            val extraOptions = request.extraMpvOptions.trim().trimEnd(',')
+            val combinedOptions = listOf(perFileOptions, extraOptions)
+                .filter { it.isNotBlank() }
+                .joinToString(",")
+            if (combinedOptions.isNotBlank()) {
+                mpvClient.command("loadfile", loadUri, "replace", "-1", combinedOptions)
             } else {
                 mpvClient.command("loadfile", loadUri, "replace")
             }
@@ -655,10 +733,10 @@ class MpvPlaybackEngine(
                 operationsByEntryId[insertedId] = operation
             }
         } catch (e: Exception) {
-            ani.dantotsu.util.Logger.log("MPVSTEP ERROR in loadMedia: ${e.message}")
+            ani.dantotsu.util.Logger.log("MPVSTEP ERROR in loadMedia: ${MpvLogRedactor.redactDiagnosticText(e.message)}")
             val error = PlaybackError(
                 category = ErrorCategory.UNKNOWN,
-                message = "Failed to load media: ${e.message}",
+                message = loadMediaFailureMessage(e.message),
                 fatal = true,
                 retryable = false
             )
@@ -726,6 +804,24 @@ class MpvPlaybackEngine(
             val op = activeOperation
             if (op != null) {
                 op.pendingSubtitleTrackId = id
+                // Authoritative explicit selection: user intent always wins over auto.
+                // Bound to the operation (generation) so it cannot leak across loads.
+                // Both Off and Track(id) are explicit user actions, so either one supersedes any
+                // OLDER pending external-selection handshake (live or request-carried): an async
+                // external arrival must not override the user's latest choice (review v4 P1).
+                op.subtitleSelection = if (id == null) {
+                    op.pendingExternalSelection = false
+                    op.liveExternalSelectionPending = false
+                    op.liveExternalRequestedUri = null
+                    op.pendingExternalBaselineExternalIds = emptySet()
+                    SubtitleSelection.Off
+                } else {
+                    op.pendingExternalSelection = false
+                    op.liveExternalSelectionPending = false
+                    op.liveExternalRequestedUri = null
+                    op.pendingExternalBaselineExternalIds = emptySet()
+                    SubtitleSelection.Track(id)
+                }
             }
             if (op != null && op.state < LoadOperationState.LOADED) {
                 return@post
@@ -742,6 +838,64 @@ class MpvPlaybackEngine(
                 mpvClient.setPropertyString("sid", "no")
             } else {
                 mpvClient.setPropertyInt("sid", id)
+            }
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Re-assert the authoritative subtitle-selection state of [op] against the player.
+     *
+     * Called at FILE_LOADED and (via the track-list handler) on every refresh. mpv may
+     * auto-select a default subtitle track on its own, so [SubtitleSelection.Off] is
+     * explicitly forced and [SubtitleSelection.Track] is re-asserted whenever present.
+     * The state is owned by the operation (generation-bound), never a global.
+     */
+    private fun enforceSubtitleSelectionState(op: LoadOperation) {
+        when (val sel = op.subtitleSelection) {
+            is SubtitleSelection.Off -> {
+                selectSubtitleTrackInternal(null)
+            }
+            is SubtitleSelection.Track -> {
+                op.tracksAuthoritative = op.tracksAuthoritative ||
+                    (op.state == LoadOperationState.LOADED && op.externalSubtitlesAttached)
+                val exists = op.tracksAuthoritative &&
+                    currentSnapshot.tracks.any { it.type == TrackType.SUBTITLE && it.id == sel.id }
+                if (exists) {
+                    selectSubtitleTrackInternal(sel.id)
+                }
+                // If the track is not yet known, the track-list handler will resolve it
+                // (including the deterministic Off fallback once the list is authoritative).
+            }
+            is SubtitleSelection.Unset -> {
+                // Automatic selection is handled by the track-list handler.
+            }
+        }
+    }
+
+    /**
+     * Beta03: set mpv's global fetch options from an auxiliary track's source
+     * transport context immediately before `sub-add`/`audio-add`, so the fetch
+     * carries the same referer/user-agent/headers as the main video. Calls are
+     * serialized on the engine dispatcher, making the set-then-add sequence
+     * deterministic. Header VALUES are required functionally here; they must
+     * never be written to logs (see [MpvNetworkOptions.auxAttachLogLine]).
+     */
+    private fun applyAuxTransportOptions(headers: Map<String, String>) {
+        if (headers.isEmpty()) return
+        try {
+            MpvNetworkOptions.extractUserAgent(headers)?.takeIf { it.isNotBlank() }?.let {
+                mpvClient.setOptionString("user-agent", it)
+            }
+        } catch (_: Exception) {}
+        try {
+            MpvNetworkOptions.extractReferrer(headers)?.takeIf { it.isNotBlank() }?.let {
+                mpvClient.setOptionString("referrer", it)
+            }
+        } catch (_: Exception) {}
+        try {
+            val fields = MpvNetworkOptions.formatHeaderFields(headers)
+            if (fields.isNotBlank()) {
+                mpvClient.setOptionString("http-header-fields", fields)
             }
         } catch (_: Exception) {}
     }
@@ -879,11 +1033,30 @@ class MpvPlaybackEngine(
         uri: String,
         title: String?,
         language: String?,
-        select: Boolean
+        select: Boolean,
+        explicitUserAction: Boolean
     ) {
         engineDispatcher.post {
             if (releaseRequested.get()) return@post
             if (!ensureInitialized()) return@post
+            // CP3 external-subtitle handshake: a selected external subtitle is recorded as pending
+            // intent; mpv assigns the track id only after `sub-add`, so we adopt Track(id) once it
+            // appears in an authoritative track-list (see the track-list handler).
+            //  - explicitUserAction = true  -> a LIVE user selection; may override a prior Off.
+            //  - explicitUserAction = false -> request-carried/automatic attachment; must NOT
+            //    override a persisted Off.
+            if (select) {
+                val op = activeOperation
+                if (explicitUserAction) {
+                    op?.liveExternalSelectionPending = true
+                    op?.liveExternalRequestedUri = uri
+                } else {
+                    op?.pendingExternalSelection = true
+                }
+                // Snapshot the external ids known now so the handshake adopts only a newly added
+                // track (never an already-selected older external).
+                op?.pendingExternalBaselineExternalIds = op?.knownExternalTrackIds ?: emptySet()
+            }
             val flag = if (select) "select" else "auto"
             try {
                 mpvClient.command("sub-add", uri, flag, title ?: "", language ?: "")
@@ -947,6 +1120,68 @@ class MpvPlaybackEngine(
                 }
             }
         } catch (_: Exception) {}
+    }
+
+    override fun applyVideoPipeline(config: VideoPipelineConfig) {
+        engineDispatcher.post {
+            sessionVideoPipelineConfig = config
+            if (isInitialized && !releaseRequested.get()) {
+                applyVideoPipelineInternal(config)
+            }
+        }
+    }
+
+    private fun applyVideoPipelineInternal(config: VideoPipelineConfig) {
+        try {
+            // Upscaler provider lookup: injectable for tests; production resolves through the
+            // installed-bundle registry (v0.2.4-alpha ships with an EMPTY registry ⇒ off).
+            val provider = when {
+                config.upscaler.isOff -> null
+                upscalerProviderLookup != null -> upscalerProviderLookup.invoke(config.upscaler.providerId)
+                context != null -> UpscalerBundleManager.getInstance(context)
+                    .providerFor(config.upscaler.providerId)
+                else -> null
+            }
+            val resolved = VideoPipelineResolver.resolve(
+                config = config,
+                upscalerProvider = provider
+            )
+
+            // 1. Scalar properties (zero latency)
+            resolved.scalarProperties.forEach { (key, value) ->
+                when (value) {
+                    is Int -> mpvClient.setPropertyInt(key, value)
+                    is Double -> mpvClient.setPropertyDouble(key, value)
+                    is Float -> mpvClient.setPropertyDouble(key, value.toDouble())
+                    is String -> mpvClient.setPropertyString(key, value)
+                }
+            }
+
+            // 2. Deband options & video filter commands
+            resolved.debandOptions.forEach { (k, v) ->
+                mpvClient.setPropertyString(k, v)
+            }
+            resolved.debandVfCommand?.let { (action, filter) ->
+                try {
+                    if (action == "remove") {
+                        mpvClient.command("vf", "remove", VideoPipelineResolver.DEBAND_FILTER_NAME)
+                    } else if (action == "add") {
+                        mpvClient.command("vf", "add", filter)
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 3. GLSL Shaders — setting an empty value CLEARS the shader list (Off / fail-closed),
+            // guaranteeing a previously applied upscaler never outlives its selection.
+            mpvClient.setPropertyString("glsl-shaders", resolved.glslShaderChain)
+
+            // 4. Sync & volume properties
+            resolved.syncProperties.forEach { (k, v) ->
+                mpvClient.setPropertyString(k, v)
+            }
+        } catch (e: Exception) {
+            ani.dantotsu.util.Logger.log("MpvPlaybackEngine: applyVideoPipelineInternal error: ${e.message}")
+        }
     }
 
     override fun addListener(listener: PlaybackListener) {
@@ -1029,38 +1264,44 @@ class MpvPlaybackEngine(
     // --- MPV EventObserver Native Callbacks ---
 
     override fun eventProperty(property: String) {
+        val observedEntry = observedEntryId
         engineDispatcher.post {
-            handlePropertyDirty(property)
+            handlePropertyDirty(property, observedEntry)
         }
     }
 
     override fun eventProperty(property: String, value: Long) {
+        val observedEntry = observedEntryId
         engineDispatcher.post {
-            handlePropertyDirty(property)
+            handlePropertyDirty(property, observedEntry)
         }
     }
 
     override fun eventProperty(property: String, value: Boolean) {
+        val observedEntry = observedEntryId
         engineDispatcher.post {
-            handlePropertyDirty(property)
+            handlePropertyDirty(property, observedEntry)
         }
     }
 
     override fun eventProperty(property: String, value: String) {
+        val observedEntry = observedEntryId
         engineDispatcher.post {
-            handlePropertyDirty(property)
+            handlePropertyDirty(property, observedEntry)
         }
     }
 
     override fun eventProperty(property: String, value: Double) {
+        val observedEntry = observedEntryId
         engineDispatcher.post {
-            handlePropertyDirty(property)
+            handlePropertyDirty(property, observedEntry)
         }
     }
 
     override fun eventProperty(property: String, value: MPVNode) {
+        val observedEntry = observedEntryId
         engineDispatcher.post {
-            handlePropertyDirty(property)
+            handlePropertyDirty(property, observedEntry)
         }
     }
 
@@ -1109,9 +1350,37 @@ class MpvPlaybackEngine(
         return null
     }
 
-    private fun handlePropertyDirty(propertyName: String) {
+    /**
+     * Matches a parsed external track to the URI a live external subtitle request was made with
+     * (review v3 P1). mpv reports the track's source as `external-filename`, which may be the
+     * exact URI passed to `sub-add` or an absolute/normalized path; we accept an exact match or a
+     * trailing-filename match so the handshake adopts the track the user actually requested.
+     */
+    private fun PlayerTrack.externalFilenameMatches(reqUri: String): Boolean {
+        val f = externalFilename ?: return false
+        if (f.equals(reqUri, ignoreCase = true)) return true
+        val reqName = reqUri.substringAfterLast('/')
+        val fName = f.substringAfterLast('/')
+        return reqName.isNotEmpty() && fName.equals(reqName, ignoreCase = true)
+    }
+
+    private fun handlePropertyDirty(propertyName: String, observedEntryId: Long? = null) {
         if (releaseRequested.get() || !isInitialized) return
         val activeOp = activeOperation ?: return
+        // Provenance guard (review v3 P0): a property notification is only valid for the playlist
+        // entry that was *observed* at the native event (published synchronously on START_FILE and
+        // captured here), not for whatever `activeOperation` the dispatcher happens to hold now.
+        // This is structurally correct during a load transition:
+        //  - a callback for the NEXT load, observed before the dispatcher processed its START_FILE,
+        //    carries the next entry id and is accepted once that entry is playing;
+        //  - a callback observed for a SUPERSEDED load carries the old entry id and is rejected the
+        //    moment a different entry is playing, so it cannot mutate the current intent.
+        // A callback that carries no observed entry id (e.g. fired before any START_FILE) is not
+        // rejected here and falls through to the existing playing-entry check below.
+        if (observedEntryId != null) {
+            val currentPlaying = getPlayingEntryId()
+            if (currentPlaying != null && observedEntryId != currentPlaying) return
+        }
         val playingId = getPlayingEntryId()
         if (playingId == null || (activeOp.playlistEntryId != null && playingId != activeOp.playlistEntryId)) {
             // Stale property from retired file
@@ -1182,13 +1451,100 @@ class MpvPlaybackEngine(
                 val audioId = parsedTracks.firstOrNull { it.type == TrackType.AUDIO && it.selected }?.id
                 var subId = parsedTracks.firstOrNull { it.type == TrackType.SUBTITLE && it.selected }?.id
 
-                // Auto-select preferred/dialogue subtitle track if no subtitle is currently selected in MPV
-                val preferred = activeOperation?.request?.preferredSubLang
-                if (subId == null && preferred != "None" && activeOperation?.pendingSubtitleTrackId == null) {
-                    val autoSub = findBestMatchingSubtitleTrack(parsedTracks, preferred)
-                    if (autoSub != null) {
-                        subId = autoSub.id
-                        selectSubtitleTrackInternal(autoSub.id)
+                val op = activeOperation
+                if (op != null) {
+                    // Track which external subtitle ids currently exist, so a pending external
+                    // selection adopts only a NEWLY added track (review v2 P1/P2).
+                    op.knownExternalTrackIds = parsedTracks
+                        .filter { it.type == TrackType.SUBTITLE && it.external }
+                        .map { it.id }
+                        .toSet()
+                    // Apply explicit subtitle-selection semantics (CP3). The authoritative
+                    // state is bound to THIS load operation / generation (see
+                    // [LoadOperation.subtitleSelection]); automatic selection is ONLY permitted
+                    // while it is [SubtitleSelection.Unset]. Explicit Off/Track always win.
+                    val preferred = op.request.preferredSubLang
+                    val pendingSubId = op.pendingSubtitleTrackId
+                    val currentSelection = op.subtitleSelection
+                    val autoSubId = if (currentSelection is SubtitleSelection.Unset) {
+                        findBestMatchingSubtitleTrack(parsedTracks, preferred)?.id
+                    } else {
+                        null
+                    }
+                    val explicitExists = if (currentSelection is SubtitleSelection.Track) {
+                        parsedTracks.any { it.type == TrackType.SUBTITLE && it.id == currentSelection.id }
+                    } else {
+                        false
+                    }
+                    // The track list becomes authoritative only after the file is loaded and
+                    // its external subtitles have been attached. Before that point an
+                    // incomplete list must NOT downgrade an explicit Track to Off.
+                    val authoritative = op.state == LoadOperationState.LOADED && op.externalSubtitlesAttached
+                    op.tracksAuthoritative = op.tracksAuthoritative || authoritative
+
+                    val decision = SubtitleSelectionDecider.decide(
+                        current = currentSelection,
+                        currentSelectedSubId = subId,
+                        pendingTrackId = pendingSubId,
+                        autoTrackId = autoSubId,
+                        explicitTrackExists = explicitExists,
+                        tracksAuthoritative = op.tracksAuthoritative
+                    )
+
+                    // External-subtitle handshake: once a selected *external* subtitle track
+                    // appears, adopt it as the explicit Track(id). Two kinds of pending intent:
+                    //  - request-carried/automatic attachment (pendingExternalSelection): must NOT
+                    //    override a persisted/explicit Off (review v2 P1).
+                    //  - live explicit user selection (liveExternalSelectionPending): MAY override
+                    //    a prior Off and always wins over an existing Track (review v2 P1).
+                    // Adoption only happens for a track that is NEW relative to when the pending
+                    // intent was recorded, so an already-selected older external track cannot
+                    // satisfy/consume the handshake (review v2 P1/P2). A live request is matched to
+                    // the exact track it produces (by external filename) so that, when two live
+                    // external selections are issued before the first materializes, the LATEST
+                    // request's track wins (review v3 P1).
+                    var finalSelection = decision.selection
+                    var finalSid = decision.sid
+                    val pendingExternal = op.pendingExternalSelection || op.liveExternalSelectionPending
+                    if (pendingExternal && subId != null) {
+                        val selectedSub = parsedTracks.firstOrNull {
+                            it.type == TrackType.SUBTITLE && it.id == subId && it.external
+                        }
+                        if (selectedSub != null && subId !in op.pendingExternalBaselineExternalIds) {
+                            val liveUserAction = op.liveExternalSelectionPending
+                            // A live request is only satisfied by the track it actually requested.
+                            // If a different (older) new external appears, keep the live intent
+                            // pending so the latest request can still win (do NOT clear it).
+                            val requestedUri = op.liveExternalRequestedUri
+                            val liveMatchesRequested = !liveUserAction ||
+                                requestedUri == null ||
+                                selectedSub.externalFilenameMatches(requestedUri)
+                            if (liveMatchesRequested) {
+                                if (currentSelection is SubtitleSelection.Off && !liveUserAction) {
+                                    // Persisted/automatic Off wins over request-carried external attach.
+                                    op.pendingExternalSelection = false
+                                    op.liveExternalSelectionPending = false
+                                    op.liveExternalRequestedUri = null
+                                } else {
+                                    finalSelection = SubtitleSelection.Track(subId)
+                                    finalSid = subId
+                                    op.pendingExternalSelection = false
+                                    op.liveExternalSelectionPending = false
+                                    op.liveExternalRequestedUri = null
+                                    // Assert the adopted external track in mpv.
+                                    selectSubtitleTrackInternal(subId)
+                                }
+                            }
+                        }
+                    }
+
+                    if (finalSelection != op.subtitleSelection) {
+                        op.subtitleSelection = finalSelection
+                    }
+
+                    if (subId != finalSid) {
+                        selectSubtitleTrackInternal(finalSid)
+                        subId = finalSid
                     }
                 }
 
@@ -1238,6 +1594,12 @@ class MpvPlaybackEngine(
         reason: String? = null,
         fileError: String? = null
     ) {
+        // Publish provenance synchronously on the native callback thread, BEFORE queuing the
+        // engine action (review v3 P0). Property callbacks observed after this point — even before
+        // the dispatcher has processed the START_FILE — will carry the correct next-load entry id.
+        if (eventId == MPV_EVENT_START_FILE && playlistEntryId != null) {
+            observedEntryId = playlistEntryId
+        }
         engineDispatcher.post {
             if (releaseRequested.get()) return@post
             when (eventId) {
@@ -1255,6 +1617,30 @@ class MpvPlaybackEngine(
                             activeOperation = op
                             activeEntryId = playlistEntryId
 
+                            // CP3: initialize the authoritative subtitle-selection state from
+                            // this file's request preference exactly once per load. A persisted
+                            // "None" means the user explicitly disabled subtitles (Off); anything
+                            // else leaves the choice to automatic selection (Unset), which still
+                            // honors the preferred language from the request.
+                            if (!op.subtitleSelectionInitialized) {
+                                op.subtitleSelectionInitialized = true
+                                val preferred = op.request.preferredSubLang
+                                op.subtitleSelection = if (preferred != null && preferred.equals("None", ignoreCase = true)) {
+                                    SubtitleSelection.Off
+                                } else {
+                                    SubtitleSelection.Unset
+                                }
+                                // A selected external subtitle requested at load time is a
+                                // request-carried attachment; it adopts Track(id) once it appears
+                                // but must NOT override a persisted/explicit Off.
+                                if (op.subtitleSelection != SubtitleSelection.Off &&
+                                    op.request.externalSubtitles.any { it.selected }
+                                ) {
+                                    op.pendingExternalSelection = true
+                                    op.pendingExternalBaselineExternalIds = op.knownExternalTrackIds
+                                }
+                            }
+
                             drainSupersededLeases()
 
                             updateSnapshot(currentSnapshot.copy(
@@ -1271,23 +1657,41 @@ class MpvPlaybackEngine(
                     if (op != null && (playingId == null || op.playlistEntryId == playingId)) {
                         op.state = LoadOperationState.LOADED
 
-                        // Attach external subtitles for this operation once
+                        // Attach external subtitles for this operation once.
+                        // Beta03: apply the track's source transport context first
+                        // so header-gated softsubs (AniZone) fetch correctly.
                         if (!op.externalSubtitlesAttached) {
                             op.externalSubtitlesAttached = true
                             op.request.externalSubtitles.forEach { sub ->
                                 val flag = if (sub.selected) "select" else "auto"
                                 try {
+                                    applyAuxTransportOptions(sub.headers)
                                     mpvClient.command("sub-add", sub.url, flag, sub.title ?: "", sub.language ?: "")
+                                    ani.dantotsu.util.Logger.log(
+                                        MpvNetworkOptions.auxAttachLogLine("sub-add", sub.url, sub.headers)
+                                    )
                                 } catch (_: Exception) {}
                             }
                         }
 
-                        // Attach external audio tracks for this operation once
+                        // Attach external audio tracks for this operation once.
+                        // Beta03: same transport treatment as subtitles.
+                        // Beta04: the FIRST external audio is attached with
+                        // "select" (the rest "auto"). mpv never auto-selects
+                        // tracks added with "auto", so a video-only HLS master
+                        // (or a dead auto-picked rendition) would otherwise
+                        // stay silent even though the extension's audio
+                        // fetched fine (AniZone: video played, no audio).
                         if (!op.externalAudioAttached) {
                             op.externalAudioAttached = true
-                            op.request.externalAudioTracks.forEach { audio ->
+                            op.request.externalAudioTracks.forEachIndexed { index, audio ->
+                                val audioFlag = if (index == 0) "select" else "auto"
                                 try {
-                                    mpvClient.command("audio-add", audio.url, "auto", audio.title ?: "", audio.language ?: "")
+                                    applyAuxTransportOptions(audio.headers)
+                                    mpvClient.command("audio-add", audio.url, audioFlag, audio.title ?: "", audio.language ?: "")
+                                    ani.dantotsu.util.Logger.log(
+                                        MpvNetworkOptions.auxAttachLogLine("audio-add", audio.url, audio.headers)
+                                    )
                                 } catch (_: Exception) {}
                             }
                         }
@@ -1314,6 +1718,12 @@ class MpvPlaybackEngine(
                             op.pendingSubtitleTrackId = null
                             selectSubtitleTrackInternal(sid)
                         }
+
+                        // CP3: enforce the authoritative (operation-bound) subtitle-selection
+                        // state at load time. mpv may have auto-selected a default subtitle
+                        // track on FILE_LOADED, so re-assert Off / explicit Track here. The
+                        // track-list handler also enforces this on subsequent refreshes.
+                        enforceSubtitleSelectionState(op)
 
                         if (currentSnapshot.userPlayIntent) {
                             playInternal()

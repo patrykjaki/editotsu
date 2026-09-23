@@ -5,6 +5,7 @@ import ani.dantotsu.FileUrl
 import ani.dantotsu.currContext
 import ani.dantotsu.media.MediaNameAdapter
 import ani.dantotsu.media.SubtitleDownloader
+import ani.dantotsu.media.anime.player.ExtensionMpvArgs
 import ani.dantotsu.media.manga.ImageData
 import ani.dantotsu.media.manga.MangaCache
 import ani.dantotsu.snackString
@@ -416,10 +417,13 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
     }
 
     private fun videoToVideoServer(video: Video): VideoServer {
+        val providerKey = "editotsu-picker-provider"
+        val merged = HashMap<String, String>()
+        merged[providerKey] = extension.pkgName
         return VideoServer(
             video.quality,
             video.url,
-            null,
+            merged,
             video
         )
     }
@@ -648,11 +652,22 @@ class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtrac
 
     override suspend fun extract(): VideoContainer {
         val vidList = listOfNotNull(videoServer.video?.let { aniVideoToSaiVideo(it) })
-        val subList = videoServer.video?.subtitleTracks?.map { trackToSubtitle(it) } ?: emptyList()
-        val audioList = videoServer.video?.audioTracks ?: emptyList()
+        // Beta03: preserve the source transport context (video headers) and
+        // resolve relative track URLs against the video URL; previously both
+        // were dropped, breaking header-gated softsubs (AniZone).
+        val extVideo = videoServer.video
+        val videoHeaders: Map<String, String> =
+            extVideo?.headers?.toMultimap()?.mapValues { it.value.joinToString() } ?: emptyMap()
+        val videoUrl = extVideo?.videoUrl.orEmpty()
+        val subList = extVideo?.subtitleTracks?.map { trackToSubtitle(it, videoUrl, videoHeaders) } ?: emptyList()
+        val audioList = extVideo?.audioTracks ?: emptyList()
+        // Beta03: validated extension mpv options (e.g. AniKoto demuxer-lavf-o).
+        val mpvFileOptions = ExtensionMpvArgs.toFileOptions(
+            ExtensionMpvArgs.sanitize(extVideo?.mpvArgs ?: emptyList())
+        )
 
         return if (vidList.isNotEmpty()) {
-            VideoContainer(vidList, subList, audioList)
+            VideoContainer(vidList, subList, audioList, mpvFileOptions)
         } else {
             throw Exception("No videos found")
         }
@@ -776,12 +791,20 @@ class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtrac
 
     }
 
-    private fun trackToSubtitle(track: Track): Subtitle {
-        val type = runBlocking { findSubtitleType(track.url) }
+    private fun trackToSubtitle(track: Track, videoUrl: String, videoHeaders: Map<String, String>): Subtitle {
+        // Beta03: resolve relative/protocol-relative URLs against the video URL
+        // first, then detect the type from the resolved URL; attach the source
+        // headers so the player (and the beta02 local-cache fallback) can fetch.
+        val resolvedUrl = ExtensionTrackCompat.resolveTrackUrl(track.url, videoUrl)
+        val type = runBlocking { findSubtitleType(resolvedUrl) }
         if (type == SubtitleType.UNKNOWN) {
             Logger.log("Warning: subtitle type unresolved for '${track.url}', defaulting to SRT")
         }
-        return Subtitle(track.lang, track.url, type.takeUnless { it == SubtitleType.UNKNOWN } ?: SubtitleType.SRT)
+        return Subtitle(
+            track.lang,
+            FileUrl(resolvedUrl, videoHeaders),
+            type.takeUnless { it == SubtitleType.UNKNOWN } ?: SubtitleType.SRT
+        )
     }
 
     private suspend fun findSubtitleType(url: String): SubtitleType {

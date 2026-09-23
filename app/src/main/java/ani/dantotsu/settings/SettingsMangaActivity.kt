@@ -5,11 +5,13 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.LinearLayoutManager
 import ani.dantotsu.R
 import ani.dantotsu.databinding.ActivitySettingsMangaBinding
 import ani.dantotsu.download.DownloadsManager
+import ani.dantotsu.download.manga.MangaDownloaderService
 import ani.dantotsu.initActivity
 import ani.dantotsu.media.MediaType
 import ani.dantotsu.navBarHeight
@@ -85,8 +87,14 @@ class SettingsMangaActivity : AppCompatActivity() {
                                 setTitle(R.string.purge_manga_downloads)
                                 setMessage(R.string.purge_confirm, getString(R.string.manga))
                                 setPosButton(R.string.yes, onClick = {
-                                    val downloadsManager = Injekt.get<DownloadsManager>()
-                                    downloadsManager.purgeDownloads(MediaType.MANGA)
+                                    // Authoritative purge-all via the service scope
+                                    // barrier (all live manga owners cancelled+joined
+                                    // before physical deletion). The service reports
+                                    // the honest outcome itself.
+                                    val intent = Intent(context, MangaDownloaderService::class.java).apply {
+                                        action = MangaDownloaderService.ACTION_PURGE_MANGA
+                                    }
+                                    ContextCompat.startForegroundService(context, intent)
                                 })
                                 setNegButton(R.string.no)
                                 show()

@@ -191,7 +191,9 @@ fun buildCurrentBootstrapSettings(context: Context): List<ResolvedInitSetting> {
         MpvInitOption("slang", MpvSettingValue.StringValue("eng,en,enUS,en-US,English,enm")),
         MpvInitOption("alang", MpvSettingValue.StringValue("jpn,ja,eng,en,Japanese,English")),
         MpvInitOption("sub-font-provider", MpvSettingValue.StringValue("none")),
-        MpvInitOption("sub-font", MpvSettingValue.StringValue("Poppins-SemiBold")),
+        // Font family strings must be exact internal names (see MpvSubtitleFonts);
+        // provider=none performs no fuzzy matching and a miss renders blank subs.
+        *defaultSubtitleFontOptions().toTypedArray(),
         MpvInitOption("embeddedfonts", MpvSettingValue.StringValue("yes")),
         MpvInitOption("keep-open", MpvSettingValue.StringValue("no")),
         MpvInitOption("ytdl", MpvSettingValue.StringValue("no")),

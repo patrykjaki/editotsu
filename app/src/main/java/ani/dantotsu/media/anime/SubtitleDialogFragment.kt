@@ -853,6 +853,17 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                         episode.selectedSubtitle = null
                         model.setEpisode(episode, "Subtitle")
                         PrefManager.setCustomVal("subLang_${mediaId}", "None")
+                        // CP3: explicitly turn subtitles off in the player so the Off state
+                        // is authoritative and survives FILE_LOADED / track refreshes.
+                        // Beta03: also invalidate any in-flight server download so a
+                        // stale completion cannot re-register (CP3-B02-1).
+                        (requireActivity() as? ExoplayerView)?.let { exo ->
+                            exo.subtitleManager.noteSupersedingIntent()
+                            exo.onSelectTrack(
+                                null,
+                                ani.dantotsu.media.anime.player.TrackType.SUBTITLE
+                            )
+                        }
                         updateActiveSubtitleBadge()
                         dismiss()
                     }
@@ -952,6 +963,11 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                             episode.selectedSubtitle = subIndex
                             model.setEpisode(episode, "Subtitle")
                             PrefManager.setCustomVal("subLang_${mediaId}", item.language)
+                            // 0.5.0-beta02: previously this only saved the pref (applied
+                            // on next episode load). Kick a live download+attach so the
+                            // chosen server subtitle appears immediately.
+                            (requireActivity() as? ExoplayerView)?.subtitleManager
+                                ?.setActiveServerSubtitle(item, explicitUserAction = true)
                             updateActiveSubtitleBadge()
                             dismiss()
                         }
@@ -1000,10 +1016,15 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
 
                     itemBinding.subtitleCardRoot.setOnClickListener {
                         PrefManager.setCustomVal("subLang_${mediaId}", uniqueKey)
-                        (requireActivity() as? ExoplayerView)?.onSelectTrack(
-                            item.track,
-                            ani.dantotsu.media.anime.player.TrackType.SUBTITLE
-                        )
+                        // Beta03: an explicit embedded choice supersedes any
+                        // in-flight server download (CP3-B02-2/3).
+                        (requireActivity() as? ExoplayerView)?.let { exo ->
+                            exo.subtitleManager.noteSupersedingIntent()
+                            exo.onSelectTrack(
+                                item.track,
+                                ani.dantotsu.media.anime.player.TrackType.SUBTITLE
+                            )
+                        }
                         updateActiveSubtitleBadge()
                         dismiss()
                     }

@@ -13,7 +13,7 @@ import ani.dantotsu.settings.saving.internal.Pref
 
 enum class PrefName(val data: Pref) {
     //General
-    SharedUserID(Pref(Location.General, Boolean::class, true)),
+    SharedUserID(Pref(Location.General, Boolean::class, false)),
     OfflineView(Pref(Location.General, Int::class, 0)),
     DownloadManager(Pref(Location.General, Int::class, 0)),
     MaxParallelDownloads(Pref(Location.General, Int::class, 0)),
@@ -117,6 +117,11 @@ enum class PrefName(val data: Pref) {
     Resize(Pref(Location.Player, Int::class, 0)),
     Subtitles(Pref(Location.Player, Boolean::class, true)),
     UseSourceSubtitleStyling(Pref(Location.Player, Boolean::class, true)),
+    // Beta07: superseded by SubtitleStylingMode (kept for one-way legacy
+    // migration in SubtitleStylingStore; do not read elsewhere).
+    SubtitleStylingMode(Pref(Location.Player, Int::class, 0)),
+    CustomStreamSourceStyling(Pref(Location.Player, Boolean::class, false)),
+    CustomLocalSourceStyling(Pref(Location.Player, Boolean::class, true)),
     OnlineSubtitlesEnabled(Pref(Location.Player, Boolean::class, true)),
     OnlineSubtitleProviders(Pref(Location.Player, Set::class, setOf("Wyzie", "Stremio", "SubSource", "OpenSubtitles"))),
     OnlineSubtitleLanguages(Pref(Location.Player, Set::class, setOf("English"))),
@@ -215,13 +220,7 @@ enum class PrefName(val data: Pref) {
     PendingProgressUpdates(Pref(Location.Irrelevant, List::class, listOf<PendingProgressUpdate>())),
     PendingDeletions(Pref(Location.Irrelevant, List::class, listOf<PendingDeletion>())),
     OfflineMode(Pref(Location.Irrelevant, Boolean::class, false)),
-    DiscordStatus(Pref(Location.Irrelevant, String::class, "online")),
-    DiscordRPCModeAnime(Pref(Location.Irrelevant, String::class, "dantotsu")),
-    DiscordRPCModeManga(Pref(Location.Irrelevant, String::class, "dantotsu")),
-    DiscordRPCShowIconAnime(Pref(Location.Irrelevant, Boolean::class, true)),
-    DiscordRPCShowIconManga(Pref(Location.Irrelevant, Boolean::class, true)),
     DiscordRPCDisableAdultMedia(Pref(Location.Irrelevant, Boolean::class, false)),
-    DiscordShowButtons(Pref(Location.Irrelevant, Boolean::class, true)),
     DownloadsKeys(Pref(Location.Irrelevant, String::class, "")),
     NovelLastExtCheck(Pref(Location.Irrelevant, Long::class, 0L)),
     ImageUrl(Pref(Location.Irrelevant, String::class, "")),
@@ -251,19 +250,19 @@ enum class PrefName(val data: Pref) {
     LocalDir(Pref(Location.Irrelevant, String::class, "")),
     OC(Pref(Location.Irrelevant, Boolean::class, false)),
     RefreshStatus(Pref(Location.Irrelevant, Boolean::class, false)),
-    rpcEnabled(Pref(Location.Irrelevant, Boolean::class, true)),
+    // Phase 2 user-facing Rich Presence master switch (tokenless). Default OFF so presence is strictly
+    // opt-in. This is the sole persisted enable gate for Discord presence publishing.
+    DiscordRichPresenceEnabled(Pref(Location.Irrelevant, Boolean::class, false)),
 
     //Protected
-    DiscordToken(Pref(Location.Protected, String::class, "")),
-    DiscordId(Pref(Location.Protected, String::class, "")),
-    DiscordUserName(Pref(Location.Protected, String::class, "")),
-    DiscordAvatar(Pref(Location.Protected, String::class, "")),
     AnilistToken(Pref(Location.Protected, String::class, "")),
     AnilistUserName(Pref(Location.Protected, String::class, "")),
     AnilistUserId(Pref(Location.Protected, String::class, "")),
     MALUserName(Pref(Location.Protected, String::class, "")),
     MALAvatar(Pref(Location.Protected, String::class, "")),
     MALCodeChallenge(Pref(Location.Protected, String::class, "")),
+    MALAuthSession(Pref(Location.Protected, String::class, "")),
+    MALEncryptedToken(Pref(Location.Protected, String::class, "")),
     MALToken(Pref(Location.Protected, MAL.ResponseToken::class, "")),
     AppPassword(Pref(Location.Protected, String::class, "")),
     BiometricToken(Pref(Location.Protected, String::class, "")),
@@ -282,4 +281,24 @@ enum class PrefName(val data: Pref) {
     TorrentBatterySaving(Pref(Location.Player, Boolean::class, false)),
     TorrentPort(Pref(Location.Player, Int::class, 0)),
     TorrentDisableUtp(Pref(Location.Player, Boolean::class, false)),
+    TorrentRetainedCacheQuota(Pref(Location.Player, Long::class, 3L * 1024L * 1024L * 1024L)),
+
+    // Video Pipeline & PR #90 Settings
+    VideoBrightness(Pref(Location.Player, Int::class, 0)),
+    VideoContrast(Pref(Location.Player, Int::class, 0)),
+    VideoSaturation(Pref(Location.Player, Int::class, 0)),
+    VideoGamma(Pref(Location.Player, Int::class, 0)),
+    VideoHue(Pref(Location.Player, Int::class, 0)),
+    VideoSharpen(Pref(Location.Player, Float::class, 0.0f)),
+    VideoDebandMode(Pref(Location.Player, String::class, "None")),
+    VideoDebandIterations(Pref(Location.Player, Int::class, 1)),
+    VideoDebandThreshold(Pref(Location.Player, Int::class, 32)),
+    VideoDebandRange(Pref(Location.Player, Int::class, 16)),
+    VideoDebandGrain(Pref(Location.Player, Int::class, 48)),
+    UpscalerProviderId(Pref(Location.Player, String::class, "off")),
+    UpscalerProfileId(Pref(Location.Player, String::class, "")),
+    AudioDelayMs(Pref(Location.Player, Int::class, 0)),
+    SubtitleDelayMs(Pref(Location.Player, Int::class, 0)),
+    SubtitleSpeed(Pref(Location.Player, Float::class, 1.0f)),
+    VolumeBoostCap(Pref(Location.Player, Int::class, 30)),
 }

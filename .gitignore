@@ -49,3 +49,13 @@ crowdin.yml
 
 #vscode
 .vscode
+# Internal review/handoff artifacts — never committed
+REPO_REVIEW.md
+checkpoint*.diff
+checkpoint*_summary.md
+
+# CP3-A: local signing material — never commit
+keystore.properties
+*.jks
+*.keystore
+key.keystore

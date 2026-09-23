@@ -113,6 +113,16 @@ object MpvNetworkOptions {
             PlaybackSourceClass.HLS -> {
                 optionsList.add("demuxer-max-bytes=67108864")
                 optionsList.add("network-timeout=20")
+                // Beta10 revert of the beta09 experiment (`demuxer-lavf-format
+                // =mpegts`): the force applies at EVERY demux_open including
+                // the top-level playlist open, so variant playlists stop
+                // resolving as HLS (field: working HD-2/Vidstream-2 broke
+                // with "loading failed"; HD-1 rendered decoder garbage).
+                // Desktop mpv confirms a forced format hangs/fails playlist
+                // opens that play fine unforced. The PNG-wrapped-TS problem
+                // needs segment-level demuxer control, which mpv does not
+                // expose via loadfile options — left unsolved rather than
+                // regressing working servers. See MpvHlsDemuxerForceTest.
             }
             PlaybackSourceClass.TORRENT_LOCALHOST -> {
                 optionsList.add("demuxer-max-bytes=33554432")
@@ -146,6 +156,25 @@ object MpvNetworkOptions {
             headers = headers,
             startPositionMs = startPositionMs
         )
+    }
+
+    /**
+     * Beta03: redacted one-line diagnostic for an auxiliary track attach.
+     * Includes the URL without query/fragment (signed params must not leak),
+     * the transport presence (user-agent/referer/extra-field counts) and the
+     * header NAMES. Header VALUES are never included.
+     */
+    fun auxAttachLogLine(kind: String, url: String, headers: Map<String, String>): String {
+        val cleanUrl = url.substringBefore('?').substringBefore('#')
+        val names = headers.keys.sorted().joinToString(",")
+        val hasUa = headers.keys.any { it.equals("user-agent", ignoreCase = true) }
+        val hasRef = headers.keys.any { it.equals("referer", ignoreCase = true) || it.equals("referrer", ignoreCase = true) }
+        val extraFields = headers.keys.count { k ->
+            !k.equals("user-agent", ignoreCase = true) &&
+                !k.equals("referer", ignoreCase = true) &&
+                !k.equals("referrer", ignoreCase = true)
+        }
+        return "aux-attach kind=$kind url=$cleanUrl ua=$hasUa referer=$hasRef extraFields=$extraFields headerKeys=[$names]"
     }
 
     fun redactHeadersForLogging(headers: Map<String, String>): Map<String, String> {

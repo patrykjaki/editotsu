@@ -43,10 +43,11 @@ interface PlaybackEngine {
 
     fun selectAudioTrack(id: Int?)
     fun selectSubtitleTrack(id: Int?)
-    fun addExternalSubtitle(uri: String, title: String?, language: String?, select: Boolean)
+    fun addExternalSubtitle(uri: String, title: String?, language: String?, select: Boolean, explicitUserAction: Boolean = false)
     fun setSubtitleDelay(delayMs: Long) {}
     fun setAudioDelay(delayMs: Long) {}
     fun applySubtitleStyle(style: SubtitleStyle)
+    fun applyVideoPipeline(config: VideoPipelineConfig) {}
     fun setResizeMode(mode: ResizeMode)
 
     fun loadMedia(request: PlaybackRequest)

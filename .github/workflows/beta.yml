@@ -1,159 +1,501 @@
-name: Build APK and Notify Discord
+# Editotsu 0.5 release pipeline (reviewed replacement for the old beta.yml).
+#
+# Two modes, one deterministic pipeline:
+#   RC validation : manual workflow_dispatch with rc_sha -> evidence only, NO release.
+#   Tag mode      : push of tag v0.5.0-beta01 -> reverify approved SHA -> prerelease.
+#
+# Provenance rule: every publishable APK has exactly one producing build
+# execution (per-flavor matrix legs build and upload only their flavor).
+# Release creation is the final job and depends on every required job.
+# A partial matrix can never publish: asset globs use fail_on_unmatched_files.
+name: Editotsu 0.5 release
 
 on:
+  workflow_dispatch:
+    inputs:
+      rc_sha:
+        description: "Exact proposed RC commit SHA (40 hex). Evidence only; no release."
+        required: true
   push:
     tags:
-      - "v*.*.*"
-    branches-ignore:
-      - main
-      - l10n_dev_crowdin
-      - custom-download-location
-    paths-ignore:
-      - '**/README.md'
+      - "v0.5.0-beta01"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  EXPECTED_VERSION: "0.5.0-beta01"
+  EXPECTED_CODE: "1000510"
+  # Channel/package contract (deliberate, not hardcoded-beta-universal):
+  # prerelease versions (containing "-") ship as ani.editotsu.beta so
+  # betas coexist with stable; future stable versions ship as
+  # ani.editotsu. Derived in the verify job from EXPECTED_VERSION.
 
 jobs:
+  sha-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      checked_sha: ${{ steps.resolve.outputs.checked_sha }}
+      trigger_mode: ${{ steps.resolve.outputs.trigger_mode }}
+    steps:
+      - name: Validate candidate SHA input
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SHA="${{ inputs.rc_sha }}"
+            MODE="rc-validation"
+          else
+            VARD="${{ vars.APPROVED_0_5_0_BETA01_RC_SHA }}"
+            if ! printf '%s' "$VARD" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "::error::APPROVED_0_5_0_BETA01_RC_SHA missing or not 40-hex"
+              exit 1
+            fi
+            SHA="$VARD"
+            MODE="tag"
+          fi
+
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::candidate SHA is not 40-hex"
+            exit 1
+          fi
+
+          echo "checked_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "trigger_mode=$MODE" >> "$GITHUB_OUTPUT"
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.checked_sha }}
+          fetch-depth: 0
+      - name: Assert exact candidate and record provenance
+        run: |
+          mkdir -p evidence-sha
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          WANT="${{ steps.resolve.outputs.checked_sha }}"
+          MODE="${{ steps.resolve.outputs.trigger_mode }}"
+
+          [ "$HEAD_SHA" = "$WANT" ] || {
+            echo "::error::HEAD $HEAD_SHA != candidate $WANT"
+            exit 1
+          }
+
+          git fetch origin main
+          MAIN_SHA=$(git rev-parse origin/main)
+
+          if [ "$MODE" = "tag" ]; then
+            TAG_SHA=$(git rev-list -n 1 v0.5.0-beta01)
+
+            [ "$TAG_SHA" = "$WANT" ] || {
+              echo "::error::tag $TAG_SHA != approved $WANT"
+              exit 1
+            }
+
+            [ "$TAG_SHA" = "$MAIN_SHA" ] || {
+              echo "::error::tag $TAG_SHA != current main $MAIN_SHA"
+              exit 1
+            }
+          else
+            [ "$MAIN_SHA" = "$WANT" ] || {
+              echo "::error::candidate $WANT != current main $MAIN_SHA"
+              exit 1
+            }
+          fi
+
+          {
+            echo "mode=$MODE"
+            echo "sha=$HEAD_SHA"
+            echo "tree=$(git rev-parse HEAD^{tree})"
+            echo "main=$MAIN_SHA"
+            echo "run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "ref=${{ github.ref }}"
+          } > evidence-sha/candidate.txt
+
+          if git status --short | grep -v '^??' | grep -q .; then
+            echo "::error::tracked tree not clean"
+            git status --short
+            exit 1
+          fi
+
+          cat evidence-sha/candidate.txt
+      - name: Upload SHA evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-sha
+          retention-days: 30
+          path: evidence-sha/
+
+  tests:
+    runs-on: ubuntu-latest
+    needs: [sha-gate]
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sha-gate.outputs.checked_sha }}
+          fetch-depth: 0
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: v1-${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            v1-${{ runner.os }}-gradle-
+      - name: Unit tests (google + fdroid)
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:testGoogleDebugUnitTest :app:testFdroidDebugUnitTest
+      - name: Test summary evidence
+        if: always()
+        run: |
+          mkdir -p evidence-tests
+          python3 - <<'EOF' > evidence-tests/test-summary.txt
+          import glob, xml.etree.ElementTree as ET
+          for flavor in ['testGoogleDebugUnitTest', 'testFdroidDebugUnitTest']:
+              t = f = e = s = 0; n = 0
+              for path in glob.glob('app/build/test-results/%s/*.xml' % flavor):
+                  r = ET.parse(path).getroot(); n += 1
+                  t += int(r.get('tests')); f += int(r.get('failures'))
+                  e += int(r.get('errors')); s += int(r.get('skipped'))
+              print('%s classes=%d tests=%d failures=%d errors=%d skipped=%d' % (flavor, n, t, f, e, s))
+          EOF
+          cat evidence-tests/test-summary.txt
+      - name: Upload test reports + summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-tests
+          retention-days: 30
+          path: |
+            evidence-tests/
+            app/build/test-results/testGoogleDebugUnitTest/*.xml
+            app/build/test-results/testFdroidDebugUnitTest/*.xml
+
+  version-gate:
+    runs-on: ubuntu-latest
+    needs: [sha-gate]
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sha-gate.outputs.checked_sha }}
+          fetch-depth: 0
+      - name: Assert source version identity
+        run: |
+          mkdir -p evidence-version
+          NAME=$(grep -E -m1 'versionName = "' app/build.gradle.kts | sed -E 's/.*versionName = "//; s/".*//')
+          CODE=$(grep -E -m1 'versionCode = ' app/build.gradle.kts | grep -E -o '[0-9]+')
+          {
+            echo "versionName=$NAME (expected $EXPECTED_VERSION)"
+            echo "versionCode=$CODE (expected $EXPECTED_CODE)"
+          } | tee evidence-version/version-gate.txt
+          [ "$NAME" = "$EXPECTED_VERSION" ] || { echo "::error::versionName mismatch"; exit 1; }
+          [ "$CODE" = "$EXPECTED_CODE" ] || { echo "::error::versionCode mismatch"; exit 1; }
+      - name: Upload version evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-version
+          retention-days: 30
+          path: evidence-version/
+
+  signing-gate:
+    runs-on: ubuntu-latest
+    needs: [sha-gate]
+    steps:
+      - name: Require release-signing material (fail closed)
+        env:
+          KS_FILE: ${{ secrets.KEYSTORE_FILE }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+          PINNED_DIGEST: ${{ secrets.EXPECTED_CERT_DIGEST }}
+        run: |
+          mkdir -p evidence-signing
+          missing=""
+          [ -z "$KS_FILE" ]       && missing="$missing KEYSTORE_FILE"
+          [ -z "$KS_PASS" ]       && missing="$missing KEYSTORE_PASSWORD"
+          [ -z "$KEY_ALIAS" ]     && missing="$missing KEY_ALIAS"
+          [ -z "$KEY_PASS" ]      && missing="$missing KEY_PASSWORD"
+          [ -z "$PINNED_DIGEST" ] && missing="$missing EXPECTED_CERT_DIGEST"
+          if [ -n "$missing" ]; then
+            echo "::error::Release signing secrets missing:$missing — refusing."
+            exit 1
+          fi
+          echo "all release-signing inputs present (values not printed)" | tee evidence-signing/signing-verification.txt
+      - name: Upload signing evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-signing
+          retention-days: 30
+          path: evidence-signing/
+
+  mal-gate:
+    runs-on: ubuntu-latest
+    needs: [sha-gate]
+    steps:
+      - name: Require MAL client ID (fail closed, length-only proof)
+        env:
+          MAL_CLIENT_ID: ${{ secrets.MAL_CLIENT_ID }}
+        run: |
+          mkdir -p evidence-mal
+          if [ -z "$MAL_CLIENT_ID" ]; then
+            echo "::error::MAL_CLIENT_ID secret missing/blank — refusing." >&2
+            exit 1
+          fi
+          echo "MAL_CLIENT_ID present, length=${#MAL_CLIENT_ID} (value not printed)" | tee evidence-mal/mal-verification.txt
+      - name: Upload MAL evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-mal
+          retention-days: 30
+          path: evidence-mal/
+
+  mal-control:
+    runs-on: ubuntu-latest
+    needs: [sha-gate, mal-gate]
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sha-gate.outputs.checked_sha }}
+          fetch-depth: 0
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: v1-${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            v1-${{ runner.os }}-gradle-
+      - name: No-credential control build + DEX absence proof
+        env:
+          MAL_CLIENT_ID: ""
+          CONTROL_ID: ${{ secrets.MAL_CLIENT_ID }}
+        run: |
+          set +x
+          mkdir -p evidence-mal-control
+          test ! -f ~/.editotsu/credentials/mal.properties || {
+            echo "::error::local credential file present; control not blank"
+            exit 1
+          }
+          chmod +x ./gradlew
+          # Explicitly non-publishable dev signing route (never a release signer).
+          ./gradlew -Peditotsu.devSigning=debug :app:assembleGoogleDebug
+
+          APK=$(ls -t app/build/outputs/apk/google/debug/app-google-*-debug.apk | head -1)
+
+          echo "control APK (NON-RELEASE evidence only, never published): $APK" \
+            | tee evidence-mal-control/mal-control.txt
+
+          COUNT=$(
+            unzip -p "$APK" 'classes*.dex' |
+            CONTROL_NEEDLE="$CONTROL_ID" python3 -c \
+              "import os,sys; print(sys.stdin.buffer.read().count(os.environ['CONTROL_NEEDLE'].encode()))"
+          )
+
+          echo "control DEX-byte count: $COUNT" \
+            | tee -a evidence-mal-control/mal-control.txt
+
+          echo "non-release evidence only" \
+            | tee -a evidence-mal-control/mal-control.txt
+      - name: Assert absence separately (count must be exactly 0)
+        run: |
+          grep -q "control DEX-byte count: 0" evidence-mal-control/mal-control.txt || { echo "::error::control shows unexpected credential presence"; exit 1; }
+      - name: Upload control evidence (no APK binary)
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-mal-control
+          retention-days: 30
+          path: evidence-mal-control/
+
   build:
     runs-on: ubuntu-latest
+    needs: [sha-gate, tests, version-gate, signing-gate, mal-gate]
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - flavor: google
+            gradle_task: assembleGoogleBeta
+            output_path: app/build/outputs/apk/google/beta/*.apk
+          - flavor: fdroid
+            gradle_task: assembleFdroidBeta
+            output_path: app/build/outputs/apk/fdroid/beta/*.apk
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sha-gate.outputs.checked_sha }}
+          fetch-depth: 0
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: v1-${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            v1-${{ runner.os }}-gradle-
+      - name: Decode keystore (CP4-A contract mapping)
+        env:
+          KS_FILE_B64: ${{ secrets.KEYSTORE_FILE }}
+        run: printf '%s' "$KS_FILE_B64" | base64 -d > "$GITHUB_WORKSPACE/key.keystore"
+      - name: Build release flavor (this flavor only)
+        env:
+          EDITOTSU_STORE_FILE: ${{ github.workspace }}/key.keystore
+          EDITOTSU_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          EDITOTSU_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          EDITOTSU_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          MAL_CLIENT_ID: ${{ secrets.MAL_CLIENT_ID }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew ${{ matrix.gradle_task }}
+      - name: Upload this flavor's APKs only
+        uses: actions/upload-artifact@v4
+        with:
+          name: apks-${{ matrix.flavor }}
+          retention-days: 14
+          path: ${{ matrix.output_path }}
+
+  verify:
+    runs-on: ubuntu-latest
+    needs: [build, mal-control]
+    steps:
+      - name: Download built APKs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: apks-*
+          merge-multiple: true
+          path: release-apks
+      - name: Download gate evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: evidence-*
+          merge-multiple: false
+          path: gate-evidence
+      - name: APK identity + signer + MAL DEX-byte proof
+        env:
+          PINNED_DIGEST: ${{ secrets.EXPECTED_CERT_DIGEST }}
+          MAL_CLIENT_ID: ${{ secrets.MAL_CLIENT_ID }}
+        run: |
+          set +x
+          mkdir -p release-evidence
+          TOOLS="$ANDROID_HOME/build-tools"
+          APKSIGNER=$(ls "$TOOLS"/*/apksigner 2>/dev/null | sort -V | tail -1)
+          AAPT2=$(ls "$TOOLS"/*/aapt2 2>/dev/null | sort -V | tail -1)
+          [ -n "$APKSIGNER" ] || { echo "::error::apksigner not found under $TOOLS"; exit 1; }
+          [ -n "$AAPT2" ] || { echo "::error::aapt2 not found under $TOOLS"; exit 1; }
+          echo "apksigner=$APKSIGNER" | tee release-evidence/tooling.txt
+          echo "aapt2=$AAPT2" | tee -a release-evidence/tooling.txt
+          EXPECTED=$(printf '%s' "$PINNED_DIGEST" | tr -d ':' | tr 'A-Z' 'a-z')
+          if [[ "$EXPECTED_VERSION" == *"-"* ]]; then EXPECTED_PKG="ani.editotsu.beta"; else EXPECTED_PKG="ani.editotsu"; fi
+          echo "expected package for $EXPECTED_VERSION: $EXPECTED_PKG"
+          rc=0
+          : > release-evidence/apk-badging.txt
+          : > release-evidence/apk-signers.txt
+          : > release-evidence/mal-dex-counts.txt
+          for APK in release-apks/*.apk; do
+            echo "== $APK ==" | tee -a release-evidence/apk-badging.txt
+            BADGING=$("$AAPT2" dump badging "$APK" | head -1)
+            echo "$BADGING" | tee -a release-evidence/apk-badging.txt
+            echo "$BADGING" | grep -q "name='$EXPECTED_PKG'" || { echo "::error::package mismatch"; rc=1; }
+            echo "$BADGING" | grep -q "versionCode='$EXPECTED_CODE'" || { echo "::error::versionCode mismatch"; rc=1; }
+            echo "$BADGING" | grep -q "versionName='$EXPECTED_VERSION'" || { echo "::error::versionName mismatch"; rc=1; }
+            CERTS=$("$APKSIGNER" verify --print-certs "$APK") || { echo "::error::not properly signed"; rc=1; continue; }
+            echo "$CERTS" >> release-evidence/apk-signers.txt
+            echo "$CERTS" | grep -q "CN=Android Debug" && { echo "::error::debug signer"; rc=1; continue; }
+            ACTUAL=$(echo "$CERTS" | grep -oP 'SHA-256 digest:? \K[0-9a-fA-F]+' | head -1 | tr -d ':' | tr 'A-Z' 'a-z')
+            [ "$ACTUAL" = "$EXPECTED" ] || { echo "::error::cert digest mismatch"; rc=1; }
+            COUNT=$(unzip -p "$APK" 'classes*.dex' | MAL_NEEDLE="$MAL_CLIENT_ID" python3 -c "import os,sys; print(sys.stdin.buffer.read().count(os.environ['MAL_NEEDLE'].encode()))")
+            echo "$(basename "$APK"): MAL DEX-byte count=$COUNT" | tee -a release-evidence/mal-dex-counts.txt
+            [ "$COUNT" -gt 0 ] || { echo "::error::MAL client ID absent from DEX"; rc=1; }
+          done
+          exit $rc
+      - name: Rename assets + SHA256SUMS + asset list
+        run: |
+          mkdir -p final
+          cp release-apks/app-google-arm64-v8a-beta.apk final/Editotsu-0.5.0-beta01-google-arm64-v8a.apk
+          cp release-apks/app-google-universal-beta.apk final/Editotsu-0.5.0-beta01-google-universal.apk
+          cp release-apks/app-fdroid-arm64-v8a-beta.apk final/Editotsu-0.5.0-beta01-fdroid-arm64-v8a.apk
+          cp release-apks/app-fdroid-universal-beta.apk final/Editotsu-0.5.0-beta01-fdroid-universal.apk
+          (cd final && sha256sum Editotsu-*.apk > SHA256SUMS && cat SHA256SUMS)
+          ls -1 final/ | tee release-evidence/asset-list.txt
+      - name: Upload evidence bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence
+          retention-days: 30
+          path: |
+            final/
+            release-evidence/
+            gate-evidence/
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [verify]
+    if: github.ref == 'refs/tags/v0.5.0-beta01'
     permissions:
       contents: write
-    env:
-      CI: true
-      SKIP_BUILD: false
-
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Download last SHA artifact
-      uses: dawidd6/action-download-artifact@v6
-      with:
-        workflow: beta.yml
-        name: last-sha
-        path: .
-      continue-on-error: true
-
-    - name: Get Commits Since Last Run
-      run: |
-        if [ -f last_sha.txt ]; then
-          LAST_SHA=$(cat last_sha.txt)
-        else
-          LAST_SHA=$(git rev-list --max-parents=0 HEAD)
-        fi
-        echo "Commits since $LAST_SHA:"
-        COMMIT_LOGS=$(git log $LAST_SHA..HEAD --pretty=format:"● %s ~%an [֍](https://github.com/${{ github.repository }}/commit/%H)" --max-count=10)
-        COMMIT_LOGS=$(echo "$COMMIT_LOGS" | sed -E 's/#([0-9]+)/[#\1](https:\/\/github.com\/rebelonion\/Dantotsu\/pull\/\1)/g')
-        COMMIT_LOGS="${COMMIT_LOGS//'%'/'%25'}"
-        COMMIT_LOGS="${COMMIT_LOGS//$'\n'/'%0A'}"
-        COMMIT_LOGS="${COMMIT_LOGS//$'\r'/'%0D'}"
-        echo "COMMIT_LOG=${COMMIT_LOGS}" >> $GITHUB_ENV
-        echo "$COMMIT_LOGS"
-        echo "$COMMIT_LOGS" > commit_log.txt
-        BRANCH=${{ github.ref }}
-        BRANCH=${BRANCH#refs/heads/}
-        echo "BRANCH=${BRANCH}" >> $GITHUB_ENV
-      shell: /usr/bin/bash -e {0}
-      env:
-        CI: true
-
-    - name: Save Current SHA for Next Run
-      run: echo ${{ github.sha }} > last_sha.txt
-
-    - name: Set variables
-      run: |
-        VER=$(grep -E -o 'versionName = ".*"' app/build.gradle.kts | sed -e 's/versionName = //g' | tr -d '"')
-        SHA=${{ github.sha }}
-        VERSION="${VER:-0.1.0}+${SHA:0:7}"
-        echo "Version $VERSION"
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-    - name: List files in the directory
-      run: ls -l
-
-    - name: Setup JDK 21
-      if: ${{ env.SKIP_BUILD != 'true' }}
-      uses: actions/setup-java@v5
-      with:
-        distribution: 'temurin'
-        java-version: 21
-
-    - name: Cache Gradle dependencies
-      if: ${{ env.SKIP_BUILD != 'true' }}
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: v1-${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          v1-${{ runner.os }}-gradle-
-
-    - name: Decode Keystore File
-      if: ${{ github.repository == 'rebelonion/Dantotsu' }}
-      run: echo "${{ secrets.KEYSTORE_FILE }}" | base64 -d > $GITHUB_WORKSPACE/key.keystore
-
-    - name: Make gradlew executable
-      if: ${{ env.SKIP_BUILD != 'true' }}
-      run: chmod +x ./gradlew
-
-    - name: Build with Gradle
-      if: ${{ env.SKIP_BUILD != 'true' }}
-      run: |
-        if [ "${{ github.repository }}" == "rebelonion/Dantotsu" ]; then
-          ./gradlew assembleGoogleAlpha \
-            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/key.keystore \
-            -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
-            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
-            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }};
-        else
-          ./gradlew assembleGoogleAlpha;
-        fi
-
-    - name: Generate APK checksum
-      if: ${{ env.SKIP_BUILD != 'true' }}
-      run: |
-        APK_PATH="app/build/outputs/apk/google/alpha/app-google-alpha.apk"
-        if [ -f "$APK_PATH" ]; then
-          CHECKSUM=$(sha256sum "$APK_PATH" | awk '{print $1}')
-          echo "CHECKSUM=$CHECKSUM" >> $GITHUB_ENV
-          echo "SHA256: $CHECKSUM"
-        fi
-
-    - name: Upload a Build Artifact
-      if: ${{ env.SKIP_BUILD != 'true' }}
-      uses: actions/upload-artifact@v4
-      with:
-          name: Editotsu
-          retention-days: 5
-          compression-level: 9
-          path: "app/build/outputs/apk/google/alpha/*.apk"
-
-    - name: Create GitHub Pre-Release
-      if: ${{ startsWith(github.ref, 'refs/tags/') }}
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ github.ref_name }}
-        name: Editotsu ${{ github.ref_name }}
-        body: ${{ env.COMMIT_LOG }}
-        prerelease: true
-        files: |
-          app/build/outputs/apk/google/alpha/*.apk
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Upload Current SHA as Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: last-sha
-        path: last_sha.txt
-
-    - name: Upload Commit log as Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: commit-log
-        path: commit_log.txt
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: v0.5.0-beta01
+          fetch-depth: 0
+      - name: Gate on approved RC SHA (fail closed, defense in depth)
+        run: |
+          VAR="${{ vars.APPROVED_0_5_0_BETA01_RC_SHA }}"
+          if ! printf '%s' "$VAR" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::APPROVED_0_5_0_BETA01_RC_SHA missing or not 40-hex"; exit 1
+          fi
+          git fetch origin main
+          TAG_SHA=$(git rev-list -n 1 v0.5.0-beta01)
+          MAIN_SHA=$(git rev-parse origin/main)
+          [ "$TAG_SHA" = "$VAR" ] || { echo "::error::tag $TAG_SHA != approved $VAR"; exit 1; }
+          [ "$TAG_SHA" = "$MAIN_SHA" ] || { echo "::error::tag $TAG_SHA != current main $MAIN_SHA"; exit 1; }
+          echo "tag matches approved RC SHA on current main"
+      - name: Download evidence bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: release-evidence
+          path: evidence
+      - name: Create GitHub pre-release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v0.5.0-beta01
+          name: Editotsu v0.5.0-beta01 (beta)
+          body_path: RELEASE_NOTES_0.5.0-beta01.md
+          prerelease: true
+          make_latest: false
+          draft: false
+          fail_on_unmatched_files: true
+          files: |
+            evidence/final/Editotsu-0.5.0-beta01-google-arm64-v8a.apk
+            evidence/final/Editotsu-0.5.0-beta01-google-universal.apk
+            evidence/final/Editotsu-0.5.0-beta01-fdroid-arm64-v8a.apk
+            evidence/final/Editotsu-0.5.0-beta01-fdroid-universal.apk
+            evidence/final/SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

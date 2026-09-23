@@ -9,6 +9,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.LinearLayoutManager
 import ani.dantotsu.BuildConfig
+import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import ani.dantotsu.R
 import ani.dantotsu.buildMarkwon
 import ani.dantotsu.client
@@ -28,6 +31,22 @@ import kotlinx.coroutines.launch
 
 class SettingsAboutActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsAboutBinding
+
+    /**
+     * CP4-C (REPO_REVIEW §3.7): the crash-report identity switch takes effect IN-SESSION.
+     * Opt-out wipes previously attached keys AND disables collection immediately;
+     * opt-in re-attaches only the usernames the user has actually set.
+     */
+    private fun applyCrashlyticsIdentity(shareUsernames: Boolean) {
+        val crashlytics = Injekt.get<CrashlyticsInterface>()
+        if (!shareUsernames) {
+            crashlytics.clearCustomKeys()
+            crashlytics.setCrashlyticsCollectionEnabled(false)
+            return
+        }
+        val aUsername = PrefManager.getVal(PrefName.AnilistUserName, null as String?)
+        aUsername?.let { crashlytics.setCustomKey("aUsername", it) }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ThemeManager(this).applyTheme()
@@ -76,6 +95,7 @@ class SettingsAboutActivity : AppCompatActivity() {
                         isChecked = PrefManager.getVal(PrefName.SharedUserID),
                         switch = { isChecked, _ ->
                             PrefManager.setVal(PrefName.SharedUserID, isChecked)
+                            applyCrashlyticsIdentity(isChecked)
                         },
                         isVisible = !BuildConfig.FLAVOR.contains("fdroid")
                     ),

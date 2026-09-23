@@ -2,71 +2,115 @@ package ani.dantotsu.media.anime.player
 
 import java.net.URI
 
+/**
+ * Authoritative explicit subtitle-selection state for a playback context.
+ *
+ * - [Unset]: the user has not explicitly chosen a subtitle state for this playback
+ *   context. Only [Unset] allows automatic subtitle selection.
+ * - [Off]: the user explicitly disabled subtitles. Automatic selection must NEVER
+ *   override it, and it must survive FILE_LOADED / track refreshes / playback restarts.
+ * - [Track]: the user explicitly selected a particular subtitle track. When the track
+ *   still exists it is re-selected; when it disappears a deterministic fallback applies
+ *   (see [SubtitleSelectionDecider]).
+ */
 sealed interface SubtitleSelection {
+    data object Unset : SubtitleSelection
     data object Off : SubtitleSelection
-    data class Embedded(val stableTrackKey: String) : SubtitleSelection
-    data class External(val stableSubtitleKey: String) : SubtitleSelection
-    data class Auto(val preferredLanguage: String?) : SubtitleSelection
+    data class Track(val id: Int) : SubtitleSelection
 }
 
-object SubtitleSelectionResolver {
+/**
+ * Result of a [SubtitleSelectionDecider.decide] evaluation.
+ *
+ * @param sid the desired mpv `sid` value. `null` means subtitles off ("no").
+ * @param selection the resulting authoritative selection after applying this decision.
+ */
+data class SubtitleDecision(
+    val sid: Int?,
+    val selection: SubtitleSelection
+)
 
-    fun parsePreference(pref: String?): SubtitleSelection {
-        if (pref == null) return SubtitleSelection.Auto(null)
-        val trimmed = pref.trim()
-        return when {
-            trimmed.equals("None", ignoreCase = true) || trimmed.equals("Off", ignoreCase = true) -> {
-                SubtitleSelection.Off
-            }
-            trimmed.startsWith("Embedded:", ignoreCase = true) -> {
-                val sub = trimmed.substringAfter("Embedded:").trim()
-                if (sub.isBlank()) SubtitleSelection.Off else SubtitleSelection.Embedded(sub)
-            }
-            trimmed.startsWith("External:", ignoreCase = true) -> {
-                val sub = trimmed.substringAfter("External:").trim()
-                if (sub.isBlank()) SubtitleSelection.Off else SubtitleSelection.External(sub)
-            }
-            else -> {
-                SubtitleSelection.Auto(trimmed)
-            }
-        }
-    }
+/**
+ * Pure, testable decision logic for explicit subtitle-selection semantics.
+ *
+ * This deliberately contains no Android / mpv dependencies so the state machine can be
+ * unit-tested directly.
+ */
+object SubtitleSelectionDecider {
 
-    fun resolve(selection: SubtitleSelection, tracks: List<PlayerTrack>): Int? {
-        val subTracks = tracks.filter { it.type == TrackType.SUBTITLE }
-        if (subTracks.isEmpty()) return null
+    /**
+     * Decide the desired subtitle state for the current [current] selection given the
+     * observable player state.
+     *
+     * @param current the authoritative selection before this evaluation.
+     * @param currentSelectedSubId the subtitle id currently selected in the player, or
+     *     `null` if none is selected.
+     * @param pendingTrackId a track id queued for application on the next load, or `null`.
+     * @param autoTrackId the best automatically-resolved subtitle id for [SubtitleSelection.Unset]
+     *     mode (already computed by the engine's full scoring logic), or `null` if none.
+     * @param explicitTrackExists whether the track referenced by
+     *     [SubtitleSelection.Track.id] still exists in the current track list.
+     * @param tracksAuthoritative whether the current track list is the complete, post-load
+     *     enumeration for this generation. When `false` (e.g. a transient/incomplete refresh
+     *     during load or external attachment), a missing explicit track is deferred rather
+     *     than immediately downgraded to [SubtitleSelection.Off].
+     */
+    fun decide(
+        current: SubtitleSelection,
+        currentSelectedSubId: Int?,
+        pendingTrackId: Int?,
+        autoTrackId: Int?,
+        explicitTrackExists: Boolean,
+        tracksAuthoritative: Boolean = true
+    ): SubtitleDecision {
+        return when (current) {
+            is SubtitleSelection.Off -> {
+                // Explicit Off always wins. Never auto-select.
+                SubtitleDecision(null, SubtitleSelection.Off)
+            }
 
-        return when (selection) {
-            is SubtitleSelection.Off -> null
-            is SubtitleSelection.Embedded -> {
-                val match = subTracks.firstOrNull { track ->
-                    track.id.toString() == selection.stableTrackKey ||
-                            track.name.equals(selection.stableTrackKey, ignoreCase = true) ||
-                            track.language.equals(selection.stableTrackKey, ignoreCase = true)
-                }
-                match?.id
-            }
-            is SubtitleSelection.External -> {
-                val match = subTracks.firstOrNull { track ->
-                    track.id.toString() == selection.stableSubtitleKey ||
-                            track.name?.contains(selection.stableSubtitleKey, ignoreCase = true) == true ||
-                            track.language.equals(selection.stableSubtitleKey, ignoreCase = true)
-                }
-                match?.id
-            }
-            is SubtitleSelection.Auto -> {
-                val lang = selection.preferredLanguage?.trim()
-                if (lang.isNullOrBlank()) {
-                    subTracks.firstOrNull { it.default }?.id ?: subTracks.firstOrNull()?.id
+            is SubtitleSelection.Unset -> {
+                if (pendingTrackId != null) {
+                    // A queued explicit selection takes precedence; FILE_LOADED applies it.
+                    // Do not run automatic selection while a pending choice exists.
+                    SubtitleDecision(currentSelectedSubId, SubtitleSelection.Unset)
+                } else if (currentSelectedSubId != null) {
+                    // Something is already selected and the user has not expressed intent;
+                    // leave it untouched (do not re-run automatic selection).
+                    SubtitleDecision(currentSelectedSubId, SubtitleSelection.Unset)
                 } else {
-                    val matchingTracks = subTracks.filter {
-                        it.language.equals(lang, ignoreCase = true) || it.name?.contains(lang, ignoreCase = true) == true
-                    }
-                    matchingTracks.firstOrNull { it.default }?.id ?: matchingTracks.firstOrNull()?.id ?: subTracks.firstOrNull { it.default }?.id ?: subTracks.firstOrNull()?.id
+                    // Automatic selection is allowed and nothing is selected yet.
+                    SubtitleDecision(autoTrackId, SubtitleSelection.Unset)
+                }
+            }
+
+            is SubtitleSelection.Track -> {
+                if (explicitTrackExists) {
+                    // Re-assert the explicit track (covers refreshes / restarts where the
+                    // player may have dropped the selection).
+                    SubtitleDecision(current.id, SubtitleSelection.Track(current.id))
+                } else if (!tracksAuthoritative) {
+                    // The track list is not yet authoritative for this generation (transient
+                    // or incomplete enumeration during load/external attachment). Defer the
+                    // decision; do NOT prematurely revert the user's explicit choice.
+                    SubtitleDecision(currentSelectedSubId, current)
+                } else {
+                    // The explicitly chosen track is gone from an authoritative list. We must
+                    // NOT revert to [Unset], because that would let unrelated automatic
+                    // selection silently replace the user's choice. The deterministic,
+                    // documented fallback is Off.
+                    SubtitleDecision(null, SubtitleSelection.Off)
                 }
             }
         }
     }
+}
+
+/**
+ * Retained for backward compatibility with callers that resolve subtitle URIs
+ * (e.g. [DantotsuPlayerManager]). Not part of the explicit selection state machine.
+ */
+object SubtitleSelectionResolver {
 
     fun resolveSubtitleUri(subUrl: String, embedUrl: String?, mediaUrl: String?): String {
         val trimmed = subUrl.trim()

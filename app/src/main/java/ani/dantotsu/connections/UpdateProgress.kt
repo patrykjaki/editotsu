@@ -40,7 +40,26 @@ fun updateProgress(media: Media, number: String) {
              (targetNum != null && ani.dantotsu.media.MediaNameAdapter.findChapterNumber(it.chapterName) == targetNum))
         }
         if (downloadedType != null) {
-            downloadsManager.removeDownload(downloadedType, toast = false) {}
+            if (type == MediaType.MANGA) {
+                // Authoritative chapter delete via the service ownership barrier:
+                // fire-and-forget removeDownload() would delete outside the barrier
+                // and race a live or fresh re-download of the same chapter.
+                val command = ani.dantotsu.download.manga.MangaAutoDelete.commandFor(downloadedType)
+                currContext()?.let { context ->
+                    val intent = android.content.Intent(
+                        context,
+                        ani.dantotsu.download.manga.MangaDownloaderService::class.java
+                    ).apply {
+                        action = ani.dantotsu.download.manga.MangaDownloaderService.ACTION_DELETE_CHAPTER
+                        putExtra(ani.dantotsu.download.manga.MangaDownloaderService.EXTRA_TITLE, command.title)
+                        putExtra(ani.dantotsu.download.manga.MangaDownloaderService.EXTRA_CHAPTER, command.chapter)
+                        putExtra(ani.dantotsu.download.manga.MangaDownloaderService.EXTRA_UNIQUE_NUMBER, command.uniqueNumber)
+                    }
+                    androidx.core.content.ContextCompat.startForegroundService(context, intent)
+                }
+            } else {
+                downloadsManager.removeDownload(downloadedType, toast = false) {}
+            }
         }
     }
 

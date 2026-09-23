@@ -54,11 +54,23 @@ object AppUpdater {
             .parsed<JsonArray>().map {
                 Mapper.json.decodeFromJsonElement<GithubResponse>(it)
             }
-        val r = res.filter { !it.tagName.contains("fdroid", ignoreCase = true) }
-            .maxByOrNull { it.timeStamp() }
-            ?: throw Exception("No Release Found")
-        val v = r.tagName.removePrefix("v").trim()
-        return (r.body ?: "") to v.ifEmpty { throw Exception("Weird Version : ${r.tagName}") }
+        // Channel safety: beta applicationId follows prereleases only,
+        // stable follows stable releases only (never cross-install).
+        val wantPrerelease = AppUpdatePolicy.isBetaApplication(BuildConfig.APPLICATION_ID)
+        val r = AppUpdatePolicy.selectRelease(
+            res.map {
+                AppUpdatePolicy.ReleaseInfo(
+                    tag = it.tagName,
+                    prerelease = it.prerelease,
+                    createdAt = it.createdAt,
+                    body = it.body,
+                    assetUrls = it.assets?.mapNotNull { a -> a.browserDownloadURL } ?: emptyList()
+                )
+            },
+            wantPrerelease
+        ) ?: throw Exception("No Release Found")
+        val v = r.tag.removePrefix("v").trim()
+        return (r.body ?: "") to v.ifEmpty { throw Exception("Weird Version : ${r.tag}") }
     }
 
     private suspend fun fetchApkUrl(repo: String, version: String, isDebug: Boolean): String? {
@@ -72,11 +84,17 @@ object AppUpdater {
 
     private suspend fun fetchApkUrlFromGithub(repo: String, version: String): String? {
         val tag = if (version.startsWith("v")) version else "v$version"
-        val apks = client.get("https://api.github.com/repos/$repo/releases/tags/$tag")
-            .parsed<GithubResponse>().assets?.filter {
-                it.browserDownloadURL.endsWith(".apk")
-            }
-        return apks?.firstOrNull()?.browserDownloadURL
+        val urls = client.get("https://api.github.com/repos/$repo/releases/tags/$tag")
+            .parsed<GithubResponse>().assets?.mapNotNull {
+                it.browserDownloadURL
+            } ?: return null
+        // Deterministic flavor/ABI selection (never API-list position):
+        // Google arm64 on arm64 devices, else Google universal. fdroid
+        // assets are never offered to Google-flavor users.
+        return AppUpdatePolicy.selectGoogleApkAsset(
+            urls,
+            android.os.Build.SUPPORTED_ABIS?.toList() ?: emptyList()
+        )
     }
 
     suspend fun check(activity: FragmentActivity, post: Boolean = false) {
@@ -139,26 +157,11 @@ object AppUpdater {
         }
     }
 
+    // Beta-aware comparison lives in AppUpdatePolicy (pure + tested);
+    // prerelease lines (0.5.0-beta01 < 0.5.0-beta02) resolve correctly.
     private fun compareVersion(version: String): Boolean {
-        val cleanVersion = version.removePrefix("v").substringBefore("-").trim()
-        val cleanCurrent = BuildConfig.VERSION_NAME.removePrefix("v").substringBefore("-").trim()
-
-        fun toDoubleSafe(list: List<String>): Double {
-            return list.mapIndexed { i, s ->
-                val num = s.toDoubleOrNull() ?: 0.0
-                when (i) {
-                    0 -> num * 10000
-                    1 -> num * 100
-                    2 -> num
-                    else -> num / 10.0
-                }
-            }.sum()
-        }
-        val new = toDoubleSafe(cleanVersion.split("."))
-        val curr = toDoubleSafe(cleanCurrent.split("."))
-        return new > curr
+        return AppUpdatePolicy.isUpdateAvailable(BuildConfig.VERSION_NAME, version)
     }
-
     //Blatantly kanged from https://github.com/LagradOst/CloudStream-3/blob/master/app/src/main/java/com/lagradost/cloudstream3/utils/InAppUpdater.kt
     private fun Activity.downloadUpdate(version: String, url: String) {
         toast(getString(R.string.downloading_update, version))

@@ -1,6 +1,9 @@
 package ani.dantotsu.download.manga
 
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
@@ -71,6 +74,24 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
     private lateinit var adapter: OfflineMangaAdapter
     private lateinit var total: TextView
     private var downloadsJob: Job = Job()
+
+    /**
+     * Ordered scope-delete completion (whole-title / purge-all). Refreshes the grid
+     * only on success; on failure the entries stay (files + metadata intact) and the
+     * failure surfaces instead.
+     */
+    private val scopeDeleteReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != MangaDownloaderService.ACTION_MANGA_SCOPE_DELETED) return
+            if (intent.getBooleanExtra(MangaDownloaderService.EXTRA_MANGA_DELETE_FAILED, false)) {
+                snackString("Failed to delete")
+                return
+            }
+            if (intent.getBooleanExtra(MangaDownloaderService.EXTRA_MANGA_DELETED, false)) {
+                getDownloads()
+            }
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -216,8 +237,24 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
                 setTitle("Delete ${item.title}?")
                 setMessage("Are you sure you want to delete ${item.title}?")
                 setPosButton(R.string.yes) {
-                    downloadManager.removeMedia(item.title, type)
-                    getDownloads()
+                    if (type == MediaType.MANGA) {
+                        // Authoritative title delete: explicit command to the
+                        // non-exported service (scope reservation + owner
+                        // cancel/join + synchronous deletion). The grid refreshes
+                        // on the ordered scope-completion broadcast; onResume
+                        // refreshes as a second path.
+                        val intent = Intent(
+                            requireContext(),
+                            MangaDownloaderService::class.java
+                        ).apply {
+                            action = MangaDownloaderService.ACTION_DELETE_TITLE
+                            putExtra(MangaDownloaderService.EXTRA_TITLE, item.title)
+                        }
+                        ContextCompat.startForegroundService(requireContext(), intent)
+                    } else {
+                        downloadManager.removeMedia(item.title, type)
+                        getDownloads()
+                    }
                 }
                 setNegButton(R.string.no)
             }.show()
@@ -232,6 +269,12 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         initActivity(requireActivity())
+        ContextCompat.registerReceiver(
+            requireContext(),
+            scopeDeleteReceiver,
+            IntentFilter(MangaDownloaderService.ACTION_MANGA_SCOPE_DELETED),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
 
         val scrollTop = view.findViewById<CardView>(R.id.mangaPageScrollTop)
         scrollTop.setOnClickListener {
@@ -274,6 +317,7 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        runCatching { requireContext().unregisterReceiver(scopeDeleteReceiver) }
         downloads = listOf()
     }
 
@@ -290,6 +334,9 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
         downloads = listOf()
         downloadsJob = Job()
         CoroutineScope(Dispatchers.IO + downloadsJob).launch {
+            // Reconcile persisted state: drop manga entries whose page set is
+            // incomplete so a stale/partial COMPLETE marker is not trusted.
+            downloadManager.reconcileIncompleteDownloads()
             val mangaTitles =
                 downloadManager.mangaDownloadedTypes.map { it.titleName.findValidName() }.distinct()
             val newMangaDownloads = mutableListOf<OfflineMangaModel>()

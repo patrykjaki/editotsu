@@ -14,6 +14,10 @@ abstract class VideoExtractor : Serializable {
     var videos: List<Video> = listOf()
     var subtitles: List<Subtitle> = listOf()
     var audioTracks: List<Track> = listOf()
+    // Beta03: validated extension mpv per-file options for this extractor's
+    // streams (e.g. AniKoto's demuxer-lavf-o). Empty = none. Populated from
+    // VideoContainer by load().
+    var mpvFileOptions: String = ""
 
     /**
      * Extracts videos & subtitles from the `embed`
@@ -32,6 +36,7 @@ abstract class VideoExtractor : Serializable {
             videos = it.videos
             subtitles = it.subtitles
             audioTracks = it.audioTracks
+            mpvFileOptions = it.mpvFileOptions
             return this
         }
     }
@@ -85,6 +90,8 @@ data class VideoContainer(
     val videos: List<Video>,
     val subtitles: List<Subtitle> = listOf(),
     val audioTracks: List<Track> = listOf(),
+    // Beta03: validated extension mpv per-file options (already sanitized).
+    val mpvFileOptions: String = "",
 ) : Serializable
 
 /**

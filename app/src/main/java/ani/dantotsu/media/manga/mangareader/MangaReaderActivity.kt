@@ -42,9 +42,9 @@ import ani.dantotsu.NoPaddingArrayAdapter
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
-import ani.dantotsu.connections.discord.Discord
-import ani.dantotsu.connections.discord.RPCManager
-import ani.dantotsu.connections.discord.RPC
+import ani.dantotsu.connections.discord.rpc.DiscordPresenceOwnership
+import ani.dantotsu.connections.discord.rpc.DiscordRpcPublisher
+import ani.dantotsu.connections.discord.rpc.DiscordRpcUtils
 import ani.dantotsu.connections.updateProgress
 import ani.dantotsu.currContext
 import ani.dantotsu.databinding.ActivityMangaReaderBinding
@@ -166,9 +166,13 @@ class MangaReaderActivity : AppCompatActivity() {
             hideSystemBarsExtendView()
     }
 
+    // Unique per-instance owner token: protects against a stale reader (recreation / late onDestroy)
+    // clearing a newer manga presence (review Blocker 2 — same-kind ownership).
+    private val discordToken: DiscordPresenceOwnership.OwnerToken = DiscordRpcPublisher.createMangaToken()
+
     override fun onDestroy() {
         mangaCache.clear()
-        RPCManager.clearPresence(this)
+        DiscordRpcPublisher.clearManga(discordToken)
         super.onDestroy()
     }
 
@@ -417,32 +421,16 @@ class MangaReaderActivity : AppCompatActivity() {
                 val context = this
                 val offline: Boolean = PrefManager.getVal(PrefName.OfflineMode)
                 val incognito: Boolean = PrefManager.getVal(PrefName.Incognito)
-                val rpcenabled: Boolean = PrefManager.getVal(PrefName.rpcEnabled)
-                if (RPCManager.shouldSuppressForAdultMedia(media.isAdult)) {
-                    RPCManager.clearPresence(context)
-                } else if ((isOnline(context) && !offline) && Discord.token != null && !incognito && rpcenabled) {
-                    lifecycleScope.launch {
-                        val buttons = mutableListOf<RPC.Link>()
-                        buttons.add(RPC.Link("View Manga", "https://anilist.co/manga/${media.id}/"))
-                        media.idMAL?.let {
-                            buttons.add(RPC.Link("View on MyAnimeList", "https://myanimelist.net/manga/$it"))
-                        }
-                        val rpcData = RPC.Companion.RPCData(
-                            applicationId = Discord.application_Id,
-                            type = RPC.Type.WATCHING,
-                            activityName = media.userPreferredName,
-                            details = chap.title?.takeIf { it.isNotEmpty() }
-                                ?: getString(R.string.chapter_num, chap.number),
-                            state = "Chapter : ${chap.number}/${media.manga?.totalChapters ?: "??"}",
-                            largeImage = media.cover?.let { cover ->
-                                RPC.Link(
-                                    media.userPreferredName,
-                                    cover
-                                )
-                            },
-                            buttons = buttons
-                        )
-                        RPCManager.setPresence(context, rpcData)
+                val richPresenceEnabled: Boolean = PrefManager.getVal(PrefName.DiscordRichPresenceEnabled)
+                // Tokenless transport: mirror legacy safeguards, drop the Discord.token requirement.
+                // Post to the UI thread — the Binder session must be created/owned on the main thread.
+                runOnUiThread {
+                    if (DiscordRpcUtils.shouldSuppressForAdultMedia(media.isAdult)) {
+                        DiscordRpcPublisher.clearManga(discordToken)
+                    } else if ((isOnline(context) && !offline) && !incognito && richPresenceEnabled) {
+                        DiscordRpcPublisher.publishManga(discordToken, this, media, chap)
+                    } else {
+                        DiscordRpcPublisher.clearManga(discordToken)
                     }
                 }
             }

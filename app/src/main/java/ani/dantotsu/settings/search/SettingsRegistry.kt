@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Build
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
-import ani.dantotsu.connections.discord.Discord
 import ani.dantotsu.settings.AnilistSettingsActivity
 import ani.dantotsu.settings.FAQActivity
 import ani.dantotsu.settings.PlayerSettingsActivity
@@ -451,6 +450,39 @@ object SettingsRegistry {
                 highlightKey = context.getString(R.string.torrent_wifi_only)
             )
         )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.torrent_cache_quota),
+                desc = context.getString(R.string.torrent_cache_quota_desc),
+                icon = R.drawable.ic_round_folder_24,
+                category = context.getString(R.string.torrent_settings),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.torrent_settings)}",
+                targetActivity = TorrentSettingsActivity::class.java,
+                highlightKey = context.getString(R.string.torrent_cache_quota)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.clear_torrent_cache),
+                desc = context.getString(R.string.clear_torrent_cache_desc),
+                icon = R.drawable.ic_round_delete_24,
+                category = context.getString(R.string.torrent_settings),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.torrent_settings)}",
+                targetActivity = TorrentSettingsActivity::class.java,
+                highlightKey = context.getString(R.string.clear_torrent_cache)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.clear_app_cache),
+                desc = context.getString(R.string.clear_app_cache_desc),
+                icon = R.drawable.ic_round_delete_24,
+                category = context.getString(R.string.common),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.common)}",
+                targetActivity = SettingsCommonActivity::class.java,
+                highlightKey = context.getString(R.string.clear_app_cache)
+            )
+        )
 
         // 9. Notifications Settings
         list.add(
@@ -479,14 +511,14 @@ object SettingsRegistry {
         // 10. Accounts & Anilist Settings
         list.add(
             SearchableSetting(
-                title = context.getString(R.string.enable_rpc),
-                desc = context.getString(R.string.enable_rpc_desc),
+                title = context.getString(R.string.discord_rich_presence),
+                desc = context.getString(R.string.discord_rich_presence_desc),
                 icon = R.drawable.interests_24,
                 category = context.getString(R.string.accounts),
                 breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.accounts)}",
                 targetActivity = SettingsAccountActivity::class.java,
-                highlightKey = context.getString(R.string.enable_rpc),
-                isVisible = (Discord.token != null)
+                highlightKey = context.getString(R.string.discord_rich_presence),
+                isVisible = true
             )
         )
         list.add(

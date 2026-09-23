@@ -28,4 +28,8 @@ class CrashlyticsStub : CrashlyticsInterface {
         //no-op
     }
 
+    override fun clearCustomKeys() {
+        //no-op
+    }
+
 }

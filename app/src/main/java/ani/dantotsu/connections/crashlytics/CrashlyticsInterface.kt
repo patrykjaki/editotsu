@@ -9,4 +9,7 @@ interface CrashlyticsInterface {
     fun setUserId(id: String)
     fun setCustomKey(key: String, value: String)
     fun setCrashlyticsCollectionEnabled(enabled: Boolean)
+
+    /** CP4-C: wipe previously attached custom keys so opt-out takes effect in-session. */
+    fun clearCustomKeys()
 }

@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicLong
 class TorrentHttpServer(
     private val port: Int,
     private val getTorrentHandle: (String) -> TorrentHandle?,
-    private val getSavePath: () -> String,
+    private val getSavePath: (String) -> String,
     private val getTorrentDeadlineRegistry: (String) -> TorrentDeadlineRegistry? = { null },
     private val getTorrentLock: (String) -> Any = { it }
 ) {
@@ -318,7 +318,7 @@ class TorrentHttpServer(
             out.write(headers.toByteArray())
             out.flush()
 
-            val savePath = getSavePath()
+            val savePath = getSavePath(hash.uppercase())
             val diskFile = File(fileStorage.filePath(fileIndex, savePath))
             var fileChannel: RandomAccessFile? = null
             var currentPosition = rangeStart

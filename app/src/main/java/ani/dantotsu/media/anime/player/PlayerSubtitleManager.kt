@@ -52,14 +52,45 @@ class PlayerSubtitleManager(
     private var currentActiveSubFormat: String = "SRT"
     private var currentActiveSubLang: String = ""
     private var serverSubJob: Job? = null
+    // Beta03 CP3 safety: generation-gate for async server-subtitle downloads.
+    // A completion applies only while its captured generation is still current;
+    // any newer intent (Off / Track / online / local / newer server choice)
+    // supersedes it. See ServerSubIntentGate and CP3-B02-1..6.
+    private val serverSubIntentGate = ServerSubIntentGate()
+
+    /**
+     * Record a newer superseding subtitle intent (explicit Off, embedded
+     * track, online/local selection). Cancels any in-flight server download
+     * and invalidates its completion even if it already finished fetching.
+     */
+    fun noteSupersedingIntent() {
+        serverSubIntentGate.supersede()
+        serverSubJob?.cancel()
+    }
 
     @Volatile var pendingSubtitleLabel: String? = null
     @Volatile var pendingTrackId: String? = null
     @Volatile var initialSubtitleLabel: String? = null
 
-    fun applySubtitlePreferences() {
+    /**
+     * Last classified playback origin. The settings-return path re-applies
+     * preferences without a fresh request, so it reuses this value.
+     */
+    @Volatile var lastPlaybackOrigin: PlaybackOrigin = PlaybackOrigin.EXTENSION_STREAM
+        private set
+
+    fun notePlaybackOrigin(origin: PlaybackOrigin) {
+        lastPlaybackOrigin = origin
+    }
+
+    fun applySubtitlePreferences(origin: PlaybackOrigin? = null) {
         val engine = getEngine() ?: return
-        val useSourceStyling = PrefManager.getVal<Boolean>(PrefName.UseSourceSubtitleStyling)
+        val resolvedOrigin = origin ?: lastPlaybackOrigin
+        lastPlaybackOrigin = resolvedOrigin
+        // Beta07 styling policy: streams default to Editotsu styling,
+        // torrents/downloads/local default to source styling. Centralized
+        // in SubtitleStylingStore; no source-type conditionals here.
+        val useSourceStyling = SubtitleStylingStore.shouldUseSource(resolvedOrigin)
 
         if (useSourceStyling) {
             engine.applySubtitleStyle(SubtitleStyle(mode = SubtitleStyleMode.SOURCE))
@@ -70,22 +101,16 @@ class PlayerSubtitleManager(
             val bgColor = PrefManager.getVal<Int>(PrefName.SubBackground)
             val borderWidth = PrefManager.getVal<Float>(PrefName.SubStroke)
             val bottomMargin = PrefManager.getVal<Float>(PrefName.SubBottomMargin).toInt()
-            val fontName = when (PrefManager.getVal<Int>(PrefName.Font)) {
-                0 -> "Poppins-SemiBold"
-                1 -> "Poppins-Bold"
-                2 -> "Poppins"
-                3 -> "Poppins-Thin"
-                4 -> "Century Gothic"
-                5 -> "Levenim MT"
-                6 -> "Blocky"
-                else -> "Poppins-SemiBold"
-            }
-            val fontFile = File(activity.filesDir, "fonts/$fontName")
+            // Family strings must be exact internal font names: with
+            // sub-font-provider=none mpv performs no fuzzy matching and a
+            // miss renders blank subtitles (see MpvSubtitleFonts).
+            val font = MpvSubtitleFonts.forIndex(PrefManager.getVal<Int>(PrefName.Font))
+            val fontFile = File(activity.filesDir, "fonts/${font.fileName}")
 
             engine.applySubtitleStyle(
                 SubtitleStyle(
                     mode = SubtitleStyleMode.CUSTOM,
-                    fontFamily = fontName,
+                    fontFamily = font.family,
                     fontFile = if (fontFile.exists()) fontFile else null,
                     fontSizeSp = fontSize,
                     textColor = textColor,
@@ -98,7 +123,7 @@ class PlayerSubtitleManager(
         }
     }
 
-    fun setActiveServerSubtitle(sub: Subtitle?) {
+    fun setActiveServerSubtitle(sub: Subtitle?, explicitUserAction: Boolean = false) {
         if (sub == null) {
             currentActiveSubFile = null
             currentActiveSubRawContent = null
@@ -119,6 +144,10 @@ class PlayerSubtitleManager(
         activeSubtitleId = sub.language
 
         serverSubJob?.cancel()
+        // Beta03: capture intent ownership BEFORE the async fetch. If a newer
+        // intent (Off/Track/newer server) is recorded while this downloads,
+        // the late completion below is dropped (CP3-B02-1..4).
+        val intentGen = serverSubIntentGate.newRequest()
         val rawUrl = sub.file.url
         val resolvedUrl = resolveSubtitleUrl(rawUrl, "", "")
         if (resolvedUrl.isNotBlank()) {
@@ -142,6 +171,17 @@ class PlayerSubtitleManager(
                                 file.writeText(content)
                                 currentActiveSubFile = file
                                 currentActiveSubRawContent = content
+                                // 0.5.0-beta02: mpv's remote `sub-add` fetch often fails on
+                                // streaming hosts (referer/cookie-gated), silently leaving
+                                // the selected server subtitle undisplayed while the dialog
+                                // still shows it checked. Hand the already-downloaded cache
+                                // file to the engine like the Online/Local paths do.
+                                withContext(Dispatchers.Main) {
+                                    // Beta03: stale completions never register as
+                                    // the newest intent (CP3-B02-1..4).
+                                    if (!serverSubIntentGate.isCurrent(intentGen)) return@withContext
+                                    applyServerSubFallback(file, langName, explicitUserAction)
+                                }
                             }
                         }
                     }
@@ -150,6 +190,39 @@ class PlayerSubtitleManager(
                 }
             }
         }
+    }
+
+    /**
+     * 0.5.0-beta02 fallback: attach the downloaded server-subtitle cache file to
+     * the engine. Server subtitles are the only path that asks mpv to fetch a
+     * remote URL directly (`sub-add` at FILE_LOADED); streaming hosts often deny
+     * that fetch, leaving the dialog checked but nothing rendered. The Online and
+     * Local tabs never hit this because they download first and `sub-add` a local
+     * file. This gives server subtitles the same treatment.
+     *
+     * CP3-safe by construction: request-carried (non-explicit) attaches go through
+     * the standard pending-external handshake and never override an Off; a live
+     * user tap behaves like the Online/Local tabs (explicit). When the remote
+     * `sub-add` already succeeded (an external subtitle is selected), this is a
+     * no-op so no duplicate track is created.
+     */
+    private fun applyServerSubFallback(file: File, lang: String, explicitUserAction: Boolean) {
+        if (!file.exists()) return
+        val engine = getEngine() ?: return
+        if (!explicitUserAction) {
+            val selectedExternalPresent = engine.availableTracks.any {
+                it.type == TrackType.SUBTITLE && it.external && it.selected
+            }
+            if (selectedExternalPresent) return
+        }
+        val label = "Server: $lang"
+        engine.addExternalSubtitle(
+            file.absolutePath,
+            label,
+            lang.ifBlank { "und" },
+            select = true,
+            explicitUserAction = explicitUserAction
+        )
     }
 
     fun setSubtitleDelay(delayMs: Long) {
@@ -268,6 +341,9 @@ class PlayerSubtitleManager(
     }
 
     fun applyOnlineSubtitleUrl(url: String, id: String, lang: String, displayName: String = lang, provider: String = "Online") {
+        // Beta03: an online selection is a newer intent; invalidate any
+        // in-flight server download (CP3-B02).
+        noteSupersedingIntent()
         activity.lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val client = Injekt.get<NetworkHelper>().client
@@ -333,6 +409,8 @@ class PlayerSubtitleManager(
     }
 
     fun applySubSourceSubtitle(sub: SubSourceSub) {
+        // Beta03: newer intent (CP3-B02).
+        noteSupersedingIntent()
         activity.lifecycleScope.launch(Dispatchers.IO) {
             val result = SubSourceSubtitles.downloadSubtitleContent(sub.id)
             if (result != null) {
@@ -365,6 +443,8 @@ class PlayerSubtitleManager(
     }
 
     fun applyOpenSubRestSubtitle(item: OpenSubRestItem) {
+        // Beta03: newer intent (CP3-B02).
+        noteSupersedingIntent()
         activity.lifecycleScope.launch(Dispatchers.IO) {
             val downloadUrl = OpenSubtitlesRestApi.getDownloadUrl(item.fileId)
             if (downloadUrl != null) {
@@ -400,11 +480,13 @@ class PlayerSubtitleManager(
         activeSubtitleId = id
 
         val label = "Online: $displayName"
-        engine.addExternalSubtitle(file.absolutePath, label, lang.ifBlank { "und" }, select = true)
+        engine.addExternalSubtitle(file.absolutePath, label, lang.ifBlank { "und" }, select = true, explicitUserAction = true)
         snackString("Subtitle loaded: $label", activity)
     }
 
     fun applyLocalSubtitle(uri: Uri, media: Media?) {
+        // Beta03: newer intent (CP3-B02).
+        noteSupersedingIntent()
         val engine = getEngine() ?: return
         try {
             val contentResolver = activity.applicationContext.contentResolver
@@ -460,7 +542,7 @@ class PlayerSubtitleManager(
                 PrefManager.setCustomVal("subLang_$mediaId", newLocalSub.language)
             }
 
-            engine.addExternalSubtitle(cacheFile.absolutePath, label, "und", select = true)
+            engine.addExternalSubtitle(cacheFile.absolutePath, label, "und", select = true, explicitUserAction = true)
             snackString("Subtitle loaded: $label", activity)
         } catch (e: Exception) {
             snackString("Failed to load subtitle: ${e.message}", activity)

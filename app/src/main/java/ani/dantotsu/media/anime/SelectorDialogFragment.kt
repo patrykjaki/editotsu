@@ -40,6 +40,7 @@ import ani.dantotsu.currContext
 import ani.dantotsu.databinding.BottomSheetSelectorBinding
 import ani.dantotsu.databinding.ItemStreamBinding
 import ani.dantotsu.databinding.ItemUrlBinding
+import ani.dantotsu.databinding.ItemUrlStreamInlineBinding
 import ani.dantotsu.download.DownloadedType
 import ani.dantotsu.download.video.Helper
 import ani.dantotsu.getThemeColor
@@ -54,6 +55,20 @@ import ani.dantotsu.parsers.Subtitle
 import ani.dantotsu.parsers.Video
 import ani.dantotsu.parsers.VideoExtractor
 import ani.dantotsu.parsers.VideoType
+import ani.dantotsu.media.anime.selector.SourceMetaIcon
+import ani.dantotsu.media.anime.selector.SourcePillKind
+import ani.dantotsu.media.anime.selector.SourceRowPill
+import ani.dantotsu.media.anime.selector.SourceRowSummarizer
+import ani.dantotsu.media.anime.selector.SourceRowViewModel
+import ani.dantotsu.media.anime.selector.StreamRowLayoutPolicy
+import ani.dantotsu.media.anime.selector.FamilyAttemptSuppression
+import ani.dantotsu.media.anime.selector.FamilyPayload
+import ani.dantotsu.media.anime.selector.RecoveryCoordinator
+import ani.dantotsu.media.anime.selector.RecoveryResult
+import ani.dantotsu.media.anime.selector.RememberedSelectionPolicy
+import ani.dantotsu.media.anime.selector.SelectedFamilyStore
+import ani.dantotsu.media.anime.selector.SelectedKeyStore
+import ani.dantotsu.media.anime.selector.StableCandidateBuilder
 import ani.dantotsu.setSafeOnClickListener
 import ani.dantotsu.settings.SettingsAddonActivity
 import ani.dantotsu.settings.saving.PrefManager
@@ -89,6 +104,14 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
     private var prevEpisode: String? = null
     private var makeDefault = false
     private var selected: String? = null
+    /**
+     * Attempt-local family auto-resolution suppression. After the
+     * family resolution fires once for an episode and falls through
+     * to the manual picker, subsequent `failToList` calls in the
+     * same attempt will NOT re-attempt the family resolution. The
+     * persisted family preference itself is left intact.
+     */
+    private val familyAttemptedForEpisode = FamilyAttemptSuppression()
     private var launch: Boolean? = null
     private var isDownloadMenu: Boolean? = null
     private var episodes: ArrayList<String>? = null
@@ -139,6 +162,16 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             media = m
             if (media != null && !loaded) {
                 loaded = true
+
+                // Initialize the REAL remembered-choice preference
+                // BEFORE any remembered auto-selection logic can
+                // read it. The remembered selected-server auto path
+                // below runs before initializeVideoServerSelector()
+                // (which also refreshes/binds this same preference
+                // for the manual picker UI), so without this the
+                // auto path would always see the field default
+                // `false` even when the setting is actually ON.
+                makeDefault = PrefManager.getVal(PrefName.MakeDefault)
 
                 fun fail(resId: Int){
                     ContextCompat.getMainExecutor(context ?: currContext() ?: return).execute {
@@ -396,18 +429,108 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             binding.selectorCancel.setOnClickListener {
                                 media!!.selected!!.server = null
                                 model.saveSelected(media!!.id, media!!.selected!!)
+                                SelectedKeyStore.save(media!!.id, null)
                                 tryWith {
                                     dismissAllowingStateLoss()
                                 }
                             }
 
                             fun failToList() {
-                                snackString(getString(R.string.auto_select_server_error))
-                                media!!.selected!!.server = null
-                                model.saveSelected(media!!.id, media!!.selected!!)
-                                binding.selectorAutoListContainer.visibility = View.GONE
-                                binding.selectorListContainer.visibility = View.VISIBLE
-                                initializeVideoServerSelector(ep)
+                                // Recovery after a failed auto-list path:
+                                //
+                                // 1. If a stored exact key OR a stored family
+                                //    preference is present, load all extractors
+                                //    and run `RecoveryCoordinator.resolve`.
+                                // 2. If a family auto-resolve was already
+                                //    attempted for THIS episode in THIS dialog
+                                //    attempt, do NOT attempt it again here. The
+                                //    persisted family preference is left intact.
+                                // 3. On Resolved, drive the auto-list with the
+                                //    resolved candidate (write SelectedKey,
+                                //    Selected.server, selectedExtractor).
+                                // 4. On NoMatch / Ambiguous / suppressed,
+                                //    clear Selected.server + SelectedKey,
+                                //    KEEP family, fall back to manual picker.
+                                val storedKey = SelectedKeyStore.load(media!!.id)
+                                val storedFamily = SelectedFamilyStore.load(media!!.id)
+                                if ((storedKey != null || storedFamily != null)
+                                    && familyAttemptedForEpisode.shouldAttempt(actualKey)
+                                ) {
+                                    scope.launch(Dispatchers.IO) {
+                                        if (!ep.allStreams) {
+                                            model.loadEpisodeVideos(
+                                                ep, media!!.selected!!.sourceIndex,
+                                            )
+                                        }
+                                        withContext(Dispatchers.Main) {
+                                            val servers = ep.extractors?.map { it.server }
+                                                ?: emptyList()
+                                            val recovery = RecoveryCoordinator.resolve(
+                                                storedExactKey = storedKey,
+                                                storedFamily = storedFamily,
+                                                selectedName = null,
+                                                servers = servers,
+                                            )
+                                            if (recovery is RecoveryResult.Resolved) {
+                                                val chosen = recovery.server.name
+                                                // One coherent auto-recovery
+                                                // transaction. The runtime handle
+                                                // is ALWAYS applied below.
+                                                // Remembered persistence follows
+                                                // the real MakeDefault setting
+                                                // (loaded before the auto branch):
+                                                // ON persists the legacy server
+                                                // choice and WRITEs/CLEARs the
+                                                // exact slot; OFF persists
+                                                // nothing new and leaves the
+                                                // family preference untouched.
+                                                val autoPersistence =
+                                                    RememberedSelectionPolicy.autoRecoveryPersistence(
+                                                        makeDefault, recovery.exactKey,
+                                                    )
+                                                if (autoPersistence.persistLegacyServer) {
+                                                    media!!.selected!!.server = chosen
+                                                    media!!.selected!!.video = 0
+                                                    model.saveSelected(
+                                                        media!!.id, media!!.selected!!,
+                                                    )
+                                                }
+                                                when (autoPersistence.exactAction) {
+                                                    RememberedSelectionPolicy.ExactSlotAction.WRITE ->
+                                                        SelectedKeyStore.save(
+                                                            media!!.id, recovery.exactKey,
+                                                        )
+                                                    RememberedSelectionPolicy.ExactSlotAction.CLEAR ->
+                                                        SelectedKeyStore.save(media!!.id, null)
+                                                    RememberedSelectionPolicy.ExactSlotAction.NO_CHANGE -> Unit
+                                                }
+                                                media!!.anime!!.episodes
+                                                    ?.getEpisode(actualKey)?.selectedExtractor = chosen
+                                                media!!.anime!!.episodes
+                                                    ?.getEpisode(actualKey)?.selectedVideo = 0
+                                                startExoplayer(media!!)
+                                            } else {
+                                                snackString(getString(R.string.auto_select_server_error))
+                                                media!!.selected!!.server = null
+                                                model.saveSelected(
+                                                    media!!.id, media!!.selected!!,
+                                                )
+                                                SelectedKeyStore.save(media!!.id, null)
+                                                binding.selectorAutoListContainer.visibility = View.GONE
+                                                binding.selectorListContainer.visibility = View.VISIBLE
+                                                initializeVideoServerSelector(ep)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    snackString(getString(R.string.auto_select_server_error))
+                                    media!!.selected!!.server = null
+                                    model.saveSelected(media!!.id, media!!.selected!!)
+                                    SelectedKeyStore.save(media!!.id, null)
+                                    binding.selectorAutoListContainer.visibility = View.GONE
+                                    binding.selectorListContainer.visibility = View.VISIBLE
+                                    initializeVideoServerSelector(ep)
+                                }
                             }
 
                             fun load() {
@@ -422,6 +545,14 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                     val currentKey = media!!.anime!!.selectedEpisode ?: actualKey
                                     media!!.anime!!.episodes?.getEpisode(currentKey)?.selectedExtractor = selected
                                     media!!.anime!!.episodes?.getEpisode(currentKey)?.selectedVideo = media!!.selected!!.video
+                                    if (makeDefault) {
+                                        val chosen = ep.extractors?.find { it.server.name == selected }
+                                        if (chosen != null) {
+                                            val provider = StableCandidateBuilder.providerOf(chosen.server)
+                                            val exact = StableCandidateBuilder.exactKey(provider, chosen.server)
+                                            SelectedKeyStore.save(media!!.id, exact)
+                                        }
+                                    }
                                     startExoplayer(media!!)
                                 } else failToList()
                             }
@@ -690,65 +821,546 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
     }
 
     private inner class VideoAdapter(private val extractor: VideoExtractor,private val onEpisodeDownloadHandler: EpisodeDownloadHandler?) :
-        RecyclerView.Adapter<VideoAdapter.UrlViewHolder>() {
+        RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): UrlViewHolder {
-            return UrlViewHolder(
-                ItemUrlBinding.inflate(
-                    LayoutInflater.from(parent.context),
-                    parent,
-                    false
-                )
-            )
+        private val viewTypeRelease = 0
+        private val viewTypeInlineStream = 1
+
+        override fun getItemViewType(position: Int): Int {
+            // Every row of one extractor shares server.name as its
+            // quality text, so the whole section resolves to one
+            // layout deterministically.
+            return if (StreamRowLayoutPolicy.isInlineServerName(extractor.server.name)) {
+                viewTypeInlineStream
+            } else {
+                viewTypeRelease
+            }
         }
 
-        override fun onBindViewHolder(holder: UrlViewHolder, position: Int) {
-            val binding = holder.binding
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val inflater = LayoutInflater.from(parent.context)
+            return if (viewType == viewTypeInlineStream) {
+                InlineStreamViewHolder(
+                    ItemUrlStreamInlineBinding.inflate(
+                        inflater,
+                        parent,
+                        false
+                    )
+                )
+            } else {
+                UrlViewHolder(
+                    ItemUrlBinding.inflate(
+                        inflater,
+                        parent,
+                        false
+                    )
+                )
+            }
+        }
+
+        /**
+         * Subtitle-download dialog for one row's subtitle button. Shared
+         * by the full release card and the inline stream card with
+         * identical behavior; only the clicked button view differs.
+         */
+        private fun setupRowSubtitleButton(
+            button: android.widget.ImageButton,
+            subtitles: List<Subtitle>,
+        ) {
+            button.setOnClickListener {
+                if (subtitles.isNotEmpty()) {
+            val subtitleNames = subtitles.map { it.language }
+            var subtitleToDownload: Subtitle? = null
+            val currentEp = media?.anime?.episodes?.getEpisode(media?.anime?.selectedEpisode) ?: episode
+            val epNumber = currentEp?.number ?: media?.anime?.selectedEpisode ?: "1"
+            (activity ?: currActivity())?.customAlertDialog()?.apply {
+                setTitle(R.string.download_subtitle)
+                singleChoiceItems(subtitleNames.toTypedArray(),  dismissOnSelect = false) { which ->
+                    subtitleToDownload = subtitles[which]
+                }
+                setPosButton(R.string.download) {
+                    scope.launch(Dispatchers.IO) {
+                        if (subtitleToDownload != null) {
+                            SubtitleDownloader.downloadSubtitle(
+                                context ?: currContext() ?: return@launch,
+                                subtitleToDownload.file.url,
+                                DownloadedType(
+                                    media!!.mainName(),
+                                    epNumber,
+                                    MediaType.ANIME
+                                )
+                            )
+                        }
+                    }
+                }
+                setNegButton(R.string.cancel) {}
+            }?.show()
+                } else {
+            snackString(R.string.no_subtitles_available)
+                }
+            }
+        }
+
+        /**
+         * Download flow for one row's download button. Shared by the
+         * full release card and the inline stream card with identical
+         * behavior; only the clicked button view differs.
+         */
+        private fun setupRowDownloadButton(
+            button: android.widget.ImageButton,
+            position: Int,
+            subtitles: List<Subtitle>,
+        ) {
+            button.setSafeOnClickListener {
+                val currentEp = media?.anime?.episodes?.getEpisode(media?.anime?.selectedEpisode) ?: episode
+                val epKey = media?.anime?.episodes?.getEpisodeKey(media?.anime?.selectedEpisode) ?: media?.anime?.selectedEpisode
+                if (currentEp != null) {
+            currentEp.selectedExtractor = extractor.server.name
+            currentEp.selectedVideo = position
+                }
+                if (epKey != null) {
+            media?.anime?.episodes?.get(epKey)?.selectedExtractor = extractor.server.name
+            media?.anime?.episodes?.get(epKey)?.selectedVideo = position
+                }
+                if ((PrefManager.getVal(PrefName.DownloadManager) as Int) != 0) {
+            val act = activity ?: currActivity()
+            if (act != null && currentEp != null) {
+                download(
+                    act,
+                    currentEp,
+                    media!!.userPreferredName
+                )
+            }
+                }
+                else {
+            val ep = currentEp ?: return@setSafeOnClickListener
+            val selectedVideo =
+                if (extractor.videos.size > ep.selectedVideo) extractor.videos[ep.selectedVideo] else extractor.videos.getOrNull(0)
+            val downloadAddonManager: DownloadAddonManager = Injekt.get()
+            if (!downloadAddonManager.isAvailable()) {
+                val context = context ?: currContext()
+                context?.customAlertDialog()?.apply {
+                    setTitle(R.string.download_addon_not_installed)
+                    setMessage(R.string.would_you_like_to_install)
+                    setPosButton(R.string.yes) {
+                        ContextCompat.startActivity(
+                            context,
+                            Intent(context, SettingsAddonActivity::class.java),
+                            null
+                        )
+                    }
+                    setNegButton(R.string.no) {
+                        return@setNegButton
+                    }
+                    show()
+                }
+                dismissAllowingStateLoss()
+                return@setSafeOnClickListener
+            }
+            selectedVideo?.file?.url?.let { url ->
+                if (url.startsWith("magnet:") || url.endsWith(".torrent")) {
+                    val torrentManager = Injekt.get<TorrentServerManager>()
+                    if (!torrentManager.isAvailable()) {
+                        toast(R.string.torrent_addon_not_available)
+                        return@setSafeOnClickListener
+                    }
+                }
+            }
+
+            val subtitleNames = subtitles.map { it.language }
+            var selectedSubtitles: MutableList<String> = mutableListOf()
+            var selectedAudioTracks: MutableList<String> = mutableListOf()
+
+            val currContext = currContext() ?: requireContext()
+
+            fun go(){
+                onEpisodeDownloadHandler?.onFinishingUserSelection(extractor.server.name, selectedSubtitles, selectedAudioTracks)
+            }
+
+            fun checkAudioTracks() {
+                val audioTracks = extractor.audioTracks.map { it.lang }
+                if (audioTracks.isNotEmpty()) {
+                    val audioNamesArray = audioTracks.toTypedArray()
+                    val checkedItems = BooleanArray(audioNamesArray.size) { false }
+
+                    currContext.customAlertDialog().apply { // ToTest
+                        setTitle(R.string.download_audio_tracks)
+                        multiChoiceItems(audioNamesArray, checkedItems) {
+                            it.forEachIndexed { index, isChecked ->
+                                val audioName = extractor.audioTracks[index].lang
+                                if (isChecked) {
+                                    selectedAudioTracks.add(audioName)
+                                } else {
+                                    selectedAudioTracks.remove(audioName)
+                                }
+                            }
+                        }
+                        setPosButton(R.string.download) {
+                            go()
+                        }
+                        setNegButton(R.string.skip) {
+                            selectedAudioTracks = mutableListOf()
+                            go()
+                        }
+                        setNeutralButton(R.string.cancel) {
+                            selectedAudioTracks = mutableListOf()
+                        }
+                        show()
+                    }
+                } else {
+                    go()
+                }
+            }
+            if (subtitles.isNotEmpty()) { // ToTest
+                val subtitleNamesArray = subtitleNames.toTypedArray()
+                val checkedItems = BooleanArray(subtitleNamesArray.size) { index ->
+                    val name = subtitleNamesArray[index]
+                    val isDefaultMatch = name.contains("English", true) || name.contains("en", true) || (subtitles.size == 1)
+                    if (isDefaultMatch) {
+                        selectedSubtitles.add(subtitles[index].language)
+                    }
+                    isDefaultMatch
+                }
+
+                currContext.customAlertDialog().apply {
+                    setTitle(R.string.download_subtitle)
+                    multiChoiceItems(subtitleNamesArray, checkedItems) {
+                        it.forEachIndexed { index, isChecked ->
+                            val subtitleName = subtitles[index].language
+                            if (isChecked) {
+                                if (!selectedSubtitles.contains(subtitleName)) selectedSubtitles.add(subtitleName)
+                            } else {
+                                selectedSubtitles.remove(subtitleName)
+                            }
+                        }
+                    }
+                    setPosButton(R.string.download) {
+                        checkAudioTracks()
+                    }
+                    setNegButton(R.string.skip) {
+                        selectedSubtitles = mutableListOf()
+                        checkAudioTracks()
+                    }
+                    setNeutralButton(R.string.cancel) {
+                        selectedSubtitles = mutableListOf()
+                    }
+                    show()
+                }
+            } else {
+                checkAudioTracks()
+            }
+                }
+            }
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             val video = extractor.videos[position]
+            val subtitles = extractor.subtitles
+            if (holder is InlineStreamViewHolder) {
+                bindInlineStreamRow(holder.binding, video, position, subtitles)
+                return
+            }
+            val binding = (holder as UrlViewHolder).binding
             if (isDownloadMenu == true) {
                 binding.urlDownload.visibility = View.VISIBLE
             } else {
                 binding.urlDownload.visibility = View.GONE
             }
-            val subtitles = extractor.subtitles
             if (subtitles.isNotEmpty()) {
                 binding.urlSub.visibility = View.VISIBLE
             } else {
                 binding.urlSub.visibility = View.GONE
             }
-            binding.urlSub.setOnClickListener {
-                if (subtitles.isNotEmpty()) {
-                    val subtitleNames = subtitles.map { it.language }
-                    var subtitleToDownload: Subtitle? = null
-                    val currentEp = media?.anime?.episodes?.getEpisode(media?.anime?.selectedEpisode) ?: episode
-                    val epNumber = currentEp?.number ?: media?.anime?.selectedEpisode ?: "1"
-                    (activity ?: currActivity())?.customAlertDialog()?.apply {
-                        setTitle(R.string.download_subtitle)
-                        singleChoiceItems(subtitleNames.toTypedArray(),  dismissOnSelect = false) { which ->
-                            subtitleToDownload = subtitles[which]
-                        }
-                        setPosButton(R.string.download) {
-                            scope.launch(Dispatchers.IO) {
-                                if (subtitleToDownload != null) {
-                                    SubtitleDownloader.downloadSubtitle(
-                                        context ?: currContext() ?: return@launch,
-                                        subtitleToDownload.file.url,
-                                        DownloadedType(
-                                            media!!.mainName(),
-                                            epNumber,
-                                            MediaType.ANIME
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                        setNegButton(R.string.cancel) {}
-                    }?.show()
-                } else {
-                    snackString(R.string.no_subtitles_available)
-                }
+            setupRowSubtitleButton(binding.urlSub, subtitles)
+            setupRowDownloadButton(binding.urlDownload, position, subtitles)
+            // Legacy size/format chrome is hidden for every redesigned row. The new
+            // Legacy size/format chrome is hidden for every redesigned row.
+            // The new compact row's metadata line is the single source of
+            // size truth; transport is surfaced only in the expandable
+            // Details panel. The layout no longer carries urlSize/urlNote
+            // fields (replaced by the new urlMeta / urlPills row).
+            bindSourceRow(holder, extractor, video)
+        }
+
+        override fun getItemCount(): Int = extractor.videos.size
+
+        /**
+         * Drive the picker row from a [SourceRowViewModel]. Pure display
+         * pass; selection semantics live in [UrlViewHolder.init]. The legacy
+         * `urlQuality` TextView is reused as the primary row (single-line,
+         * ellipsized) so existing styling matches.
+         */
+        private fun bindSourceRow(
+            holder: UrlViewHolder,
+            extractor: VideoExtractor,
+            video: Video,
+        ) {
+            val viewModel = SourceRowSummarizer.build(
+                displayLabel = extractor.server.name,
+                qualityText = extractor.server.name,
+                format = video.format,
+                url = video.file.url,
+            )
+            val binding = holder.binding
+
+            // v3.5 hierarchy:
+            // 1. Header: release group (RELEASE) or host (STREAM), large.
+            // 2. Tracker cue: small right-side text, only when
+            //    confidently parsed (never guess).
+            // 3. Title: clean human-readable line.
+            // 4. Seeders: prominent primary secondary signal.
+            // 5. Size + tracker: lightweight secondary metadata.
+            // 6. Technical pills: resolution / codec / HDR / audio / subs.
+            // 7. Actions: subs / download / info.
+
+            val header = viewModel.header
+            if (!header.isNullOrBlank()) {
+                binding.urlHeader.text = header
+                binding.urlHeader.contentDescription = header
+                binding.urlHeader.visibility = View.VISIBLE
+            } else {
+                binding.urlHeader.text = ""
+                binding.urlHeader.contentDescription = null
+                binding.urlHeader.visibility = View.INVISIBLE
             }
-            binding.urlDownload.setSafeOnClickListener {
+
+            // Tracker cue: only the explicitly parsed tracker from the
+            // 📂 line. The cue is a small icon (no duplicated text) whose
+            // contentDescription is the parsed tracker string. Hidden when
+            // no tracker was parsed. No network / favicon / copied logo
+            // assets are involved.
+            val tracker = viewModel.tracker
+            if (!tracker.isNullOrBlank()) {
+                binding.urlTrackerCue.contentDescription = tracker
+                binding.urlTrackerCue.visibility = View.VISIBLE
+            } else {
+                binding.urlTrackerCue.contentDescription = null
+                binding.urlTrackerCue.visibility = View.GONE
+            }
+
+            // Cleaned release title (UI-only).
+            val cleanSubtitle = viewModel.cleanSubtitle
+            val subtitle = viewModel.subtitle
+            val subToShow = if (!cleanSubtitle.isNullOrBlank()) cleanSubtitle else subtitle
+            if (!subToShow.isNullOrBlank() && subToShow != viewModel.displayLabel) {
+                binding.urlReleaseName.text = subToShow
+                binding.urlReleaseName.visibility = View.VISIBLE
+            } else {
+                binding.urlReleaseName.visibility = View.GONE
+            }
+
+            // Seeders (prominent, theme primary).
+            val seederChip = viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SEEDERS }
+            if (seederChip != null) {
+                binding.urlSeeders.text = seederChip.text
+                binding.urlSeeders.visibility = View.VISIBLE
+            } else {
+                binding.urlSeeders.text = ""
+                binding.urlSeeders.visibility = View.GONE
+            }
+
+            // Size + tracker (lightweight secondary).
+            val sizeTracker = viewModel.meta
+                .filter { it.icon == SourceMetaIcon.SIZE || it.icon == SourceMetaIcon.INDEXER }
+                .joinToString(" · ") { it.text }
+            if (sizeTracker.isNotEmpty()) {
+                binding.urlSizeAndTracker.text = "· " + sizeTracker
+                binding.urlSizeAndTracker.visibility = View.VISIBLE
+            } else {
+                binding.urlSizeAndTracker.text = ""
+                binding.urlSizeAndTracker.visibility = View.GONE
+            }
+
+            // Technical pills (resolution / codec / HDR / audio / subs).
+            // These live in their own row in the layout, NOT beside the
+            // release-group header. The pill order is enforced inside
+            // buildPills(); here we just render whatever was selected.
+            bindPills(binding.urlPills, viewModel.pills)
+
+            // Details panel content (always reset on every bind; tap toggles
+            // visibility). The content text is plain monospace-style rows
+            // joined with newlines for now.
+            binding.urlDetails.visibility = View.GONE
+            binding.urlDetailsText.text = formatDetailsText(viewModel)
+            binding.urlExpand.setOnClickListener {
+                val visible = binding.urlDetails.visibility == View.VISIBLE
+                binding.urlDetails.visibility = if (visible) View.GONE else View.VISIBLE
+            }
+        }
+
+        /**
+         * Drive one inline direct-stream row. STREAM rows carry only a
+         * server name, compact pills, and actions; release-group,
+         * tracker-cue, clean-title, seeder, and size rows do not exist
+         * in the inline card. Action-button visibility and dialogs go
+         * through the same shared setup functions as the full card.
+         */
+        private fun bindInlineStreamRow(
+            binding: ItemUrlStreamInlineBinding,
+            video: Video,
+            position: Int,
+            subtitles: List<Subtitle>,
+        ) {
+            val viewModel = SourceRowSummarizer.build(
+                displayLabel = extractor.server.name,
+                qualityText = extractor.server.name,
+                format = video.format,
+                url = video.file.url,
+            )
+            val header = viewModel.header
+            if (!header.isNullOrBlank()) {
+                binding.urlHeader.text = header
+                binding.urlHeader.contentDescription = header
+                binding.urlHeader.visibility = View.VISIBLE
+            } else {
+                binding.urlHeader.text = ""
+                binding.urlHeader.contentDescription = null
+                binding.urlHeader.visibility = View.GONE
+            }
+            bindPills(binding.urlPills, viewModel.pills)
+            if (isDownloadMenu == true) {
+                binding.urlDownload.visibility = View.VISIBLE
+            } else {
+                binding.urlDownload.visibility = View.GONE
+            }
+            if (subtitles.isNotEmpty()) {
+                binding.urlSub.visibility = View.VISIBLE
+            } else {
+                binding.urlSub.visibility = View.GONE
+            }
+            setupRowSubtitleButton(binding.urlSub, subtitles)
+            setupRowDownloadButton(binding.urlDownload, position, subtitles)
+            binding.urlDetails.visibility = View.GONE
+            binding.urlDetailsText.text = formatDetailsText(viewModel)
+            binding.urlExpand.setOnClickListener {
+                val visible = binding.urlDetails.visibility == View.VISIBLE
+                binding.urlDetails.visibility = if (visible) View.GONE else View.VISIBLE
+            }
+        }
+
+        /**
+         * Populate the right-aligned pill row. Each pill is a small
+         * rounded-corner TextView with a colored background per kind.
+         * Existing pills are removed on every bind so recycled holders
+         * never leak.
+         */
+        private fun bindPills(
+            container: android.widget.LinearLayout,
+            pills: List<SourceRowPill>,
+        ) {
+            container.removeAllViews()
+            for (pill in pills) {
+                val tv = makePillTextView(container.context, pill)
+                val lp = android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+                lp.marginStart = pillMarginPx(container.context)
+                container.addView(tv, lp)
+            }
+        }
+
+        /**
+         * Flexbox overload for the compact RELEASE card, whose pill row
+         * wraps instead of clipping when width/content requires it. Pill
+         * appearance is identical to the linear variant; only the
+         * container layout params differ. The inline STREAM card keeps
+         * using the LinearLayout overload above (frozen v2 behavior).
+         */
+        private fun bindPills(
+            container: com.google.android.flexbox.FlexboxLayout,
+            pills: List<SourceRowPill>,
+        ) {
+            container.removeAllViews()
+            for (pill in pills) {
+                val tv = makePillTextView(container.context, pill)
+                val lp = com.google.android.flexbox.FlexboxLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+                lp.marginStart = pillMarginPx(container.context)
+                container.addView(tv, lp)
+            }
+        }
+
+        private fun pillMarginPx(context: android.content.Context): Int =
+            (4 * context.resources.displayMetrics.density).toInt()
+
+        private fun makePillTextView(
+            context: android.content.Context,
+            pill: SourceRowPill,
+        ): android.widget.TextView {
+            val tv = android.widget.TextView(context)
+            tv.text = pill.text
+            tv.setTextColor(pillTextColor(pill.kind))
+            tv.setBackgroundResource(pillBackground(pill.kind))
+            val padH = (4 * context.resources.displayMetrics.density).toInt()
+            val padV = (2 * context.resources.displayMetrics.density).toInt()
+            tv.setPadding(padH, padV, padH, padV)
+            tv.textSize = 11f
+            tv.typeface = android.graphics.Typeface.DEFAULT_BOLD
+            tv.maxLines = 1
+            tv.setSingleLine(true)
+            return tv
+        }
+
+        private fun pillBackground(kind: SourcePillKind): Int = when (kind) {
+            SourcePillKind.QUALITY -> ani.dantotsu.R.drawable.pill_quality
+            SourcePillKind.CODEC -> ani.dantotsu.R.drawable.pill_codec
+            SourcePillKind.BIT_DEPTH -> ani.dantotsu.R.drawable.pill_bit_depth
+            SourcePillKind.AUDIO_FMT -> ani.dantotsu.R.drawable.pill_audio
+            SourcePillKind.SUB_LANG -> ani.dantotsu.R.drawable.pill_sub
+            SourcePillKind.AUDIO_MODE -> ani.dantotsu.R.drawable.pill_audio_mode
+            SourcePillKind.HDR -> ani.dantotsu.R.drawable.pill_hdr
+            SourcePillKind.HDR10 -> ani.dantotsu.R.drawable.pill_hdr10
+            SourcePillKind.HDR10_PLUS -> ani.dantotsu.R.drawable.pill_hdr10_plus
+            SourcePillKind.DOLBY_VISION -> ani.dantotsu.R.drawable.pill_dolby_vision
+        }
+
+        /**
+         * Text color for a pill: paired with the pill background per the
+         * Material 3 "container" + "onContainer" convention. Theme-aware.
+         */
+        private fun pillTextColor(kind: SourcePillKind): Int {
+            val context = ani.dantotsu.currContext() ?: return 0
+            val attr = when (kind) {
+                SourcePillKind.QUALITY -> com.google.android.material.R.attr.colorOnPrimaryContainer
+                SourcePillKind.CODEC -> com.google.android.material.R.attr.colorOnTertiaryContainer
+                SourcePillKind.BIT_DEPTH -> com.google.android.material.R.attr.colorOnSecondaryContainer
+                SourcePillKind.AUDIO_FMT -> com.google.android.material.R.attr.colorOnSecondaryContainer
+                SourcePillKind.SUB_LANG -> com.google.android.material.R.attr.colorOnTertiaryContainer
+                SourcePillKind.AUDIO_MODE -> com.google.android.material.R.attr.colorOnPrimaryContainer
+                SourcePillKind.HDR -> com.google.android.material.R.attr.colorOnTertiaryContainer
+                SourcePillKind.HDR10 -> com.google.android.material.R.attr.colorOnTertiaryContainer
+                SourcePillKind.HDR10_PLUS -> com.google.android.material.R.attr.colorOnTertiaryContainer
+                SourcePillKind.DOLBY_VISION -> com.google.android.material.R.attr.colorOnTertiaryContainer
+            }
+            val typedValue = android.util.TypedValue()
+            val resolved = context.theme.resolveAttribute(attr, typedValue, true)
+            return if (resolved) typedValue.data else 0
+        }
+
+        private fun formatDetailsText(viewModel: SourceRowViewModel): String =
+            viewModel.details.joinToString("\n") { line ->
+                val label = line.label?.let { "$it: " } ?: ""
+                "$label${line.value}"
+            }
+
+        /**
+         * Row-click selection transaction shared by the full release
+         * card and the inline stream card. Moved verbatim from
+         * [UrlViewHolder.init]; behavior is identical for both row
+         * kinds. `position` is the adapter position at click time.
+         */
+        private fun onRowClicked(
+            position: Int,
+            downloadClick: () -> Unit,
+        ) {
+            if (isDownloadMenu == true) {
+                downloadClick()
+                return
+            }
+            tryWith(true) {
                 val currentEp = media?.anime?.episodes?.getEpisode(media?.anime?.selectedEpisode) ?: episode
                 val epKey = media?.anime?.episodes?.getEpisodeKey(media?.anime?.selectedEpisode) ?: media?.anime?.selectedEpisode
                 if (currentEp != null) {
@@ -759,191 +1371,95 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                     media?.anime?.episodes?.get(epKey)?.selectedExtractor = extractor.server.name
                     media?.anime?.episodes?.get(epKey)?.selectedVideo = position
                 }
-                if ((PrefManager.getVal(PrefName.DownloadManager) as Int) != 0) {
-                    val act = activity ?: currActivity()
-                    if (act != null && currentEp != null) {
-                        download(
-                            act,
-                            currentEp,
-                            media!!.userPreferredName
-                        )
+                if (makeDefault) {
+                    media!!.selected!!.server = extractor.server.name
+                    media!!.selected!!.video = position
+                    model.saveSelected(media!!.id, media!!.selected!!)
+                    val provider = StableCandidateBuilder.providerOf(extractor.server)
+                    val exact = StableCandidateBuilder.exactKey(provider, extractor.server)
+                    val candidate = StableCandidateBuilder.familyCandidate(extractor.server)
+                    // Exact slot is CURRENT-candidate identity:
+                    // OFF leaves it alone, ON writes the
+                    // current key, ON with an unkeyable
+                    // candidate clears a stale previous key.
+                    when (RememberedSelectionPolicy.exactSlotAction(
+                        makeDefault, exact,
+                    )) {
+                        RememberedSelectionPolicy.ExactSlotAction.WRITE ->
+                            SelectedKeyStore.save(media!!.id, exact)
+                        RememberedSelectionPolicy.ExactSlotAction.CLEAR ->
+                            SelectedKeyStore.save(media!!.id, null)
+                        RememberedSelectionPolicy.ExactSlotAction.NO_CHANGE -> Unit
+                    }
+                    // Family slot is independent of the exact
+                    // slot: REPLACE on a confident new
+                    // family, PRESERVE (leave untouched) when
+                    // the pick is not confidently
+                    // family-shaped, so parser uncertainty
+                    // cannot silently delete the user's
+                    // previous family choice.
+                    when (RememberedSelectionPolicy.familySlotAction(
+                        makeDefault, candidate,
+                    )) {
+                        RememberedSelectionPolicy.FamilySlotAction.REPLACE -> {
+                            val c = candidate!!
+                            SelectedFamilyStore.save(media!!.id, FamilyPayload(
+                                providerPkg = c.providerPkg,
+                                groupKey = c.groupKey,
+                                soft = c.soft,
+                            ))
+                        }
+                        RememberedSelectionPolicy.FamilySlotAction.PRESERVE,
+                        RememberedSelectionPolicy.FamilySlotAction.NO_CHANGE,
+                        -> Unit
                     }
                 }
-                else {
-                    val ep = currentEp ?: return@setSafeOnClickListener
-                    val selectedVideo =
-                        if (extractor.videos.size > ep.selectedVideo) extractor.videos[ep.selectedVideo] else extractor.videos.getOrNull(0)
-                    val downloadAddonManager: DownloadAddonManager = Injekt.get()
-                    if (!downloadAddonManager.isAvailable()) {
-                        val context = context ?: currContext()
-                        context?.customAlertDialog()?.apply {
-                            setTitle(R.string.download_addon_not_installed)
-                            setMessage(R.string.would_you_like_to_install)
-                            setPosButton(R.string.yes) {
-                                ContextCompat.startActivity(
-                                    context,
-                                    Intent(context, SettingsAddonActivity::class.java),
-                                    null
-                                )
-                            }
-                            setNegButton(R.string.no) {
-                                return@setNegButton
-                            }
-                            show()
-                        }
-                        dismissAllowingStateLoss()
-                        return@setSafeOnClickListener
-                    }
-                    selectedVideo?.file?.url?.let { url ->
-                        if (url.startsWith("magnet:") || url.endsWith(".torrent")) {
-                            val torrentManager = Injekt.get<TorrentServerManager>()
-                            if (!torrentManager.isAvailable()) {
-                                toast(R.string.torrent_addon_not_available)
-                                return@setSafeOnClickListener
-                            }
-                        }
-                    }
-
-                    val subtitleNames = subtitles.map { it.language }
-                    var selectedSubtitles: MutableList<String> = mutableListOf()
-                    var selectedAudioTracks: MutableList<String> = mutableListOf()
-
-                    val currContext = currContext() ?: requireContext()
-
-                    fun go(){
-                        onEpisodeDownloadHandler?.onFinishingUserSelection(extractor.server.name, selectedSubtitles, selectedAudioTracks)
-                    }
-
-                    fun checkAudioTracks() {
-                        val audioTracks = extractor.audioTracks.map { it.lang }
-                        if (audioTracks.isNotEmpty()) {
-                            val audioNamesArray = audioTracks.toTypedArray()
-                            val checkedItems = BooleanArray(audioNamesArray.size) { false }
-
-                            currContext.customAlertDialog().apply { // ToTest
-                                setTitle(R.string.download_audio_tracks)
-                                multiChoiceItems(audioNamesArray, checkedItems) {
-                                    it.forEachIndexed { index, isChecked ->
-                                        val audioName = extractor.audioTracks[index].lang
-                                        if (isChecked) {
-                                            selectedAudioTracks.add(audioName)
-                                        } else {
-                                            selectedAudioTracks.remove(audioName)
-                                        }
-                                    }
-                                }
-                                setPosButton(R.string.download) {
-                                    go()
-                                }
-                                setNegButton(R.string.skip) {
-                                    selectedAudioTracks = mutableListOf()
-                                    go()
-                                }
-                                setNeutralButton(R.string.cancel) {
-                                    selectedAudioTracks = mutableListOf()
-                                }
-                                show()
-                            }
-                        } else {
-                            go()
-                        }
-                    }
-                    if (subtitles.isNotEmpty()) { // ToTest
-                        val subtitleNamesArray = subtitleNames.toTypedArray()
-                        val checkedItems = BooleanArray(subtitleNamesArray.size) { index ->
-                            val name = subtitleNamesArray[index]
-                            val isDefaultMatch = name.contains("English", true) || name.contains("en", true) || (subtitles.size == 1)
-                            if (isDefaultMatch) {
-                                selectedSubtitles.add(subtitles[index].language)
-                            }
-                            isDefaultMatch
-                        }
-
-                        currContext.customAlertDialog().apply {
-                            setTitle(R.string.download_subtitle)
-                            multiChoiceItems(subtitleNamesArray, checkedItems) {
-                                it.forEachIndexed { index, isChecked ->
-                                    val subtitleName = subtitles[index].language
-                                    if (isChecked) {
-                                        if (!selectedSubtitles.contains(subtitleName)) selectedSubtitles.add(subtitleName)
-                                    } else {
-                                        selectedSubtitles.remove(subtitleName)
-                                    }
-                                }
-                            }
-                            setPosButton(R.string.download) {
-                                checkAudioTracks()
-                            }
-                            setNegButton(R.string.skip) {
-                                selectedSubtitles = mutableListOf()
-                                checkAudioTracks()
-                            }
-                            setNeutralButton(R.string.cancel) {
-                                selectedSubtitles = mutableListOf()
-                            }
-                            show()
-                        }
-                    } else {
-                        checkAudioTracks()
-                    }
-                }
+                Log.d("AnimeDownloader", "Should start the player")
+                startExoplayer(media!!)
             }
-            if (video.format == VideoType.CONTAINER) {
-                binding.urlSize.isVisible = video.size != null
-                // if video size is null or 0, show "Unknown Size" else show the size in MB
-                val sizeText = getString(
-                    R.string.mb_size, "${if (video.extraNote != null) " : " else ""}${
-                        if (video.size == 0.0) getString(R.string.size_unknown) else DecimalFormat("#.##").format(
-                            video.size ?: 0
-                        )
-                    }"
-                )
-                binding.urlSize.text = sizeText
-            }
-            binding.urlNote.visibility = View.VISIBLE
-            binding.urlNote.text = video.format.name
-            binding.urlQuality.text = extractor.server.name
         }
 
-        override fun getItemCount(): Int = extractor.videos.size
+        /**
+         * Row long-click (copy link / open externally) shared by the
+         * full release card and the inline stream card. Moved verbatim
+         * from [UrlViewHolder.init]; behavior is identical.
+         */
+        private fun onRowLongClicked(position: Int): Boolean {
+            val video = extractor.videos[position]
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(Uri.parse(video.file.url), "video/*")
+            }
+            copyToClipboard(video.file.url, true)
+            dismissAllowingStateLoss()
+            startActivity(Intent.createChooser(intent, "Open Video in :"))
+            return true
+        }
 
         private inner class UrlViewHolder(val binding: ItemUrlBinding) :
             RecyclerView.ViewHolder(binding.root) {
             init {
                 itemView.setSafeOnClickListener {
-                    if (isDownloadMenu == true) {
-                        binding.urlDownload.performClick()
-                        return@setSafeOnClickListener
-                    }
-                    tryWith(true) {
-                        val currentEp = media?.anime?.episodes?.getEpisode(media?.anime?.selectedEpisode) ?: episode
-                        val epKey = media?.anime?.episodes?.getEpisodeKey(media?.anime?.selectedEpisode) ?: media?.anime?.selectedEpisode
-                        if (currentEp != null) {
-                            currentEp.selectedExtractor = extractor.server.name
-                            currentEp.selectedVideo = bindingAdapterPosition
-                        }
-                        if (epKey != null) {
-                            media?.anime?.episodes?.get(epKey)?.selectedExtractor = extractor.server.name
-                            media?.anime?.episodes?.get(epKey)?.selectedVideo = bindingAdapterPosition
-                        }
-                        if (makeDefault) {
-                            media!!.selected!!.server = extractor.server.name
-                            media!!.selected!!.video = bindingAdapterPosition
-                            model.saveSelected(media!!.id, media!!.selected!!)
-                        }
-                        Log.d("AnimeDownloader", "Should start the player")
-                        startExoplayer(media!!)
-                    }
+                    onRowClicked(bindingAdapterPosition) { binding.urlDownload.performClick() }
                 }
                 itemView.setOnLongClickListener {
-                    val video = extractor.videos[bindingAdapterPosition]
-                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(Uri.parse(video.file.url), "video/*")
-                    }
-                    copyToClipboard(video.file.url, true)
-                    dismissAllowingStateLoss()
-                    startActivity(Intent.createChooser(intent, "Open Video in :"))
-                    true
+                    onRowLongClicked(bindingAdapterPosition)
+                }
+            }
+        }
+
+        /**
+         * Compact single-row holder for direct-stream rows. Click and
+         * long-click behavior is shared with [UrlViewHolder] through
+         * [onRowClicked]/[onRowLongClicked]; only the bound views differ.
+         */
+        private inner class InlineStreamViewHolder(val binding: ItemUrlStreamInlineBinding) :
+            RecyclerView.ViewHolder(binding.root) {
+            init {
+                itemView.setSafeOnClickListener {
+                    onRowClicked(bindingAdapterPosition) { binding.urlDownload.performClick() }
+                }
+                itemView.setOnLongClickListener {
+                    onRowLongClicked(bindingAdapterPosition)
                 }
             }
         }

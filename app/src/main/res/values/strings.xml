@@ -173,8 +173,12 @@
     </string>
     <string name="not_supported">%1$s is not supported!</string>
     <string name="server_selector">Select Server</string>
-    <string name="auto_select_server">Auto Selecting Server</string>
-    <string name="make_default">Make Default</string>
+    <string name="auto_select_server">Auto-selecting source</string>
+    <string name="make_default">Remember choice</string>
+    <string name="select_source">Choose source</string>
+    <string name="auto_select_source">Auto-selecting source</string>
+    <string name="source_details">Source details</string>
+    <string name="source_collapse">Collapse details</string>
     <string name="filler">Filler</string>
     <string name="adult">Adult</string>
     <string name="list_only">List Only</string>
@@ -268,6 +272,16 @@
     <string name="sub_text_example">Example Sub</string>
     <string name="sub_font_select">Subtitle Font</string>
     <string name="subtitle_font_size">Subtitle Size</string>
+    <string name="subtitle_styling">Subtitle styling</string>
+    <string name="subtitle_styling_automatic">Automatic by source</string>
+    <string name="subtitle_styling_automatic_desc">Uses Editotsu\'s subtitle appearance for online streams and preserves original ASS styling for torrents, downloads and local media.</string>
+    <string name="subtitle_styling_editotsu">Editotsu style</string>
+    <string name="subtitle_styling_editotsu_desc">Uses your configured font, size, colors and outline.</string>
+    <string name="subtitle_styling_source">Source style</string>
+    <string name="subtitle_styling_source_desc">Preserves subtitle-provided ASS/SSA fonts, positioning and effects.</string>
+    <string name="subtitle_styling_custom">Custom…</string>
+    <string name="custom_stream_source_styling">Streaming: use original styling</string>
+    <string name="custom_local_source_styling">Torrents &amp; downloads: use original styling</string>
 
     <string name="auto">Auto</string>
     <string name="auto_play_next_episode">Autoplay Next Episode</string>
@@ -465,26 +479,8 @@
     <string name="install_step">Step: %1$s</string>
     <string name="review">Review</string>
     <string name="reviews">Reviews</string>
-    <string name="discord_nothing_button">Display only the first button</string>
-    <string name="discord_dantotsu_button">Display Editotsu in the second button</string>
-    <string name="discord_anilist_button">Display your AniList profile instead</string>
     <string name="discord_rich_presence">Discord Rich Presence</string>
-    <string name="stream_on_dantotsu">Stream on Editotsu</string>
-    <string name="view_my_anilist">View My AniList</string>
-    <string name="view_my_mal">View My MAL</string>
-    <string name="discord_preview">Preview</string>
-    <string name="discord_playing_game">Playing a game</string>
-    <string name="discord_just_now">Just Now</string>
-    <string name="discord_select_service">Select Icon Service &amp; Links</string>
-    <string name="discord_dantotsu_mode">Editotsu Mode</string>
-    <string name="discord_anilist_mode">AniList Mode</string>
-    <string name="discord_mal_mode">MAL Mode</string>
-    <string name="discord_anime_presence">Anime Presence</string>
-    <string name="discord_manga_presence">Manga Presence</string>
-    <string name="discord_disable_adult_media_rpc">Disable RPC on adult media</string>
-    <string name="discord_no_tracker_link">No Tracker Link (Hidden)</string>
     <string name="view_profile_in_dantotsu">Editotsu Profile</string>
-    <string name="discord_view_profile">View Profile</string>
 
     <string name="jobless_message">DAMN! YOU TRULY ARE JOBLESS\nYOU REACHED THE END</string>
     <string name="file_manager_not_found">Couldn\'t find a File Manager to open SD card</string>
@@ -562,6 +558,10 @@
     <string name="mal_login_uri_not_found">Mal Login : Uri not Found</string>
     <string name="mal_login_code_challenge_not_found">Mal Login : codeChallenge not found</string>
     <string name="mal_login_code_not_present">Mal Login : Code not present in redirected URI</string>
+    <string name="mal_login_cancelled">MAL Login cancelled</string>
+    <string name="mal_login_failed">MAL Login failed</string>
+    <string name="mal_login_unavailable">MAL login unavailable in this build (no client ID configured)</string>
+    <string name="mal_login_session_invalid">Invalid or expired MAL login session</string>
     <string name="refresh_token_load_failed">Refresh Token : Failed to load saved token</string>
     <string name="refreshing_token_failed">Refreshing Token Failed</string>
     <string name="episode_release_countdown">Episode %1$d will be released in</string>
@@ -761,10 +761,6 @@
     <string name="invalid_url">Invalid URL</string>
     <string name="no_anilist_id_found">No Anilist ID found</string>
     <string name="error_loading_image">Error loading image</string>
-    <string name="discord_logout_success">Successfully Logged Out</string>
-    <string name="discord_try_again">Try logging-in again</string>
-    <string name="error_loading_discord_user_data">Error loading Discord User Data</string>
-    <string name="discord_warning"><![CDATA[By logging in, your discord will now show what you are watching & reading on Editotsu\n\nIf you are on invisible mode, logging in will make you online, when you open Editotsu.\n\nThis does break the Discord TOS. \nAlthough Discord has never banned anyone for using Custom Rich Presence(what Editotsu uses), You have still been warned.\n\nEditotsu is not responsible for anything that happens to your account.]]></string>
     <string name="warning">Warning</string>
     <string name="view_anime" translatable="false">View Anime</string>
     <string name="view_manga" translatable="false">View Manga</string>
@@ -881,8 +877,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="anilist_notifications_checking_time">Anilist notifications update frequency : %1$s</string>
     <string name="comment_notification_checking_time">Comment notifications update frequency : %1$s</string>
     <string name="activities">Activities</string>
-    <string name="enable_rpc">Enable Discord RPC</string>
-    <string name="enable_rpc_desc">Display your taste to plebs on Discord!</string>
+    <string name="discord_rich_presence_desc">Show what you\'re watching or reading on your Discord profile.</string>
 
     <string name="incorrect_password">Incorrect password</string>
     <string name="password_cannot_be_empty">Password cannot be empty</string>
@@ -1210,6 +1205,18 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="torrent_port_desc">Set a custom port for incoming peer connections (0 = random/auto)</string>
     <string name="torrent_disable_utp">Disable UDP (uTP)</string>
     <string name="torrent_disable_utp_desc">Disable UDP socket connections to save CPU and reduce heating. Forces TCP-only connections.</string>
+    <string name="torrent_cache_quota">Retained Cache Quota</string>
+    <string name="torrent_cache_quota_desc">Target maximum size for dormant/retained torrents (active streams are always protected)</string>
+    <string name="clear_torrent_cache">Clear Torrent Cache</string>
+    <string name="clear_torrent_cache_desc">Purge dormant/retained torrent pieces to free up storage</string>
+    <string name="clear_app_cache">Clear App Cache</string>
+    <string name="clear_app_cache_desc">Clear all temporary files, dormant torrents, and subtitle caches</string>
+    <string name="video_adjustments">Video Adjustments &amp; Equalizer</string>
+    <string name="video_adjustments_desc">Brightness, contrast, saturation, gamma, hue, and sharpening</string>
+    <string name="debanding_settings">Debanding Filters</string>
+    <string name="debanding_settings_desc">Reduce color banding and gradient compression artifacts</string>
+    <string name="audio_sub_sync">Audio &amp; Subtitle Sync</string>
+    <string name="audio_sub_sync_desc">Audio/subtitle sync offsets and volume boost</string>
 
     <string name="ext_installer_shizuku_stopped">Shizuku is not running or has stopped.</string>
 

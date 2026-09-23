@@ -41,6 +41,7 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.UUID
@@ -358,6 +359,34 @@ class SettingsCommonActivity : AppCompatActivity() {
                                         launcher.launch()
                                     }
                                     setNegButton(R.string.cancel)
+                                    show()
+                                }
+                            },
+                        ),
+                        Settings(
+                            type = 1,
+                            name = getString(R.string.clear_app_cache),
+                            desc = getString(R.string.clear_app_cache_desc),
+                            icon = R.drawable.ic_round_delete_24,
+                            onClick = {
+                                context.customAlertDialog().apply {
+                                    setTitle(getString(R.string.clear_app_cache))
+                                    setMessage("Clear temporary cache, dormant torrents, and subtitle files? Active playback streams will be preserved.")
+                                    setPosButton(R.string.yes) {
+                                        GlobalScope.launch(Dispatchers.IO) {
+                                            val cacheMgr = ani.dantotsu.torrent.TorrentCacheManager.getInstance(context)
+                                            val torrentResult = cacheMgr.clearTorrentCache()
+                                            val transientBytes = cacheMgr.cleanTransientFiles(0L)
+                                            val totalFreed = torrentResult.bytesFreed + transientBytes
+                                            withContext(Dispatchers.Main) {
+                                                val units = arrayOf("B", "KB", "MB", "GB", "TB")
+                                                val digitGroups = if (totalFreed > 0) (Math.log10(totalFreed.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, units.size - 1) else 0
+                                                val formatted = if (totalFreed > 0) String.format(java.util.Locale.US, "%.2f %s", totalFreed / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups]) else "0 B"
+                                                toast("Cleared app cache! ($formatted freed)")
+                                            }
+                                        }
+                                    }
+                                    setNegButton(R.string.no)
                                     show()
                                 }
                             },

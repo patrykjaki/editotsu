@@ -31,7 +31,6 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import ani.dantotsu.R
 import ani.dantotsu.databinding.FragmentMediaSourceBinding
-import ani.dantotsu.download.DownloadedType
 import ani.dantotsu.download.DownloadsManager
 import ani.dantotsu.download.DownloadsManager.Companion.compareName
 import ani.dantotsu.download.manga.MangaDownloaderService
@@ -42,7 +41,6 @@ import ani.dantotsu.media.Media
 import ani.dantotsu.media.MediaDetailsActivity
 import ani.dantotsu.media.MediaDetailsViewModel
 import ani.dantotsu.media.MediaNameAdapter
-import ani.dantotsu.media.MediaType
 import ani.dantotsu.media.manga.mangareader.ChapterLoaderDialog
 import ani.dantotsu.navBarHeight
 import ani.dantotsu.setBaseline
@@ -232,6 +230,7 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
                                 style ?: PrefManager.getVal(PrefName.MangaDefaultView), media, this
                             )
 
+                        downloadManager.reconcileIncompleteDownloads()
                         for (download in downloadManager.mangaDownloadedTypes) {
                             if (media.compareName(download.titleName)) {
                                 chapterAdapter.stopDownload(download.uniqueName)
@@ -535,17 +534,23 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
                                 val isAlreadyQueued = MangaServiceDataSingleton.downloadQueue.any { it.title == media.mainName() && it.chapter == chapter.title } ||
                                                       MangaServiceDataSingleton.currentTasks.any { it.title == media.mainName() && it.chapter == chapter.title }
                                 if (!isAlreadyQueued) {
+                                    // Assign a monotonic attempt id at enqueue time so that
+                                    // a later cancellation can classify this attempt as old
+                                    // (<= cutoff) vs a fresh retry (> cutoff) atomically.
+                                    downloadTask.attemptId = MangaServiceDataSingleton.downloadOwnership.issueAttemptId()
                                     MangaServiceDataSingleton.downloadQueue.offer(downloadTask)
                                 }
 
                                 // If the service is not already running, start it
-                                if (!MangaServiceDataSingleton.isServiceRunning) {
-                                    val intent = Intent(context, MangaDownloaderService::class.java)
-                                    withContext(Dispatchers.Main) {
-                                        ContextCompat.startForegroundService(requireContext(), intent)
-                                    }
-                                    MangaServiceDataSingleton.isServiceRunning = true
+                                // Every offer is paired with a start: the service's
+                                // authoritative drain loop (veto-safe stop) guarantees
+                                // the task is processed, while a stale
+                                // isServiceRunning flag must never strand it.
+                                val intent = Intent(context, MangaDownloaderService::class.java)
+                                withContext(Dispatchers.Main) {
+                                    ContextCompat.startForegroundService(requireContext(), intent)
                                 }
+                                MangaServiceDataSingleton.isServiceRunning = true
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
                                     chapterAdapter.purgeDownload(uniqueNum)
@@ -580,40 +585,45 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
     }
 
 
-    fun onMangaChapterRemoveDownloadClick(i: MangaChapter) {
-        downloadManager.removeDownload(
-            DownloadedType(
-                media.mainName(),
-                i.number,
-                MediaType.MANGA
-            )
-        ) {
-            chapterAdapter.deleteDownload(i)
-            val isOffline = model.mangaReadSources?.get(media.selected?.sourceIndex ?: 0) is OfflineMangaParser
-            if (isOffline) {
-                model.invalidateMangaSource(media.selected?.sourceIndex ?: 0)
-                loadChapters(media.selected?.sourceIndex ?: 0, true)
-            }
+    /**
+     * Sends the authoritative serialized delete as an EXPLICIT command to the
+     * non-exported [MangaDownloaderService]. `startForegroundService` starts the
+     * service when needed (a completed chapter is usually deleted long after the
+     * service stopped), and `onStartCommand` handles the command however the service
+     * was started — so delete works even with no live service/receiver. Never a
+     * dynamic broadcast: destructive delete must not be externally invokable, and a
+     * broadcast would silently no-op when the service is stopped.
+     */
+    private fun sendDeleteChapterCommand(i: MangaChapter) {
+        val intent = Intent(requireContext(), MangaDownloaderService::class.java).apply {
+            action = MangaDownloaderService.ACTION_DELETE_CHAPTER
+            putExtra(MangaDownloaderService.EXTRA_CHAPTER, i.number)
+            putExtra(MangaDownloaderService.EXTRA_TITLE, media.mainName())
+            putExtra(MangaDownloaderService.EXTRA_UNIQUE_NUMBER, i.uniqueNumber())
         }
+        ContextCompat.startForegroundService(requireContext(), intent)
     }
 
-    fun onMangaChapterStopDownloadClick(i: MangaChapter) {
-        val cancelIntent = Intent().apply {
-            action = MangaDownloaderService.ACTION_CANCEL_DOWNLOAD
-            putExtra(MangaDownloaderService.EXTRA_CHAPTER, i.number)
-        }
-        requireContext().sendBroadcast(cancelIntent)
+    fun onMangaChapterRemoveDownloadClick(i: MangaChapter) {
+        // Authoritative serialized delete: the service reserves the delete
+        // synchronously at invocation, cancels/joins any live owner for this physical
+        // key, retires old queue/job bookkeeping, then runs the synchronous metadata +
+        // physical deletion inside the takeover barrier, reporting success vs failure
+        // honestly. The UI (purge + offline reload, or failure notice) happens on the
+        // ordered delete-result broadcast.
+        sendDeleteChapterCommand(i)
+    }
 
-        // Remove the download from the manager and update the UI
-        downloadManager.removeDownload(
-            DownloadedType(
-                media.mainName(),
-                i.number,
-                MediaType.MANGA
-            )
-        ) {
-            chapterAdapter.purgeDownload(i.uniqueNumber())
-        }
+        fun onMangaChapterStopDownloadClick(i: MangaChapter) {
+        // Authoritative serialized Stop/Delete: exactly one service transaction per
+        // physical key (invocation-time reservation, old-owner cancel+join, queue/job
+        // retirement, synchronous metadata + physical deletion inside the takeover
+        // barrier, honest result). No independent immediate
+        // downloadManager.removeDownload() here: that call used to delete files outside
+        // the barrier while the old owner could still commit COMPLETE from a cached
+        // valid snapshot afterwards. The UI purge happens on the ordered
+        // delete-result broadcast below.
+        sendDeleteChapterCommand(i)
     }
 
     private val downloadStatusReceiver = object : BroadcastReceiver() {
@@ -631,9 +641,40 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
                 }
 
                 ACTION_DOWNLOAD_FAILED -> {
+                    // Ordered delete FAILURE: the physical deletion did not happen, so
+                    // files + metadata are intact. Never purge — surface the failure so
+                    // the user can retry.
+                    if (intent.getBooleanExtra(
+                            MangaDownloaderService.EXTRA_MANGA_DELETE_FAILED,
+                            false
+                        )
+                    ) {
+                        snackString("Failed to delete chapter")
+                        return@onReceive
+                    }
                     val chapterNumber = intent.getStringExtra(EXTRA_CHAPTER_NUMBER)
                     chapterNumber?.let {
+                        // purgeDownload covers both in-progress (Stop) and completed
+                        // (Remove) entries: it clears active + downloaded state.
                         chapterAdapter.purgeDownload(it)
+                    }
+                    // Ordered delete completion (sent only after the authoritative
+                    // service transaction finished its synchronous deletion): refresh
+                    // an offline listing, preserving the old Remove-path behavior now
+                    // for every authoritative delete.
+                    if (intent.getBooleanExtra(
+                            MangaDownloaderService.EXTRA_MANGA_DELETED,
+                            false
+                        )
+                    ) {
+                        runCatching {
+                            val isOffline =
+                                model.mangaReadSources?.get(media.selected?.sourceIndex ?: 0) is OfflineMangaParser
+                            if (isOffline) {
+                                model.invalidateMangaSource(media.selected?.sourceIndex ?: 0)
+                                loadChapters(media.selected?.sourceIndex ?: 0, true)
+                            }
+                        }
                     }
                 }
 

@@ -50,7 +50,9 @@ class DantotsuPlayerManager(
         mimeType: String? = null,
         preferredSubLang: String? = null,
         embedUrl: String? = null,
-        audioTracks: List<eu.kanade.tachiyomi.animesource.model.Track> = emptyList()
+        audioTracks: List<eu.kanade.tachiyomi.animesource.model.Track> = emptyList(),
+        // Beta03: validated extension mpv per-file options for this extractor.
+        mpvFileOptions: String = ""
     ): PlaybackRequest {
         val headers = mutableMapOf<String, String>()
         headers.putAll(defaultHeaders)
@@ -68,7 +70,10 @@ class DantotsuPlayerManager(
                     url = resolvedUrl,
                     title = sub.language,
                     language = sub.language,
-                    selected = isSelected
+                    selected = isSelected,
+                    // Beta03: preserve the source header context (adapter now
+                    // attaches video headers to sub.file) for sub-add transport.
+                    headers = sub.file.headers
                 )
             }
         } ?: emptyList()
@@ -79,7 +84,10 @@ class DantotsuPlayerManager(
                 ExternalAudioTrack(
                     url = audioUrl,
                     language = audioTrack.lang,
-                    title = audioTrack.lang
+                    title = audioTrack.lang,
+                    // Beta03: extension audio Tracks carry no headers of their
+                    // own; inherit the video/source header context (same host).
+                    headers = headers
                 )
             } else null
         }
@@ -118,6 +126,8 @@ class DantotsuPlayerManager(
             externalAudioTracks = externalAudios,
             preferredSubLang = preferredSubLang,
             sourceClass = sourceClass,
+            // Beta03: validated extension mpv per-file options.
+            extraMpvOptions = mpvFileOptions,
             sourceLease = sourceLease
         )
     }
@@ -146,6 +156,10 @@ class DantotsuPlayerManager(
         playerView.bindEngine(engine)
         engine.setPlaybackSpeed(speed)
 
+        // CP2: settings → VideoPipelineConfig → engine at initialization + live re-apply support.
+        engine.applyVideoPipeline(VideoPipelinePrefsMapper.fromPrefs())
+        ActiveVideoPipeline.attach(engine)
+
         becomingNoisyReceiver = BecomingNoisyReceiver {
             coord.onBecomingNoisy()
         }
@@ -163,7 +177,9 @@ class DantotsuPlayerManager(
         }
 
         engine.addListener(listener)
-        subtitleManager.applySubtitlePreferences()
+        // Beta07: style is applied by the caller once the PlaybackRequest
+        // (and therefore the playback origin) exists; see ExoplayerView.
+        // Applying here would run before classification with no context.
         isInitialized = true
         return engine
     }
@@ -179,6 +195,7 @@ class DantotsuPlayerManager(
         audioFocusController = null
 
         isInitialized = false
+        playbackEngine?.let { ActiveVideoPipeline.detach(it) }
         playerView.unbindEngine()
 
         mediaSession?.release()

@@ -56,9 +56,19 @@ class Xpandable @JvmOverloads constructor(
         }, 300)
     }
 
+    companion object {
+        /**
+         * Opt-out tag for expand visibility restore. Children carrying this
+         * tag keep whatever visibility their owner set (e.g. conditionally
+         * GONE settings rows) instead of being forced VISIBLE on expand.
+         * Collapse ([hideAll]) still hides everything.
+         */
+        const val KEEP_HIDDEN_TAG = "xpand_keep_hidden"
+    }
+
     private fun showAll() {
         children.forEach {
-            if (it != getChildAt(0)) {
+            if (it != getChildAt(0) && it.tag != KEEP_HIDDEN_TAG) {
                 it.visibility = VISIBLE
                 ObjectAnimator.ofFloat(it, "scaleY", 0.5f, 1f).setDuration(200).start()
                 ObjectAnimator.ofFloat(it, "translationY", -32f, 0f).setDuration(200).start()

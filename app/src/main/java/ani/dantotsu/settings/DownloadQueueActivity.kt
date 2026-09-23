@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.updateLayoutParams
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
@@ -24,6 +25,7 @@ import ani.dantotsu.download.findValidName
 import ani.dantotsu.download.anime.AnimeDownloaderService
 import ani.dantotsu.download.anime.AnimeServiceDataSingleton
 import ani.dantotsu.download.manga.MangaDownloaderService
+import ani.dantotsu.download.manga.MangaQueueCancel
 import ani.dantotsu.download.manga.MangaServiceDataSingleton
 import ani.dantotsu.download.novel.NovelDownloaderService
 import ani.dantotsu.download.novel.NovelServiceDataSingleton
@@ -342,8 +344,13 @@ class DownloadQueueActivity : AppCompatActivity() {
                 sendBroadcast(intent)
             }
             is QueueItem.Manga -> {
+                // Exact physical-key contract: the service receiver requires BOTH
+                // chapter and title (chapter-only selects nothing by design, so a
+                // title-less cancel would silently no-op).
+                val command = MangaQueueCancel.commandFor(item.task)
                 val intent = Intent(MangaDownloaderService.ACTION_CANCEL_DOWNLOAD).apply {
-                    putExtra(MangaDownloaderService.EXTRA_CHAPTER, item.uniqueId)
+                    putExtra(MangaDownloaderService.EXTRA_CHAPTER, command.chapter)
+                    putExtra(MangaDownloaderService.EXTRA_TITLE, command.title)
                 }
                 sendBroadcast(intent)
             }
@@ -362,8 +369,19 @@ class DownloadQueueActivity : AppCompatActivity() {
             setTitle("Delete Downloads")
             setMessage(getString(R.string.clear_media_confirm, title))
             setPosButton(R.string.yes) {
-                val downloadsManager = Injekt.get<DownloadsManager>()
-                downloadsManager.removeMedia(title, type)
+                if (type == MediaType.MANGA) {
+                    // Authoritative title delete via the service scope barrier
+                    // (live owners cancelled+joined before physical deletion).
+                    // The 1s poll loop converges once the ordered completion lands.
+                    val intent = Intent(this@DownloadQueueActivity, MangaDownloaderService::class.java).apply {
+                        action = MangaDownloaderService.ACTION_DELETE_TITLE
+                        putExtra(MangaDownloaderService.EXTRA_TITLE, title)
+                    }
+                    ContextCompat.startForegroundService(this@DownloadQueueActivity, intent)
+                } else {
+                    val downloadsManager = Injekt.get<DownloadsManager>()
+                    downloadsManager.removeMedia(title, type)
+                }
                 folderSizeCache.remove(title)
                 updateDownloadedMediaSizes(getSelectedMediaType())
                 startUpdating()
@@ -374,24 +392,29 @@ class DownloadQueueActivity : AppCompatActivity() {
     }
 
     private fun clearAllQueues() {
-        // Clear Queues
+        // Clear Queues. Anime/Novel keep their existing full-clear behavior.
+        // Manga clear-all is ONE linearizable cutoff transaction owned by the
+        // service (ACTION_CLEAR_MANGA): the invocation-time cutoff drives the
+        // queued sweep, the live-owner cancel+join, and the job-record sweep, so
+        // a fresh retry can neither be dropped (no snapshot/clear/re-add) nor
+        // misclassified by a recaptured cutoff (no per-task cancel broadcasts).
         AnimeServiceDataSingleton.downloadQueue.clear()
-        MangaServiceDataSingleton.downloadQueue.clear()
         NovelServiceDataSingleton.downloadQueue.clear()
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, MangaDownloaderService::class.java).apply {
+                action = MangaDownloaderService.ACTION_CLEAR_MANGA
+            }
+        )
+        MangaServiceDataSingleton.isServiceRunning = true
 
-        // Cancel running tasks
+        // Cancel running tasks (anime/novel only: manga actives are cancelled+joined
+        // inside the service transaction under the SAME cutoff, never via a
+        // recaptured per-task cutoff).
         val animeActive = AnimeServiceDataSingleton.currentTasks.toList()
         for (task in animeActive) {
             val intent = Intent(AnimeDownloaderService.ACTION_CANCEL_DOWNLOAD).apply {
                 putExtra(AnimeDownloaderService.EXTRA_TASK_NAME, task.getTaskName())
-            }
-            sendBroadcast(intent)
-        }
-
-        val mangaActive = MangaServiceDataSingleton.currentTasks.toList()
-        for (task in mangaActive) {
-            val intent = Intent(MangaDownloaderService.ACTION_CANCEL_DOWNLOAD).apply {
-                putExtra(MangaDownloaderService.EXTRA_CHAPTER, task.chapter)
             }
             sendBroadcast(intent)
         }
@@ -404,6 +427,9 @@ class DownloadQueueActivity : AppCompatActivity() {
             sendBroadcast(intent)
         }
 
+        // Fresh manga survivors are drained by the service itself (the clear runner
+        // cues the processor after the transaction); the start above guarantees the
+        // command — and therefore the drain — is delivered even from a stopped state.
         startUpdating()
     }
 }

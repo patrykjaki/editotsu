@@ -1,28 +1,24 @@
 # Privacy Policy
 
-Last Updated: Dec 30, 2024
+Last Updated: Aug 25, 2026
 
 ## Introduction
-This Privacy Policy describes how we collect, use, and handle your information when you use Dantotsu. We are committed to protecting your privacy and ensuring transparency about our data practices.
+This Privacy Policy describes how we collect, use, and handle your information when you use Editotsu (a fork of Dantotsu). We are committed to protecting your privacy and ensuring transparency about our data practices.
 
 ## Information We Collect
 
 ### Crash Reports and Analytics
-We use Firebase Crashlytics to collect crash reports and technical information about your device to improve app stability and performance. This may include:
-- Device type and model
-- Operating system version
-- Time and date of crashes
-- Technical crash information
-- App version
-- Your AniList username (for crash reports)
-- Anonymous Country-level geolocation data
+**Editotsu currently ships with Firebase telemetry DISABLED in all flavors.** No crash reports,
+analytics events, or usage data are transmitted to any remote service by this app. Crash handling
+is local-only: exceptions are written to an on-device log file that never leaves your device unless
+you explicitly share it yourself.
 
-Crash reports are associated with your AniList username to allow us to contact you if we need additional information about a specific issue. However, you can choose to anonymize your crash reports through the app settings, which will remove your AniList username from the reports.
-
-Firebase Analytics collects anonymous usage data, including country-level geolocation information. This helps us understand how Dantotsu is being used across different regions.
+If a self-hosted or Editotsu-owned crash reporting backend is introduced in the future, this policy
+will be updated first, collection will be off by default, and any identity attachment will be
+strictly opt-in.
 
 ### Third-Party Authentication and Integration
-Dantotsu allows you to authenticate with the following third-party services:
+Editotsu allows you to authenticate with the following third-party services:
 - AniList
 - MyAnimeList
 - Discord
@@ -31,7 +27,7 @@ When using Discord Rich Presence (RPC) functionality, the app will share your cu
 - The series you are watching
 - The current episode number
 
-This information is only shared while you are actively using Dantotsu and have Discord RPC enabled.
+This information is only shared while you are actively using Editotsu and have Discord RPC enabled.
 
 While we facilitate these connections, we do not store your login credentials. Authentication tokens are stored securely on your device only. Please note that these third-party services may collect additional information according to their own privacy policies, which we encourage you to review:
 - [AniList Privacy Policy Link](https://anilist.co/terms)
@@ -39,7 +35,7 @@ While we facilitate these connections, we do not store your login credentials. A
 - [Discord Privacy Policy Link](https://discord.com/privacy)
 
 ### Comments System
-Our in-house comments API uses your AniList authentication token for verification purposes when you initially open Dantotsu. While this token is used for authentication, it is never stored on our servers. We only store:
+Our in-house comments API uses your AniList authentication token for verification purposes when you initially open Editotsu. While this token is used for authentication, it is never stored on our servers. We only store:
 - Your AniList ID (for authentication)
 - Profile picture URL
 - Comments you post
@@ -89,7 +85,7 @@ Under the General Data Protection Regulation (GDPR) and other data protection la
 
 To exercise these rights or request deletion of your data, you can contact the developer:
 - On AniList: "rebelonion"
-- On Discord: "@rebelonion"
+- GitHub: [Editotsu Issues](https://github.com/patrykjaki/editotsu/issues)
 
 While we don't have an automated process for data deletion, we will process your request manually as soon as possible.
 
@@ -101,6 +97,6 @@ We may update this Privacy Policy from time to time. We will notify you of any c
 
 ## Contact Us
 If you have any questions about this Privacy Policy, please contact us via:
-- GitHub: [Dantotsu Issues](https://github.com/rebelonion/Dantotsu/issues)
-- Discord: "@rebelonion"
+- GitHub: [Editotsu Issues](https://github.com/patrykjaki/editotsu/issues)
+- GitHub: [Editotsu Issues](https://github.com/patrykjaki/editotsu/issues)
 - AniList: "rebelonion"
