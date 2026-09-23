@@ -22,6 +22,21 @@ val gitCommitHash = if (rootProject.file(".git").exists()) {
     "nogit"
 }
 
+// Workstream build identity (modernized port of infra/build-identity).
+// Explicit -Peditotsu.workstreamId=<workstream>-<rev>@<base8>+<diff8>
+// marks development builds; official beta/release builds leave it blank.
+// The require() fails configuration fast on malformed IDs (never silently).
+val workstreamId = providers.gradleProperty("editotsu.workstreamId")
+    .orNull
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: "local-debug"
+val workstreamIdPattern = Regex("^[A-Za-z0-9][A-Za-z0-9._-]*-[A-Za-z0-9][A-Za-z0-9._-]*@[0-9a-fA-F]{8}\\+[0-9a-fA-F]{8}$")
+require(workstreamId == "local-debug" || workstreamIdPattern.matches(workstreamId)) {
+    "editotsu.workstreamId must match <workstream>-<revision>@<base8>+<diff8>"
+}
+val shortWorkstreamId = workstreamId.substringBefore("@")
+
 val malClientId: String = (project.findProperty("malClientId") as? String)
     ?.takeIf { it.isNotBlank() }
     ?: System.getenv("MAL_CLIENT_ID")?.takeIf { it.isNotBlank() }
@@ -51,6 +66,10 @@ android {
         versionCode = 1000510
 
         buildConfigField("String", "MAL_CLIENT_ID", "\"${malClientId.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        // Workstream identity: blank in defaultConfig; alpha/debug expose
+        // the explicit workstream ID, official beta/release stay blank.
+        buildConfigField("String", "EDITOTSU_BUILD_ID", "\"\"")
+        resValue("string", "app_build_label", "Editotsu")
     }
 
     // ------------------------------------------------------------------
@@ -168,6 +187,8 @@ android {
         create("alpha") {
             applicationIdSuffix = ".beta"
             versionNameSuffix = "-alpha01-$gitCommitHash"
+            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$workstreamId\"")
+            resValue("string", "app_build_label", "Editotsu [$shortWorkstreamId]")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_alpha"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_alpha_round"
             isDebuggable = true
@@ -184,8 +205,12 @@ android {
         // corrupt future stable semantics) and over `alpha` (debuggable,
         // unoptimized). Stable `release` is untouched for 0.5.0+.
         // No versionNameSuffix: inherits the exact public version.
+        // Official beta: blank build ID, normal label (provenance via
+        // version/package/signer, never a workstream tag).
         create("beta") {
             applicationIdSuffix = ".beta"
+            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"\"")
+            resValue("string", "app_build_label", "Editotsu")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_beta"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_beta_round"
             isDebuggable = false
@@ -205,12 +230,17 @@ android {
             // dev builds carry the commit hash so no betaNN identity can
             // leak into the public release.
             versionNameSuffix = "-dev-$gitCommitHash"
+            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$workstreamId\"")
+            resValue("string", "app_build_label", "Editotsu [$shortWorkstreamId]")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_beta"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_beta_round"
             isDebuggable = false
         }
 
         getByName("release") {
+            // Official stable: blank build ID, normal label.
+            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"\"")
+            resValue("string", "app_build_label", "Editotsu")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_round"
             isDebuggable = false
@@ -227,6 +257,7 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+        resValues = true
         aidl = true
     }
 
