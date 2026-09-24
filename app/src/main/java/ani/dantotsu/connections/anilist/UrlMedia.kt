@@ -15,7 +15,9 @@ class UrlMedia : Activity() {
         val data: Uri? = intent?.data
         val type = data?.pathSegments?.getOrNull(0)
         if (type != "user") {
-            var id: Int? = intent?.extras?.getInt("media", 0) ?: 0
+            // Upstream ac76c79e: notifications may carry either key.
+            var id: Int? = intent?.extras?.getInt("mediaId", 0)?.takeIf { it != 0 }
+                ?: intent?.extras?.getInt("media", 0) ?: 0
             var isMAL = false
             var continueMedia = true
             if (id == 0) {

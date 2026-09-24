@@ -8,6 +8,9 @@ import ani.dantotsu.currContext
 import com.google.gson.Gson
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 class AnilistMutations {
 
@@ -255,6 +258,9 @@ class AnilistMutations {
             }""".replace("\n", "").replace("""    """, "")
         println(variables)
         executeQuery<JsonObject>(query, variables, show = true)
+        // Upstream 5ffa682b: list edits must drop stale home/stories caches.
+        Anilist.query.invalidateUserStatusCache()
+        Anilist.query.invalidateHomePageCache()
     }
 
     suspend fun deleteList(listId: Int) {
@@ -267,6 +273,9 @@ class AnilistMutations {
         """.trimIndent()
         val variables = """{"id":"$listId"}"""
         executeQuery<JsonObject>(query, variables)
+        // Upstream 5ffa682b: deletions must drop stale home/stories caches.
+        Anilist.query.invalidateUserStatusCache()
+        Anilist.query.invalidateHomePageCache()
     }
 
     suspend fun rateReview(reviewId: Int, rating: String): Query.RateReviewResponse? {
@@ -342,6 +351,30 @@ class AnilistMutations {
         return result != null && errors.isNullOrEmpty()
     }
 
+    // Upstream e70fdc56: extract human-readable (incl. field-validation)
+    // messages from mutation error payloads instead of raw JSON.
+    // Internal (not private) so the extraction contract is unit-tested.
+    internal fun JsonObject.extractErrorMessage(): String? {
+        val errors = this["errors"]?.let { it as? JsonArray } ?: return null
+        val messages = errors.mapNotNull { elem ->
+            val obj = elem.jsonObject
+            val validationObj = obj["validation"]?.let { it as? JsonObject }
+            if (validationObj != null) {
+                val validationMessages = validationObj.values.flatMap { v ->
+                    (v as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+                }
+                if (validationMessages.isNotEmpty()) {
+                    validationMessages.joinToString("\n")
+                } else {
+                    obj["message"]?.jsonPrimitive?.contentOrNull
+                }
+            } else {
+                obj["message"]?.jsonPrimitive?.contentOrNull
+            }
+        }
+        return if (messages.isNotEmpty()) messages.joinToString("\n") else null
+    }
+
     suspend fun postActivity(text: String, edit: Int? = null): String {
         val encodedText = text.stringSanitizer()
         val query = """
@@ -353,6 +386,10 @@ class AnilistMutations {
         """.trimIndent()
         val result = executeQuery<JsonObject>(query)
         val errors = result?.get("errors")
+        // Upstream 5ffa682b: successful posts must drop the stories cache.
+        if (errors == null && result != null) {
+            Anilist.query.invalidateUserStatusCache()
+        }
         return errors?.toString() ?: (currContext()?.getString(ani.dantotsu.R.string.success)
             ?: "Success")
     }
@@ -417,9 +454,17 @@ class AnilistMutations {
             }
         """.trimIndent()
         val result = executeQuery<JsonObject>(query)
-        val errors = result?.get("errors")
-        return errors?.toString() ?: (currContext()?.getString(ani.dantotsu.R.string.success)
-            ?: "Success")
+        // Upstream e70fdc56: surface the extracted message (or the query's
+        // lastError) instead of raw error JSON. convert only postReview:
+        // postActivity/postMessage/postReply keep local behavior (upstream
+        // did not convert them either); saveThread/postComment do not exist
+        // locally (forum surface deferred).
+        val errorMessage = result?.extractErrorMessage() ?: Anilist.lastError
+        return if (result == null || errorMessage != null) {
+            errorMessage ?: "Failed to post review"
+        } else {
+            currContext()?.getString(ani.dantotsu.R.string.success) ?: "Success"
+        }
     }
 
     suspend fun deleteActivityReply(activityId: Int): Boolean {
@@ -445,6 +490,10 @@ class AnilistMutations {
         """.trimIndent()
         val result = executeQuery<JsonObject>(query)
         val errors = result?.get("errors")
+        // Upstream 5ffa682b: successful deletions must drop the stories cache.
+        if (errors == null && result != null) {
+            Anilist.query.invalidateUserStatusCache()
+        }
         return errors == null
     }
 

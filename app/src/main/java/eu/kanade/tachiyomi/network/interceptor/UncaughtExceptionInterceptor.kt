@@ -22,6 +22,12 @@ class UncaughtExceptionInterceptor : Interceptor {
         } catch (e: SocketTimeoutException) {
             Logger.log(e)
             throw IOException("Request timed out")  // there's some odd behavior throwing a SocketTimeoutException
+        } catch (e: OutOfMemoryError) {
+            // Upstream 8966c9bd: OOM during a network read must not take down the
+            // dispatcher thread; surface as IOException after a GC hint.
+            Logger.log(e)
+            System.gc()
+            throw IOException("Out of memory during network request", e)
         } catch (e: Exception) {
             Logger.log(e)
             if (e is IOException) {

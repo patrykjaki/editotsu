@@ -24,6 +24,9 @@ import java.util.Calendar
 import java.util.Locale
 import kotlin.math.abs
 import androidx.core.net.toUri
+import kotlinx.serialization.encodeToString
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 object Anilist {
     val query: AnilistQueries = AnilistQueries()
@@ -60,6 +63,8 @@ object Anilist {
     /** Set to true when the AniList API reports a "disabled" error. Reset on next successful call. */
     @Volatile
     var anilistDisabledSignal: Boolean = false
+    // Upstream e70fdc56: last API error surface for mutation error extraction.
+    var lastError: String? = null
 
     val sortBy = listOf(
         "SCORE_DESC",
@@ -282,7 +287,15 @@ object Anilist {
         bg = null
         episodesWatched = null
         chapterRead = null
+        // Upstream c03efc37: re-login must not reuse stale identity/caches.
+        initialized = false
         PrefManager.removeVal(PrefName.AnilistToken)
+        PrefManager.removeVal(PrefName.AnilistUserId)
+        PrefManager.removeVal(PrefName.AnilistUserName)
+        // Upstream c03efc37: re-login must not reuse stale home/stories caches
+        // (methods introduced via 5ffa682b subset).
+        Anilist.query.invalidateHomePageCache()
+        Anilist.query.invalidateUserStatusCache()
         // Reset per-section notification counts
         PrefManager.setVal(PrefName.UnreadUserNotifications, 0)
         PrefManager.setVal(PrefName.UnreadMediaNotifications, 0)
@@ -326,29 +339,49 @@ object Anilist {
         show: Boolean = false,
         cache: Int? = null
     ): T? {
+        lastError = null
         return try {
             if (show) Logger.log("Anilist Query: $query")
             if (rateLimitReset > System.currentTimeMillis() / 1000) {
-                toast("Rate limited. Try after ${rateLimitReset - (System.currentTimeMillis() / 1000)} seconds")
-                throw Exception("Rate limited after ${rateLimitReset - (System.currentTimeMillis() / 1000)} seconds")
+                val rateMsg = "Rate limited. Try after ${rateLimitReset - (System.currentTimeMillis() / 1000)} seconds"
+                toast(rateMsg)
+                lastError = rateMsg
+                throw Exception(rateMsg)
             }
-            val data = mapOf(
-                "query" to query,
-                "variables" to variables
-            )
             val headers = mutableMapOf(
                 "Content-Type" to "application/json; charset=utf-8",
-                "Accept" to "application/json"
+                "Accept" to "application/json",
+                // Upstream 8966c9bd: AniList enforces Referer/Origin on GraphQL.
+                "Referer" to "https://anilist.co/",
+                "Origin" to "https://anilist.co"
             )
 
             if (token != null || force) {
                 if (token != null && useToken) headers["Authorization"] = "Bearer $token"
 
+                // Upstream e70fdc56: build the JSON body directly (bypasses
+                // NiceHttp reflection, which throws NoSuchFieldError on
+                // minified release builds).
+                val jsonPayload = buildString {
+                    append("{\"query\":")
+                    append(Json.encodeToString(query))
+                    if (variables.isNotBlank() && variables.trim().startsWith("{")) {
+                        append(",\"variables\":")
+                        append(variables.trim())
+                    }
+                    append("}")
+                }
+                val requestBody = jsonPayload.toRequestBody("application/json; charset=utf-8".toMediaType())
+
                 val json = client.post(
                     "https://graphql.anilist.co/",
                     headers,
-                    data = data,
-                    cacheTime = cache ?: 10
+                    requestBody = requestBody,
+                    // Upstream 5ffa682b (+ e70fdc56 payload): forced queries
+                    // bypass the NiceHTTP cache. Restores the force branch
+                    // local executeQuery had dropped; required so PTR refresh
+                    // (getUserStatus/initHomePage force flags) actually refetches.
+                    cacheTime = if (force) 0 else (cache ?: 10)
                 )
                 val remaining = json.headers["X-RateLimit-Remaining"]?.toIntOrNull() ?: -1
                 Logger.log("Remaining requests: $remaining")
@@ -364,10 +397,29 @@ object Anilist {
                 }
 
                 if (json.code == 403 || json.code == 400) {
+                    // Upstream e70fdc56: surface field-level validation messages
+                    // instead of a generic Forbidden.
                     val message = runCatching {
                         val root = Json.parseToJsonElement(json.text).jsonObject
-                        root["errors"]?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
+                        val firstError = root["errors"]?.jsonArray?.firstOrNull()?.jsonObject
+                        val validationObj = firstError?.get("validation")?.jsonObject
+                        if (validationObj != null) {
+                            val validationMessages = validationObj.values.flatMap { elem ->
+                                (elem as? kotlinx.serialization.json.JsonArray)?.mapNotNull {
+                                    it.jsonPrimitive.contentOrNull
+                                } ?: emptyList()
+                            }
+                            if (validationMessages.isNotEmpty()) {
+                                validationMessages.joinToString("\n")
+                            } else {
+                                firstError["message"]?.jsonPrimitive?.contentOrNull
+                            }
+                        } else {
+                            firstError?.get("message")?.jsonPrimitive?.contentOrNull
+                        }
                     }.getOrNull() ?: "Forbidden (error ${json.code})"
+
+                    lastError = message
 
                     if (message.contains("disabled", ignoreCase = true)) {
                         anilistDisabledSignal = true
@@ -381,7 +433,9 @@ object Anilist {
                 }
                 if (!json.text.startsWith("{")) {
                     anilistDisabledSignal = true
-                    throw Exception(currContext()?.getString(R.string.anilist_down) + " (error: ${json.code})")
+                    val downMsg = (currContext()?.getString(R.string.anilist_down) ?: "AniList is down") + " (error: ${json.code})"
+                    lastError = downMsg
+                    throw Exception(downMsg)
                 }
 
                 anilistDisabledSignal = false
@@ -395,6 +449,9 @@ object Anilist {
                 e.cause is java.net.ConnectException ||
                 e.cause is java.net.SocketTimeoutException) {
                 anilistDisabledSignal = true
+            }
+            if (lastError == null) {
+                lastError = e.message
             }
             if (show) snackString("Error fetching Anilist data: ${e.message}")
             Logger.log("Anilist Query Error: ${e.message}")

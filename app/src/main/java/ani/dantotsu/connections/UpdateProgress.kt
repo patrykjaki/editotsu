@@ -94,6 +94,11 @@ fun updateProgress(media: Media, number: String) {
                 }
             }
             media.userProgress = progressInt
+            // Upstream 5ffa682b: progress updates must drop stale home/stories
+            // caches (covers the rescue-mode path; the AniList branch also
+            // invalidates inside editList itself).
+            Anilist.query.invalidateHomePageCache()
+            Anilist.query.invalidateUserStatusCache()
             Refresh.all()
         } else if (Anilist.userid != null) {
             CoroutineScope(Dispatchers.IO).launch {
@@ -113,6 +118,9 @@ fun updateProgress(media: Media, number: String) {
                     toast(currContext()?.getString(R.string.setting_progress, a))
                 }
                 media.userProgress = a
+                // Upstream 5ffa682b (see above).
+                Anilist.query.invalidateHomePageCache()
+                Anilist.query.invalidateUserStatusCache()
                 Refresh.all()
             }
         } else {
@@ -217,8 +225,8 @@ fun syncPendingDeletions() {
                 if (listId != null) {
                     Anilist.mutation.deleteList(listId)
                 }
-                val removeList = PrefManager.getCustomVal("removeList", setOf<Int>())
-                PrefManager.setCustomVal("removeList", removeList.minus(anilistId))
+                val removeList = PrefManager.getCustomVal<Set<String>>("removeList", emptySet())
+                PrefManager.setCustomVal("removeList", removeList.minus(anilistId.toString()))
                 val progressUpdates: List<PendingProgressUpdate> =
                     PrefManager.getVal(PrefName.PendingProgressUpdates, listOf())
                 val filteredUpdates = progressUpdates.filterNot { update ->

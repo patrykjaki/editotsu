@@ -39,7 +39,11 @@ class MediaNameFetch {
                         url,
                         headers = mapOf(
                             "Content-Type" to "application/json",
-                            "Accept" to "application/json"
+                            "Accept" to "application/json",
+                            // Upstream 8966c9bd (adapted): unauthenticated GraphQL
+                            // calls are the first to hit AniList 403 enforcement.
+                            "Referer" to "https://anilist.co/",
+                            "Origin" to "https://anilist.co"
                         ),
                         data = data
                     )

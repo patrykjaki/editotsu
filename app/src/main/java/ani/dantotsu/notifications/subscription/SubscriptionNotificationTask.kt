@@ -177,7 +177,7 @@ class SubscriptionNotificationTask : Task {
         text: String,
         thumbnail: FileUrl?
     ): android.app.Notification {
-        val pendingIntent = getIntent(context, media.id)
+        val pendingIntent = getIntent(context, media)
         val icon =
             if (media.isAnime) R.drawable.ic_round_movie_filter_24 else R.drawable.ic_round_menu_book_24
 
@@ -223,19 +223,30 @@ class SubscriptionNotificationTask : Task {
     }
 
 
-    private fun getIntent(context: Context, mediaId: Int): PendingIntent {
+    private fun getIntent(
+        context: Context,
+        media: SubscriptionHelper.Companion.SubscribeMedia
+    ): PendingIntent {
+        // Upstream ac76c79e (adapted): carry BOTH id keys so every reader
+        // (UrlMedia "media", MainActivity "mediaId") resolves, plus type and
+        // continue behavior; UPDATE_CURRENT instead of ONE_SHOT so repeat
+        // notifications cannot deliver stale extras. Local invariant kept:
+        // route via UrlMedia rather than MainActivity directly.
         val notifyIntent = Intent(context, UrlMedia::class.java)
-            .putExtra("media", mediaId)
-            .setAction(mediaId.toString())
+            .putExtra("mediaId", media.id)
+            .putExtra("media", media.id)
+            .putExtra("mediaType", if (media.isAnime) "ANIME" else "MANGA")
+            .putExtra("continue", true)
+            .setAction(media.id.toString())
             .apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             }
         return PendingIntent.getActivity(
-            context, mediaId, notifyIntent,
+            context, media.id, notifyIntent,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             } else {
-                PendingIntent.FLAG_ONE_SHOT
+                PendingIntent.FLAG_UPDATE_CURRENT
             }
         )
     }

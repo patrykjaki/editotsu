@@ -656,7 +656,8 @@ class HomeFragment : Fragment() {
                     val initHomePage = async(Dispatchers.IO) { model.initHomePage(forceRefresh = isPullToRefresh) }
                     async(Dispatchers.IO) { model.setListImages() }
                     if (!rescueMode) {
-                        async(Dispatchers.IO) { model.initUserStatus() }
+                        // Upstream 5ffa682b: PTR bypasses the stories cache.
+                        async(Dispatchers.IO) { model.initUserStatus(forceRefresh = isPullToRefresh) }
                     }
                     initHomePage.await()
 

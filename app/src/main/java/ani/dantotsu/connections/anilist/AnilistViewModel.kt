@@ -30,7 +30,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 suspend fun getUserId(context: Context, block: () -> Unit) {
-    if (!Anilist.initialized && PrefManager.getVal<String>(PrefName.AnilistToken) != "") {
+    // Upstream c03efc37: re-fetch when identity was reset (avatar cleared on
+    // logout) even if the initialized flag survived a service switch.
+    if ((!Anilist.initialized || Anilist.avatar == null) && PrefManager.getVal<String>(PrefName.AnilistToken) != "") {
         if (Anilist.query.getUserData()) {
             tryWithSuspend {
                 if (MAL.token != null && !MAL.query.getUserData())
@@ -94,8 +96,9 @@ class AnilistHomeViewModel : ViewModel() {
         MutableLiveData<ArrayList<User>>(null)
 
     fun getUserStatus(): LiveData<ArrayList<User>> = userStatus
-    suspend fun initUserStatus() {
-        val res = Anilist.query.getUserStatus()
+    // Upstream 5ffa682b: pull-to-refresh bypasses the 15-min stories cache.
+    suspend fun initUserStatus(forceRefresh: Boolean = false) {
+        val res = Anilist.query.getUserStatus(forceRefresh)
         res?.let { userStatus.postValue(it) }
     }
 

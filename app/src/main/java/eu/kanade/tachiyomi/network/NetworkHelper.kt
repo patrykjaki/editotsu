@@ -7,6 +7,7 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.Logger
 import com.lagradost.nicehttp.Requests
+import eu.kanade.tachiyomi.network.interceptor.AnilistInterceptor
 import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
@@ -73,8 +74,33 @@ private fun setupSocks5Proxy() {
                     maxSize = 5L * 1024 * 1024, // 5 MiB
                 ),
             )
+            // Upstream 8966c9bd (image half only): keep raster images out of the
+            // small 5 MiB disk cache to avoid cache thrash/OOM on large strips.
+            // Video-segment extensions (.ts/.m4s/.m3u8/.mp4/.mkv, /segment, Range)
+            // are intentionally NOT covered here: they belong to the protected
+            // player-network review bundle, not generic cache infrastructure.
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val path = request.url.encodedPath.lowercase()
+                val isNoStore = path.endsWith(".jpg") ||
+                    path.endsWith(".jpeg") ||
+                    path.endsWith(".png") ||
+                    path.endsWith(".webp") ||
+                    path.endsWith(".avif") ||
+                    path.endsWith(".gif")
+                if (isNoStore) {
+                    chain.proceed(
+                        request.newBuilder()
+                            .cacheControl(okhttp3.CacheControl.Builder().noStore().build())
+                            .build()
+                    )
+                } else {
+                    chain.proceed(request)
+                }
+            }
             .addInterceptor(UncaughtExceptionInterceptor())
             .addInterceptor(UserAgentInterceptor(::defaultUserAgentProvider))
+            .addInterceptor(AnilistInterceptor())
 
         class ConsoleLogger : HttpLoggingInterceptor.Logger {
             override fun log(message: String) {
@@ -112,7 +138,10 @@ private fun setupSocks5Proxy() {
      }
 
     // Tuned for HLS segment fan-out (~16 workers/host) without oversized pools/radio tail.
+    // Upstream 8966c9bd: file downloads must not populate the shared 5 MiB disk
+    // cache (pure waste + OOM vector for large artifacts).
     val downloadClient = client.newBuilder()
+        .cache(null)
         .dispatcher(
             okhttp3.Dispatcher().apply {
                 maxRequests = 96
