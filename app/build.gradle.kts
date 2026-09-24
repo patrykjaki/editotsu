@@ -295,6 +295,12 @@ kotlin {
     }
 }
 
+// Upstream 3f366f69: exclude desktop org.json so R8 compiles strictly against
+// Android platform definitions (prevents NoSuchFieldError: myArrayList on device).
+configurations.all {
+    exclude(group = "org.json", module = "json")
+}
+
 dependencies {
     // MPV Native Player
     implementation(libs.mpv)

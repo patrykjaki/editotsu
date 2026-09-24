@@ -109,6 +109,10 @@
 -keep class org.jsoup.** { *; }
 -keepclassmembers class org.jsoup.nodes.Document { *; }
 
+# Upstream 3f366f69: platform org.json definitions (pairs with gradle exclude).
+-dontwarn org.json.**
+-keep class org.json.** { *; }
+
 
 #############################################
 # QuickJS / Native / Unsafe

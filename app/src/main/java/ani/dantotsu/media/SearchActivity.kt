@@ -31,9 +31,9 @@ import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.Timer
-import java.util.TimerTask
 
 class SearchActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySearchBinding
@@ -354,8 +354,8 @@ class SearchActivity : AppCompatActivity() {
     }
 
     fun emptyMediaAdapter() {
-        searchTimer.cancel()
-        searchTimer.purge()
+        searchJob?.cancel()
+        loading = false
         when (searchType) {
             SearchType.ANIME, SearchType.MANGA -> {
                 mediaAdaptor.notifyItemRangeRemoved(0, model.aniMangaSearchResults.results.size)
@@ -388,7 +388,8 @@ class SearchActivity : AppCompatActivity() {
         progressAdapter.bar?.visibility = View.GONE
     }
 
-    private var searchTimer = Timer()
+    private var searchJob: Job? = null
+    @Volatile
     private var loading = false
     fun search() {
         headerAdaptor.setHistoryVisibility(false)
@@ -420,19 +421,16 @@ class SearchActivity : AppCompatActivity() {
 
         progressAdapter.bar?.visibility = View.VISIBLE
 
-        searchTimer.cancel()
-        searchTimer.purge()
-        val timerTask: TimerTask = object : TimerTask() {
-            override fun run() {
-                scope.launch(Dispatchers.IO) {
-                    loading = true
-                    model.loadSearch(searchType)
-                    loading = false
-                }
+        searchJob?.cancel()
+        searchJob = scope.launch(Dispatchers.IO) {
+            delay(500)
+            try {
+                loading = true
+                model.loadSearch(searchType)
+            } finally {
+                loading = false
             }
         }
-        searchTimer = Timer()
-        searchTimer.schedule(timerTask, 500)
     }
 
     @SuppressLint("NotifyDataSetChanged")

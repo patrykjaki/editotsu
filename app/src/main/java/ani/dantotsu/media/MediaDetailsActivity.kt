@@ -85,6 +85,9 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
 
         super.onCreate(savedInstanceState)
         var media: Media = intent.getSerialized("media") ?: mediaSingleton ?: emptyMedia()
+        // Upstream 3f366f69: drop the large extra so Assist/screenshot serialization
+        // never attempts to serialize the Media graph.
+        intent.removeExtra("media")
         val id = intent.getIntExtra("mediaId", -1)
         if (id != -1) {
             val rescueMode: Boolean = PrefManager.getVal(PrefName.RescueMode)
@@ -502,6 +505,12 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
         val params: ViewGroup.MarginLayoutParams =
             navBar.layoutParams as ViewGroup.MarginLayoutParams
         params.updateMargins(right = rightMargin, bottom = bottomMargin)
+    }
+
+    // Upstream 3f366f69: keep Assist / Circle to Search from serializing activity extras.
+    override fun onProvideAssistContent(outContent: android.app.assist.AssistContent?) {
+        super.onProvideAssistContent(outContent)
+        outContent?.intent = null
     }
 
     override fun onResume() {
