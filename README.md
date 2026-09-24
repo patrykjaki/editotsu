@@ -1,15 +1,20 @@
 # Editotsu
 
+<div align="center">
+
+[![Latest release](https://img.shields.io/github/v/release/patrykjaki/editotsu?include_prereleases&label=latest%20release&style=for-the-badge&labelColor=14161E&color=0EC2B0)](https://github.com/patrykjaki/editotsu/releases)
+![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-blue?style=for-the-badge&labelColor=14161E&color=1B1C2A)
+[![License](https://img.shields.io/badge/license-UPL%20%2F%20GPLv3-blue?style=for-the-badge&labelColor=14161E&color=1B1C2A)](LICENSE.md)
+[![Stars](https://img.shields.io/github/stars/patrykjaki/editotsu?style=for-the-badge&labelColor=14161E&color=1B1C2A)](https://github.com/patrykjaki/editotsu)
+
+</div>
+
 Editotsu is an Android anime and manga client based on
 [Dantotsu](https://github.com/rebelonion/Dantotsu).
 
 It includes a native libmpv player, AniList and MyAnimeList integration, a manga
 reader, offline downloads, subtitle controls, Discord Rich Presence and an
 updated source picker.
-
-[![Latest release](https://img.shields.io/github/v/release/patrykjaki/editotsu?include_prereleases&label=latest%20release)](https://github.com/patrykjaki/editotsu/releases)
-![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-blue)
-![License](https://img.shields.io/badge/license-UPL%20%2F%20GPLv3-blue)
 
 ## Features
 
