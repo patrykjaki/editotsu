@@ -131,17 +131,18 @@ class DanNovelExtensionManager(private val context: Context) {
     }
 
     fun installExtension(extension: NovelExtension.Available): Observable<InstallStep> {
-        // Review HOLD Finding 2: provisional provenance with rollback on
-        // failure/cancel (updateExtension routes through here as well).
+        // Final provenance correction: subscription-scoped transaction via
+        // source factory (updateExtension routes through here as well).
         return ani.dantotsu.parsers.ExtensionRepoMetaHelper.trackInstallProvenance(
-            installer.downloadAndInstall(
-                api.getNovelApkUrl(extension), extension.pkgName,
-                extension.name, MediaType.NOVEL
-            ),
             extension.pkgName,
             extension.repository,
             extension.repoName
-        )
+        ) {
+            installer.downloadAndInstall(
+                api.getNovelApkUrl(extension), extension.pkgName,
+                extension.name, MediaType.NOVEL
+            )
+        }
     }
 
     /**

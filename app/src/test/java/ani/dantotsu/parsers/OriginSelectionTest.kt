@@ -5,9 +5,9 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Review HOLD Finding 3: same package from multiple repositories.
- * Available-list identity is pkg+repo; selection must follow the
- * installed origin and never let mere discovery relabel it.
+ * Final correction (review HOLD round 2, Finding 3): known origins never
+ * fall back to another repository; unknown (legacy) origins keep the
+ * first-match fallback. Identity is canonicalized with cleanRepoKey.
  */
 class OriginSelectionTest {
 
@@ -26,47 +26,49 @@ class OriginSelectionTest {
     )
 
     @Test
-    fun `installing A records A`() {
-        val pkg = "sel.${System.nanoTime()}"
-        ExtensionRepoMetaHelper.beginInstallProvenance(pkg, a.repo!!, "A")
-        assertEquals(a.repo, ExtensionRepoMetaHelper.getInstalledRepo(pkg))
+    fun `unknown legacy origin falls back to first match`() {
+        assertEquals(a, select(listOf(a, b), a.pkg, null))
+        assertEquals(b, select(listOf(b, a), b.pkg, null))
     }
 
     @Test
-    fun `discovery of B does not relabel installed A`() {
-        // Installed origin A; refresh lists A and B.
+    fun `known A selects A among A and B`() {
         assertEquals(a, select(listOf(a, b), a.pkg, a.repo))
         assertEquals(a, select(listOf(b, a), a.pkg, a.repo))
     }
 
     @Test
-    fun `failed B install leaves A intact`() {
-        val pkg = "sel.${System.nanoTime()}"
-        ExtensionRepoMetaHelper.saveInstalledExtensionRepo(pkg, a.repo!!, "A")
-        val previous = ExtensionRepoMetaHelper.beginInstallProvenance(pkg, b.repo!!, "B")
-        ExtensionRepoMetaHelper.rollbackInstallProvenance(pkg, b.repo!!, "B", previous)
-        assertEquals(a.repo, ExtensionRepoMetaHelper.getInstalledRepo(pkg))
+    fun `known A with only B present selects nothing`() {
+        // Replaces the old auto-fallback expectation: no automatic update
+        // candidate from another repo without an explicit install.
+        assertNull(select(listOf(b), a.pkg, a.repo))
     }
 
     @Test
-    fun `explicit switch to B records B`() {
+    fun `known A matches normalized representation of A`() {
+        val alias = FakeAvailable(
+            "example.extension",
+            "https://example.test/a/repo.json"
+        )
+        assertEquals(alias, select(listOf(alias), a.pkg, a.repo))
+        assertEquals(alias, select(listOf(alias, b), a.pkg, a.repo))
+    }
+
+    @Test
+    fun `known A rejects lookalike and different repos`() {
+        val lookalike = FakeAvailable("example.extension", "https://example.test/a-evil/index.pb")
+        assertNull(select(listOf(lookalike), a.pkg, a.repo))
+        assertNull(select(listOf(b), a.pkg, a.repo))
+        assertNull(select(listOf(a.copy(repo = null)), a.pkg, a.repo))
+    }
+
+    @Test
+    fun `explicit install of B after A disappeared records B`() {
+        // The install transaction (tested in InstallProvenanceTest) writes
+        // the explicitly chosen origin; selection never invents it.
         val pkg = "sel.${System.nanoTime()}"
-        ExtensionRepoMetaHelper.saveInstalledExtensionRepo(pkg, a.repo!!, "A")
-        ExtensionRepoMetaHelper.beginInstallProvenance(pkg, b.repo!!, "B")
-        // Success path: no rollback — B is now the origin.
+        val gen = ExtensionRepoMetaHelper.beginInstallProvenance(pkg, b.repo!!, "B")
+        assertEquals(true, ExtensionRepoMetaHelper.commitInstallProvenance(pkg, gen))
         assertEquals(b.repo, ExtensionRepoMetaHelper.getInstalledRepo(pkg))
-    }
-
-    @Test
-    fun `unknown origin falls back to first pkg match`() {
-        assertEquals(a, select(listOf(a, b), a.pkg, null))
-        assertEquals(b, select(listOf(b, a), b.pkg, null))
-        assertNull(select(listOf(a, b), "other.pkg", "https://example.test/a/index.pb"))
-    }
-
-    @Test
-    fun `origin gone from list falls back without crash`() {
-        // A was unlisted by its repo; only B offers the pkg now.
-        assertEquals(b, select(listOf(b), a.pkg, a.repo))
     }
 }

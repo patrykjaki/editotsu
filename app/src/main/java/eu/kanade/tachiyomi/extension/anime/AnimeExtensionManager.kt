@@ -225,17 +225,18 @@ class AnimeExtensionManager(
      * @param extension The anime extension to be installed.
      */
     fun installExtension(extension: AnimeExtension.Available): Observable<InstallStep> {
-        // Review HOLD Finding 2: provisional provenance with rollback on
-        // failure/cancel (updateExtension routes through here as well).
+        // Final provenance correction: subscription-scoped transaction via
+        // source factory (updateExtension routes through here as well).
         return ani.dantotsu.parsers.ExtensionRepoMetaHelper.trackInstallProvenance(
-            installer.downloadAndInstall(
-                api.getAnimeApkUrl(extension), extension.pkgName,
-                extension.name, MediaType.ANIME
-            ),
             extension.pkgName,
             extension.repository,
             extension.repoName
-        )
+        ) {
+            installer.downloadAndInstall(
+                api.getAnimeApkUrl(extension), extension.pkgName,
+                extension.name, MediaType.ANIME
+            )
+        }
     }
 
     /**

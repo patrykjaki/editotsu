@@ -261,12 +261,18 @@ object ExtensionRepoMetaHelper {
     }
 
     /**
-     * Review-HOLD correction (Finding 3): origin-preferring selection shared
-     * by all three extension managers. The same pkgName may be offered by
-     * several repositories (available-list identity is pkg+repo); prefer the
-     * entry from the installed origin so mere discovery/refresh never
-     * relabels it. Falls back to first pkg match when origin is unknown
-     * (legacy installs predate tracking). Pure and unit-tested.
+     * Final correction (review HOLD round 2, Finding 3): origin-preferring
+     * selection shared by all three extension managers — with a hard
+     * isolation rule. Unknown (legacy) origin keeps the first pkg match.
+     * KNOWN origin selects the matching origin ONLY and returns null when
+     * it is absent: treating another repo as the update source without an
+     * explicit install would violate multi-repository isolation.
+     *
+     * Repository identity is canonicalized with [cleanRepoKey] (strips index
+     * filenames/trailing slashes) consistently for stored origins and
+     * available entries, so harmless representation differences match while
+     * genuinely different repositories never merge (no case folding, no host
+     * aliasing).
      */
     fun <T> selectOriginEntry(
         entries: List<T>,
@@ -275,10 +281,13 @@ object ExtensionRepoMetaHelper {
         pkgOf: (T) -> String,
         repoOf: (T) -> String?,
     ): T? {
-        val byOrigin = origin?.let { o ->
-            entries.firstOrNull { pkgOf(it) == pkgName && repoOf(it) == o }
+        if (origin == null) {
+            return entries.firstOrNull { pkgOf(it) == pkgName }
         }
-        return byOrigin ?: entries.firstOrNull { pkgOf(it) == pkgName }
+        val want = cleanRepoKey(origin)
+        return entries.firstOrNull { e ->
+            pkgOf(e) == pkgName && repoOf(e)?.let { cleanRepoKey(it) } == want
+        }
     }
 
     fun installedOrigin(pkgName: String, fieldRepo: String?): String? {
@@ -286,75 +295,102 @@ object ExtensionRepoMetaHelper {
     }
 
     /**
-     * Review-HOLD correction (Finding 2): lifecycle-safe install provenance.
+     * Final provenance correction (review HOLD round 2): generation-scoped
+     * provisional overlay.
      *
      * Why provisional: the package may appear via ANY installer path
      * (legacy activity, package-installer session, sideload + later scan)
      * before any success callback reaches the manager, and the loader reads
-     * this map at package-scan time — so the mapping must exist up front.
+     * provenance at package-scan time — so the mapping must exist up front.
      *
-     * [beginInstallProvenance] writes the provisional mapping and returns the
-     * previous one. [rollbackInstallProvenance] restores it (or removes the
-     * key) but ONLY if the current value is still exactly the provisional
-     * one — a later legitimate write (e.g. overlapping install from another
-     * repo, update-check stamping) is never clobbered.
+     * Why overlay + generations instead of compare-and-restore on the
+     * persisted map: overlapping attempts (A begins, B begins, A cancels,
+     * B fails) can otherwise resurrect the dead attempt A. Here the
+     * persisted map holds ONLY committed origins; the in-flight attempt
+     * lives in a memory-only single slot tagged with a generation. A
+     * rollback/commit applies only when its generation still owns the slot,
+     * so stale attempts can neither restore nor overwrite. This mirrors the
+     * installer itself, which single-flights one active download per
+     * package (`activeDownloads[pkgName]` replaces the previous download).
+     *
+     * Process death: the provisional slot is memory-only, so a dead
+     * in-flight install leaves no false mapping; only committed origins
+     * survive restarts (see boundary analysis in the review package).
      */
+    private data class ProvisionalTx(
+        val generation: Long,
+        val repoUrl: String,
+        val repoName: String?,
+    )
+
+    private val provenanceGenerations = java.util.concurrent.atomic.AtomicLong(0)
+    private val provisionalProvenance = java.util.concurrent.ConcurrentHashMap<String, ProvisionalTx>()
+
     fun beginInstallProvenance(
         pkgName: String,
         repoUrl: String,
         repoName: String? = null
-    ): Pair<String, String?>? {
+    ): Long {
         ensureLoaded()
-        val previous = installedRepoMap[pkgName]
         val name = repoName?.takeIf { it.isNotBlank() } ?: getRepoBadgeName(repoUrl)
-        installedRepoMap[pkgName] = repoUrl to name
-        persistInstalledRepos()
-        return previous
+        val generation = provenanceGenerations.incrementAndGet()
+        provisionalProvenance[pkgName] = ProvisionalTx(generation, repoUrl, name)
+        return generation
     }
 
-    fun rollbackInstallProvenance(
-        pkgName: String,
-        repoUrl: String,
-        repoName: String? = null,
-        previous: Pair<String, String?>?
-    ) {
+    /** Returns true when this generation owned the slot and committed. */
+    fun commitInstallProvenance(pkgName: String, generation: Long): Boolean {
         ensureLoaded()
-        val expected = repoUrl to
-            (repoName?.takeIf { it.isNotBlank() } ?: getRepoBadgeName(repoUrl))
-        if (installedRepoMap[pkgName] == expected) {
-            if (previous == null) installedRepoMap.remove(pkgName)
-            else installedRepoMap[pkgName] = previous
-            persistInstalledRepos()
-        }
+        val tx = provisionalProvenance[pkgName] ?: return false
+        if (tx.generation != generation) return false
+        if (!provisionalProvenance.remove(pkgName, tx)) return false
+        installedRepoMap[pkgName] = tx.repoUrl to tx.repoName
+        persistInstalledRepos()
+        return true
+    }
+
+    /** Returns true when this generation owned the slot and was dropped. */
+    fun rollbackInstallProvenance(pkgName: String, generation: Long): Boolean {
+        ensureLoaded()
+        val tx = provisionalProvenance[pkgName] ?: return false
+        if (tx.generation != generation) return false
+        return provisionalProvenance.remove(pkgName, tx)
     }
 
     /**
-     * Wraps an installer [Observable] so failed/cancelled installs cannot
-     * leave false installed-repo provenance (Finding 2, invariants 3–5),
-     * while successful installs keep the provisional mapping the loader
-     * already observed (invariants 1, 2, 6). Cancellation surfaces as stream
-     * disposal without a terminal step, hence the unsubscribe guard keyed on
-     * whether [InstallStep.Installed] was observed.
+     * Wraps an installer source factory so failed/cancelled installs cannot
+     * leave false installed-repo provenance, while successful installs
+     * commit the provisional mapping the loader already observed.
+     * Fully subscription-scoped via [rx.Observable.defer]: merely obtaining
+     * the Observable changes nothing; every subscription runs exactly one
+     * transaction with exactly-once disposal. Cancellation surfaces as
+     * stream disposal without a terminal step, hence the unsubscribe guard
+     * keyed on whether [InstallStep.Installed] was observed. A source
+     * factory (not a prebuilt Observable) keeps provenance setup and
+     * installer creation in order — matching `downloadAndInstall`, which is
+     * itself `defer`-cold (enqueue happens per subscription).
      */
     fun trackInstallProvenance(
-        source: rx.Observable<eu.kanade.tachiyomi.extension.InstallStep>,
         pkgName: String,
         repoUrl: String,
-        repoName: String? = null
+        repoName: String? = null,
+        sourceFactory: () -> rx.Observable<eu.kanade.tachiyomi.extension.InstallStep>
     ): rx.Observable<eu.kanade.tachiyomi.extension.InstallStep> {
-        val previous = beginInstallProvenance(pkgName, repoUrl, repoName)
-        val installed = java.util.concurrent.atomic.AtomicBoolean(false)
-        fun rollback() = rollbackInstallProvenance(pkgName, repoUrl, repoName, previous)
-        return source
-            .doOnNext { step ->
-                if (step == eu.kanade.tachiyomi.extension.InstallStep.Installed) {
-                    installed.set(true)
-                } else if (step == eu.kanade.tachiyomi.extension.InstallStep.Error) {
-                    rollback()
+        return rx.Observable.defer {
+            val generation = beginInstallProvenance(pkgName, repoUrl, repoName)
+            val installed = java.util.concurrent.atomic.AtomicBoolean(false)
+            sourceFactory()
+                .doOnNext { step ->
+                    if (step == eu.kanade.tachiyomi.extension.InstallStep.Installed) {
+                        installed.set(true)
+                        commitInstallProvenance(pkgName, generation)
+                    } else if (step == eu.kanade.tachiyomi.extension.InstallStep.Error) {
+                        rollbackInstallProvenance(pkgName, generation)
+                    }
                 }
-            }
-            .doOnError { rollback() }
-            .doOnUnsubscribe { if (!installed.get()) rollback() }
+                .doOnError { rollbackInstallProvenance(pkgName, generation) }
+                .doOnUnsubscribe { if (!installed.get()) rollbackInstallProvenance(pkgName, generation) }
+        }
     }
 
     fun getCachedMeta(repoUrl: String): ExtensionRepoMeta? {
@@ -365,16 +401,21 @@ object ExtensionRepoMetaHelper {
 
     fun getInstalledExtensionRepo(pkgName: String): Pair<String, String?>? {
         ensureLoaded()
+        // In-flight provisional attempt wins while it owns the slot; the
+        // persisted map holds only committed origins.
+        provisionalProvenance[pkgName]?.let { return it.repoUrl to it.repoName }
         return installedRepoMap[pkgName]
     }
 
     fun getInstalledRepo(pkgName: String): String? {
         ensureLoaded()
+        provisionalProvenance[pkgName]?.let { return it.repoUrl }
         return installedRepoMap[pkgName]?.first
     }
 
     fun getInstalledRepoName(pkgName: String): String? {
         ensureLoaded()
+        provisionalProvenance[pkgName]?.let { return it.repoName }
         return installedRepoMap[pkgName]?.second
     }
 
