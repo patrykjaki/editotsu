@@ -202,6 +202,33 @@ object ExtensionRepoMetaHelper {
         return badge.trim()
     }
 
+    /**
+     * Review-HOLD correction (Finding 1): never misrepresent a URL's host.
+     * Only GitHub project pages use the GitHub icon; GitLab, Codeberg,
+     * Forgejo and generic websites use the generic globe icon (no brand
+     * icons for those hosts exist in the app, and no new dependency is
+     * warranted). Pure and unit-tested.
+     */
+    enum class RepoLinkKind { GITHUB, GENERIC_WEB }
+
+    fun classifyRepoPageUrl(pageUrl: String?): RepoLinkKind {
+        // Pure string parsing (no android.net.Uri) so this stays JVM-testable.
+        // raw.githubusercontent.com is GitHub file infrastructure and may
+        // reach the classifier unresolved, so it counts as GitHub too.
+        val host = pageUrl?.trim()
+            ?.removePrefix("https://")?.removePrefix("http://")
+            ?.substringBefore("/")?.substringBefore("?")?.substringBefore(":")
+            ?.substringAfterLast("@")?.lowercase()
+            ?: return RepoLinkKind.GENERIC_WEB
+        return if (host == "github.com" || host.endsWith(".github.com") ||
+            host == "raw.githubusercontent.com"
+        ) {
+            RepoLinkKind.GITHUB
+        } else {
+            RepoLinkKind.GENERIC_WEB
+        }
+    }
+
     fun saveMeta(
         repoUrl: String,
         name: String = "",
@@ -231,6 +258,103 @@ object ExtensionRepoMetaHelper {
         val name = repoName?.takeIf { it.isNotBlank() } ?: getRepoBadgeName(repoUrl)
         installedRepoMap[pkgName] = repoUrl to name
         persistInstalledRepos()
+    }
+
+    /**
+     * Review-HOLD correction (Finding 3): origin-preferring selection shared
+     * by all three extension managers. The same pkgName may be offered by
+     * several repositories (available-list identity is pkg+repo); prefer the
+     * entry from the installed origin so mere discovery/refresh never
+     * relabels it. Falls back to first pkg match when origin is unknown
+     * (legacy installs predate tracking). Pure and unit-tested.
+     */
+    fun <T> selectOriginEntry(
+        entries: List<T>,
+        pkgName: String,
+        origin: String?,
+        pkgOf: (T) -> String,
+        repoOf: (T) -> String?,
+    ): T? {
+        val byOrigin = origin?.let { o ->
+            entries.firstOrNull { pkgOf(it) == pkgName && repoOf(it) == o }
+        }
+        return byOrigin ?: entries.firstOrNull { pkgOf(it) == pkgName }
+    }
+
+    fun installedOrigin(pkgName: String, fieldRepo: String?): String? {
+        return fieldRepo ?: getInstalledRepo(pkgName)
+    }
+
+    /**
+     * Review-HOLD correction (Finding 2): lifecycle-safe install provenance.
+     *
+     * Why provisional: the package may appear via ANY installer path
+     * (legacy activity, package-installer session, sideload + later scan)
+     * before any success callback reaches the manager, and the loader reads
+     * this map at package-scan time — so the mapping must exist up front.
+     *
+     * [beginInstallProvenance] writes the provisional mapping and returns the
+     * previous one. [rollbackInstallProvenance] restores it (or removes the
+     * key) but ONLY if the current value is still exactly the provisional
+     * one — a later legitimate write (e.g. overlapping install from another
+     * repo, update-check stamping) is never clobbered.
+     */
+    fun beginInstallProvenance(
+        pkgName: String,
+        repoUrl: String,
+        repoName: String? = null
+    ): Pair<String, String?>? {
+        ensureLoaded()
+        val previous = installedRepoMap[pkgName]
+        val name = repoName?.takeIf { it.isNotBlank() } ?: getRepoBadgeName(repoUrl)
+        installedRepoMap[pkgName] = repoUrl to name
+        persistInstalledRepos()
+        return previous
+    }
+
+    fun rollbackInstallProvenance(
+        pkgName: String,
+        repoUrl: String,
+        repoName: String? = null,
+        previous: Pair<String, String?>?
+    ) {
+        ensureLoaded()
+        val expected = repoUrl to
+            (repoName?.takeIf { it.isNotBlank() } ?: getRepoBadgeName(repoUrl))
+        if (installedRepoMap[pkgName] == expected) {
+            if (previous == null) installedRepoMap.remove(pkgName)
+            else installedRepoMap[pkgName] = previous
+            persistInstalledRepos()
+        }
+    }
+
+    /**
+     * Wraps an installer [Observable] so failed/cancelled installs cannot
+     * leave false installed-repo provenance (Finding 2, invariants 3–5),
+     * while successful installs keep the provisional mapping the loader
+     * already observed (invariants 1, 2, 6). Cancellation surfaces as stream
+     * disposal without a terminal step, hence the unsubscribe guard keyed on
+     * whether [InstallStep.Installed] was observed.
+     */
+    fun trackInstallProvenance(
+        source: rx.Observable<eu.kanade.tachiyomi.extension.InstallStep>,
+        pkgName: String,
+        repoUrl: String,
+        repoName: String? = null
+    ): rx.Observable<eu.kanade.tachiyomi.extension.InstallStep> {
+        val previous = beginInstallProvenance(pkgName, repoUrl, repoName)
+        val installed = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun rollback() = rollbackInstallProvenance(pkgName, repoUrl, repoName, previous)
+        return source
+            .doOnNext { step ->
+                if (step == eu.kanade.tachiyomi.extension.InstallStep.Installed) {
+                    installed.set(true)
+                } else if (step == eu.kanade.tachiyomi.extension.InstallStep.Error) {
+                    rollback()
+                }
+            }
+            .doOnError { rollback() }
+            .doOnUnsubscribe { if (!installed.get()) rollback() }
     }
 
     fun getCachedMeta(repoUrl: String): ExtensionRepoMeta? {

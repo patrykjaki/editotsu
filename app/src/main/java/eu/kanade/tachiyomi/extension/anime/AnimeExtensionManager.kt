@@ -178,7 +178,8 @@ class AnimeExtensionManager(
 
         for ((index, installedExt) in mutInstalledAnimeExtensions.withIndex()) {
             val pkgName = installedExt.pkgName
-            val availableExt = availableAnimeExtensions.find { it.pkgName == pkgName }
+            // Review HOLD Finding 3: origin-preferring lookup (see helper).
+            val availableExt = findAvailableFor(installedExt, availableAnimeExtensions)
 
             if (!installedExt.isUnofficial && availableExt == null && !installedExt.isObsolete) {
                 mutInstalledAnimeExtensions[index] = installedExt.copy(isObsolete = true)
@@ -224,15 +225,16 @@ class AnimeExtensionManager(
      * @param extension The anime extension to be installed.
      */
     fun installExtension(extension: AnimeExtension.Available): Observable<InstallStep> {
-        // Upstream 4b8d09be: persist origin repo at install time.
-        ani.dantotsu.parsers.ExtensionRepoMetaHelper.saveInstalledExtensionRepo(
+        // Review HOLD Finding 2: provisional provenance with rollback on
+        // failure/cancel (updateExtension routes through here as well).
+        return ani.dantotsu.parsers.ExtensionRepoMetaHelper.trackInstallProvenance(
+            installer.downloadAndInstall(
+                api.getAnimeApkUrl(extension), extension.pkgName,
+                extension.name, MediaType.ANIME
+            ),
             extension.pkgName,
             extension.repository,
             extension.repoName
-        )
-        return installer.downloadAndInstall(
-            api.getAnimeApkUrl(extension), extension.pkgName,
-            extension.name, MediaType.ANIME
         )
     }
 
@@ -244,9 +246,10 @@ class AnimeExtensionManager(
      * @param extension The anime extension to be updated.
      */
     fun updateExtension(extension: AnimeExtension.Installed): Observable<InstallStep> {
-        val availableExt =
-            _availableAnimeExtensionsFlow.value.find { it.pkgName == extension.pkgName }
-                ?: return Observable.empty()
+        // Review HOLD Finding 3: update from the installed origin, not
+        // whichever repo happens to list the pkg first.
+        val availableExt = findAvailableFor(extension)
+            ?: return Observable.empty()
         return installExtension(availableExt)
     }
 
@@ -356,9 +359,30 @@ class AnimeExtensionManager(
         }
     }
 
+    /**
+     * Review HOLD Finding 3: the same pkgName may be offered by several
+     * repositories (DiffUtil identity is pkg+repo). Prefer the available
+     * entry from the installed origin so mere discovery/refresh never
+     * relabels it; fall back to first match when origin is unknown
+     * (legacy installs predate tracking).
+     */
+    private fun findAvailableFor(
+        installed: AnimeExtension.Installed,
+        list: List<AnimeExtension.Available> = _availableAnimeExtensionsFlow.value
+    ): AnimeExtension.Available? {
+        // Review HOLD Finding 3: shared origin-preferring rule (tested).
+        val origin = ani.dantotsu.parsers.ExtensionRepoMetaHelper.installedOrigin(
+            installed.pkgName, installed.repository
+        )
+        return ani.dantotsu.parsers.ExtensionRepoMetaHelper.selectOriginEntry(
+            list, installed.pkgName, origin,
+            pkgOf = { it.pkgName }, repoOf = { it.repository }
+        )
+    }
+
     private fun AnimeExtension.Installed.updateExists(availableAnimeExtension: AnimeExtension.Available? = null): Boolean {
         val availableExt = availableAnimeExtension
-            ?: _availableAnimeExtensionsFlow.value.find { it.pkgName == pkgName }
+            ?: findAvailableFor(this)
         if (availableExt == null) return false
 
         if (availableExt.versionName.isNotBlank() && availableExt.versionName == versionName) return false

@@ -116,4 +116,69 @@ class ExtensionRepoMetaTest {
             ExtensionRepoMetaHelper.getRepoPageUrl(repo)
         )
     }
+
+    // Review HOLD Finding 1: link icon semantics. Only GitHub project
+    // pages may use the GitHub icon; everything else is generic web.
+
+    @Test
+    fun `raw githubusercontent classifies as github`() {
+        assertEquals(
+            ExtensionRepoMetaHelper.RepoLinkKind.GITHUB,
+            ExtensionRepoMetaHelper.classifyRepoPageUrl(
+                "https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json"
+            )
+        )
+    }
+
+    @Test
+    fun `github repo page classifies as github`() {
+        assertEquals(
+            ExtensionRepoMetaHelper.RepoLinkKind.GITHUB,
+            ExtensionRepoMetaHelper.classifyRepoPageUrl("https://github.com/keiyoushi/extensions")
+        )
+    }
+
+    @Test
+    fun `gitlab page classifies as generic web`() {
+        assertEquals(
+            ExtensionRepoMetaHelper.RepoLinkKind.GENERIC_WEB,
+            ExtensionRepoMetaHelper.classifyRepoPageUrl("https://gitlab.com/owner/repo")
+        )
+    }
+
+    @Test
+    fun `codeberg page classifies as generic web`() {
+        assertEquals(
+            ExtensionRepoMetaHelper.RepoLinkKind.GENERIC_WEB,
+            ExtensionRepoMetaHelper.classifyRepoPageUrl("https://codeberg.org/owner/repo")
+        )
+    }
+
+    @Test
+    fun `generic website classifies as generic web`() {
+        assertEquals(
+            ExtensionRepoMetaHelper.RepoLinkKind.GENERIC_WEB,
+            ExtensionRepoMetaHelper.classifyRepoPageUrl("https://example.test/some-page")
+        )
+    }
+
+    @Test
+    fun `lookalike domains do not classify as github`() {
+        assertEquals(
+            ExtensionRepoMetaHelper.RepoLinkKind.GENERIC_WEB,
+            ExtensionRepoMetaHelper.classifyRepoPageUrl("https://github.com.evil.test/owner/repo")
+        )
+        assertEquals(
+            ExtensionRepoMetaHelper.RepoLinkKind.GENERIC_WEB,
+            ExtensionRepoMetaHelper.classifyRepoPageUrl("https://notgithub.com/owner/repo")
+        )
+    }
+
+    @Test
+    fun `missing url classifies as generic web`() {
+        assertEquals(
+            ExtensionRepoMetaHelper.RepoLinkKind.GENERIC_WEB,
+            ExtensionRepoMetaHelper.classifyRepoPageUrl(null)
+        )
+    }
 }

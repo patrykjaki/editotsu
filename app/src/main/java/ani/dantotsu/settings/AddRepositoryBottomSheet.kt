@@ -95,19 +95,40 @@ class RepoItem(
         }
 
         if (repoPageUrl != null) {
-            viewBinding.repoGithubImageView.isVisible = true
-            viewBinding.repoGithubImageView.setOnClickListener {
-                context.openInBrowser(repoPageUrl)
+            // Review HOLD Finding 1: the GitHub icon must only represent
+            // GitHub project pages; GitLab/Codeberg/generic sites use globe.
+            if (ExtensionRepoMetaHelper.classifyRepoPageUrl(repoPageUrl) ==
+                ExtensionRepoMetaHelper.RepoLinkKind.GITHUB
+            ) {
+                viewBinding.repoGithubImageView.isVisible = true
+                viewBinding.repoGithubImageView.setOnClickListener {
+                    context.openInBrowser(repoPageUrl)
+                }
+            } else {
+                viewBinding.repoGithubImageView.isGone = true
             }
         } else {
             viewBinding.repoGithubImageView.isGone = true
         }
 
         val websiteUrl = meta?.website?.takeIf { it.isNotBlank() }
-        if (websiteUrl != null && websiteUrl != repoPageUrl && websiteUrl != "$repoPageUrl/") {
+        // Review HOLD Finding 1: the globe opens the website when distinct;
+        // otherwise it affords a non-GitHub project page (name/URL text
+        // remains clickable in all cases).
+        val globeUrl = if (websiteUrl != null && websiteUrl != repoPageUrl && websiteUrl != "$repoPageUrl/") {
+            websiteUrl
+        } else if (repoPageUrl != null &&
+            ExtensionRepoMetaHelper.classifyRepoPageUrl(repoPageUrl) !=
+            ExtensionRepoMetaHelper.RepoLinkKind.GITHUB
+        ) {
+            repoPageUrl
+        } else {
+            null
+        }
+        if (globeUrl != null) {
             viewBinding.repoWebsiteImageView.isVisible = true
             viewBinding.repoWebsiteImageView.setOnClickListener {
-                context.openInBrowser(websiteUrl)
+                context.openInBrowser(globeUrl)
             }
         } else {
             viewBinding.repoWebsiteImageView.isGone = true

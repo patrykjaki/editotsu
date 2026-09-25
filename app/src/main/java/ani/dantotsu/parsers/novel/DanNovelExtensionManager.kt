@@ -96,7 +96,8 @@ class DanNovelExtensionManager(private val context: Context) {
         val mut = _installedNovelExtensionsFlow.value.toMutableList()
         var changed = false
         for ((i, ext) in mut.withIndex()) {
-            val avail = availableNovelExtensions.find { it.pkgName == ext.pkgName }
+            // Review HOLD Finding 3: origin-preferring lookup (see helper).
+            val avail = findAvailableFor(ext, availableNovelExtensions)
             if (avail == null && !ext.isObsolete) {
                 mut[i] = ext.copy(isObsolete = true)
                 changed = true
@@ -130,20 +131,42 @@ class DanNovelExtensionManager(private val context: Context) {
     }
 
     fun installExtension(extension: NovelExtension.Available): Observable<InstallStep> {
-        // Upstream 4b8d09be: persist origin repo at install time.
-        ani.dantotsu.parsers.ExtensionRepoMetaHelper.saveInstalledExtensionRepo(
+        // Review HOLD Finding 2: provisional provenance with rollback on
+        // failure/cancel (updateExtension routes through here as well).
+        return ani.dantotsu.parsers.ExtensionRepoMetaHelper.trackInstallProvenance(
+            installer.downloadAndInstall(
+                api.getNovelApkUrl(extension), extension.pkgName,
+                extension.name, MediaType.NOVEL
+            ),
             extension.pkgName,
             extension.repository,
             extension.repoName
         )
-        return installer.downloadAndInstall(
-            api.getNovelApkUrl(extension), extension.pkgName,
-            extension.name, MediaType.NOVEL
+    }
+
+    /**
+     * Review HOLD Finding 3: the same pkgName may be offered by several
+     * repositories. Prefer the available entry from the installed origin
+     * so mere discovery/refresh never relabels it; fall back to first
+     * match when origin is unknown (legacy installs predate tracking).
+     */
+    private fun findAvailableFor(
+        installed: NovelExtension.Installed,
+        list: List<NovelExtension.Available> = _availableNovelExtensionsFlow.value
+    ): NovelExtension.Available? {
+        // Review HOLD Finding 3: shared origin-preferring rule (tested).
+        val origin = ani.dantotsu.parsers.ExtensionRepoMetaHelper.installedOrigin(
+            installed.pkgName, installed.repository
+        )
+        return ani.dantotsu.parsers.ExtensionRepoMetaHelper.selectOriginEntry(
+            list, installed.pkgName, origin,
+            pkgOf = { it.pkgName }, repoOf = { it.repository }
         )
     }
 
     fun updateExtension(extension: NovelExtension.Installed): Observable<InstallStep> {
-        val avail = _availableNovelExtensionsFlow.value.find { it.pkgName == extension.pkgName }
+        // Review HOLD Finding 3: update from the installed origin.
+        val avail = findAvailableFor(extension)
             ?: return Observable.empty()
         return installExtension(avail)
     }
@@ -193,7 +216,8 @@ class DanNovelExtensionManager(private val context: Context) {
     private fun NovelExtension.Installed.updateExists(
         avail: NovelExtension.Available? = null
     ): Boolean {
-        val a = avail ?: _availableNovelExtensionsFlow.value.find { it.pkgName == pkgName }
+        // Review HOLD Finding 3: version-compare against the installed origin.
+        val a = avail ?: findAvailableFor(this)
         return a != null && a.versionCode > versionCode
     }
 }
