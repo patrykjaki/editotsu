@@ -31,6 +31,7 @@ class CalendarActivity : AppCompatActivity() {
     private val scope = lifecycleScope
     private var selectedTabIdx = 1
     private var showOnlyLibrary = false
+    private var showOnlyDubbed = false
     private val model: OtherDetailsViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,7 +41,7 @@ class CalendarActivity : AppCompatActivity() {
         binding = ActivityListBinding.inflate(layoutInflater)
 
         val primaryColor = getThemeColor(com.google.android.material.R.attr.colorSurface)
-        val primaryTextColor = getThemeColor(com.google.android.material.R.attr.colorPrimary)
+        val primaryTextColor = getThemeColor(androidx.appcompat.R.attr.colorPrimary)
         val secondaryTextColor = getThemeColor(com.google.android.material.R.attr.colorOutline)
 
         window.statusBarColor = primaryColor
@@ -69,6 +70,9 @@ class CalendarActivity : AppCompatActivity() {
         binding.listSort.visibility = View.GONE
         binding.random.visibility = View.GONE
         binding.search.visibility = View.GONE
+        binding.filter.visibility = View.GONE
+        binding.listDubbed.visibility = View.VISIBLE
+        binding.listDubbed.alpha = 0.6f
         binding.listTabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
                 this@CalendarActivity.selectedTabIdx = tab?.position ?: 1
@@ -85,7 +89,15 @@ class CalendarActivity : AppCompatActivity() {
                 else R.drawable.ic_round_library_books_24
             )
             scope.launch {
-                model.loadCalendar(showOnlyLibrary)
+                model.loadCalendar(showOnlyLibrary, showOnlyDubbed)
+            }
+        }
+
+        binding.listDubbed.setOnClickListener {
+            showOnlyDubbed = !showOnlyDubbed
+            binding.listDubbed.alpha = if (showOnlyDubbed) 1f else 0.6f
+            scope.launch {
+                model.loadCalendar(showOnlyLibrary, showOnlyDubbed)
             }
         }
 
@@ -95,11 +107,13 @@ class CalendarActivity : AppCompatActivity() {
                 binding.listViewPager.adapter = ListViewPagerAdapter(it.size, true, this)
                 val keys = it.keys.toList()
                 val values = it.values.toList()
-                val savedTab = this.selectedTabIdx
+                val savedTab = if (it.isNotEmpty()) this.selectedTabIdx.coerceIn(0, it.size - 1) else 0
                 TabLayoutMediator(binding.listTabLayout, binding.listViewPager) { tab, position ->
                     tab.text = "${keys[position]} (${values[position].size})"
                 }.attach()
-                binding.listViewPager.setCurrentItem(savedTab, false)
+                if (it.isNotEmpty()) {
+                    binding.listViewPager.setCurrentItem(savedTab, false)
+                }
             }
         }
 
@@ -107,10 +121,18 @@ class CalendarActivity : AppCompatActivity() {
         live.observe(this) {
             if (it) {
                 scope.launch {
-                    withContext(Dispatchers.IO) { model.loadCalendar(showOnlyLibrary) }
+                    withContext(Dispatchers.IO) { model.loadCalendar(showOnlyLibrary, showOnlyDubbed) }
                     live.postValue(false)
                 }
             }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Refresh.activity.remove(this.hashCode())
+        if (::binding.isInitialized) {
+            binding.listViewPager.adapter = null
         }
     }
 }

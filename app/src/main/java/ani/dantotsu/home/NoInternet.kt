@@ -101,6 +101,12 @@ class NoInternet : AppCompatActivity() {
 
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        binding.viewpager.adapter = null
+        ani.dantotsu.clearBottomBar()
+    }
+
     private class ViewPagerAdapter(fragmentManager: FragmentManager, lifecycle: Lifecycle) :
         FragmentStateAdapter(fragmentManager, lifecycle) {
 

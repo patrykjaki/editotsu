@@ -56,7 +56,7 @@ fun characterInformation(includeMediaInfo: Boolean) = """
           id
           idMal
           isAdult
-          status
+          status(version: 2)
           chapters
           episodes
           nextAiringEpisode { episode }
@@ -98,7 +98,7 @@ fun studioInformation(page: Int, perPage: Int) = """
           id
           idMal
           isAdult
-          status
+          status(version: 2)
           chapters
           episodes
           nextAiringEpisode { episode }
@@ -163,7 +163,7 @@ fun staffInformation(page: Int, perPage: Int) = """
           id
           idMal
           isAdult
-          status
+          status(version: 2)
           chapters
           episodes
           nextAiringEpisode { episode }
@@ -232,6 +232,10 @@ nextAiringEpisode {
 }
 type
 genres
+tags {
+  name
+  isMediaSpoiler
+}
 meanScore
 popularity
 favourites
@@ -248,6 +252,7 @@ title {
   romaji
   userPreferred
 }
+description
 mediaListEntry {
   progress
   progressVolumes
@@ -315,7 +320,7 @@ fun fullMediaInformation(id: Int) = """
       }
     }
     ${standardMediaInformation()}
-    source
+    source(version: 3)
     duration
     season
     seasonYear
@@ -329,24 +334,17 @@ fun fullMediaInformation(id: Int) = """
       month
       day
     }
-    studios(isMain: true) {
-      nodes {
-        id
-        name
-        isAnimationStudio
-        siteUrl
-        isFavourite
-        favourites
-      }
-    }
-    producers: studios(isMain: false) {
-      nodes {
-        id
-        name
-        isAnimationStudio
-        siteUrl
-        isFavourite
-        favourites
+    studios {
+      edges {
+        isMain
+        node {
+          id
+          name
+          isAnimationStudio
+          siteUrl
+          isFavourite
+          favourites
+        }
       }
     }
     description
@@ -393,7 +391,7 @@ fun fullMediaInformation(id: Int) = """
     }
     relations {
       edges {
-        relationType(version: 2)
+        relationType(version: 3)
         node {
           ${standardMediaInformation()}
         }
@@ -416,10 +414,37 @@ fun fullMediaInformation(id: Int) = """
     }
     recommendations(sort: RATING_DESC) {
       nodes {
+        id
+        rating
+        userRating
         mediaRecommendation {
           ${standardMediaInformation()}
         }
+        user {
+          id
+          name
+        }
       }
+    }
+    stats {
+      scoreDistribution {
+        score
+        amount
+      }
+      statusDistribution {
+        status
+        amount
+      }
+    }
+    rankings {
+      id
+      rank
+      type
+      format
+      year
+      season
+      allTime
+      context
     }
     externalLinks {
       id

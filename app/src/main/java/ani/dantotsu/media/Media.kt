@@ -71,7 +71,9 @@ data class Media(
     var meanScore: Int? = null,
     var genres: ArrayList<String> = arrayListOf(),
     var tags: ArrayList<String> = arrayListOf(),
+    var tagsIsSpoiler: ArrayList<Boolean> = arrayListOf(),
     var description: String? = null,
+    var clearLogo: String? = null,
     var synonyms: ArrayList<String> = arrayListOf(),
     var trailer: String? = null,
     var startDate: FuzzyDate? = null,
@@ -99,6 +101,7 @@ data class Media(
     var idKitsu: String? = null,
     var externalLinks: ArrayList<MediaExternalLink>? = null,
     var idIMDB: String? = null,
+    var idTMDB: String? = null,
 
     var cameFromContinue: Boolean = false
 ) : Serializable {
@@ -134,7 +137,14 @@ data class Media(
             totalVolumes = apiMedia.volumes
         ) else null,
         format = apiMedia.format?.toString(),
-    )
+        description = apiMedia.description,
+        genres = ArrayList(apiMedia.genres ?: emptyList()),
+    ) {
+        apiMedia.tags?.let { tagList ->
+            this.tags = ArrayList(tagList.mapNotNull { it.name })
+            this.tagsIsSpoiler = ArrayList(tagList.map { it.isMediaSpoiler == true })
+        }
+    }
 
     constructor(mediaList: MediaList) : this(mediaList.media!!) {
         this.userProgress = mediaList.progress
@@ -147,6 +157,10 @@ data class Media(
         this.userCompletedAt = mediaList.completedAt ?: FuzzyDate()
         this.genres =
             mediaList.media?.genres?.toMutableList() as? ArrayList<String>? ?: arrayListOf()
+        mediaList.media?.tags?.let { tagList ->
+            this.tags = ArrayList(tagList.mapNotNull { it.name })
+            this.tagsIsSpoiler = ArrayList(tagList.map { it.isMediaSpoiler == true })
+        }
     }
 
     constructor(mediaEdge: MediaEdge) : this(mediaEdge.node!!) {

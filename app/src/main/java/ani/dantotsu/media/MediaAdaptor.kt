@@ -18,11 +18,13 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import ani.dantotsu.R
 import ani.dantotsu.blurImage
-import ani.dantotsu.currActivity
 import ani.dantotsu.databinding.ItemMediaCompactBinding
 import ani.dantotsu.databinding.ItemMediaLargeBinding
 import ani.dantotsu.databinding.ItemMediaPageBinding
@@ -38,7 +40,7 @@ import java.io.Serializable
 
 class MediaAdaptor(
     var type: Int,
-    private val mediaList: MutableList<Media>?,
+    val mediaList: MutableList<Media>?,
     private val activity: FragmentActivity,
     private val matchParent: Boolean = false,
     private val viewPager: ViewPager2? = null,
@@ -134,7 +136,7 @@ class MediaAdaptor(
                         b.itemCompactScoreBG.isVisible = true
                         b.itemCompactImage.loadImage(media.cover)
                         b.itemCompactOngoing.isVisible =
-                            media.status == currActivity()!!.getString(R.string.status_releasing)
+                            media.status == b.root.context.getString(R.string.status_releasing)
                         b.itemCompactTitle.text = media.userPreferredName
                         b.itemCompactScore.text =
                             ((if (media.userScore == 0) (media.meanScore
@@ -196,7 +198,7 @@ class MediaAdaptor(
                     b.itemCompactImage.loadImage(media.cover)
                     blurImage(b.itemCompactBanner, media.banner ?: media.cover)
                     b.itemCompactOngoing.isVisible =
-                        media.status == currActivity()!!.getString(R.string.status_releasing)
+                        media.status == b.root.context.getString(R.string.status_releasing)
                     b.itemCompactTitle.text = media.userPreferredName
                     b.itemCompactScore.text =
                         ((if (media.userScore == 0) (media.meanScore
@@ -208,7 +210,7 @@ class MediaAdaptor(
                     if (media.anime != null) {
                         val itemTotal = " " + if ((media.anime.totalEpisodes
                                 ?: 0) != 1
-                        ) currActivity()!!.getString(R.string.episode_plural) else currActivity()!!.getString(
+                        ) b.root.context.getString(R.string.episode_plural) else b.root.context.getString(
                             R.string.episode_singular
                         )
                         b.itemTotal.text = itemTotal
@@ -219,7 +221,7 @@ class MediaAdaptor(
                     } else if (media.manga != null) {
                         val itemTotal = " " + if ((media.manga.totalChapters
                                 ?: 0) != 1
-                        ) currActivity()!!.getString(R.string.chapter_plural) else currActivity()!!.getString(
+                        ) b.root.context.getString(R.string.chapter_plural) else b.root.context.getString(
                             R.string.chapter_singular
                         )
                         b.itemTotal.text = itemTotal
@@ -253,8 +255,9 @@ class MediaAdaptor(
                         media.banner ?: media.cover
                     )
                     b.itemCompactOngoing.isVisible =
-                        media.status == currActivity()!!.getString(R.string.status_releasing)
+                        media.status == b.root.context.getString(R.string.status_releasing)
                     b.itemCompactTitle.text = media.userPreferredName
+                    bindCarouselLogo(media, b.itemCompactTitle, b.itemCompactLogo)
                     b.itemCompactScore.text =
                         ((if (media.userScore == 0) (media.meanScore
                             ?: 0) else media.userScore) / 10.0).toString()
@@ -265,8 +268,8 @@ class MediaAdaptor(
                     if (media.anime != null) {
                         b.itemTotal.text = " " + if ((media.anime.totalEpisodes
                                 ?: 0) != 1
-                        ) currActivity()!!.getString(R.string.episode_plural)
-                        else currActivity()!!.getString(R.string.episode_singular)
+                        ) b.root.context.getString(R.string.episode_plural)
+                        else b.root.context.getString(R.string.episode_singular)
                         b.itemCompactTotal.text =
                             if (media.anime.nextAiringEpisode != null) (media.anime.nextAiringEpisode.toString() + " / " + (media.anime.totalEpisodes
                                 ?: "??").toString()) else (media.anime.totalEpisodes
@@ -274,12 +277,12 @@ class MediaAdaptor(
                     } else if (media.manga != null) {
                         b.itemTotal.text = " " + if ((media.manga.totalChapters
                                 ?: 0) != 1
-                        ) currActivity()!!.getString(R.string.chapter_plural)
-                        else currActivity()!!.getString(R.string.chapter_singular)
+                        ) b.root.context.getString(R.string.chapter_plural)
+                        else b.root.context.getString(R.string.chapter_singular)
                         b.itemCompactTotal.text = "${media.manga.totalChapters ?: "??"}"
                     }
                     @SuppressLint("NotifyDataSetChanged")
-                    if (position == mediaList!!.size - 2 && viewPager != null) viewPager.post {
+                    if (position == mediaList.size - 2 && viewPager != null) viewPager.post {
                         val size = mediaList.size
                         mediaList.addAll(mediaList)
                         notifyItemRangeInserted(size - 1, mediaList.size)
@@ -305,8 +308,15 @@ class MediaAdaptor(
                         media.banner ?: media.cover
                     )
                     b.itemCompactOngoing.isVisible =
-                        media.status == currActivity()!!.getString(R.string.status_releasing)
+                        media.status == b.root.context.getString(R.string.status_releasing)
                     b.itemCompactTitle.text = media.userPreferredName
+                    bindCarouselLogo(
+                        media,
+                        b.itemCompactTitle,
+                        b.itemCompactLogo,
+                        b.itemCompactSynopsis,
+                        b.itemCompactLogoContainer
+                    )
                     b.itemCompactScore.text =
                         ((if (media.userScore == 0) (media.meanScore
                             ?: 0) else media.userScore) / 10.0).toString()
@@ -314,20 +324,19 @@ class MediaAdaptor(
                         b.root.context,
                         (if (media.userScore != 0) R.drawable.item_user_score else R.drawable.item_score)
                     )
-                    media.genres.apply {
-                        if (isNotEmpty()) {
-                            var genres = ""
-                            forEach { genres += "$it • " }
-                            genres = genres.removeSuffix(" • ")
-                            b.itemCompactGenres.text = genres
-                        }
+                    if (media.genres.isNotEmpty()) {
+                        b.itemCompactGenres.text = media.genres.joinToString(" • ")
+                    } else if (media.tags.isNotEmpty()) {
+                        b.itemCompactGenres.text = media.tags.take(3).joinToString(" • ")
+                    } else {
+                        b.itemCompactGenres.text = ""
                     }
                     b.itemCompactStatus.text = media.status ?: ""
                     if (media.anime != null) {
                         b.itemTotal.text = " " + if ((media.anime.totalEpisodes
                                 ?: 0) != 1
-                        ) currActivity()!!.getString(R.string.episode_plural)
-                        else currActivity()!!.getString(R.string.episode_singular)
+                        ) b.root.context.getString(R.string.episode_plural)
+                        else b.root.context.getString(R.string.episode_singular)
                         b.itemCompactTotal.text =
                             if (media.anime.nextAiringEpisode != null) (media.anime.nextAiringEpisode.toString() + " / " + (media.anime.totalEpisodes
                                 ?: "??").toString()) else (media.anime.totalEpisodes
@@ -335,12 +344,12 @@ class MediaAdaptor(
                     } else if (media.manga != null) {
                         b.itemTotal.text = " " + if ((media.manga.totalChapters
                                 ?: 0) != 1
-                        ) currActivity()!!.getString(R.string.chapter_plural)
-                        else currActivity()!!.getString(R.string.chapter_singular)
+                        ) b.root.context.getString(R.string.chapter_plural)
+                        else b.root.context.getString(R.string.chapter_singular)
                         b.itemCompactTotal.text = "${media.manga.totalChapters ?: "??"}"
                     }
                     @SuppressLint("NotifyDataSetChanged")
-                    if (position == mediaList!!.size - 2 && viewPager != null) viewPager.post {
+                    if (position == mediaList.size - 2 && viewPager != null) viewPager.post {
                         val size = mediaList.size
                         mediaList.addAll(mediaList)
                         notifyItemRangeInserted(size - 1, mediaList.size)
@@ -348,6 +357,131 @@ class MediaAdaptor(
                 }
             }
         }
+    }
+
+    private fun bindCarouselLogo(
+        media: Media,
+        titleView: android.widget.TextView,
+        logoView: ImageView,
+        synopsisView: android.widget.TextView? = null,
+        logoContainer: View? = null
+    ) {
+        val clearLogoEnabled: Boolean = PrefManager.getVal(PrefName.CarouselClearLogo)
+        if (!clearLogoEnabled) {
+            titleView.visibility = View.VISIBLE
+            logoView.visibility = View.GONE
+            logoContainer?.visibility = View.GONE
+            synopsisView?.visibility = View.GONE
+            return
+        }
+
+        val currentId = media.id
+        logoView.tag = currentId
+
+        fun showLogo(url: String) {
+            logoView.loadImage(url)
+            logoView.visibility = View.VISIBLE
+            logoContainer?.visibility = View.VISIBLE
+            titleView.visibility = View.GONE
+            if (synopsisView != null) {
+                val cleanDesc = media.description?.let { sanitizeDescription(it) }
+                if (!cleanDesc.isNullOrBlank()) {
+                    synopsisView.text = cleanDesc
+                    synopsisView.visibility = View.VISIBLE
+                    val oldListener = synopsisView.getTag(R.id.itemCompactSynopsis) as? View.OnLayoutChangeListener
+                    if (oldListener != null) {
+                        synopsisView.removeOnLayoutChangeListener(oldListener)
+                    }
+                    val newListener = View.OnLayoutChangeListener { v, _, top, _, bottom, _, _, _, _ ->
+                        val availableHeight = (bottom - top) - v.paddingTop - v.paddingBottom
+                        val lh = synopsisView.lineHeight
+                        if (lh > 0) {
+                            val maxL = (availableHeight / lh).coerceIn(1, 3)
+                            if (synopsisView.maxLines != maxL) {
+                                synopsisView.maxLines = maxL
+                            }
+                            synopsisView.alpha = 0.72f
+                        } else {
+                            synopsisView.alpha = 0f
+                        }
+                        v.post {
+                            if (!synopsisView.text.endsWith("...")) {
+                                val layout = synopsisView.layout ?: return@post
+                                val lineCount = layout.lineCount
+                                if (lineCount > 0) {
+                                    val lastLine = (lineCount - 1).coerceAtMost(synopsisView.maxLines - 1)
+                                    val lineEnd = layout.getLineEnd(lastLine)
+                                    if (lineEnd in 1 until cleanDesc.length) {
+                                        val ellipsisCount = layout.getEllipsisCount(lastLine)
+                                        if (ellipsisCount == 0) {
+                                            val currentText = synopsisView.text.toString()
+                                            val visible = if (lineEnd <= currentText.length) currentText.substring(0, lineEnd).trimEnd() else currentText.trimEnd()
+                                            val lastSpace = visible.lastIndexOf(' ')
+                                            val truncated = if (lastSpace > visible.length - 12 && lastSpace > 0) {
+                                                visible.substring(0, lastSpace).trimEnd() + "..."
+                                            } else if (visible.length > 3) {
+                                                visible.dropLast(3).trimEnd() + "..."
+                                            } else {
+                                                visible + "..."
+                                            }
+                                            synopsisView.text = truncated
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    synopsisView.setTag(R.id.itemCompactSynopsis, newListener)
+                    synopsisView.addOnLayoutChangeListener(newListener)
+                } else {
+                    synopsisView.visibility = View.GONE
+                }
+            }
+        }
+
+        fun showTitle() {
+            titleView.visibility = View.VISIBLE
+            logoView.visibility = View.GONE
+            logoContainer?.visibility = View.GONE
+            if (synopsisView != null) {
+                val oldListener = synopsisView.getTag(R.id.itemCompactSynopsis) as? View.OnLayoutChangeListener
+                if (oldListener != null) {
+                    synopsisView.removeOnLayoutChangeListener(oldListener)
+                    synopsisView.setTag(R.id.itemCompactSynopsis, null)
+                }
+                synopsisView.visibility = View.GONE
+            }
+        }
+
+        if (!media.clearLogo.isNullOrBlank()) {
+            showLogo(media.clearLogo!!)
+        } else {
+            showTitle()
+            activity.lifecycleScope.launch(Dispatchers.Main) {
+                val logo = CarouselLogoResolver.resolve(media)
+                if (logoView.tag == currentId) {
+                    if (!logo.isNullOrBlank()) {
+                        media.clearLogo = logo
+                        showLogo(logo)
+                    } else {
+                        showTitle()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun sanitizeDescription(desc: String): String {
+        return desc
+            .replace(Regex("<[^>]*>"), " ")
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#039;", "'")
+            .replace("&apos;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     override fun getItemCount() = mediaList!!.size

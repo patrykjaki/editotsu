@@ -19,7 +19,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.R
 import ani.dantotsu.Refresh
-import ani.dantotsu.bottomBar
+import ani.dantotsu.bottomBarOrNull
 import ani.dantotsu.connections.anilist.AniMangaSearchResults
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.AnilistMangaViewModel
@@ -59,7 +59,9 @@ class MangaFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        super.onDestroyView();_binding = null
+        super.onDestroyView()
+        Refresh.activity.remove(this.hashCode())
+        _binding = null
     }
 
     @SuppressLint("NotifyDataSetChanged")
@@ -213,7 +215,7 @@ class MangaFragment : Fragment() {
                     }
                 }
                 binding.mangaPageScrollTop.translationY =
-                    -(navBarHeight + bottomBar.height + bottomBar.marginBottom).toFloat()
+                    -(navBarHeight + (bottomBarOrNull?.height ?: 0) + (bottomBarOrNull?.marginBottom ?: 0)).toFloat()
 
             }
         }
@@ -279,15 +281,19 @@ class MangaFragment : Fragment() {
                                     load()
                                 }
                             } else {
-                                CoroutineScope(Dispatchers.IO).launch {
-                                    getUserId(requireContext()) {
-                                        load()
-                                    }
+                                getUserId(requireContext()) {
+                                    load()
                                 }
                             }
                         }
                     }
                     model.loaded = true
+                    if (_binding?.mangaRefresh?.isRefreshing == true) {
+                        withContext(Dispatchers.Main) {
+                            model.aniMangaSearchResults.results.clear()
+                            popularAdaptor.notifyDataSetChanged()
+                        }
+                    }
                     withContext(Dispatchers.IO) {
                         model.loadAll(PrefManager.getVal(PrefName.PopularMangaList))
                     }

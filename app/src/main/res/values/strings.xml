@@ -404,6 +404,13 @@
     <string name="donate_desc">Want to support Editotsu\'s Maintainer?\nConsider Donating</string>
     <string name="donate_goal">No donation goal atm</string>
     <string name="filter">Filter</string>
+    <string name="filter_on_list">List Filter</string>
+    <string name="filter_on_list_all">All</string>
+    <string name="filter_on_list_in">In My List</string>
+    <string name="filter_on_list_not_in">Not In My List</string>
+    <string name="filter_dubbed">Filter dubbed shows</string>
+    <string name="carousel_clearlogo">Use Clearlogo in Carousel</string>
+    <string name="carousel_clearlogo_desc">Displays clearlogo instead of anime title in the anime tab carousel when available</string>
     <string name="year">Year</string>
     <string name="apply">Apply</string>
     <string name="cancel">Cancel</string>

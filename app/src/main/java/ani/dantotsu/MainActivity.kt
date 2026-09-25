@@ -630,4 +630,12 @@ class MainActivity : AppCompatActivity() {
             binding.viewpager.setCurrentItem(1, false)
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::binding.isInitialized) {
+            binding.viewpager.adapter = null
+        }
+        clearBottomBar()
+    }
 }

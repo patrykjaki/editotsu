@@ -129,33 +129,78 @@
 
             <LinearLayout
                 android:id="@+id/itemCompactTitleContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="bottom"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
                 android:orientation="vertical"
-                android:padding="8dp">
+                android:paddingStart="8dp"
+                android:paddingEnd="0dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="0dp">
 
-                <TextView
-                    android:id="@+id/itemCompactTitle"
+                <FrameLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:fontFamily="@font/poppins_bold"
-                    android:maxLines="3"
-                    android:textSize="16dp"
-                    android:transitionName="mediaTitle"
-                    tools:ignore="SpUsage"
-                    tools:text="@string/slogan" />
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:minHeight="28dp">
+
+                    <TextView
+                        android:id="@+id/itemCompactTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="bottom|start"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/poppins_bold"
+                        android:maxLines="3"
+                        android:textSize="16dp"
+                        android:transitionName="mediaTitle"
+                        tools:ignore="SpUsage"
+                        tools:text="@string/slogan" />
+
+                    <LinearLayout
+                        android:id="@+id/itemCompactLogoContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:id="@+id/itemCompactLogo"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:adjustViewBounds="true"
+                            android:maxHeight="105dp"
+                            android:scaleType="fitStart"
+                            tools:ignore="ContentDescription" />
+
+                        <TextView
+                            android:id="@+id/itemCompactSynopsis"
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_weight="1"
+                            android:layout_marginTop="2dp"
+                            android:alpha="0.72"
+                            android:ellipsize="end"
+                            android:fontFamily="@font/poppins_family"
+                            android:maxLines="3"
+                            android:textColor="?attr/colorOnBackground"
+                            android:textSize="10.5dp"
+                            android:visibility="gone"
+                            tools:ignore="SmallSp,SpUsage"
+                            tools:text="Anime synopsis text here..." />
+                    </LinearLayout>
+                </FrameLayout>
 
                 <TextView
                     android:id="@+id/itemCompactStatus"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
                     android:alpha="0.66"
                     android:ellipsize="marquee"
                     android:fontFamily="@font/poppins_bold"
                     android:marqueeRepeatLimit="marquee_forever"
-                    android:paddingTop="4dp"
+                    android:paddingTop="0dp"
                     android:singleLine="true"
                     android:text="@string/status"
                     android:textColor="?attr/colorPrimary"
@@ -169,11 +214,14 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_margin="8dp"
+            android:baselineAligned="true"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <LinearLayout
                 android:layout_width="108dp"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="true"
                 android:gravity="center"
                 android:orientation="horizontal">
 
@@ -202,10 +250,12 @@
                 android:id="@+id/itemCompactGenres"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
                 android:layout_marginStart="16dp"
                 android:layout_weight="1"
                 android:alpha="0.66"
                 android:ellipsize="end"
+                android:gravity="end|center_vertical"
                 android:maxLines="1"
                 android:textAlignment="viewEnd"
                 android:textSize="14dp"

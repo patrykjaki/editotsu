@@ -19,6 +19,7 @@ import ani.dantotsu.profile.User
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
+import ani.dantotsu.util.Logger
 import ani.dantotsu.connections.syncPendingProgressUpdates
 import ani.dantotsu.connections.syncPendingDeletions
 import ani.dantotsu.media.anime.Anime
@@ -87,6 +88,46 @@ class AnilistHomeViewModel : ViewModel() {
 
     fun getRecommendation(): LiveData<ArrayList<Media>> = recommendation
 
+    // Upstream 8a5eeb40: paginated recommendation loading.
+    var recommendationPage: Int = 1
+    var recommendationHasNextPage: Boolean = true
+    var recommendationLoading: Boolean = false
+
+    suspend fun loadMoreRecommendations(): ArrayList<Media>? {
+        val rescueMode: Boolean = PrefManager.getVal(PrefName.RescueMode)
+        if (rescueMode) return null
+        if (!recommendationHasNextPage || recommendationLoading) return null
+        recommendationLoading = true
+        return try {
+            val currentList = recommendation.value ?: arrayListOf()
+            val existingIds = currentList.map { it.id }.toMutableSet()
+            val addedMedia = arrayListOf<Media>()
+            var attempts = 0
+            while (addedMedia.isEmpty() && recommendationHasNextPage && attempts < 3) {
+                attempts++
+                val nextPage = recommendationPage + 1
+                val (newMedia, hasNext) = Anilist.query.getRecommendations(nextPage)
+                recommendationPage = nextPage
+                recommendationHasNextPage = hasNext
+                val uniqueNew = newMedia.filter { it.id !in existingIds }
+                if (uniqueNew.isNotEmpty()) {
+                    addedMedia.addAll(uniqueNew)
+                    existingIds.addAll(uniqueNew.map { it.id })
+                }
+            }
+            if (addedMedia.isNotEmpty()) {
+                currentList.addAll(addedMedia)
+                recommendation.postValue(currentList)
+            }
+            addedMedia
+        } catch (e: Exception) {
+            Logger.log("Failed to load more recommendations: ${e.message}")
+            null
+        } finally {
+            recommendationLoading = false
+        }
+    }
+
     private val missingSequels: MutableLiveData<ArrayList<Media>> =
         MutableLiveData<ArrayList<Media>>(null)
 
@@ -108,6 +149,9 @@ class AnilistHomeViewModel : ViewModel() {
     fun getHidden(): LiveData<ArrayList<Media>> = hidden
 
     suspend fun initHomePage(forceRefresh: Boolean = false) {
+        recommendationPage = 1
+        recommendationHasNextPage = true
+        recommendationLoading = false
         val rescueMode: Boolean = PrefManager.getVal(PrefName.RescueMode)
         if (rescueMode) {
             initHomePageFromMAL()
@@ -510,6 +554,9 @@ class AnilistAnimeViewModel : ViewModel() {
 
     private suspend fun loadAllFromMAL() {
         tryWithSuspend {
+            loadTrending(1)
+        }
+        tryWithSuspend {
             MAL.query.getAnimeRanking("airing", 15)?.data?.let { entries ->
                 updated.postValue(entries.map { Media(it.node, true) }.toMutableList())
             }
@@ -714,6 +761,9 @@ class AnilistMangaViewModel : ViewModel() {
     }
 
     private suspend fun loadAllFromMAL() {
+        tryWithSuspend {
+            loadTrending()
+        }
         tryWithSuspend {
             MAL.query.getMangaRanking("manga", 15)?.data?.let { entries ->
                 popularManga.postValue(entries.map { Media(it.node, false) }.toMutableList())
