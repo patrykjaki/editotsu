@@ -63,6 +63,8 @@ internal class ExtensionGithubApi {
 
     private fun List<ExtensionJsonObject>.toAnimeExtensions(repository: String): List<AnimeExtension.Available> {
         val cleanRepo = cleanRepoUrl(repository)
+        // Upstream 4b8d09be: origin-repo badge.
+        val badge = ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(repository)
         return this
             .filter {
                 val libVersion = it.extractLibVersion()
@@ -84,6 +86,7 @@ internal class ExtensionGithubApi {
                     apkName = it.apk,
                     repository = repository,
                     iconUrl = it.iconUrl ?: "$cleanRepo/icon/${it.pkg}.png",
+                    repoName = badge,
                 )
             }
     }
@@ -163,8 +166,13 @@ internal class ExtensionGithubApi {
             if (firstByte == 0x5B.toByte()) { // '['
                 val bodyString = responseBytes.toString(Charsets.UTF_8)
                 val list = json.decodeFromString<List<ExtensionJsonObject>>(bodyString)
-                val hasDeprecation = mediaType == MediaType.MANGA && list.any { 
-                    it.pkg.contains("keiyoushi") || it.name.contains("Outdated App", ignoreCase = true) || it.name.contains("Update to Mihon", ignoreCase = true)
+                // Upstream 14b05593: Anime repos that moved to index.pb keep a
+                // dummy index.min.json ("Outdated App, switch to Animiru").
+                val hasDeprecation = (mediaType == MediaType.MANGA || mediaType == MediaType.ANIME) && list.any {
+                    it.pkg.contains("keiyoushi") || it.pkg.contains("animiru") ||
+                    it.name.contains("Outdated App", ignoreCase = true) ||
+                    it.name.contains("Update to Mihon", ignoreCase = true) ||
+                    it.name.contains("switch to Animiru", ignoreCase = true)
                 }
                 if (hasDeprecation && !targetUrl.endsWith("index.pb")) {
                     val pbUrl = "${cleanRepoUrl(targetUrl)}/index.pb"
@@ -172,10 +180,100 @@ internal class ExtensionGithubApi {
                 }
                 return list
             } else {
+                // Upstream 14b05593: Anime protobuf schema differs from Mihon's
+                // Manga schema (tag 8 = isTorrent varint vs sources), so decode
+                // Anime stores first for ANIME repos, with Manga-schema fallback.
+                if (mediaType == MediaType.ANIME) {
+                    val animeStore = if (firstByte == 0x7B.toByte()) { // '{'
+                        val bodyString = responseBytes.toString(Charsets.UTF_8)
+                        runCatching { json.decodeFromString<NetworkAnimeExtensionStore>(bodyString) }.getOrNull()
+                    } else { // Protobuf
+                        runCatching { ProtoBuf.decodeFromByteArray<NetworkAnimeExtensionStore>(responseBytes) }.getOrNull()
+                    }
+
+                    if (animeStore != null) {
+                        ani.dantotsu.parsers.ExtensionRepoMetaHelper.saveMeta(
+                            originalUrl,
+                            name = animeStore.name,
+                            shortName = animeStore.badgeLabel,
+                            website = animeStore.contact.website,
+                            discord = animeStore.contact.discord
+                        )
+
+                        val animeList: NetworkAnimeExtensionStore.ExtensionList? = if (animeStore.extensionListUrl != null) {
+                            val listUrl = if (animeStore.extensionListUrl.startsWith("http")) {
+                                animeStore.extensionListUrl
+                            } else {
+                                "${cleanRepoUrl(targetUrl)}/${animeStore.extensionListUrl.removePrefix("/")}"
+                            }
+                            val listResponse = runCatching {
+                                networkService.client.newCall(GET(listUrl)).awaitSuccess()
+                            }.getOrNull()
+
+                            val listBytes = listResponse?.body?.bytes()?.decompressIfGzipped()
+                            if (listBytes != null && listBytes.isNotEmpty() && listBytes[0] == 0x7B.toByte()) {
+                                runCatching {
+                                    json.decodeFromString<NetworkAnimeExtensionStore.ExtensionList>(listBytes.toString(Charsets.UTF_8))
+                                }.getOrNull()
+                            } else if (listBytes != null && listBytes.isNotEmpty()) {
+                                runCatching {
+                                    ProtoBuf.decodeFromByteArray<NetworkAnimeExtensionStore.ExtensionList>(listBytes)
+                                }.getOrNull()
+                            } else {
+                                null
+                            }
+                        } else {
+                            animeStore.extensionList
+                        }
+
+                        if (animeList != null && animeList.extensions.isNotEmpty()) {
+                            val prefix = "Aniyomi: "
+                            return animeList.extensions.map { ext ->
+                                val sourcesMapped = ext.sources.map { src ->
+                                    ExtensionSourceJsonObject(
+                                        id = src.id,
+                                        lang = src.language,
+                                        name = src.name,
+                                        baseUrl = src.homeUrl
+                                    )
+                                }
+                                val primaryLang = ext.sources.firstOrNull()?.language ?: "all"
+                                val prefixName = if (ext.name.startsWith(prefix)) ext.name else "$prefix${ext.name}"
+                                val extLib = ext.extensionLib.ifBlank {
+                                    ext.versionName.substringBefore('.').takeIf { it.toDoubleOrNull() != null }
+                                }
+                                ExtensionJsonObject(
+                                    name = prefixName,
+                                    pkg = ext.packageName,
+                                    apk = ext.resources.apkUrl,
+                                    lang = primaryLang,
+                                    code = ext.versionCode,
+                                    version = ext.versionName,
+                                    nsfw = if (ext.contentWarning == NetworkAnimeExtensionStore.ContentWarning.NSFW || ext.contentWarning == NetworkAnimeExtensionStore.ContentWarning.MIXED) 1 else 0,
+                                    hasReadme = 0,
+                                    hasChangelog = 0,
+                                    sources = sourcesMapped,
+                                    iconUrl = ext.resources.iconUrl,
+                                    extensionLib = extLib,
+                                )
+                            }
+                        }
+                    }
+                }
+
                 val store = if (firstByte == 0x7B.toByte()) { // '{'
                     val bodyString = responseBytes.toString(Charsets.UTF_8)
                     if (bodyString.contains("\"index_v2\"") || bodyString.contains("\"indexV2\"")) {
                         val legacyRepo = json.decodeFromString<NetworkLegacyExtensionRepo>(bodyString)
+                        // Upstream 4b8d09be: persist legacy repo metadata
+                        // (local decode throws on malformed, so success implies meta).
+                        ani.dantotsu.parsers.ExtensionRepoMetaHelper.saveMeta(
+                            originalUrl,
+                            name = legacyRepo.meta.name,
+                            shortName = legacyRepo.meta.shortName,
+                            website = legacyRepo.meta.website,
+                            discord = null
+                        )
                         val nextUrl = legacyRepo.indexV2
                         if (nextUrl != null) {
                             updateStoreUrl(originalUrl, nextUrl, mediaType)
@@ -185,6 +283,17 @@ internal class ExtensionGithubApi {
                     json.decodeFromString<NetworkExtensionStore>(bodyString)
                 } else { // Protobuf
                     ProtoBuf.decodeFromByteArray<NetworkExtensionStore>(responseBytes)
+                }
+
+                // Upstream 4b8d09be: persist store metadata for badges/sheet.
+                if (store != null) {
+                    ani.dantotsu.parsers.ExtensionRepoMetaHelper.saveMeta(
+                        originalUrl,
+                        name = store.name,
+                        shortName = store.badgeLabel,
+                        website = store.contact.website,
+                        discord = store.contact.discord
+                    )
                 }
 
                 val resolvedList: NetworkExtensionStore.ExtensionList? = if (store.extensionListUrl != null) {
@@ -294,6 +403,8 @@ internal class ExtensionGithubApi {
 
     private fun List<ExtensionJsonObject>.toMangaExtensions(repository: String): List<MangaExtension.Available> {
         val cleanRepo = cleanRepoUrl(repository)
+        // Upstream 4b8d09be: origin-repo badge.
+        val badge = ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(repository)
         return this
             .filter {
                 val libVersion = it.extractLibVersion()
@@ -314,6 +425,7 @@ internal class ExtensionGithubApi {
                     apkName = it.apk,
                     repository = repository,
                     iconUrl = it.iconUrl ?: "$cleanRepo/icon/${it.pkg}.png",
+                    repoName = badge,
                 )
             }
     }
@@ -375,6 +487,9 @@ internal class ExtensionGithubApi {
     }
 
     private fun List<ExtensionJsonObject>.toNovelExtensions(repository: String): List<NovelExtension.Available> {
+        // Upstream 4b8d09be: origin-repo badge.
+        val cleanRepo = cleanRepoUrl(repository)
+        val badge = ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(repository)
         return filter { !it.apk.isNullOrBlank() && !it.pkg.isNullOrBlank() && it.apk.endsWith(".apk", ignoreCase = true) }
             .mapNotNull { extension ->
                 val sources = extension.sources?.map { source ->
@@ -394,6 +509,7 @@ internal class ExtensionGithubApi {
                     repository,
                     sources?.toNovelSources() ?: emptyList(),
                     iconUrl,
+                    repoName = badge,
                 )
             }
     }

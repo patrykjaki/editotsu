@@ -32,6 +32,9 @@ sealed class AnimeExtension {
         val hasUpdate: Boolean = false,
         val isObsolete: Boolean = false,
         val isUnofficial: Boolean = false,
+        // Upstream 4b8d09be: origin-repo tracking for badges.
+        val repository: String? = null,
+        val repoName: String? = null,
     ) : AnimeExtension()
 
     data class Available(
@@ -47,7 +50,8 @@ sealed class AnimeExtension {
         val sources: List<AvailableAnimeSources>,
         val apkName: String,
         val iconUrl: String,
-        val repository: String
+        val repository: String,
+        val repoName: String? = null,
     ) : AnimeExtension()
 
     data class Untrusted(

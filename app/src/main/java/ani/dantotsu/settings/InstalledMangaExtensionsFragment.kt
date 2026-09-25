@@ -285,7 +285,10 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
             } else {
                 "$libStr.${extension.versionName}"
             }
-            val versionText = "$lang $displayVersion $nsfw".trim()
+            // Upstream 4b8d09be: origin-repo badge (installed may predate tracking).
+            val repo = extension.repoName ?: extension.repository?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) } ?: ani.dantotsu.parsers.ExtensionRepoMetaHelper.getInstalledRepo(extension.pkgName)?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) }
+            val repoBadge = if (!repo.isNullOrBlank()) "@$repo" else ""
+            val versionText = listOf(lang, displayVersion, nsfw, repoBadge).filter { it.isNotBlank() }.joinToString(" ")
             holder.extensionVersionTextView.text = versionText
             if (!skipIcons) {
                 holder.extensionIconImageView.setImageDrawable(extension.icon)

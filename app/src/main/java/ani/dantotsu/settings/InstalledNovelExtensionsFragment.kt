@@ -256,7 +256,10 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
             when (extension) {
                 is NovelExtension.Installed -> {
                     val lang = LanguageMapper.getLanguageName(extension.lang)
-                    holder.extensionVersionTextView.text = "$lang ${extension.versionName}"
+                    // Upstream 4b8d09be: origin-repo badge.
+                    val repo = extension.repoName ?: extension.repository?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) } ?: ani.dantotsu.parsers.ExtensionRepoMetaHelper.getInstalledRepo(extension.pkgName)?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) }
+                    val repoBadge = if (!repo.isNullOrBlank()) "@$repo" else ""
+                    holder.extensionVersionTextView.text = listOf(lang, extension.versionName, repoBadge).filter { it.isNotBlank() }.joinToString(" ")
                     if (!skipIcons) {
                         holder.extensionIconImageView.setImageDrawable(extension.icon)
                     }
@@ -264,7 +267,10 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
                 }
                 is NovelExtension.JsPlugin -> {
                     val lang = LanguageMapper.getLanguageName(extension.plugin.lang)
-                    holder.extensionVersionTextView.text = "$lang ${extension.versionName}"
+                    // Upstream 4b8d09be: JS plugins resolve via installed map only.
+                    val repo = ani.dantotsu.parsers.ExtensionRepoMetaHelper.getInstalledRepo(extension.pkgName)?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) }
+                    val repoBadge = if (!repo.isNullOrBlank()) "@$repo" else ""
+                    holder.extensionVersionTextView.text = listOf(lang, extension.versionName, repoBadge).filter { it.isNotBlank() }.joinToString(" ")
                     if (!skipIcons) {
                         Glide.with(holder.itemView.context)
                             .load(extension.iconUrl)
