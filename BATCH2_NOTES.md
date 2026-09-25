@@ -2,6 +2,32 @@
 
 Base: `016d639c` (frozen Batch 1). No Batch 1 modification. No merge.
 
+## Review HOLD corrections (same lane, no new branch)
+
+- **Blocker 1 (Set<Int> readers)**: Strategy A completed — the 4 remaining
+  Int sites (`Media.kt` x2, `StatusActivity` x2) migrated to Set<String>;
+  repo-wide audit confirms zero `Set<Int>`/`Set<Long>` custom readers
+  remain (all PrefName Set defaults were already string-typed). Pure
+  `StringIdSets` helper extracted; PrefManager mapping cores rewired to it
+  (fallbacks untouched). `StringIdSetsTest` (7 tests) proves
+  hide/add/remove/round-trip/empty/strings-only/unparseable contract.
+- **Blocker 2 (MediaDetails recreation)**: minimal correction —
+  `onSaveInstanceState` retains two identity ints only (never the Media
+  graph); resolution chain intent-mediaId > saved-id; rescue branch uses
+  the matching MAL identity; `bindingReady` guard in Manga/NovelRead
+  fragments (upstream crash vector). removeExtra + Assist override kept.
+  RescueMode behavior preserved (intent path byte-identical logic).
+- **Scope (MyActivities)**: RETAINED AS BATCH 2B — `mergeStatusActivities`
+  extracted pure + `myStatus` internal; `UserStatusMergeTest` (7 tests:
+  query shape, merge order, dedup, MessageActivity, adult on/off,
+  stale, empty). forceRefresh bypass is 3 one-liners, inspection-verified
+  (PrefManager/Network are Android-bound, no host seam).
+- **Mirrors**: endpoints verbatim from audited 5ffa682b. No credentials
+  reach them: AniList/MAL Bearer tokens are per-request headers to
+  first-party hosts only; CookieManager is origin-scoped by the platform;
+  Jikan calls add no headers. Only public IDs/queries + generic UA leave
+  the device (inherent mirror tradeoff, same as upstream).
+
 ## Ported (manual minimal ports; `Upstream <sha>` comments in code)
 
 - `8966c9bd` network subset: `AnilistInterceptor` (new, exact),

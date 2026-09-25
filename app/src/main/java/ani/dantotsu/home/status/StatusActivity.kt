@@ -95,7 +95,11 @@ class StatusActivity : AppCompatActivity(), StoriesCallback {
         position += 1
         if (position < activity.size) {
             val key = "activities"
-            val watchedActivity = PrefManager.getCustomVal<Set<Int>>(key, setOf())
+            // Batch 2 correction: harmonized string set (upstream left this
+            // site Int-typed; the empty-default sample inference cannot
+            // recover Int from erasure, so convert explicitly like site 1).
+            val watchedActivity = PrefManager.getCustomVal<Set<String>>(key, emptySet())
+                .mapNotNull { it.toIntOrNull() }.toSet()
             val startFrom = findFirstNonMatch(watchedActivity, activity[position].activity)
             val startIndex = if (startFrom > 0) startFrom else 0
             binding.stories.startAnimation(slideOutLeft)
@@ -110,7 +114,9 @@ class StatusActivity : AppCompatActivity(), StoriesCallback {
         position -= 1
         if (position >= 0 && activity[position].activity.isNotEmpty()) {
             val key = "activities"
-            val watchedActivity = PrefManager.getCustomVal<Set<Int>>(key, setOf())
+            // Batch 2 correction: same harmonization as above.
+            val watchedActivity = PrefManager.getCustomVal<Set<String>>(key, emptySet())
+                .mapNotNull { it.toIntOrNull() }.toSet()
             val startFrom = findFirstNonMatch(watchedActivity, activity[position].activity)
             val startIndex = if (startFrom > 0) startFrom else 0
             binding.stories.startAnimation(slideOutRight)

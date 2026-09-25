@@ -730,8 +730,10 @@ fun Media?.deleteFromList(
                         PrefManager.getVal(PrefName.PendingDeletions, listOf())
                     val updated = existing.filterNot { it.mediaId == media.id } + pending
                     PrefManager.setVal(PrefName.PendingDeletions, updated)
-                    val removeList = PrefManager.getCustomVal("removeList", setOf<Int>())
-                    PrefManager.setCustomVal("removeList", removeList.minus(media.id))
+                    // Batch 2 correction: harmonized string set (removeList is
+                    // string-backed since the PrefManager sanitize).
+                    val removeList = PrefManager.getCustomVal<Set<String>>("removeList", emptySet())
+                    PrefManager.setCustomVal("removeList", removeList.minus(media.id.toString()))
                     try {
                         MAL.query.deleteList(media.anime != null, media.idMAL)
                     } catch (_: Exception) { /* MAL delete failed; AniList sync still queued */ }
@@ -743,9 +745,9 @@ fun Media?.deleteFromList(
                             Anilist.mutation.deleteList(listId)
                             MAL.query.deleteList(media.anime != null, media.idMAL)
 
-                            val removeList = PrefManager.getCustomVal("removeList", setOf<Int>())
+                            val removeList = PrefManager.getCustomVal<Set<String>>("removeList", emptySet())
                             PrefManager.setCustomVal(
-                                "removeList", removeList.minus(media.id)
+                                "removeList", removeList.minus(media.id.toString())
                             )
 
                             onSuccess()

@@ -7,6 +7,7 @@ import ani.dantotsu.checkId
 import ani.dantotsu.connections.anilist.Anilist.authorRoles
 import ani.dantotsu.connections.anilist.Anilist.executeQuery
 import ani.dantotsu.connections.anilist.api.FeedResponse
+import ani.dantotsu.connections.anilist.api.Activity
 import ani.dantotsu.connections.anilist.api.FuzzyDate
 import ani.dantotsu.connections.anilist.api.MediaEdge
 import ani.dantotsu.connections.anilist.api.MediaList
@@ -545,22 +546,17 @@ class AnilistQueries {
         val query = """{Page1:${status(1)}Page2:${status(2)}$myQuery}"""
         val response = executeQuery<Query.HomePageMedia>(query, force = forceRefresh)
         val list = mutableListOf<User>()
-        val threeDaysAgo = Calendar.getInstance().apply {
-            add(Calendar.DAY_OF_MONTH, -3)
-        }.timeInMillis
         if (response?.data?.page1 != null && response.data.page2 != null) {
-            val allPages = mutableListOf(
+            val pages = mutableListOf(
                 response.data.page1.activities,
                 response.data.page2.activities
             )
-            response.data.myActivities?.activities?.let { allPages.add(it) }
-            val activities = allPages.asSequence().flatten()
-                .filter { it.typename != "MessageActivity" }
-                .filter { if (Anilist.adult) true else it.media?.isAdult != true }
-                .filter { it.createdAt * 1000L > threeDaysAgo }
-                .distinctBy { it.id }
-                .toList()
-                .sortedByDescending { it.createdAt }
+            // Batch 2B — own-activity visibility correction (upstream 5ffa682b).
+            response.data.myActivities?.activities?.let { pages.add(it) }
+            val threeDaysAgoMillis = Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_MONTH, -3)
+            }.timeInMillis
+            val activities = mergeStatusActivities(pages, Anilist.adult, threeDaysAgoMillis)
             val anilistActivities = mutableListOf<User>()
             val groupedActivities = activities.groupBy { it.userId }
 
@@ -1881,12 +1877,30 @@ Page(page:$page,perPage:50) {
         return executeQuery(query, force = true)
     }
 
+    // Batch 2B — own-activity visibility correction (upstream 5ffa682b).
+    // Pure merge of followed + own activity pages: MessageActivity items,
+    // over-age items and (unless adult) adult-media items are dropped;
+    // duplicate IDs collapse; survivors sort newest-first. Internal so the
+    // contract is unit-tested (see UserStatusMergeTest).
+    internal fun mergeStatusActivities(
+        pages: List<List<Activity>>,
+        adult: Boolean,
+        threeDaysAgoMillis: Long,
+    ): List<Activity> = pages.asSequence().flatten()
+        .filter { it.typename != "MessageActivity" }
+        .filter { if (adult) true else it.media?.isAdult != true }
+        .filter { it.createdAt * 1000L > threeDaysAgoMillis }
+        .distinctBy { it.id }
+        .toList()
+        .sortedByDescending { it.createdAt }
+
     private fun status(page: Int = 1): String {
         return """Page(page:$page,perPage:50){activities(isFollowing: true,type_in:[TEXT,ANIME_LIST,MANGA_LIST,MEDIA_LIST],sort:ID_DESC){__typename ... on TextActivity{id userId type replyCount text(asHtml:true)siteUrl isLocked isSubscribed replyCount likeCount isLiked createdAt user{id name bannerImage avatar{medium large}}likes{id name isFollowing isFollower bannerImage avatar{medium large}}}... on ListActivity{id userId type replyCount status progress siteUrl isLocked isSubscribed replyCount likeCount isLiked isPinned createdAt user{id name bannerImage avatar{medium large}}media{id isAdult title{english romaji native userPreferred}bannerImage coverImage{extraLarge medium large}}likes{id name isFollowing isFollower bannerImage avatar{medium large}}}... on MessageActivity{id type createdAt}}}"""
     }
 
     // Upstream 5ffa682b: own activities (isFollowing:true omits self).
-    private fun myStatus(): String {
+    // Batch 2B: internal for query-shape tests (see UserStatusMergeTest).
+    internal fun myStatus(): String {
         val uid = Anilist.userid ?: return ""
         return """MyActivities:Page(page:1,perPage:25){activities(userId:$uid,type_in:[TEXT,ANIME_LIST,MANGA_LIST,MEDIA_LIST],sort:ID_DESC){__typename ... on TextActivity{id userId type replyCount text(asHtml:true)siteUrl isLocked isSubscribed replyCount likeCount isLiked createdAt user{id name bannerImage avatar{medium large}}likes{id name isFollowing isFollower bannerImage avatar{medium large}}}... on ListActivity{id userId type replyCount status progress siteUrl isLocked isSubscribed replyCount likeCount isLiked isPinned createdAt user{id name bannerImage avatar{medium large}}media{id isAdult title{english romaji native userPreferred}bannerImage coverImage{extraLarge medium large}}likes{id name isFollowing isFollower bannerImage avatar{medium large}}}... on MessageActivity{id type createdAt}}}"""
     }

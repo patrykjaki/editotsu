@@ -87,8 +87,8 @@ object PrefManager {
                         null
                     }
                     val stringSet: Set<String> = when (raw) {
-                        is Set<*> -> raw.mapNotNull { it?.toString() }.toSet()
-                        is Collection<*> -> raw.mapNotNull { it?.toString() }.toSet()
+                        is Set<*> -> StringIdSets.sanitizeToStrings(raw)
+                        is Collection<*> -> StringIdSets.sanitizeToStrings(raw)
                         else -> {
                             val prefsSet = try {
                                 pref.getStringSet(prefName.name, null)
@@ -139,8 +139,8 @@ object PrefManager {
                         null
                     }
                     val stringSet: Set<String> = when (raw) {
-                        is Set<*> -> raw.mapNotNull { it?.toString() }.toSet()
-                        is Collection<*> -> raw.mapNotNull { it?.toString() }.toSet()
+                        is Set<*> -> StringIdSets.sanitizeToStrings(raw)
+                        is Collection<*> -> StringIdSets.sanitizeToStrings(raw)
                         else -> {
                             val prefsSet = try {
                                 pref.getStringSet(prefName.name, null)
@@ -186,8 +186,8 @@ object PrefManager {
                         null
                     }
                     val stringSet: Set<String>? = when (raw) {
-                        is Set<*> -> raw.mapNotNull { it?.toString() }.toSet()
-                        is Collection<*> -> raw.mapNotNull { it?.toString() }.toSet()
+                        is Set<*> -> StringIdSets.sanitizeToStrings(raw)
+                        is Collection<*> -> StringIdSets.sanitizeToStrings(raw)
                         else -> {
                             val prefsSet = try {
                                 pref.getStringSet(prefName.name, null)
@@ -224,8 +224,8 @@ object PrefManager {
                         null
                     }
                     val stringSet: Set<String> = when (raw) {
-                        is Set<*> -> raw.mapNotNull { it?.toString() }.toSet()
-                        is Collection<*> -> raw.mapNotNull { it?.toString() }.toSet()
+                        is Set<*> -> StringIdSets.sanitizeToStrings(raw)
+                        is Collection<*> -> StringIdSets.sanitizeToStrings(raw)
                         else -> {
                             val prefsSet = try {
                                 irrelevantPreferences!!.getStringSet(key, null)
@@ -286,8 +286,8 @@ object PrefManager {
                         null
                     }
                     val stringSet: Set<String>? = when (raw) {
-                        is Set<*> -> raw.mapNotNull { it?.toString() }.toSet()
-                        is Collection<*> -> raw.mapNotNull { it?.toString() }.toSet()
+                        is Set<*> -> StringIdSets.sanitizeToStrings(raw)
+                        is Collection<*> -> StringIdSets.sanitizeToStrings(raw)
                         else -> {
                             val prefsSet = try {
                                 irrelevantPreferences!!.getStringSet(key, null)
@@ -328,7 +328,7 @@ object PrefManager {
                 is String -> putString(key, value as String)
                 // Upstream 5ffa682b: normalize sets to strings on write so
                 // legacy Int/Long sets cannot crash readers.
-                is Set<*> -> putStringSet(key, (value as Set<*>).map { it.toString() }.toSet())
+                is Set<*> -> putStringSet(key, StringIdSets.normalizeForWrite(value as Set<*>))
                 null -> remove(key)
                 else -> serializeClass(key, value, Location.Irrelevant)
             }

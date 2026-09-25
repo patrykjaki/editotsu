@@ -123,11 +123,18 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
             ContextCompat.RECEIVER_EXPORTED
         )
 
-        val baselineAnchor = (activity as MediaDetailsActivity).binding.mediaBottomBarContainer ?: (activity as MediaDetailsActivity).binding.commentMessageContainer
-        baselineAnchor?.let {
-            val includeSystemPaddings = it != (activity as MediaDetailsActivity).binding.mediaBottomBarContainer
-            binding.mediaSourceRecycler.setBaseline(it, includeSystemNavBar = includeSystemPaddings)
-            binding.mediaSourceRecycler.clipToPadding = false
+        // Batch 2 correction (Blocker 2): after removeExtra, a recreated
+        // activity may bail before binding exists; restored fragments must
+        // not touch uninitialized binding (upstream 8966c9bd crash).
+        val mediaDetailsActivity = activity as? MediaDetailsActivity
+        if (mediaDetailsActivity?.bindingReady == true) {
+            val actBinding = mediaDetailsActivity.binding
+            val baselineAnchor = actBinding.mediaBottomBarContainer ?: actBinding.commentMessageContainer
+            baselineAnchor?.let {
+                val includeSystemPaddings = it != actBinding.mediaBottomBarContainer
+                binding.mediaSourceRecycler.setBaseline(it, includeSystemNavBar = includeSystemPaddings)
+                binding.mediaSourceRecycler.clipToPadding = false
+            }
         }
         screenWidth = resources.displayMetrics.widthPixels.dp
 

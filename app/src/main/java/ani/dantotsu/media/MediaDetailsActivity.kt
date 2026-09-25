@@ -80,6 +80,20 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
     private var adult = false
     lateinit var media: Media
 
+    /** False while the activity is bailing out of [onCreate] without any media. */
+    val bindingReady get() = ::binding.isInitialized
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // Batch 2 correction (review HOLD, Blocker 2): retain ONLY lightweight
+        // identity (two ints) across recreation — never the serialized Media
+        // graph (Assist/binder risk). The intent "media" extra stays removed.
+        if (::media.isInitialized && media.name != "No media found") {
+            outState.putInt("saved_media_id", media.id)
+            outState.putInt("saved_media_mal_id", media.idMAL ?: 0)
+        }
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
 
@@ -88,17 +102,28 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
         // Upstream 3f366f69: drop the large extra so Assist/screenshot serialization
         // never attempts to serialize the Media graph.
         intent.removeExtra("media")
-        val id = intent.getIntExtra("mediaId", -1)
+        // Batch 2 correction: the intent "mediaId" survives recreation; the
+        // saved identity covers opens that carried only the (now removed)
+        // "media" extra. Intent key always wins when present.
+        val intentId = intent.getIntExtra("mediaId", -1).takeIf { it != -1 }
+        val savedId = savedInstanceState?.getInt("saved_media_id", -1)?.takeIf { it != -1 }
+        val id = intentId ?: savedId ?: -1
         if (id != -1) {
             val rescueMode: Boolean = PrefManager.getVal(PrefName.RescueMode)
             runBlocking {
                 withContext(Dispatchers.IO) {
                     if (rescueMode) {
-                        val animeNode = MAL.query.getAnimeDetails(id)
+                        // Prefer the MAL identity matching how this screen was
+                        // opened: intent opens use the intent id (unchanged
+                        // behavior); saved-state opens use the saved MAL id.
+                        val malId = intentId
+                            ?: savedInstanceState?.getInt("saved_media_mal_id", 0)?.takeIf { it != 0 }
+                            ?: id
+                        val animeNode = MAL.query.getAnimeDetails(malId)
                         if (animeNode != null) {
                             media = Media(animeNode, true)
                         } else {
-                            val mangaNode = MAL.query.getMangaDetails(id)
+                            val mangaNode = MAL.query.getMangaDetails(malId)
                             media = if (mangaNode != null) Media(mangaNode, false)
                             else emptyMedia()
                         }
