@@ -4,6 +4,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.minutes
@@ -52,5 +53,29 @@ class RateLimitFormsTest {
             .rateLimit(5, kotlin.time.Duration.ZERO)
             .build()
         assertEquals(1, client.interceptors.size)
+    }
+
+    @Test
+    fun `malformed string url fails fast instead of global limiting`() {
+        try {
+            OkHttpClient.Builder()
+                .rateLimitHost(":::not a url:::", 5)
+                .build()
+            fail("expected IllegalArgumentException for malformed URL")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains(":::not a url:::"))
+        }
+    }
+
+    @Test
+    fun `empty string url fails fast`() {
+        try {
+            OkHttpClient.Builder()
+                .rateLimitHost("", 5)
+                .build()
+            fail("expected IllegalArgumentException for empty URL")
+        } catch (e: IllegalArgumentException) {
+            // Expected: never a silent global limiter.
+        }
     }
 }

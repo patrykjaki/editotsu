@@ -265,14 +265,17 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
     ): List<Video> {
         // Upstream 61e8248b (A): prefer the modern hoster API; skip the
         // deprecated getVideoList(episode) (throws on Lib16) when hosters
-        // exist. Old-only extensions fall back as before.
+        // exist. Review probe: if hoster processing yields no usable video,
+        // fall back to the legacy direct list once (harmless for Lib16 —
+        // still guarded — and recovers baseline results otherwise).
+        // The deprecated API is never called eagerly on success.
         val hosters = runCatching {
             source.getHosterList(episode)
         }.getOrElse { emptyList() }
 
-        val directVideos = if (hosters.isEmpty()) runCatching {
+        suspend fun fetchDirectVideos(): List<Video> = runCatching {
             source.getVideoList(episode)
-        }.getOrElse { emptyList() } else emptyList()
+        }.getOrElse { emptyList() }
 
         val sortedHosters = runCatching {
             if (source is AnimeHttpSource) source.run { hosters.sortHosters() } else hosters
@@ -312,6 +315,8 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
             emptyList()
         }
 
+        val directVideos = if (hosterVideos.isEmpty()) fetchDirectVideos() else emptyList()
+
         val resolvedDirect = coroutineScope {
             directVideos.map {
                 async(Dispatchers.IO) {
@@ -337,16 +342,16 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
             return video
         }
 
-        // Upstream 61e8248b (B): modern resolveVideo first; a useful
-        // resolved URL wins. Legacy getVideoUrl only when the modern path
-        // yields blank/null/default.
-        val resolved = runCatching {
+        // Upstream 61e8248b (B) + review correction: exactly one validity
+        // predicate. A useful modern result wins; a rejected modern object
+        // must never override a successful legacy repair afterward.
+        fun isUsable(v: Video?) =
+            v != null && v.videoUrl.isNotBlank() && v.videoUrl != "null"
+
+        val modern = runCatching {
             if (source is AnimeHttpSource) source.resolveVideo(video) else null
         }.getOrNull()
-
-        if (resolved != null && resolved.videoUrl.isNotBlank() && resolved.videoUrl != "null") {
-            return resolved
-        }
+        if (isUsable(modern)) return modern!!
 
         if (video.videoUrl == "null" || video.videoUrl.isEmpty()) {
             val newUrl = runCatching {
@@ -357,8 +362,6 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
                 return video.copy(videoUrl = newUrl, initialized = true)
             }
         }
-
-        if (resolved != null) return resolved
 
         return video
     }
@@ -883,25 +886,60 @@ class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtrac
 }
 
 internal suspend fun AnimeSource.getEpisodeListCompat(anime: SAnime): List<SEpisode> {
-    // Upstream 61e8248b (C): explicit Lib16 failure modes first.
+    // Upstream 61e8248b (C) + review correction: baseline broad fallback is
+    // preserved (any legacy failure mode still retries legacy), while
+    // coroutine cancellation propagates instead of being swallowed.
+    // Cancellation is rethrown from BOTH levels.
     return try {
         getAnimeEpisodeUpdate(anime, emptyList(), fetchDetails = false, fetchEpisodes = true).episodes
     } catch (_: UnsupportedOperationException) {
-        runCatching { getEpisodeList(anime) }.getOrNull() ?: emptyList()
+        legacyEpisodes(anime)
     } catch (_: NoSuchMethodError) {
-        runCatching { getEpisodeList(anime) }.getOrNull() ?: emptyList()
+        legacyEpisodes(anime)
     } catch (_: NotImplementedError) {
-        runCatching { getEpisodeList(anime) }.getOrNull() ?: emptyList()
+        legacyEpisodes(anime)
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        legacyEpisodes(anime)
+    }
+}
+
+private suspend fun AnimeSource.legacyEpisodes(anime: SAnime): List<SEpisode> {
+    return try {
+        getEpisodeList(anime)
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
     } catch (_: Throwable) {
         emptyList()
     }
 }
 
 internal suspend fun AnimeSource.getSeasonListCompat(anime: SAnime): List<SAnime> {
-    // Upstream 61e8248b (D): getSeasonList directly; the default
-    // getAnimeSeasonUpdate delegates to it anyway (extra network call saved).
+    // Review correction (Blocker 4): update-first preserves extensions that
+    // override getAnimeSeasonUpdate without a direct getSeasonList; the
+    // default update delegates to getSeasonList anyway, so old and Lib16
+    // extensions both resolve. Cancellation propagates from both levels.
+    return try {
+        getAnimeSeasonUpdate(anime, emptyList(), fetchDetails = false, fetchSeasons = true).seasons
+    } catch (_: UnsupportedOperationException) {
+        legacySeasons(anime)
+    } catch (_: NoSuchMethodError) {
+        legacySeasons(anime)
+    } catch (_: NotImplementedError) {
+        legacySeasons(anime)
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        legacySeasons(anime)
+    }
+}
+
+private suspend fun AnimeSource.legacySeasons(anime: SAnime): List<SAnime> {
     return try {
         getSeasonList(anime)
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
     } catch (_: Throwable) {
         emptyList()
     }

@@ -24,8 +24,16 @@ fun OkHttpClient.Builder.rateLimitHost(
 ) = addInterceptor(RateLimitInterceptor(httpUrl.host, permits, period))
 
 // Upstream 61e8248b: String-URL overload for Lib16 extensions.
+// Review correction: fail fast on malformed input — a null host must
+// never silently become a global limiter (null host == global scope).
 fun OkHttpClient.Builder.rateLimitHost(
     url: String,
     permits: Int,
     period: Duration = 1.seconds,
-) = addInterceptor(RateLimitInterceptor(url.toHttpUrlOrNull()?.host, permits, period))
+) = addInterceptor(
+    RateLimitInterceptor(
+        requireNotNull(url.toHttpUrlOrNull()) { "rateLimitHost: malformed URL: $url" }.host,
+        permits,
+        period
+    )
+)

@@ -8,8 +8,10 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.SEpisodeImpl
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.fail
 import org.junit.Test
 
 /**
@@ -143,5 +145,108 @@ class ExtractionCompatTest {
             override suspend fun getSeasonList(anime: SAnime) = seasons
         }
         assertEquals(seasons, source.getSeasonListCompat(SAnimeImpl()))
+    }
+
+    @Test
+    fun `season update-only implementation still works`() = runBlocking {
+        val expected = listOf(SAnimeImpl().apply { url = "https://fake.test/s2" })
+        val source = object : FakeSource() {
+            override suspend fun getAnimeSeasonUpdate(
+                anime: SAnime,
+                seasons: List<SAnime>,
+                fetchDetails: Boolean,
+                fetchSeasons: Boolean
+            ) = eu.kanade.tachiyomi.animesource.model.SAnimeSeasonUpdate(anime, expected)
+
+            override suspend fun getSeasonList(anime: SAnime): List<SAnime> =
+                throw UnsupportedOperationException("no direct list")
+        }
+        assertEquals(expected, source.getSeasonListCompat(SAnimeImpl()))
+    }
+
+    @Test
+    fun `season direct-only implementation still works`() = runBlocking {
+        val seasons = listOf(SAnimeImpl().apply { url = "https://fake.test/s3" })
+        val source = object : FakeSource() {
+            override suspend fun getSeasonList(anime: SAnime) = seasons
+        }
+        // Default update delegates to getSeasonList.
+        assertEquals(seasons, source.getSeasonListCompat(SAnimeImpl()))
+    }
+
+    @Test
+    fun `episode modern cancellation propagates`() {
+        val source = object : FakeSource() {
+            override suspend fun getAnimeEpisodeUpdate(
+                anime: SAnime,
+                episodes: List<SEpisode>,
+                fetchDetails: Boolean,
+                fetchEpisodes: Boolean
+            ): eu.kanade.tachiyomi.animesource.model.SAnimeEpisodeUpdate =
+                throw CancellationException("cancelled")
+        }
+        try {
+            runBlocking { source.getEpisodeListCompat(SAnimeImpl()) }
+            fail("expected CancellationException")
+        } catch (e: CancellationException) {
+            // Expected: cancellation must not become an empty list.
+        }
+    }
+
+    @Test
+    fun `episode legacy cancellation propagates`() {
+        val source = object : FakeSource() {
+            override suspend fun getAnimeEpisodeUpdate(
+                anime: SAnime,
+                episodes: List<SEpisode>,
+                fetchDetails: Boolean,
+                fetchEpisodes: Boolean
+            ): eu.kanade.tachiyomi.animesource.model.SAnimeEpisodeUpdate =
+                throw IllegalStateException("broken")
+
+            override suspend fun getEpisodeList(anime: SAnime): List<SEpisode> =
+                throw CancellationException("cancelled")
+        }
+        try {
+            runBlocking { source.getEpisodeListCompat(SAnimeImpl()) }
+            fail("expected CancellationException")
+        } catch (e: CancellationException) {
+            // Expected.
+        }
+    }
+
+    @Test
+    fun `episode double failure returns empty`() = runBlocking {
+        val source = object : FakeSource() {
+            override suspend fun getAnimeEpisodeUpdate(
+                anime: SAnime,
+                episodes: List<SEpisode>,
+                fetchDetails: Boolean,
+                fetchEpisodes: Boolean
+            ): eu.kanade.tachiyomi.animesource.model.SAnimeEpisodeUpdate =
+                throw IllegalStateException("broken")
+
+            override suspend fun getEpisodeList(anime: SAnime): List<SEpisode> =
+                throw IllegalStateException("also broken")
+        }
+        assertEquals(emptyList<SEpisode>(), source.getEpisodeListCompat(SAnimeImpl()))
+    }
+
+    @Test
+    fun `hoster dead-end falls back to legacy direct list`() = runBlocking {
+        val playable = Video(videoUrl = "https://cdn.test/direct.mp4", videoTitle = "d", initialized = true)
+        val source = object : FakeSource() {
+            override suspend fun getHosterList(episode: SEpisode) = listOf(
+                eu.kanade.tachiyomi.animesource.model.Hoster(
+                    hosterUrl = "https://dead.test/v",
+                    hosterName = "Dead",
+                    videoList = emptyList()
+                )
+            )
+
+            override suspend fun getVideoList(episode: SEpisode) = listOf(playable)
+        }
+        val out = parserFor(source).getVideoList(source, episode())
+        assertEquals(listOf("https://cdn.test/direct.mp4"), out.map { it.videoUrl })
     }
 }
