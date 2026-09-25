@@ -259,16 +259,28 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
             emptyList()
         }
     }
+    /**
+     * Review correction (HOLD round 3, Blocker 1): playability is defined
+     * EXACTLY as final video acceptance below (usable `videoUrl` only).
+     * `url` is the video PAGE url (see [Video.url]), which the final filter
+     * also drops when `videoUrl` is blank — counting page-only entries as
+     * "playable" here would merely relocate the data loss into that filter
+     * while suppressing the direct fallback. One valid entry retains
+     * modern-first behavior.
+     */
+    internal fun Video.isPlayableForPicker(): Boolean =
+        videoUrl.isNotBlank() && videoUrl != "null"
+
     suspend fun getVideoList(
         source: AnimeSource,
         episode: SEpisode
     ): List<Video> {
-        // Upstream 61e8248b (A): prefer the modern hoster API; skip the
-        // deprecated getVideoList(episode) (throws on Lib16) when hosters
-        // exist. Review probe: if hoster processing yields no usable video,
-        // fall back to the legacy direct list once (harmless for Lib16 —
-        // still guarded — and recovers baseline results otherwise).
-        // The deprecated API is never called eagerly on success.
+        // Upstream 61e8248b (A) + review corrections: prefer the modern
+        // hoster API; skip the deprecated getVideoList(episode) (throws on
+        // Lib16) when hosters yield PLAYABLE output. Legacy direct is the
+        // fallback when modern processing yields nothing playable — never
+        // eager on success, harmless for Lib16 (still guarded). Presence
+        // of a Video object is not success; see isPlayableForPicker.
         val hosters = runCatching {
             source.getHosterList(episode)
         }.getOrElse { emptyList() }
@@ -315,7 +327,11 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
             emptyList()
         }
 
-        val directVideos = if (hosterVideos.isEmpty()) fetchDirectVideos() else emptyList()
+        val directVideos = if (hosterVideos.any { it.isPlayableForPicker() }) {
+            emptyList()
+        } else {
+            fetchDirectVideos()
+        }
 
         val resolvedDirect = coroutineScope {
             directVideos.map {
@@ -391,6 +407,11 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
             }
             Logger.log("query: $query")
             convertAnimesPageToShowResponse(res)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            // Review correction (Blocker 2): cancellation rethrown by the
+            // inner compatibility block must propagate end-to-end instead
+            // of becoming an empty result here.
+            throw e
         } catch (e: CloudflareBypassException) {
             Logger.log("Exception in search: $e")
             Logger.log(e)

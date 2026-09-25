@@ -47,6 +47,15 @@ class RateLimitFormsTest {
     }
 
     @Test
+    fun `http urls also register host interceptors`() {
+        val client = OkHttpClient.Builder()
+            .rateLimitHost("http://example.test/path", 5, 1.seconds)
+            .build()
+        assertEquals(1, client.interceptors.size)
+        assertTrue(client.interceptors.single() is RateLimitInterceptor)
+    }
+
+    @Test
     fun `sub-second durations clamp instead of crashing`() {
         // coerceAtLeast(1L): zero/negative periods must not break construction.
         val client = OkHttpClient.Builder()
@@ -68,8 +77,7 @@ class RateLimitFormsTest {
     }
 
     @Test
-    fun `empty string url fails fast`() {
-        try {
+    fun `empty string url fails fast`() {        try {
             OkHttpClient.Builder()
                 .rateLimitHost("", 5)
                 .build()
