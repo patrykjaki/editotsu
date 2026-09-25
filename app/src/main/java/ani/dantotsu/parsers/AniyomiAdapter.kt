@@ -76,6 +76,10 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
             userSelectDub = value
         }
 
+    // Upstream 61e8248b (F): per-language memoization (the local setDub
+    // intentionally stays a no-op, so no cache-clear hook is needed there).
+    private val isDubAvailableCache = mutableMapOf<Int, Boolean>()
+
     private fun getDub(): Boolean {
         if (sourceLanguage >= extension.sources.size) {
             sourceLanguage = extension.sources.size - 1
@@ -107,22 +111,26 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
     }
 
     override fun isDubAvailableSeparately(sourceLang: Int?): Boolean {
-        val configurableSource = extension.sources[sourceLanguage] as? ConfigurableAnimeSource
+        // Upstream 61e8248b (F): honor the requested language, avoid the
+        // out-of-bounds index, and memoize the prefs scan.
+        val targetLang = sourceLang ?: sourceLanguage
+        isDubAvailableCache[targetLang]?.let { return it }
+        val configurableSource = extension.sources.getOrNull(targetLang) as? ConfigurableAnimeSource
             ?: return false
         currContext()?.let { context ->
-            Logger.log("isDubAvailableSeparately: ${configurableSource.getPreferenceKey()}")
             val sharedPreferences =
                 context.getSharedPreferences(
                     configurableSource.getPreferenceKey(),
                     Context.MODE_PRIVATE
                 )
-            sharedPreferences.all.filterValues {
+            val available = sharedPreferences.all.any { (_, value) ->
                 MediaNameAdapter.setSubDub(
-                    it.toString(),
+                    value.toString(),
                     MediaNameAdapter.SubDubType.NULL
                 ) != null
             }
-                .forEach { _ -> return true }
+            isDubAvailableCache[targetLang] = available
+            return available
         }
         return false
     }
@@ -255,13 +263,16 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
         source: AnimeSource,
         episode: SEpisode
     ): List<Video> {
-        val directVideos = runCatching {
-            source.getVideoList(episode)
-        }.getOrElse { emptyList() }
-
+        // Upstream 61e8248b (A): prefer the modern hoster API; skip the
+        // deprecated getVideoList(episode) (throws on Lib16) when hosters
+        // exist. Old-only extensions fall back as before.
         val hosters = runCatching {
             source.getHosterList(episode)
         }.getOrElse { emptyList() }
+
+        val directVideos = if (hosters.isEmpty()) runCatching {
+            source.getVideoList(episode)
+        }.getOrElse { emptyList() } else emptyList()
 
         val sortedHosters = runCatching {
             if (source is AnimeHttpSource) source.run { hosters.sortHosters() } else hosters
@@ -326,6 +337,17 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
             return video
         }
 
+        // Upstream 61e8248b (B): modern resolveVideo first; a useful
+        // resolved URL wins. Legacy getVideoUrl only when the modern path
+        // yields blank/null/default.
+        val resolved = runCatching {
+            if (source is AnimeHttpSource) source.resolveVideo(video) else null
+        }.getOrNull()
+
+        if (resolved != null && resolved.videoUrl.isNotBlank() && resolved.videoUrl != "null") {
+            return resolved
+        }
+
         if (video.videoUrl == "null" || video.videoUrl.isEmpty()) {
             val newUrl = runCatching {
                 if (source is AnimeHttpSource) source.getVideoUrl(video) else null
@@ -335,10 +357,6 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
                 return video.copy(videoUrl = newUrl, initialized = true)
             }
         }
-
-        val resolved = runCatching {
-            if (source is AnimeHttpSource) source.resolveVideo(video) else null
-        }.getOrNull()
 
         if (resolved != null) return resolved
 
@@ -356,7 +374,16 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
         return try {
             val res = try {
                 source.getSearchAnime(1, query, source.getFilterList())
-            } catch (e: Throwable) {
+            } catch (_: UnsupportedOperationException) {
+                // Upstream 61e8248b (E): precise Lib16 fallbacks; any other
+                // non-cancellation Throwable keeps the local broad fallback
+                // (older extensions unaffected, Cloudflare path intact).
+                source.fetchSearchAnime(1, query, source.getFilterList()).awaitSingle()
+            } catch (_: NoSuchMethodError) {
+                source.fetchSearchAnime(1, query, source.getFilterList()).awaitSingle()
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (_: Throwable) {
                 source.fetchSearchAnime(1, query, source.getFilterList()).awaitSingle()
             }
             Logger.log("query: $query")
@@ -855,26 +882,27 @@ class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtrac
     }
 }
 
-private suspend fun AnimeSource.getEpisodeListCompat(anime: SAnime): List<SEpisode> {
+internal suspend fun AnimeSource.getEpisodeListCompat(anime: SAnime): List<SEpisode> {
+    // Upstream 61e8248b (C): explicit Lib16 failure modes first.
     return try {
         getAnimeEpisodeUpdate(anime, emptyList(), fetchDetails = false, fetchEpisodes = true).episodes
+    } catch (_: UnsupportedOperationException) {
+        runCatching { getEpisodeList(anime) }.getOrNull() ?: emptyList()
+    } catch (_: NoSuchMethodError) {
+        runCatching { getEpisodeList(anime) }.getOrNull() ?: emptyList()
+    } catch (_: NotImplementedError) {
+        runCatching { getEpisodeList(anime) }.getOrNull() ?: emptyList()
     } catch (_: Throwable) {
-        try {
-            getEpisodeList(anime)
-        } catch (_: Throwable) {
-            emptyList()
-        }
+        emptyList()
     }
 }
 
-private suspend fun AnimeSource.getSeasonListCompat(anime: SAnime): List<SAnime> {
+internal suspend fun AnimeSource.getSeasonListCompat(anime: SAnime): List<SAnime> {
+    // Upstream 61e8248b (D): getSeasonList directly; the default
+    // getAnimeSeasonUpdate delegates to it anyway (extra network call saved).
     return try {
-        getAnimeSeasonUpdate(anime, emptyList(), fetchDetails = false, fetchSeasons = true).seasons
+        getSeasonList(anime)
     } catch (_: Throwable) {
-        try {
-            getSeasonList(anime)
-        } catch (_: Throwable) {
-            emptyList()
-        }
+        emptyList()
     }
 }
