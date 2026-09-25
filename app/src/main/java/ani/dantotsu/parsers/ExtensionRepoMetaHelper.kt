@@ -379,7 +379,16 @@ object ExtensionRepoMetaHelper {
         return rx.Observable.defer {
             val generation = beginInstallProvenance(pkgName, repoUrl, repoName)
             val installed = java.util.concurrent.atomic.AtomicBoolean(false)
-            sourceFactory()
+            // Final fix (review round 3): a synchronously throwing factory
+            // must not leak the provisional slot — the lifecycle operators
+            // below would never attach. Convert to a stream error instead.
+            val source = try {
+                sourceFactory()
+            } catch (t: Throwable) {
+                rollbackInstallProvenance(pkgName, generation)
+                return@defer rx.Observable.error<eu.kanade.tachiyomi.extension.InstallStep>(t)
+            }
+            source
                 .doOnNext { step ->
                     if (step == eu.kanade.tachiyomi.extension.InstallStep.Installed) {
                         installed.set(true)

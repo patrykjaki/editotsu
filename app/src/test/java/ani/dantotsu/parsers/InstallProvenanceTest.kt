@@ -156,4 +156,29 @@ class InstallProvenanceTest {
         assertEquals(true, ExtensionRepoMetaHelper.rollbackInstallProvenance(pkg, genB))
         assertNull(ExtensionRepoMetaHelper.getInstalledRepo(pkg))
     }
+
+    @Test
+    fun `factory synchronous throw clears provisional on fresh install`() {
+        val pkg = pkg()
+        val boom = IllegalStateException("factory boom")
+        var seenError: Throwable? = null
+        ExtensionRepoMetaHelper.trackInstallProvenance(pkg, repo("a"), null, sourceFactory = {
+            throw boom
+        }).subscribe({ }, { seenError = it })
+        // Subscriber receives the error; nothing provisional remains.
+        assertEquals(boom, seenError)
+        assertNull(ExtensionRepoMetaHelper.getInstalledRepo(pkg))
+    }
+
+    @Test
+    fun `factory synchronous throw preserves OLD committed origin`() {
+        val pkg = pkg()
+        ExtensionRepoMetaHelper.saveInstalledExtensionRepo(pkg, repo("old"), "Old")
+        var seenError: Throwable? = null
+        ExtensionRepoMetaHelper.trackInstallProvenance(pkg, repo("a"), null, sourceFactory = {
+            throw IllegalStateException("factory boom")
+        }).subscribe({ }, { seenError = it })
+        assertEquals(true, seenError is IllegalStateException)
+        assertEquals(repo("old"), ExtensionRepoMetaHelper.getInstalledRepo(pkg))
+    }
 }
