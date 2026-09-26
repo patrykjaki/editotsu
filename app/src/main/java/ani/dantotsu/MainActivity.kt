@@ -635,7 +635,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         if (::binding.isInitialized) {
             binding.viewpager.adapter = null
+            clearBottomBar(binding.includedNavbar.navbar)
         }
-        clearBottomBar()
     }
 }

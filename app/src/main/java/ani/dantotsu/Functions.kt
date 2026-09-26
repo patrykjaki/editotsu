@@ -178,8 +178,13 @@ var bottomBar: AnimatedBottomBar
         _bottomBarRef = java.lang.ref.WeakReference(value)
     }
 
-fun clearBottomBar() {
-    _bottomBarRef = null
+fun clearBottomBar(expected: AnimatedBottomBar) {
+    // Identity-scoped: only the owning activity may release the slot.
+    // An earlier activity destroyed after a later one assigned its own
+    // navbar must not erase the live owner's reference.
+    if (_bottomBarRef?.get() === expected) {
+        _bottomBarRef = null
+    }
 }
 var selectedOption = 1
 
