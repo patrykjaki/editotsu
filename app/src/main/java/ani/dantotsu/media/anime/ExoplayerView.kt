@@ -530,13 +530,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 dialog.setCanceledOnTouchOutside(true)
                 dialog.window?.setLayout(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 val slider = dialog.findViewById<Slider>(R.id.seekbar)
-                slider.stepSize = 1f
-                val from = slider.valueFrom
-                val to = slider.valueTo
-                val step = if (slider.stepSize > 0f) slider.stepSize else 1f
-                val clamped = skipTime.toFloat().coerceIn(from, to)
-                val snapped = from + Math.round((clamped - from) / step) * step
-                slider.value = snapped.coerceIn(from, to)
+                slider.value = if (skipTime <= 120) skipTime.toFloat() else 120f
                 slider.addOnChangeListener { _, value, _ ->
                     skipTime = value.toInt()
                     PrefManager.setVal(PrefName.SkipTime, skipTime)
