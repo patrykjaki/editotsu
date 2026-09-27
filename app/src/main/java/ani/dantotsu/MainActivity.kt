@@ -352,41 +352,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        var launched = false
-        intent.extras?.let { extras ->
-            val fragmentToLoad = extras.getString("FRAGMENT_TO_LOAD")
-            val mediaId = extras.getInt("mediaId", -1)
-            val commentId = extras.getInt("commentId", -1)
-            val activityId = extras.getInt("activityId", -1)
-
-            if (fragmentToLoad != null && mediaId != -1 && commentId != -1) {
-                val detailIntent = Intent(this, MediaDetailsActivity::class.java).apply {
-                    putExtra("FRAGMENT_TO_LOAD", fragmentToLoad)
-                    putExtra("mediaId", mediaId)
-                    putExtra("commentId", commentId)
-                }
-                launched = true
-                startActivity(detailIntent)
-            } else if (fragmentToLoad == "FEED" && activityId != -1) {
-                if (!PrefManager.getVal<Boolean>(PrefName.RescueMode)) {
-                    val feedIntent = Intent(this, FeedActivity::class.java).apply {
-                        putExtra("FRAGMENT_TO_LOAD", "NOTIFICATIONS")
-                        putExtra("activityId", activityId)
-                    }
-                    launched = true
-                    startActivity(feedIntent)
-                }
-            } else if (fragmentToLoad == "NOTIFICATIONS" && activityId != -1) {
-                Logger.log("MainActivity, onCreate: $activityId")
-                if (!PrefManager.getVal<Boolean>(PrefName.RescueMode)) {
-                    val notificationIntent = Intent(this, NotificationActivity::class.java).apply {
-                        putExtra("activityId", activityId)
-                    }
-                    launched = true
-                    startActivity(notificationIntent)
-                }
-            }
-        }
+        var launched = handleIncomingExtras(intent)
         val offlineMode: Boolean = PrefManager.getVal(PrefName.OfflineMode)
         if (!isOnline(this)) {
             snackString(this@MainActivity.getString(R.string.no_internet_connection))
@@ -402,26 +368,7 @@ class MainActivity : AppCompatActivity() {
                 if (!load && !launched) {
                     scope.launch(Dispatchers.IO) {
                         model.loadMain(this@MainActivity)
-                        // Upstream ac76c79e: notifications may carry either key.
-                        val id = intent.extras?.getInt("mediaId", 0)?.takeIf { it != 0 }
-                            ?: intent.extras?.getInt("media", 0) ?: 0
-                        val isMAL = intent.extras?.getBoolean("mal") ?: false
-                        val cont = intent.extras?.getBoolean("continue") ?: false
-                        val mediaType = intent.extras?.getString("mediaType")
-                        if (id != 0) {
-                            val media = withContext(Dispatchers.IO) {
-                                Anilist.query.getMedia(id, isMAL, mediaType)
-                            }
-                            if (media != null) {
-                                media.cameFromContinue = cont
-                                startActivity(
-                                    Intent(this@MainActivity, MediaDetailsActivity::class.java)
-                                        .putExtra("media", media as Serializable)
-                                )
-                            } else {
-                                snackString(this@MainActivity.getString(R.string.anilist_not_found))
-                            }
-                        }
+                        launchMediaFromExtras(intent)
                         val username = intent.extras?.getString("username")
                         if (username != null) {
                             val nameInt = username.toIntOrNull()
@@ -500,18 +447,106 @@ class MainActivity : AppCompatActivity() {
         params.updateMargins(bottom = margin.toPx)
     }
 
+    /**
+     * MAX MERGE M6: shared deep-link extras dispatcher (upstream 56d67930
+     * `handleIncomingExtras` slice). Called from onCreate and onNewIntent so
+     * a second tap while alive is routed instead of dropped.
+     * @return true when a detail/feed/notification activity was launched.
+     */
+    private fun handleIncomingExtras(targetIntent: Intent): Boolean {
+        var launched = false
+        targetIntent.extras?.let { extras ->
+            val fragmentToLoad = extras.getString("FRAGMENT_TO_LOAD")
+            val mediaId = extras.getInt("mediaId", -1)
+            val commentId = extras.getInt("commentId", -1)
+            val activityId = extras.getInt("activityId", -1)
+
+            if (fragmentToLoad != null && mediaId != -1 && commentId != -1) {
+                val detailIntent = Intent(this, MediaDetailsActivity::class.java).apply {
+                    putExtra("FRAGMENT_TO_LOAD", fragmentToLoad)
+                    putExtra("mediaId", mediaId)
+                    putExtra("commentId", commentId)
+                }
+                launched = true
+                startActivity(detailIntent)
+            } else if (fragmentToLoad == "FEED" && activityId != -1) {
+                if (!PrefManager.getVal<Boolean>(PrefName.RescueMode)) {
+                    val feedIntent = Intent(this, FeedActivity::class.java).apply {
+                        putExtra("FRAGMENT_TO_LOAD", "NOTIFICATIONS")
+                        putExtra("activityId", activityId)
+                    }
+                    launched = true
+                    startActivity(feedIntent)
+                }
+            } else if (fragmentToLoad == "NOTIFICATIONS" && activityId != -1) {
+                Logger.log("MainActivity, incoming: $activityId")
+                if (!PrefManager.getVal<Boolean>(PrefName.RescueMode)) {
+                    val notificationIntent = Intent(this, NotificationActivity::class.java).apply {
+                        putExtra("activityId", activityId)
+                    }
+                    launched = true
+                    startActivity(notificationIntent)
+                }
+            }
+        }
+        return launched
+    }
+
+    private suspend fun launchMediaFromExtras(targetIntent: Intent) {
+        // Upstream ac76c79e: notifications may carry either key.
+        val id = targetIntent.extras?.getInt("mediaId", 0)?.takeIf { it != 0 }
+            ?: targetIntent.extras?.getInt("media", 0) ?: 0
+        val isMAL = targetIntent.extras?.getBoolean("mal") ?: false
+        val cont = targetIntent.extras?.getBoolean("continue") ?: false
+        val mediaType = targetIntent.extras?.getString("mediaType")
+        if (id != 0) {
+            val media = withContext(Dispatchers.IO) {
+                Anilist.query.getMedia(id, isMAL, mediaType)
+            }
+            if (media != null) {
+                media.cameFromContinue = cont
+                startActivity(
+                    Intent(this@MainActivity, MediaDetailsActivity::class.java)
+                        .putExtra("media", media as Serializable)
+                )
+            } else {
+                snackString(this@MainActivity.getString(R.string.anilist_not_found))
+            }
+        }
+    }
+
     private fun handleViewIntent(intent: Intent) {
         val uri: Uri? = intent.data
         try {
             if (uri == null) {
                 throw Exception("Uri is null")
             }
-            if ((uri.scheme == "tachiyomi" || uri.scheme == "aniyomi" || uri.scheme == "novelyomi") && (uri.host == "add-repo" || uri.host == "extension-store")) {
+            // Custom-scheme media/user links route through the UrlMedia router;
+            // repo imports fall through to the alias branch below.
+            if ((uri.scheme.equals("editotsu", ignoreCase = true) ||
+                    uri.scheme.equals("dantotsu", ignoreCase = true)) &&
+                uri.host != "add-repo" && uri.host != "extension-store"
+            ) {
+                // Custom-scheme links route through the UrlMedia router,
+                // which understands editotsu:// (primary) + dantotsu:// (compat).
+                startActivity(Intent(this, ani.dantotsu.connections.anilist.UrlMedia::class.java).setData(uri))
+                return
+            }
+            if ((uri.scheme == "tachiyomi" || uri.scheme == "aniyomi" || uri.scheme == "novelyomi" ||
+                        uri.scheme == "editotsu" || uri.scheme == "dantotsu") &&
+                (uri.host == "add-repo" || uri.host == "extension-store")
+            ) {
                 val url = uri.getQueryParameter("url") ?: throw Exception("No url for repo import")
                 val (prefName, name) = when (uri.scheme) {
                     "tachiyomi" -> PrefName.MangaExtensionRepos to "Manga"
                     "aniyomi" -> PrefName.AnimeExtensionRepos to "Anime"
                     "novelyomi" -> PrefName.NovelExtensionRepos to "Novel"
+                    "editotsu", "dantotsu" -> when (uri.getQueryParameter("type")?.lowercase()) {
+                        "anime" -> PrefName.AnimeExtensionRepos to "Anime"
+                        "manga" -> PrefName.MangaExtensionRepos to "Manga"
+                        "novel" -> PrefName.NovelExtensionRepos to "Novel"
+                        else -> throw Exception("Repo import needs type=anime|manga|novel")
+                    }
                     else -> throw Exception("Invalid scheme")
                 }
                 val savedRepos: Set<String> = PrefManager.getVal(prefName)
@@ -628,6 +663,30 @@ class MainActivity : AppCompatActivity() {
             selectedOption = 1
             binding.includedNavbar.navbar.selectTabAt(1)
             binding.viewpager.setCurrentItem(1, false)
+        }
+        // M6: route deep links/notifications arriving while alive.
+        if (Intent.ACTION_VIEW == intent.action) {
+            handleViewIntent(intent)
+        }
+        if (::binding.isInitialized) {
+            handleIncomingExtras(intent)
+            scope.launch(Dispatchers.IO) {
+                launchMediaFromExtras(intent)
+                intent.extras?.getString("username")?.let { username ->
+                    val nameInt = username.toIntOrNull()
+                    if (nameInt != null) {
+                        startActivity(
+                            Intent(this@MainActivity, ProfileActivity::class.java)
+                                .putExtra("userId", nameInt)
+                        )
+                    } else {
+                        startActivity(
+                            Intent(this@MainActivity, ProfileActivity::class.java)
+                                .putExtra("username", username)
+                        )
+                    }
+                }
+            }
         }
     }
 

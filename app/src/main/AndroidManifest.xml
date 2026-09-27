@@ -375,6 +375,17 @@
                 <data android:host="anilist.co" />
                 <data android:pathPrefix="/user" />
             </intent-filter>
+            <!-- MAX MERGE M6: custom-scheme deep links. editotsu:// primary,
+                 dantotsu:// backwards compat. No dantotsu.app/autoVerify. -->
+            <intent-filter android:label="Open in Editotsu">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="editotsu" />
+                <data android:scheme="dantotsu" />
+            </intent-filter>
         </activity>
         <activity
             android:name=".MainActivity"
@@ -410,6 +421,8 @@
                 <data android:scheme="tachiyomi"/>
                 <data android:scheme="aniyomi"/>
                 <data android:scheme="novelyomi"/>
+                <data android:scheme="editotsu"/>
+                <data android:scheme="dantotsu"/>
             </intent-filter>
         </activity>
         <activity
