@@ -99,7 +99,14 @@ class ListViewModel : ViewModel() {
 
     fun getAllTags(): List<String> {
         val allMedia = unfilteredLists.value?.values?.flatten() ?: return emptyList()
-        return allMedia.flatMap { it.tags }.distinct().sorted()
+        // MAX MERGE M3: same spoiler rule as details chips — when masked,
+        // spoiler tags are not offered as filter options.
+        val hideSpoilers = PrefManager.getVal<Boolean>(PrefName.HideSpoilerTags)
+        return allMedia.flatMap { media ->
+            media.tags.filterIndexed { index, _ ->
+                !hideSpoilers || media.tagsIsSpoiler.getOrNull(index) != true
+            }
+        }.distinct().sorted()
     }
 
     fun getAllGenres(): List<String> {

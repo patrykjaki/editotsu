@@ -206,10 +206,15 @@ class AnilistQueries {
                         }
 
                         fetchedMedia.tags?.apply {
+                            // MAX MERGE M3 (upstream e954d9f1): keep ALL tags
+                            // with parallel spoiler flags so the details UI can
+                            // mask-in-place. Compact fallback still excludes
+                            // spoilers unconditionally (M1 baseline preserved).
                             media.tags = arrayListOf()
+                            media.tagsIsSpoiler = arrayListOf()
                             this.forEach { i ->
-                                if (i.isMediaSpoiler == false)
-                                    media.tags.add("${i.name} : ${i.rank.toString()}%")
+                                media.tags.add("${i.name} : ${i.rank.toString()}%")
+                                media.tagsIsSpoiler.add(i.isMediaSpoiler == true)
                             }
                         }
 
