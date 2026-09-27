@@ -21,6 +21,7 @@ import androidx.core.graphics.drawable.toBitmap
 import ani.dantotsu.MainActivity
 import ani.dantotsu.R
 import ani.dantotsu.util.BitmapUtil
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -128,6 +129,8 @@ class ContinueWidget : AppWidgetProvider() {
                     appWidgetIds.forEach { appWidgetId ->
                         updateWidget(context, appWidgetManager, appWidgetId)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                 }
             }

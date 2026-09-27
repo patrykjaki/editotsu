@@ -15,6 +15,7 @@ import ani.dantotsu.databinding.ItemGifBinding
 import ani.dantotsu.loadImage
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -84,6 +85,8 @@ class GifPickerBottomDialog : BottomSheetDialogFragment() {
                     headers = mapOf("Content-Type" to "application/json")
                 )
                 parseGifs(response.text)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 emptyList()
             }
@@ -114,6 +117,8 @@ class GifPickerBottomDialog : BottomSheetDialogFragment() {
                     headers = mapOf("Content-Type" to "application/json")
                 )
                 parseGifs(response.text)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 emptyList()
             }

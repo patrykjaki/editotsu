@@ -512,8 +512,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             }
         }
 
-        // Screenshot (M6, MPV-native): one tap captures via mpv's
-        // screenshot command; long-press shares the last capture.
+        // Screenshot (M6 minimal MPV-native capture): one tap captures via
+        // mpv's screenshot command into the app-private Pictures/Editotsu
+        // dir. No long-press/share, no gallery flow — recorded follow-up.
         exoScreenshot.setOnClickListener {
             takePlayerScreenshot()
         }
@@ -1397,6 +1398,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                         engine?.seekRelative(-seekMs)
                     }
                     ACTION_PIP_PLAY_PAUSE -> {
+                        // togglePlayPause posts async to the engine dispatcher,
+                        // so isPlaying still reads pre-toggle here: the
+                        // inversion predicts the post-toggle state and
+                        // onIsPlayingChanged reconciles authoritatively.
                         coordinator?.togglePlayPause()
                         updatePipActions(!(engine?.isPlaying == true))
                     }

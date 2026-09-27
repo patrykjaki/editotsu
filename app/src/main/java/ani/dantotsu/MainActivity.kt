@@ -454,42 +454,48 @@ class MainActivity : AppCompatActivity() {
      * @return true when a detail/feed/notification activity was launched.
      */
     private fun handleIncomingExtras(targetIntent: Intent): Boolean {
-        var launched = false
-        targetIntent.extras?.let { extras ->
-            val fragmentToLoad = extras.getString("FRAGMENT_TO_LOAD")
-            val mediaId = extras.getInt("mediaId", -1)
-            val commentId = extras.getInt("commentId", -1)
-            val activityId = extras.getInt("activityId", -1)
-
-            if (fragmentToLoad != null && mediaId != -1 && commentId != -1) {
+        val route = IncomingRoute(
+            fragmentToLoad = targetIntent.extras?.getString("FRAGMENT_TO_LOAD"),
+            mediaId = targetIntent.extras?.getInt("mediaId", -1) ?: -1,
+            commentId = targetIntent.extras?.getInt("commentId", -1) ?: -1,
+            activityId = targetIntent.extras?.getInt("activityId", -1) ?: -1,
+        )
+        return when (decideRoute(route)) {
+            RouteDecision.CommentThread -> {
                 val detailIntent = Intent(this, MediaDetailsActivity::class.java).apply {
-                    putExtra("FRAGMENT_TO_LOAD", fragmentToLoad)
-                    putExtra("mediaId", mediaId)
-                    putExtra("commentId", commentId)
+                    putExtra("FRAGMENT_TO_LOAD", route.fragmentToLoad)
+                    putExtra("mediaId", route.mediaId)
+                    putExtra("commentId", route.commentId)
                 }
-                launched = true
                 startActivity(detailIntent)
-            } else if (fragmentToLoad == "FEED" && activityId != -1) {
+                true
+            }
+            RouteDecision.Feed -> {
                 if (!PrefManager.getVal<Boolean>(PrefName.RescueMode)) {
                     val feedIntent = Intent(this, FeedActivity::class.java).apply {
                         putExtra("FRAGMENT_TO_LOAD", "NOTIFICATIONS")
-                        putExtra("activityId", activityId)
+                        putExtra("activityId", route.activityId)
                     }
-                    launched = true
                     startActivity(feedIntent)
-                }
-            } else if (fragmentToLoad == "NOTIFICATIONS" && activityId != -1) {
-                Logger.log("MainActivity, incoming: $activityId")
-                if (!PrefManager.getVal<Boolean>(PrefName.RescueMode)) {
-                    val notificationIntent = Intent(this, NotificationActivity::class.java).apply {
-                        putExtra("activityId", activityId)
-                    }
-                    launched = true
-                    startActivity(notificationIntent)
+                    true
+                } else {
+                    false
                 }
             }
+            RouteDecision.Notifications -> {
+                Logger.log("MainActivity, incoming: ${route.activityId}")
+                if (!PrefManager.getVal<Boolean>(PrefName.RescueMode)) {
+                    val notificationIntent = Intent(this, NotificationActivity::class.java).apply {
+                        putExtra("activityId", route.activityId)
+                    }
+                    startActivity(notificationIntent)
+                    true
+                } else {
+                    false
+                }
+            }
+            else -> false
         }
-        return launched
     }
 
     private suspend fun launchMediaFromExtras(targetIntent: Intent) {
@@ -668,22 +674,26 @@ class MainActivity : AppCompatActivity() {
         if (Intent.ACTION_VIEW == intent.action) {
             handleViewIntent(intent)
         }
+        // M6 HOLD Blocker 1: a dedicated destination consumes the intent;
+        // the generic media/profile fallback must not double-route.
         if (::binding.isInitialized) {
-            handleIncomingExtras(intent)
-            scope.launch(Dispatchers.IO) {
-                launchMediaFromExtras(intent)
-                intent.extras?.getString("username")?.let { username ->
-                    val nameInt = username.toIntOrNull()
-                    if (nameInt != null) {
-                        startActivity(
-                            Intent(this@MainActivity, ProfileActivity::class.java)
-                                .putExtra("userId", nameInt)
-                        )
-                    } else {
-                        startActivity(
-                            Intent(this@MainActivity, ProfileActivity::class.java)
-                                .putExtra("username", username)
-                        )
+            val launched = handleIncomingExtras(intent)
+            if (!launched) {
+                scope.launch(Dispatchers.IO) {
+                    launchMediaFromExtras(intent)
+                    intent.extras?.getString("username")?.let { username ->
+                        val nameInt = username.toIntOrNull()
+                        if (nameInt != null) {
+                            startActivity(
+                                Intent(this@MainActivity, ProfileActivity::class.java)
+                                    .putExtra("userId", nameInt)
+                            )
+                        } else {
+                            startActivity(
+                                Intent(this@MainActivity, ProfileActivity::class.java)
+                                    .putExtra("username", username)
+                            )
+                        }
                     }
                 }
             }

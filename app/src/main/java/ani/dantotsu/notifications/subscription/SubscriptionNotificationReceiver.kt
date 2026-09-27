@@ -8,6 +8,7 @@ import ani.dantotsu.notifications.TaskScheduler
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -25,6 +26,8 @@ class SubscriptionNotificationReceiver : BroadcastReceiver() {
                     TaskScheduler.TaskType.SUBSCRIPTION_NOTIFICATION,
                     subscriptionInterval
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.log(e)
             } finally {

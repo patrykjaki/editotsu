@@ -144,16 +144,13 @@ class AnilistHomeViewModel : ViewModel() {
     // Upstream 5ffa682b: pull-to-refresh bypasses the 15-min stories cache.
     // Upstream edb1a9eb: a failed fetch posts empty (not null) so the
     // stories rail resolves instead of spinning forever.
+    // M6 HOLD Blocker 2: cancellation is not a fetch result — it
+    // propagates and nothing is posted.
     suspend fun initUserStatus(forceRefresh: Boolean = false) {
         if (forceRefresh || userStatus.value == null) {
             userStatus.postValue(null)
         }
-        val res = try {
-            Anilist.query.getUserStatus(forceRefresh)
-        } catch (_: Exception) {
-            null
-        }
-        userStatus.postValue(res ?: arrayListOf())
+        userStatus.postValue(fetchUserStatusLenient { Anilist.query.getUserStatus(forceRefresh) })
     }
 
     private val hidden: MutableLiveData<ArrayList<Media>> =

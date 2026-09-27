@@ -14,6 +14,7 @@ import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
 import ani.dantotsu.toast
 import ani.dantotsu.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -443,13 +444,13 @@ object Anilist {
                 anilistDisabledSignal = false
                 json.parsed()
             } else null
+        } catch (e: CancellationException) {
+            // M6 HOLD Blocker 2: cancellation is not a request failure.
+            throw e
         } catch (e: Exception) {
             // Upstream edb1a9eb: timeouts are transient; only host/connect
             // failures mean Anilist is down.
-            if (e is java.net.UnknownHostException ||
-                e is java.net.ConnectException ||
-                e.cause is java.net.UnknownHostException ||
-                e.cause is java.net.ConnectException) {
+            if (shouldSignalAnilistDown(e)) {
                 anilistDisabledSignal = true
             }
             if (lastError == null) {
