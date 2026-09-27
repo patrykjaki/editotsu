@@ -130,6 +130,18 @@ class SettingsThemeActivity : AppCompatActivity(), SimpleDialog.OnDialogResultLi
                                 reload()
                             }
                         ),
+                        // MAX MERGE M3 (upstream 3dbce385): opt-in device font.
+                        Settings(
+                            type = 2,
+                            name = getString(R.string.use_system_font),
+                            desc = getString(R.string.use_system_font_desc),
+                            icon = R.drawable.ic_round_font_size_24,
+                            isChecked = PrefManager.getVal(PrefName.UseSystemFont),
+                            switch = { isChecked, _ ->
+                                PrefManager.setVal(PrefName.UseSystemFont, isChecked)
+                                reload()
+                            }
+                        ),
                         Settings(
                             type = 2,
                             name = getString(R.string.use_material_you),
