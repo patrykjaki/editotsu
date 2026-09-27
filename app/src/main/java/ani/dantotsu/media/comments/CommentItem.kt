@@ -341,39 +341,23 @@ class CommentItem(
         }
     }
 
-    /**
-     * MAX MERGE M6 (upstream aa58a989): clickable MM:SS/HH:MM:SS timestamps.
-     * Spoiler-covered timestamps reveal on first tap; otherwise dispatches
-     * to [CommentsFragment.onTimestampClicked]. Pure parse, unit-testable
-     * shape mirrors production regex.
-     */
-    private fun extractEpisodeTag(text: String): String? {
-        val regex = Regex("""(?:\bep(?:isode)?|\be)\.?\s*(\d+)""", RegexOption.IGNORE_CASE)
-        return regex.find(text)?.groupValues?.getOrNull(1)
-    }
-
     private fun applyTimestampHighlighting(textView: android.widget.TextView) {
         val currentText = textView.text ?: return
         val spannable = if (currentText is Spannable) currentText else SpannableStringBuilder(currentText)
         val textStr = spannable.toString()
 
-        val timestampRegex = Regex("""\b(?:(?:([0-1]?[0-9]|2[0-3]):)?([0-5]?[0-9]):([0-5][0-9]))\b""")
-        val matches = timestampRegex.findAll(textStr).toList()
-        if (matches.isEmpty()) return
+        val hits = findTimestamps(textStr)
+        if (hits.isEmpty()) return
 
         val primaryColor = textView.context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
 
-        for (match in matches) {
-            val start = match.range.first
-            val end = match.range.last + 1
+        for (hit in hits) {
+            val start = hit.start
+            val end = hit.endExclusive
+            val timestampMs = hit.timestampMs
 
             val existingUrlSpans = spannable.getSpans(start, end, android.text.style.URLSpan::class.java)
             if (existingUrlSpans.isNotEmpty()) continue
-
-            val hours = match.groups[1]?.value?.toLongOrNull() ?: 0L
-            val minutes = match.groups[2]?.value?.toLongOrNull() ?: 0L
-            val seconds = match.groups[3]?.value?.toLongOrNull() ?: 0L
-            val timestampMs = (hours * 3600 + minutes * 60 + seconds) * 1000L
 
             val clickableSpan = object : ClickableSpan() {
                 override fun onClick(widget: View) {
