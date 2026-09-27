@@ -37,6 +37,7 @@ import ani.dantotsu.settings.saving.internal.PreferencePackager
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.toast
+import ani.dantotsu.torrent.TorrentCacheManager
 import ani.dantotsu.util.customAlertDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -233,6 +234,36 @@ class SettingsDataActivity : AppCompatActivity() {
         return size
     }
 
+    private fun formatSize(bytes: Long): String {
+        if (bytes <= 0) return "0 B"
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, units.size - 1)
+        return String.format(java.util.Locale.US, "%.2f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+    }
+
+    private fun torrentQuotaOptions(): Pair<Array<String>, LongArray> {
+        val options = arrayOf("1 GB", "2 GB", "3 GB (Default)", "5 GB", "10 GB", "No Auto-Eviction (Unlimited)")
+        val values = longArrayOf(
+            1L * 1024L * 1024L * 1024L,
+            2L * 1024L * 1024L * 1024L,
+            3L * 1024L * 1024L * 1024L,
+            5L * 1024L * 1024L * 1024L,
+            10L * 1024L * 1024L * 1024L,
+            0L
+        )
+        return options to values
+    }
+
+    private fun torrentQuotaIndex(): Int {
+        val (_, values) = torrentQuotaOptions()
+        return values.indexOf(PrefManager.getVal<Long>(PrefName.TorrentRetainedCacheQuota)).let { if (it >= 0) it else 2 }
+    }
+
+    private fun torrentCacheUsageText(): String {
+        val breakdown = TorrentCacheManager.getInstance(this).getStorageBreakdown()
+        return "Torrent cache: ${formatSize(breakdown.torrentCacheBytes)} (Tap to purge)"
+    }
+
     private fun clearAppCache() {
         lifecycleScope.launch(Dispatchers.IO) {
             val sizeToClear = cacheSize
@@ -370,6 +401,62 @@ class SettingsDataActivity : AppCompatActivity() {
                 onClick = {
                     StoragePermissions.downloadsPermission(context)
                     openDocumentLauncher.launch(arrayOf("*/*"))
+                }
+            ),
+
+            // MAX MERGE M3: torrent cache quota + managed purge live here
+            // (canonical storage home; moved out of Torrent Settings — no
+            // duplicated editable UI).
+            Settings(
+                type = 1,
+                name = getString(R.string.torrent_cache_quota),
+                desc = torrentQuotaOptions().let { opts ->
+                    opts.first[torrentQuotaIndex()]
+                },
+                icon = R.drawable.ic_round_folder_24,
+                onClick = { view ->
+                    val (options, values) = torrentQuotaOptions()
+                    val selected = torrentQuotaIndex()
+                    context.customAlertDialog().apply {
+                        setTitle(getString(R.string.torrent_cache_quota))
+                        singleChoiceItems(options, selected) { index ->
+                            val chosenQuota = values[index]
+                            PrefManager.setVal(PrefName.TorrentRetainedCacheQuota, chosenQuota)
+                            view.settingsDesc.text = options[index]
+                            val cacheMgr = TorrentCacheManager.getInstance(context)
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                cacheMgr.evictIfNeeded(chosenQuota)
+                            }
+                        }
+                        show()
+                    }
+                }
+            ),
+
+            Settings(
+                type = 1,
+                name = getString(R.string.clear_torrent_cache),
+                desc = torrentCacheUsageText(),
+                icon = R.drawable.ic_round_delete_24,
+                onClick = { view ->
+                    context.customAlertDialog().apply {
+                        setTitle(getString(R.string.clear_torrent_cache))
+                        setMessage("Purge all dormant/retained torrent downloads? Active playback streams will be preserved.")
+                        setPosButton(R.string.yes) {
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                val cacheManager = TorrentCacheManager.getInstance(context)
+                                val result = cacheManager.clearTorrentCache()
+                                val updated = torrentCacheUsageText()
+                                withContext(Dispatchers.Main) {
+                                    view.settingsDesc.text = updated
+                                    val skippedMsg = if (result.activeBytesSkipped > 0) " (${formatSize(result.activeBytesSkipped)} active stream skipped)" else ""
+                                    toast("Freed ${formatSize(result.bytesFreed)}$skippedMsg")
+                                }
+                            }
+                        }
+                        setNegButton(R.string.no)
+                        show()
+                    }
                 }
             ),
 

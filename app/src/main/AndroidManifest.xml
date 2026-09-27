@@ -176,6 +176,7 @@
             android:parentActivityName=".MainActivity" />
         <activity
             android:name=".settings.data.SettingsDataActivity"
+            android:exported="true"
             android:parentActivityName=".settings.SettingsActivity" />
         <activity
             android:name=".settings.SettingsExtensionsActivity"

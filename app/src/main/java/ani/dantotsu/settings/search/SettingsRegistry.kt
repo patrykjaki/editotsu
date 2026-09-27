@@ -514,9 +514,9 @@ object SettingsRegistry {
                 title = context.getString(R.string.torrent_cache_quota),
                 desc = context.getString(R.string.torrent_cache_quota_desc),
                 icon = R.drawable.ic_round_folder_24,
-                category = context.getString(R.string.torrent_settings),
-                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.torrent_settings)}",
-                targetActivity = TorrentSettingsActivity::class.java,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
                 highlightKey = context.getString(R.string.torrent_cache_quota)
             )
         )
@@ -525,9 +525,9 @@ object SettingsRegistry {
                 title = context.getString(R.string.clear_torrent_cache),
                 desc = context.getString(R.string.clear_torrent_cache_desc),
                 icon = R.drawable.ic_round_delete_24,
-                category = context.getString(R.string.torrent_settings),
-                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.torrent_settings)}",
-                targetActivity = TorrentSettingsActivity::class.java,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
                 highlightKey = context.getString(R.string.clear_torrent_cache)
             )
         )

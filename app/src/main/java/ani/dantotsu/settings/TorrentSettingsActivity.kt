@@ -1,5 +1,6 @@
 package ani.dantotsu.settings
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
@@ -17,8 +18,6 @@ import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.toast
 import ani.dantotsu.util.customAlertDialog
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class TorrentSettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivityTorrentSettingsBinding
@@ -151,66 +150,27 @@ class TorrentSettingsActivity : AppCompatActivity() {
                 }
             )
 
-            val quotaOptions = arrayOf("1 GB", "2 GB", "3 GB (Default)", "5 GB", "10 GB", "No Auto-Eviction (Unlimited)")
-            val quotaValues = arrayOf(
-                1L * 1024L * 1024L * 1024L,
-                2L * 1024L * 1024L * 1024L,
-                3L * 1024L * 1024L * 1024L,
-                5L * 1024L * 1024L * 1024L,
-                10L * 1024L * 1024L * 1024L,
-                0L
-            )
-            val currentQuota = PrefManager.getVal<Long>(PrefName.TorrentRetainedCacheQuota)
-            val currentQuotaIndex = quotaValues.indexOf(currentQuota).let { if (it >= 0) it else 2 }
+            // (quota + purge rows removed — canonical home is Data & Storage)
 
-            val cacheQuotaItem = Settings(
-                type = 1,
-                name = getString(R.string.torrent_cache_quota),
-                desc = quotaOptions[currentQuotaIndex],
-                icon = R.drawable.ic_round_folder_24,
-                onClick = { view ->
-                    val selected = quotaValues.indexOf(PrefManager.getVal<Long>(PrefName.TorrentRetainedCacheQuota)).let { if (it >= 0) it else 2 }
-                    customAlertDialog().apply {
-                        setTitle(getString(R.string.torrent_cache_quota))
-                        singleChoiceItems(quotaOptions, selected) { index ->
-                            val chosenQuota = quotaValues[index]
-                            PrefManager.setVal(PrefName.TorrentRetainedCacheQuota, chosenQuota)
-                            view.settingsDesc.text = quotaOptions[index]
-                            val cacheMgr = ani.dantotsu.torrent.TorrentCacheManager.getInstance(context)
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                cacheMgr.evictIfNeeded(chosenQuota)
-                            }
-                        }
-                        show()
-                    }
-                }
-            )
-
+            // MAX MERGE M3: quota + purge moved to Data & Storage
+            // (canonical storage home). This row navigates there; the usage
+            // text is read-only, never an editable duplicate.
             val cacheManager = ani.dantotsu.torrent.TorrentCacheManager.getInstance(context)
-            val initialBreakdown = cacheManager.getStorageBreakdown()
-            val clearCacheItem = Settings(
+            val torrentCacheNavItem = Settings(
                 type = 1,
-                name = getString(R.string.clear_torrent_cache),
-                desc = "Torrent cache: ${formatSize(initialBreakdown.torrentCacheBytes)} (Tap to purge)",
-                icon = R.drawable.ic_round_delete_24,
-                onClick = { view ->
-                    customAlertDialog().apply {
-                        setTitle(getString(R.string.clear_torrent_cache))
-                        setMessage("Purge all dormant/retained torrent downloads? Active playback streams will be preserved.")
-                        setPosButton(R.string.yes) {
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                val result = cacheManager.clearTorrentCache()
-                                val updatedBreakdown = cacheManager.getStorageBreakdown()
-                                withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    view.settingsDesc.text = "Torrent cache: ${formatSize(updatedBreakdown.torrentCacheBytes)} (Tap to purge)"
-                                    val skippedMsg = if (result.activeBytesSkipped > 0) " (${formatSize(result.activeBytesSkipped)} active stream skipped)" else ""
-                                    toast("Freed ${formatSize(result.bytesFreed)}$skippedMsg")
-                                }
-                            }
-                        }
-                        setNegButton(R.string.no)
-                        show()
-                    }
+                name = getString(R.string.torrent_cache_manage),
+                desc = getString(
+                    R.string.torrent_cache_manage_desc,
+                    formatSize(cacheManager.getStorageBreakdown().torrentCacheBytes)
+                ),
+                icon = R.drawable.ic_round_folder_24,
+                onClick = {
+                    startActivity(
+                        Intent(
+                            context,
+                            ani.dantotsu.settings.data.SettingsDataActivity::class.java
+                        )
+                    )
                 }
             )
 
@@ -225,8 +185,7 @@ class TorrentSettingsActivity : AppCompatActivity() {
                     batterySavingItem,
                     portItem,
                     disableUtpItem,
-                    cacheQuotaItem,
-                    clearCacheItem
+                    torrentCacheNavItem
                 ),
                 highlightKey = highlightKey
             )

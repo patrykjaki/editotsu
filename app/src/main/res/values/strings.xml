@@ -1218,6 +1218,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="torrent_cache_quota_desc">Target maximum size for dormant/retained torrents (active streams are always protected)</string>
     <string name="clear_torrent_cache">Clear Torrent Cache</string>
     <string name="clear_torrent_cache_desc">Purge dormant/retained torrent pieces to free up storage</string>
+    <string name="torrent_cache_manage">Torrent cache</string>
+    <string name="torrent_cache_manage_desc">%1$s used · Tap to manage</string>
     <string name="clear_app_cache">Clear App Cache</string>
     <string name="clear_app_cache_desc">Clear all temporary files, dormant torrents, and subtitle caches</string>
     <string name="video_adjustments">Video Adjustments &amp; Equalizer</string>
