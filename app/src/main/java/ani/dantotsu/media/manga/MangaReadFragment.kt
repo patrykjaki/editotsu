@@ -276,6 +276,12 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
     }
 
     fun multiDownload(n: Int) {
+        // MAX MERGE M3: trigger-layer Wi-Fi gate (bulk path; per-chapter
+        // service gate re-checks).
+        if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(requireContext())) {
+            snackString(getString(R.string.download_wifi_only_warning))
+            return
+        }
         lifecycleScope.launch {
             // Get the last viewed chapter
             val selected = media.userProgress ?: 0
@@ -513,6 +519,11 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
                 }
             }
             fun continueDownload() {
+                // MAX MERGE M3 (upstream 3dbce385): trigger-layer Wi-Fi gate.
+                if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(requireContext())) {
+                    snackString(getString(R.string.download_wifi_only_warning))
+                    return
+                }
                 val uniqueNum = i.uniqueNumber()
                 if (chapterAdapter.isDownloading(uniqueNum) || chapterAdapter.isDownloaded(uniqueNum)) {
                     return

@@ -17,6 +17,22 @@ enum class PrefName(val data: Pref) {
     OfflineView(Pref(Location.General, Int::class, 0)),
     DownloadManager(Pref(Location.General, Int::class, 0)),
     MaxParallelDownloads(Pref(Location.General, Int::class, 0)),
+    // MAX MERGE M3: Wi-Fi-only gating, resolution priority, smart
+    // downloads, auto-backup (upstream 3dbce385/e954d9f1, OFF by default).
+    DownloadWifiOnly(Pref(Location.General, Boolean::class, false)),
+    AutoSelectResolutionPriority(Pref(Location.General, Boolean::class, true)),
+    PreferredDownloadResolutions(
+        Pref(
+            Location.General,
+            List::class,
+            listOf("1080p", "720p", "480p", "360p", "240p", "144p")
+        )
+    ),
+    SmartDownloadAnime(Pref(Location.General, Boolean::class, false)),
+    SmartDownloadManga(Pref(Location.General, Boolean::class, false)),
+    AutoBackupInterval(Pref(Location.General, Int::class, 0)),
+    AutoBackupMaxCopies(Pref(Location.General, Int::class, 3)),
+    LastAutoBackupTimestamp(Pref(Location.General, Long::class, 0L)),
     NSFWExtension(Pref(Location.General, Boolean::class, true)),
     ContinueMedia(Pref(Location.General, Boolean::class, true)),
     SearchSources(Pref(Location.General, Boolean::class, false)),
@@ -74,6 +90,10 @@ enum class PrefName(val data: Pref) {
     CustomThemeInt(Pref(Location.UI, Int::class, Color.parseColor("#6200EE"))),
     UseSourceTheme(Pref(Location.UI, Boolean::class, false)),
     UseMaterialYou(Pref(Location.UI, Boolean::class, false)),
+    // MAX MERGE M3: device-font overlay + spoiler masking
+    // (upstream 3dbce385/e954d9f1; both OFF/masked by default per table).
+    UseSystemFont(Pref(Location.UI, Boolean::class, false)),
+    HideSpoilerTags(Pref(Location.UI, Boolean::class, true)),
     Theme(Pref(Location.UI, String::class, "PURPLE")),
     SkipExtensionIcons(Pref(Location.UI, Boolean::class, false)),
     DarkMode(Pref(Location.UI, Int::class, 0)),

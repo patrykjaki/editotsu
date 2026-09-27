@@ -683,6 +683,16 @@ class MangaDownloaderService : Service() {
     }
 
     suspend fun download(task: DownloadTask) {
+        // MAX MERGE M3 (upstream 3dbce385): fail-closed Wi-Fi gate BEFORE
+        // the ownership barrier — a blocked task must neither seize
+        // ownership nor cancel a live attempt, and takes nothing.
+        if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(this@MangaDownloaderService)) {
+            broadcastDownloadFailed(task.chapter)
+            withContext(Dispatchers.Main) {
+                snackString(getString(R.string.download_wifi_only_warning))
+            }
+            return
+        }
         // Physical directory identity (title + chapter), matching the on-disk layout
         // .../MANGA/<title.findValidName()>/<chapter.findValidName()>/. Scanlator is NOT
         // part of the path, so two scanlators of the same chapter share this key and

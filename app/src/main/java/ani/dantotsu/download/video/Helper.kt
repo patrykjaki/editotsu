@@ -27,10 +27,13 @@ import ani.dantotsu.download.DownloadsManager
 import ani.dantotsu.download.anime.AnimeDownloader
 import ani.dantotsu.download.anime.AnimeDownloaderService
 import ani.dantotsu.download.anime.AnimeServiceDataSingleton
+import ani.dantotsu.isWifiConnected
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.MediaType
 import ani.dantotsu.parsers.Video
 import ani.dantotsu.settings.saving.PrefManager
+import ani.dantotsu.settings.saving.PrefName
+import ani.dantotsu.snackString
 import ani.dantotsu.util.Logger
 import ani.dantotsu.util.customAlertDialog
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -75,6 +78,13 @@ object Helper {
         val downloadsManager = Injekt.get<DownloadsManager>()
         val downloadCheck = downloadsManager
             .queryDownload(title, episode, MediaType.ANIME)
+
+        // MAX MERGE M3 (upstream 3dbce385): trigger-layer Wi-Fi gate —
+        // never enqueue when blocked (service layer re-checks).
+        if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !isWifiConnected(context)) {
+            snackString(context.getString(R.string.download_wifi_only_warning))
+            return
+        }
 
         if (!downloadCheck && !AnimeDownloader.isDownloading(sourceMedia?.id ?: -1, episode)) {
             AnimeServiceDataSingleton.downloadQueue.offer(animeDownloadTask)

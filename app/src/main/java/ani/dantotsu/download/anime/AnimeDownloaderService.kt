@@ -153,6 +153,16 @@ class AnimeDownloaderService : Service() {
 
             while (AnimeServiceDataSingleton.downloadQueue.isNotEmpty()) {
                 val task = AnimeServiceDataSingleton.downloadQueue.poll() ?: continue
+                // MAX MERGE M3 (upstream 3dbce385): fail-closed Wi-Fi gate.
+                // Dropped task is failure-broadcast (user-visible retry),
+                // never silently kept; ownership untouched (no job launched).
+                if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(this@AnimeDownloaderService)) {
+                    broadcastDownloadFailed(task.episode, task.sourceMedia?.id)
+                    withContext(Dispatchers.Main) {
+                        snackString(getString(R.string.download_wifi_only_warning))
+                    }
+                    continue
+                }
                 val job = launch {
                     semaphore.withPermit {
                         currentTasks.add(task)
@@ -250,6 +260,17 @@ class AnimeDownloaderService : Service() {
     @androidx.annotation.OptIn(UnstableApi::class)
     suspend fun download(task: AnimeDownloadTask) {
         withContext(Dispatchers.IO) {
+            // MAX MERGE M3: Wi-Fi gate at task start (covers direct calls
+            // and in-flight network transitions).
+            if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(this@AnimeDownloaderService)) {
+                task.sourceMedia?.id?.let { mediaId ->
+                    broadcastDownloadFailed(task.episode, mediaId)
+                }
+                withContext(Dispatchers.Main) {
+                    snackString(getString(R.string.download_wifi_only_warning))
+                }
+                return@withContext
+            }
             try {
                 val notifi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     ContextCompat.checkSelfPermission(

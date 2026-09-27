@@ -17,6 +17,11 @@ import com.google.android.material.color.DynamicColorsOptions
 
 class ThemeManager(private val context: Activity) {
     fun applyTheme(fromImage: Bitmap? = null) {
+        // MAX MERGE M3 (upstream 3dbce385): opt-in device-font overlay.
+        // Stateless: survives recreation, no listener to leak.
+        if (PrefManager.getVal<Boolean>(PrefName.UseSystemFont)) {
+            context.theme.applyStyle(R.style.ThemeOverlay_Dantotsu_SystemFont, true)
+        }
         val useOLED = PrefManager.getVal(PrefName.UseOLED) && isDarkThemeActive(context)
         val useCustomTheme: Boolean = PrefManager.getVal(PrefName.UseCustomTheme)
         val customTheme: Int = PrefManager.getVal(PrefName.CustomThemeInt)

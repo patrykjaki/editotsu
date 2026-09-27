@@ -79,7 +79,10 @@ object Download {
     ) {
         if (!file.url.startsWith("http"))
             toast(context.getString(R.string.invalid_url))
-        else
+        else if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(context)) {
+            toast(context.getString(R.string.download_wifi_only_warning))
+            return
+        } else
             when (PrefManager.getVal(PrefName.DownloadManager) as Int) {
                 1 -> oneDM(context, file, notif ?: fileName)
                 2 -> adm(context, file, fileName, folder)

@@ -632,6 +632,11 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
     }
 
     fun onAnimeEpisodesDownload(episodesToDownload: ArrayList<String>) {
+        // MAX MERGE M3 (upstream 3dbce385): trigger-layer Wi-Fi gate.
+        if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(requireContext())) {
+            snackString(getString(R.string.download_wifi_only_warning))
+            return
+        }
         activity?.let {
             if (!hasDirAccess(it)) {
                 (it as MediaDetailsActivity).accessAlertDialog(it.launcher) { success ->

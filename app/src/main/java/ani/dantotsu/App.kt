@@ -190,6 +190,9 @@ class App : Application() {
 
         override fun onActivityResumed(p0: Activity) {
             currentActivity = p0
+            // MAX MERGE M3: device-font walk for already-inflated trees
+            // (tag-guarded; cannot accumulate listeners).
+            ani.dantotsu.applySystemFont(p0)
         }
 
         override fun onActivityPaused(p0: Activity) {}

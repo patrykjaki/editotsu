@@ -127,6 +127,14 @@ class NovelDownloaderService : Service() {
 
             while (NovelServiceDataSingleton.downloadQueue.isNotEmpty()) {
                 val task = NovelServiceDataSingleton.downloadQueue.poll() ?: continue
+                // MAX MERGE M3 (upstream 3dbce385): fail-closed Wi-Fi gate.
+                if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(this@NovelDownloaderService)) {
+                    broadcastDownloadFailed(task.originalLink)
+                    withContext(Dispatchers.Main) {
+                        snackString(getString(R.string.download_wifi_only_warning))
+                    }
+                    continue
+                }
                 val taskKey = "${task.title}_${task.chapter}"
                 val job = launch {
                     semaphore.withPermit {
@@ -199,6 +207,14 @@ class NovelDownloaderService : Service() {
         urlString.contains("file://")
 
     suspend fun download(task: DownloadTask) {
+        // MAX MERGE M3 (upstream 3dbce385): fail-closed Wi-Fi gate.
+        if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(this@NovelDownloaderService)) {
+            broadcastDownloadFailed(task.originalLink)
+            withContext(Dispatchers.Main) {
+                snackString(getString(R.string.download_wifi_only_warning))
+            }
+            return
+        }
         if (task.lnReaderParser != null) {
             downloadHtmlChapter(task)
         } else {

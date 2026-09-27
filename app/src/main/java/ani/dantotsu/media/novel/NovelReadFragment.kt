@@ -89,6 +89,11 @@ class NovelReadFragment : Fragment(),
         Logger.log("novel link: ${novelDownloadPackage.link}")
         activity?.let {
             fun continueDownload() {
+                // MAX MERGE M3 (upstream 3dbce385): trigger-layer Wi-Fi gate.
+                if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(it)) {
+                    snackString(getString(R.string.download_wifi_only_warning))
+                    return
+                }
                 val parser = model.novelSources[source] as? ani.dantotsu.parsers.novel.LnReaderNovelParser
                 val downloadTask = NovelDownloaderService.DownloadTask(
                     title = media.mainName(),

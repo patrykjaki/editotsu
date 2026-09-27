@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- MAX MERGE M3: tag guards for the device-font overlay walk. -->
+    <item name="tag_system_font_applied" type="id" />
+    <item name="tag_system_font_listener" type="id" />
+</resources>
