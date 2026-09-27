@@ -102,6 +102,39 @@ class SettingsAnimeActivity : AppCompatActivity() {
                             restartApp()
                         }
                     ),
+                    // MAX MERGE M3 (upstream e954d9f1).
+                    // MAX MERGE M3 (upstream e954d9f1).
+                    Settings(
+                        type = 1,
+                        name = getString(R.string.preferred_download_resolutions),
+                        desc = PrefManager.getPreferredDownloadResolutions(null).joinToString(", "),
+                        icon = R.drawable.ic_round_high_quality_24,
+                        onClick = {
+                            ResolutionPriorityDialog.show(context, null) {
+                                (settingsRecyclerView.adapter as? SettingsAdapter)?.notifyDataSetChanged()
+                            }
+                        }
+                    ),
+                    Settings(
+                        type = 2,
+                        name = getString(R.string.auto_select_resolution_priority),
+                        desc = getString(R.string.auto_select_resolution_priority_desc),
+                        icon = R.drawable.ic_round_high_quality_24,
+                        isChecked = PrefManager.getVal(PrefName.AutoSelectResolutionPriority),
+                        switch = { isChecked, _ ->
+                            PrefManager.setVal(PrefName.AutoSelectResolutionPriority, isChecked)
+                        }
+                    ),
+                    Settings(
+                        type = 2,
+                        name = getString(R.string.smart_download_anime),
+                        desc = getString(R.string.smart_download_anime_desc),
+                        icon = R.drawable.ic_download_24,
+                        isChecked = PrefManager.getVal(PrefName.SmartDownloadAnime),
+                        switch = { isChecked, _ ->
+                            PrefManager.setVal(PrefName.SmartDownloadAnime, isChecked)
+                        }
+                    ),
                 ),
                 highlightKey = highlightKey
             )

@@ -1312,6 +1312,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="preferred_download_resolutions">Preferred Download Resolutions</string>
     <string name="preferred_download_resolutions_desc">Priority list of video resolutions for downloads. If a resolution is missing, the next one is picked automatically.</string>
     <string name="custom_extension_resolution_priority">Download Resolution Priority</string>
+    <string name="auto_select_resolution_priority">Auto-Select Download Resolution</string>
+    <string name="auto_select_resolution_priority_desc">Automatically pick the preferred resolution when downloading instead of the selected video</string>
 
     <!-- MAX MERGE M3: smart downloads (upstream e954d9f1, OFF by default) -->
     <string name="smart_download_anime">Smart Download (Next Episode)</string>

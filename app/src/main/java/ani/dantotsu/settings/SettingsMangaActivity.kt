@@ -131,6 +131,17 @@ class SettingsMangaActivity : AppCompatActivity() {
                             restartApp()
                         }
                     ),
+                    // MAX MERGE M3 (upstream e954d9f1, OFF by default).
+                    Settings(
+                        type = 2,
+                        name = getString(R.string.smart_download_manga),
+                        desc = getString(R.string.smart_download_manga_desc),
+                        icon = R.drawable.ic_download_24,
+                        isChecked = PrefManager.getVal(PrefName.SmartDownloadManga),
+                        switch = { isChecked, _ ->
+                            PrefManager.setVal(PrefName.SmartDownloadManga, isChecked)
+                        }
+                    ),
                 ),
                 highlightKey = highlightKey
             )

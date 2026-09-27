@@ -316,6 +316,31 @@ object PrefManager {
         }
     }
 
+    /**
+     * MAX MERGE M3 (upstream e954d9f1): global preferred-resolution list
+     * with optional per-extension override (custom vals keep them out of
+     * the exported backup schema).
+     */
+    fun getPreferredDownloadResolutions(extensionName: String? = null): List<String> {
+        // Per-extension override is a plain comma string (custom vals keep
+        // them out of the exported backup schema).
+        if (!extensionName.isNullOrBlank()) {
+            val raw = getCustomVal("pref_download_res_${extensionName}", "")
+            if (raw.isNotBlank()) {
+                return raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            }
+        }
+        return getVal(PrefName.PreferredDownloadResolutions)
+    }
+
+    fun setPreferredDownloadResolutions(extensionName: String?, resolutions: List<String>) {
+        if (!extensionName.isNullOrBlank()) {
+            setCustomVal("pref_download_res_${extensionName}", resolutions.joinToString(","))
+        } else {
+            setVal(PrefName.PreferredDownloadResolutions, resolutions)
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
     fun <T> setCustomVal(key: String, value: T?) {
         //for custom force irrelevant

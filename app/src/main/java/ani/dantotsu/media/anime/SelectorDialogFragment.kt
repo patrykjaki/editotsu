@@ -43,6 +43,7 @@ import ani.dantotsu.databinding.ItemUrlBinding
 import ani.dantotsu.databinding.ItemUrlStreamInlineBinding
 import ani.dantotsu.download.DownloadedType
 import ani.dantotsu.download.video.Helper
+import ani.dantotsu.download.video.findBestVideoForDownload
 import ani.dantotsu.getThemeColor
 import ani.dantotsu.hideSystemBars
 import ani.dantotsu.media.Media
@@ -258,6 +259,20 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                          selectedAudioTracks: MutableList<String>){
                     fun downloadUsingSingleServer(extractor: VideoExtractor, currentEp: Episode): Boolean {
                         currentEp.selectedExtractor = extractor.server.name
+                        // MAX MERGE M3 (upstream e954d9f1): preferred-resolution
+                        // pick for downloads; falls back to clamped manual index.
+                        val sourceName = model.watchSources?.get(media?.selected?.sourceIndex ?: 0)?.name
+                        val preferredResolutions = PrefManager.getPreferredDownloadResolutions(sourceName)
+                        val autoPriority = PrefManager.getVal<Boolean>(PrefName.AutoSelectResolutionPriority)
+                        val bestVideo = if (autoPriority && extractor.videos.isNotEmpty()) {
+                            findBestVideoForDownload(extractor.videos, preferredResolutions)
+                        } else null
+                        val chosenVideoIndex = if (bestVideo != null) {
+                            extractor.videos.indexOf(bestVideo).takeIf { it >= 0 } ?: 0
+                        } else {
+                            if (currentEp.selectedVideo >= extractor.videos.size) 0 else currentEp.selectedVideo
+                        }
+                        currentEp.selectedVideo = chosenVideoIndex
                         if (currentEp.selectedVideo >= extractor.videos.size) {
                             currentEp.selectedVideo = 0
                         }
