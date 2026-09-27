@@ -4,6 +4,13 @@ import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import androidx.core.content.ContextCompat
+import ani.dantotsu.download.DownloadsManager
+import ani.dantotsu.download.manga.MangaDownloaderService
+import ani.dantotsu.download.manga.MangaServiceDataSingleton
+import ani.dantotsu.media.MediaType
+import ani.dantotsu.parsers.DynamicMangaParser
+import ani.dantotsu.parsers.OfflineMangaParser
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.graphics.Bitmap
@@ -92,6 +99,7 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.FileInputStream
@@ -397,6 +405,8 @@ class MangaReaderActivity : AppCompatActivity() {
             if (chap != null) {
                 chapter = chap
                 media.manga!!.selectedChapter = chapter
+                // MAX MERGE M3 (upstream e954d9f1): smart-download hook.
+                checkSmartDownloadManga(chap)
                 PrefManager.setCustomVal("${media.id}_current_chp", chap.number)
                 val cleanChapNum = MediaNameAdapter.findChapterNumber(chap.number)?.let {
                     if (it % 1 == 0f) it.toInt().toString() else it.toString()
@@ -458,6 +468,64 @@ class MangaReaderActivity : AppCompatActivity() {
     }
 
     @SuppressLint("ClickableViewAccessibility")
+    /**
+     * MAX MERGE M3 (upstream e954d9f1): while reading a downloaded chapter,
+     * queue the next one. OFF by default; duplicate-guarded at three levels
+     * (downloaded check, downloaded-source check, queue/in-flight check);
+     * enqueues through the normal service path so ownership/retirement
+     * semantics are inherited, never duplicated.
+     */
+    private fun checkSmartDownloadManga(currentChapter: MangaChapter) {
+        if (!PrefManager.getVal<Boolean>(PrefName.SmartDownloadManga)) return
+        val downloadsManager = Injekt.get<DownloadsManager>()
+        val isCurrentDownloaded = downloadsManager.queryDownload(
+            media.mainName(), currentChapter.number, MediaType.MANGA
+        ) || (model.mangaReadSources?.get(media.selected?.sourceIndex ?: -1) is OfflineMangaParser)
+        if (!isCurrentDownloaded) return
+
+        val nextIndex = currentChapterIndex + 1
+        if (nextIndex !in chaptersArr.indices) return
+        val nextChapterKey = chaptersArr[nextIndex]
+        val nextChapter = chapters[nextChapterKey] ?: media.manga?.chapters?.get(nextChapterKey) ?: return
+
+        if (downloadsManager.queryDownload(media.mainName(), nextChapter.number, MediaType.MANGA)) return
+        val isAlreadyQueued = MangaServiceDataSingleton.downloadQueue.any {
+            it.title == media.mainName() && (it.chapter == nextChapter.number || it.chapter == nextChapter.title)
+        } || MangaServiceDataSingleton.currentTasks.any {
+            it.title == media.mainName() && (it.chapter == nextChapter.number || it.chapter == nextChapter.title)
+        }
+        if (isAlreadyQueued) return
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                var parser = model.mangaReadSources?.get(media.selected?.sourceIndex ?: 0) as? DynamicMangaParser
+                if (parser == null) {
+                    parser = model.mangaReadSources?.list?.mapNotNull { it.get?.value as? DynamicMangaParser }?.firstOrNull()
+                }
+                val images = parser?.imageList(nextChapter.sChapter) ?: return@launch
+                if (images.isNotEmpty()) {
+                    val downloadTask = MangaDownloaderService.DownloadTask(
+                        title = media.mainName(),
+                        chapter = nextChapter.number,
+                        scanlator = nextChapter.scanlator ?: "Unknown",
+                        imageData = images,
+                        sourceMedia = media,
+                        retries = 25,
+                        simultaneousDownloads = 2
+                    )
+                    MangaServiceDataSingleton.downloadQueue.offer(downloadTask)
+                    val intent = Intent(this@MangaReaderActivity, MangaDownloaderService::class.java)
+                    withContext(Dispatchers.Main) {
+                        ContextCompat.startForegroundService(this@MangaReaderActivity, intent)
+                    }
+                    MangaServiceDataSingleton.isServiceRunning = true
+                }
+            } catch (e: Exception) {
+                ani.dantotsu.util.Logger.log("SmartDownloadManga error: ${e.message}")
+            }
+        }
+    }
+
     fun applySettings() {
 
         saveReaderSettings("${media.id}_current_settings", defaultSettings)

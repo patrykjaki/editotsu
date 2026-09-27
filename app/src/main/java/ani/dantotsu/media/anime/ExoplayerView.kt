@@ -102,6 +102,11 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import ani.dantotsu.download.DownloadsManager
+import ani.dantotsu.download.anime.AnimeDownloader
+import ani.dantotsu.download.video.Helper
+import ani.dantotsu.download.video.findBestVideoForDownload
+import ani.dantotsu.media.MediaType
 import java.util.Timer
 import java.util.TimerTask
 import kotlin.math.max
@@ -988,6 +993,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
 
         buildMpvPlayer()
+        // MAX MERGE M3 (upstream e954d9f1): smart-download hook. Fires per
+        // playback start; the trigger itself is duplicate-guarded, so
+        // re-entry (server changes, episode moves) is harmless.
+        checkSmartDownloadAnime()
     }
 
     private fun buildMpvPlayer() {
@@ -1473,6 +1482,67 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
                 setPictureInPictureParams(builder.build())
             } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * MAX MERGE M3 (upstream e954d9f1): while watching a downloaded
+     * episode, queue the next one. OFF by default; duplicate-guarded
+     * (downloaded check, in-progress check, queue check); enqueues through
+     * [Helper.startAnimeDownloadService] so Wi-Fi gating, duplicate guards
+     * and ownership semantics are inherited, never duplicated.
+     */
+    private fun checkSmartDownloadAnime() {
+        if (!PrefManager.getVal<Boolean>(PrefName.SmartDownloadAnime)) return
+        if (!this::episode.isInitialized || !this::episodeArr.isInitialized) return
+        val downloadsManager = Injekt.get<DownloadsManager>()
+        val isOffline = downloadsManager.queryDownload(media.mainName(), episode.number, MediaType.ANIME)
+        if (!isOffline) return
+
+        val currentIdx = episodeArr.indexOfFirst { key ->
+            episodes[key]?.number == episode.number
+        }
+        if (currentIdx == -1 || currentIdx + 1 >= episodeArr.size) return
+        val nextEpKey = episodeArr[currentIdx + 1]
+        val nextEpNumber = episodes[nextEpKey]?.number ?: nextEpKey
+        if (downloadsManager.queryDownload(media.mainName(), nextEpNumber, MediaType.ANIME)) return
+        if (AnimeDownloader.isDownloading(media.id, nextEpNumber)) return
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val nextEpisode = episodes[nextEpKey]
+                    ?: media.anime?.episodes?.getEpisode(nextEpKey) ?: return@launch
+                val sourceIndex = media.selected?.sourceIndex ?: return@launch
+                val serverName = media.selected?.server ?: ""
+                val success = if (serverName.isNotBlank()) {
+                    model.loadEpisodeSingleVideo(nextEpisode, media.selected!!, false, serverName)
+                } else false
+
+                val extractorToUse = if (success) {
+                    nextEpisode.extractors?.find { it.server.name == serverName }
+                } else {
+                    model.loadEpisodeVideos(nextEpisode, sourceIndex, false)
+                    nextEpisode.extractors?.firstOrNull { it.videos.isNotEmpty() }
+                } ?: return@launch
+
+                val sourceName = model.watchSources?.get(sourceIndex)?.name
+                val preferredResolutions = PrefManager.getPreferredDownloadResolutions(sourceName)
+                val bestVideo = findBestVideoForDownload(extractorToUse.videos, preferredResolutions)
+                    ?: return@launch
+
+                withContext(Dispatchers.Main) {
+                    Helper.startAnimeDownloadService(
+                        this@ExoplayerView,
+                        media.mainName(),
+                        nextEpisode.number,
+                        bestVideo,
+                        sourceMedia = media,
+                        episodeImage = nextEpisode.thumb?.url ?: media.banner ?: media.cover
+                    )
+                }
+            } catch (e: Exception) {
+                Logger.log("SmartDownloadAnime error: ${e.message}")
+            }
         }
     }
 
