@@ -444,12 +444,12 @@ object Anilist {
                 json.parsed()
             } else null
         } catch (e: Exception) {
+            // Upstream edb1a9eb: timeouts are transient; only host/connect
+            // failures mean Anilist is down.
             if (e is java.net.UnknownHostException ||
                 e is java.net.ConnectException ||
-                e is java.net.SocketTimeoutException ||
                 e.cause is java.net.UnknownHostException ||
-                e.cause is java.net.ConnectException ||
-                e.cause is java.net.SocketTimeoutException) {
+                e.cause is java.net.ConnectException) {
                 anilistDisabledSignal = true
             }
             if (lastError == null) {

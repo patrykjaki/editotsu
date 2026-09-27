@@ -165,6 +165,10 @@ class CastProxyServer(
         }
 
         val requestBuilder = Request.Builder().url(url)
+        // Upstream efb15cf: never forward a player-supplied Accept-Encoding to
+        // the origin; the proxy parses playlists as text and OkHttp already
+        // transparent-decompresses its own gzip.
+        headers.entries.removeIf { it.key.equals("Accept-Encoding", ignoreCase = true) }
         headers.forEach { (name, value) -> requestBuilder.addHeader(name, value) }
         session.headers["range"]?.let { requestBuilder.addHeader("Range", it) }
 
@@ -174,11 +178,11 @@ class CastProxyServer(
             val status = Response.Status.lookup(resp.code) ?: Response.Status.OK
 
             val response = if (resp.isM3U8()) {
-                val body = resp.body?.string() ?: ""
+                val body = gunzipIfNeeded(resp).removePrefix("\uFEFF")
                 val proxied = proxyM3U8(body, url, headers)
                 newFixedLengthResponse(status, "application/vnd.apple.mpegurl", proxied)
             } else if (resp.isDash()) {
-                val body = resp.body?.string() ?: ""
+                val body = gunzipIfNeeded(resp).removePrefix("\uFEFF")
                 val proxied = proxyDash(body, url, headers)
                 newFixedLengthResponse(status, "application/dash+xml", proxied)
             } else {
@@ -203,8 +207,26 @@ class CastProxyServer(
         }
     }
 
-    private fun okhttp3.Response.isM3U8(): Boolean {
-        val contentType = header("Content-Type") ?: ""
+    /**
+     * Defensive fallback for origins that gzip despite no Accept-Encoding:
+     * OkHttp transparent-decompresses its own requests, so this only fires
+     * when the body is still gzip bytes (magic 1F8B) at this point.
+     */
+    private fun gunzipIfNeeded(resp: okhttp3.Response): String {
+        val body = resp.body ?: return ""
+        val bytes = body.bytes()
+        if (bytes.size > 2 && bytes[0] == 0x1F.toByte() && bytes[1] == 0x8B.toByte()) {
+            return try {
+                java.util.zip.GZIPInputStream(bytes.inputStream()).readBytes().toString(Charsets.UTF_8)
+            } catch (e: Exception) {
+                Logger.log("CastProxyServer: gunzip fallback failed: ${e.message}")
+                ""
+            }
+        }
+        return bytes.toString(Charsets.UTF_8)
+    }
+
+    private fun okhttp3.Response.isM3U8(): Boolean {        val contentType = header("Content-Type") ?: ""
         if (contentType.endsWith("vnd.apple.mpegurl") || contentType.endsWith("x-mpegURL")) {
             return true
         }

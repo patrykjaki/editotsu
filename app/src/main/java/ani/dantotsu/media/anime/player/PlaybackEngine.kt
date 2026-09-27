@@ -54,6 +54,14 @@ interface PlaybackEngine {
     fun stop()
     fun release()
 
+    /**
+     * MAX MERGE M6: capture the current frame to [file] via the native
+     * screenshot path. Returns false when unsupported or not ready.
+     */
+    fun captureScreenshot(file: java.io.File): Boolean {
+        return false
+    }
+
     fun addListener(listener: PlaybackListener)
     fun removeListener(listener: PlaybackListener)
 }

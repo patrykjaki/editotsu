@@ -2,12 +2,17 @@ package ani.dantotsu.media.anime
 
 import android.annotation.SuppressLint
 import android.app.Dialog
+import android.app.PendingIntent
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.drawable.Animatable
+import android.graphics.drawable.Icon
 import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
@@ -30,6 +35,7 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
@@ -139,6 +145,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private lateinit var exoPrev: ImageButton
     private lateinit var exoSkipOpEd: ImageButton
     private lateinit var exoPip: ImageButton
+    private lateinit var exoScreenshot: ImageButton
     private lateinit var exoBrightness: Slider
     private lateinit var exoVolume: Slider
     private lateinit var exoBrightnessCont: View
@@ -230,6 +237,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         var initialized = false
         lateinit var media: Media
         private const val MAX_PLAYER_ERROR_RETRIES = 1
+
+        const val ACTION_PIP_PREV_EP = "ani.dantotsu.PIP_PREV_EP"
+        const val ACTION_PIP_REWIND = "ani.dantotsu.PIP_REWIND"
+        const val ACTION_PIP_PLAY_PAUSE = "ani.dantotsu.PIP_PLAY_PAUSE"
+        const val ACTION_PIP_SKIP = "ani.dantotsu.PIP_SKIP"
+        const val ACTION_PIP_NEXT_EP = "ani.dantotsu.PIP_NEXT_EP"
     }
 
     override fun onAttachedToWindow() {
@@ -280,6 +293,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         exoBrightnessCont = playerView.findViewById(R.id.exo_brightness_cont)
         exoVolumeCont = playerView.findViewById(R.id.exo_volume_cont)
         exoPip = playerView.findViewById(R.id.exo_pip)
+        exoScreenshot = playerView.findViewById(R.id.exo_screenshot)
         exoSkipOpEd = playerView.findViewById(R.id.exo_skip_op_ed)
         exoSkip = playerView.findViewById(R.id.exo_skip)
         skipTimeButton = playerView.findViewById(R.id.exo_skip_timestamp)
@@ -340,6 +354,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
         castManager = PlayerCastManager(this, playerView) { isPlaying ->
             isPlayerPlaying = isPlaying
+            updatePipActions(isPlaying)
             playerView.keepScreenOn = isPlaying
             if (!isDestroyed) {
                 Glide.with(this)
@@ -495,6 +510,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             } else {
                 exoPip.visibility = View.GONE
             }
+        }
+
+        // Screenshot (M6, MPV-native): one tap captures via mpv's
+        // screenshot command; long-press shares the last capture.
+        exoScreenshot.setOnClickListener {
+            takePlayerScreenshot()
         }
 
         // Lock button
@@ -1244,6 +1265,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         if (!isBuffering) {
             isPlayerPlaying = isPlaying
+            updatePipActions(isPlaying)
             playerView.keepScreenOn = isPlaying
             (exoPlay.drawable as? Animatable)?.start()
             if (!isDestroyed) {
@@ -1285,12 +1307,147 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
     }
 
+    /**
+     * MAX MERGE M6 (upstream 5a27fa8d, MPV-adapted): PiP RemoteActions.
+     * Actions route strictly through stable seams — PlaybackCoordinator /
+     * PlaybackEngine for transport, [changeEpisode] for episode moves. No
+     * Exo internals, no Media3 session changes.
+     */
+    private var pipReceiver: BroadcastReceiver? = null
+
+    private fun pipActionIntent(action: String, requestCode: Int): PendingIntent =
+        PendingIntent.getBroadcast(
+            this,
+            requestCode,
+            Intent(action).setPackage(packageName),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+    private fun buildPipActions(isPlaying: Boolean): List<RemoteAction> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return emptyList()
+
+        val prevEpAction = RemoteAction(
+            Icon.createWithResource(this, R.drawable.ic_round_skip_previous_24),
+            "Previous Episode",
+            "Previous Episode",
+            pipActionIntent(ACTION_PIP_PREV_EP, 10)
+        )
+        val rewindAction = RemoteAction(
+            Icon.createWithResource(this, R.drawable.ic_pip_rewind_10),
+            "Rewind 10s",
+            "Rewind 10s",
+            pipActionIntent(ACTION_PIP_REWIND, 1)
+        )
+        val playPauseIcon =
+            if (isPlaying) R.drawable.ic_round_pause_24 else R.drawable.ic_round_play_arrow_24
+        val playPauseTitle = if (isPlaying) "Pause" else "Play"
+        val playPauseAction = RemoteAction(
+            Icon.createWithResource(this, playPauseIcon),
+            playPauseTitle,
+            playPauseTitle,
+            pipActionIntent(ACTION_PIP_PLAY_PAUSE, 2)
+        )
+        val skipAction = RemoteAction(
+            Icon.createWithResource(this, R.drawable.ic_pip_skip_10),
+            "Skip 10s",
+            "Skip 10s",
+            pipActionIntent(ACTION_PIP_SKIP, 3)
+        )
+        val nextEpAction = RemoteAction(
+            Icon.createWithResource(this, R.drawable.ic_round_skip_next_24),
+            "Next Episode",
+            "Next Episode",
+            pipActionIntent(ACTION_PIP_NEXT_EP, 20)
+        )
+
+        val maxActions = maxNumPictureInPictureActions
+        return if (maxActions >= 5) {
+            listOf(prevEpAction, rewindAction, playPauseAction, skipAction, nextEpAction)
+        } else {
+            listOf(rewindAction, playPauseAction, skipAction)
+        }
+    }
+
+    private fun updatePipActions(isPlaying: Boolean = isPlayerPlaying) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) {
+            val params = android.app.PictureInPictureParams.Builder()
+                .setAspectRatio(getClampedAspectRatio(aspectRatio))
+                .setActions(buildPipActions(isPlaying))
+                .build()
+            setPictureInPictureParams(params)
+        }
+    }
+
+    private fun registerPipReceiver() {
+        if (pipReceiver != null) return
+        pipReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (!this@ExoplayerView::playerManager.isInitialized ||
+                    !playerManager.isInitialized
+                ) return
+                val engine = playerManager.playbackEngine
+                val coordinator = playerManager.playbackCoordinator
+                when (intent?.action) {
+                    ACTION_PIP_PREV_EP -> {
+                        if (currentEpisodeIndex > 0) changeEpisode(currentEpisodeIndex - 1)
+                    }
+                    ACTION_PIP_REWIND -> {
+                        val seekMs = (PrefManager.getVal<Int>(PrefName.SeekTime) * 1000)
+                            .toLong().takeIf { it > 0 } ?: 10000L
+                        engine?.seekRelative(-seekMs)
+                    }
+                    ACTION_PIP_PLAY_PAUSE -> {
+                        coordinator?.togglePlayPause()
+                        updatePipActions(!(engine?.isPlaying == true))
+                    }
+                    ACTION_PIP_SKIP -> {
+                        val seekMs = (PrefManager.getVal<Int>(PrefName.SeekTime) * 1000)
+                            .toLong().takeIf { it > 0 } ?: 10000L
+                        engine?.seekRelative(seekMs)
+                    }
+                    ACTION_PIP_NEXT_EP -> {
+                        if (this@ExoplayerView::progressManager.isInitialized) {
+                            progressManager.nextEpisode { i ->
+                                progressManager.updateAniProgress()
+                                changeEpisode(currentEpisodeIndex + i)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(ACTION_PIP_PREV_EP)
+            addAction(ACTION_PIP_REWIND)
+            addAction(ACTION_PIP_PLAY_PAUSE)
+            addAction(ACTION_PIP_SKIP)
+            addAction(ACTION_PIP_NEXT_EP)
+        }
+        ContextCompat.registerReceiver(
+            this,
+            pipReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+    }
+
+    private fun unregisterPipReceiver() {
+        pipReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (_: Exception) {
+            }
+            pipReceiver = null
+        }
+    }
+
     private fun updatePipParams() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
                 val clampedRatio = getClampedAspectRatio(aspectRatio)
                 val builder = android.app.PictureInPictureParams.Builder()
                     .setAspectRatio(clampedRatio)
+                    .setActions(buildPipActions(isPlayerPlaying))
 
                 val surfaceView = playerView.surfaceView
                 if (surfaceView != null && surfaceView.isLaidOut) {
@@ -1340,6 +1497,39 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         super.onWindowFocusChanged(hasFocus)
     }
 
+    /**
+     * MAX MERGE M6 (upstream 05d5da4b screenshot concept, MPV-native):
+     * one-tap frame capture through [PlaybackEngine.captureScreenshot].
+     * No PixelCopy/Exo path, no storage-layer change: captures land in the
+     * app-private Pictures dir.
+     */
+    private fun takePlayerScreenshot() {
+        val engine = if (this::playerManager.isInitialized) playerManager.playbackEngine else null
+        if (engine == null) {
+            toast("Player not ready")
+            return
+        }
+        val safeTitle = (if (initialized) media.userPreferredName else "editotsu")
+            .replace(Regex("[^A-Za-z0-9 _-]"), "").trim().takeIf { it.isNotEmpty() } ?: "editotsu"
+        val epLabel = if (this::episodeArr.isInitialized) {
+            episodeArr.getOrNull(currentEpisodeIndex) ?: ""
+        } else ""
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+            .format(java.util.Date())
+        val dir = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
+            ?.let { java.io.File(it, "Editotsu") }
+        if (dir == null) {
+            toast("Screenshot unavailable")
+            return
+        }
+        val file = java.io.File(dir, "${safeTitle}_${epLabel}_${stamp}.jpg".replace("__", "_"))
+        if (engine.captureScreenshot(file)) {
+            toast("Screenshot saved: ${file.absolutePath}")
+        } else {
+            toast("Screenshot failed")
+        }
+    }
+
     private fun enterPipMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
@@ -1347,6 +1537,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 val clampedRatio = getClampedAspectRatio(aspectRatio)
                 val builder = android.app.PictureInPictureParams.Builder()
                     .setAspectRatio(clampedRatio)
+                    .setActions(buildPipActions(isPlayerPlaying))
                 val surfaceView = playerView.surfaceView
                 if (surfaceView != null && surfaceView.isLaidOut) {
                     val rect = android.graphics.Rect()
@@ -1395,6 +1586,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 playerManager.playbackCoordinator?.setLifecycleSuppressed(false)
             }
             playerView.hideController()
+            registerPipReceiver()
+            updatePipActions(isPlayerPlaying)
             if (this::aniSkipManager.isInitialized) {
                 aniSkipManager.hideSkipButtons()
                 aniSkipManager.stopTracking()
@@ -1403,6 +1596,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 progressManager.stopTracking()
             }
         } else {
+            unregisterPipReceiver()
             hideSystemBars()
             if (this::aniSkipManager.isInitialized && PrefManager.getVal(PrefName.TimeStampsEnabled)) {
                 aniSkipManager.startTracking()
@@ -1480,6 +1674,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     override fun onDestroy() {
+        unregisterPipReceiver()
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         orientationListener?.disable()
         lifecycleScope.launch(Dispatchers.IO) {

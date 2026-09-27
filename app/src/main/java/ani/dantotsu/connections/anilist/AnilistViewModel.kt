@@ -142,9 +142,18 @@ class AnilistHomeViewModel : ViewModel() {
 
     fun getUserStatus(): LiveData<ArrayList<User>> = userStatus
     // Upstream 5ffa682b: pull-to-refresh bypasses the 15-min stories cache.
+    // Upstream edb1a9eb: a failed fetch posts empty (not null) so the
+    // stories rail resolves instead of spinning forever.
     suspend fun initUserStatus(forceRefresh: Boolean = false) {
-        val res = Anilist.query.getUserStatus(forceRefresh)
-        res?.let { userStatus.postValue(it) }
+        if (forceRefresh || userStatus.value == null) {
+            userStatus.postValue(null)
+        }
+        val res = try {
+            Anilist.query.getUserStatus(forceRefresh)
+        } catch (_: Exception) {
+            null
+        }
+        userStatus.postValue(res ?: arrayListOf())
     }
 
     private val hidden: MutableLiveData<ArrayList<Media>> =
@@ -557,6 +566,10 @@ class AnilistAnimeViewModel : ViewModel() {
     }
 
     private suspend fun loadAllFromMAL() {
+        // Upstream 4d399645: populate the trending rail in rescue fallback.
+        tryWithSuspend {
+            loadTrending(1)
+        }
         tryWithSuspend {
             MAL.query.getAnimeRanking("airing", 15)?.data?.let { entries ->
                 updated.postValue(entries.map { Media(it.node, true) }.toMutableList())
@@ -762,6 +775,10 @@ class AnilistMangaViewModel : ViewModel() {
     }
 
     private suspend fun loadAllFromMAL() {
+        // Upstream 4d399645: populate the trending rail in rescue fallback.
+        tryWithSuspend {
+            loadTrending()
+        }
         tryWithSuspend {
             MAL.query.getMangaRanking("manga", 15)?.data?.let { entries ->
                 popularManga.postValue(entries.map { Media(it.node, false) }.toMutableList())

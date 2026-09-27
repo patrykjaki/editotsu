@@ -536,27 +536,48 @@ class AnilistQueries {
     suspend fun getUserStatus(forceRefresh: Boolean = false): ArrayList<User>? {
         val toShow: List<Boolean> =
             PrefManager.getVal(PrefName.HomeLayout)
-        if (toShow.getOrNull(7) != true) return null
+        if (toShow.getOrNull(7) != true) return arrayListOf()
         if (!forceRefresh) {
             loadUserStatusCache()?.let { return sortUserStatusList(it) }
         }
-        // Upstream 5ffa682b: query own activities directly (isFollowing:true
-        // omits self updates from the stories bar).
-        val myQuery = if (Anilist.userid != null) myStatus() else ""
-        val query = """{Page1:${status(1)}Page2:${status(2)}$myQuery}"""
-        val response = executeQuery<Query.HomePageMedia>(query, force = forceRefresh)
-        val list = mutableListOf<User>()
-        if (response?.data?.page1 != null && response.data.page2 != null) {
-            val pages = mutableListOf(
-                response.data.page1.activities,
-                response.data.page2.activities
-            )
-            // Batch 2B — own-activity visibility correction (upstream 5ffa682b).
-            response.data.myActivities?.activities?.let { pages.add(it) }
+        // Upstream edb1a9eb: split following/self fetches so one failing
+        // page no longer blanks the whole stories bar; empty is a valid
+        // result instead of a permanent spinner.
+        return coroutineScope {
+            val followingDeferred = async {
+                executeQuery<Query.HomePageMedia>(
+                    """{Page1:${status(1)}Page2:${status(2)}}""",
+                    force = forceRefresh
+                )
+            }
+            val myDeferred = if (Anilist.userid != null) {
+                async {
+                    executeQuery<Query.HomePageMedia>(
+                        """{${myStatus()}}""",
+                        force = forceRefresh
+                    )
+                }
+            } else null
+
+            val followingResponse = followingDeferred.await()
+            val myResponse = myDeferred?.await()
+
+            val pages = mutableListOf<List<Activity>>()
+            followingResponse?.data?.page1?.activities?.let { pages.add(it) }
+            followingResponse?.data?.page2?.activities?.let { pages.add(it) }
+            myResponse?.data?.myActivities?.activities?.let { pages.add(it) }
+                ?: followingResponse?.data?.myActivities?.activities?.let { pages.add(it) }
+
+            if (pages.isEmpty() && followingResponse == null && myResponse == null) {
+                snackString(currContext()?.getString(R.string.error_loading_data, "stories"))
+                return@coroutineScope arrayListOf()
+            }
+
             val threeDaysAgoMillis = Calendar.getInstance().apply {
                 add(Calendar.DAY_OF_MONTH, -3)
             }.timeInMillis
             val activities = mergeStatusActivities(pages, Anilist.adult, threeDaysAgoMillis)
+            val list = mutableListOf<User>()
             val anilistActivities = mutableListOf<User>()
             val groupedActivities = activities.groupBy { it.userId }
 
@@ -566,7 +587,7 @@ class AnilistQueries {
                     val userToAdd = User(
                         user.id,
                         user.name ?: "",
-                        user.avatar?.medium,
+                        user.avatar?.large ?: user.avatar?.medium,
                         user.bannerImage,
                         activity = userActivities.sortedBy { it.createdAt }.toList()
                     )
@@ -593,9 +614,11 @@ class AnilistQueries {
             }
             list.addAll(0, anilistActivities)
             val result = list.toCollection(ArrayList())
-            saveUserStatusCache(result)
-            return sortUserStatusList(result)
-        } else return null
+            if (result.isNotEmpty()) {
+                saveUserStatusCache(result)
+            }
+            sortUserStatusList(result)
+        }
     }
 
     private fun favMediaQuery(anime: Boolean, page: Int, id: Int? = Anilist.userid): String {

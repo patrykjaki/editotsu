@@ -21,7 +21,7 @@ class UncaughtExceptionInterceptor : Interceptor {
             chain.proceed(chain.request())
         } catch (e: SocketTimeoutException) {
             Logger.log(e)
-            throw IOException("Request timed out")  // there's some odd behavior throwing a SocketTimeoutException
+            throw IOException("Request timed out", e)
         } catch (e: OutOfMemoryError) {
             // Upstream 8966c9bd: OOM during a network read must not take down the
             // dispatcher thread; surface as IOException after a GC hint.

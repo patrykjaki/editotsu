@@ -183,6 +183,15 @@
                         tools:ignore="ContentDescription,SpeakableTextPresentCheck" />
 
                     <ImageButton
+                        android:id="@+id/exo_screenshot"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:backgroundTint="#00FFFFFF"
+                        android:src="@drawable/ic_round_screenshot_24"
+                        app:tint="#fff"
+                        tools:ignore="ContentDescription,SpeakableTextPresentCheck" />
+
+                    <ImageButton
                         android:id="@+id/exo_skip_op_ed"
                         android:layout_width="48dp"
                         android:layout_height="48dp"

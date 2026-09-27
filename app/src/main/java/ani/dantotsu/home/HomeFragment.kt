@@ -441,31 +441,47 @@ class HomeFragment : Fragment() {
         binding.homeUserStatusContainer.visibility = View.VISIBLE
         binding.homeUserStatusProgressBar.visibility = View.VISIBLE
         binding.homeUserStatusRecyclerView.visibility = View.GONE
-        model.getUserStatus().observe(viewLifecycleOwner) {
-            binding.homeUserStatusRecyclerView.visibility = View.GONE
-            if (it != null) {
-                if (it.isNotEmpty()) {
-                    PrefManager.getLiveVal(PrefName.RefreshStatus, false).apply {
-                        asLiveBool()
-                        observe(viewLifecycleOwner) { _ ->
-                            binding.homeUserStatusRecyclerView.adapter = UserStatusAdapter(it)
-                        }
+        model.getUserStatus().observe(viewLifecycleOwner) { users ->
+            val storiesEnabled = PrefManager.getVal<List<Boolean>>(PrefName.HomeLayout)
+                .getOrElse(7) { true } && !PrefManager.getVal<Boolean>(PrefName.RescueMode)
+            when {
+                users == null -> {
+                    if (storiesEnabled) {
+                        binding.homeUserStatusContainer.visibility = View.VISIBLE
+                        binding.homeUserStatusProgressBar.visibility = View.VISIBLE
+                        binding.homeUserStatusRecyclerView.visibility = View.GONE
+                    } else {
+                        binding.homeUserStatusContainer.visibility = View.GONE
+                        binding.homeUserStatusProgressBar.visibility = View.GONE
                     }
+                }
+                users.isNotEmpty() -> {
                     binding.homeUserStatusRecyclerView.layoutManager = LinearLayoutManager(
                         requireContext(),
                         LinearLayoutManager.HORIZONTAL,
                         false
                     )
-                    binding.homeUserStatusRecyclerView.visibility = View.VISIBLE
+                    binding.homeUserStatusRecyclerView.adapter = UserStatusAdapter(users)
                     binding.homeUserStatusRecyclerView.layoutAnimation =
                         LayoutAnimationController(setSlideIn(), 0.25f)
-
-                } else {
-                    binding.homeUserStatusContainer.visibility = View.GONE
+                    binding.homeUserStatusRecyclerView.visibility = View.VISIBLE
+                    binding.homeUserStatusProgressBar.visibility = View.GONE
+                    binding.homeUserStatusContainer.visibility = View.VISIBLE
+                    PrefManager.getLiveVal(PrefName.RefreshStatus, false).apply {
+                        asLiveBool()
+                        observe(viewLifecycleOwner) { _ ->
+                            binding.homeUserStatusRecyclerView.adapter = UserStatusAdapter(users)
+                        }
+                    }
                 }
-                binding.homeUserStatusProgressBar.visibility = View.GONE
+                else -> {
+                    binding.homeUserStatusProgressBar.visibility = View.GONE
+                    binding.homeUserStatusRecyclerView.visibility = View.GONE
+                    if (!storiesEnabled) {
+                        binding.homeUserStatusContainer.visibility = View.GONE
+                    }
+                }
             }
-
         }
         binding.homeHiddenItemsContainer.visibility = View.GONE
         model.getHidden().observe(viewLifecycleOwner) {

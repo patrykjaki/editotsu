@@ -1192,6 +1192,17 @@ class MpvPlaybackEngine(
         listeners.remove(listener)
     }
 
+    override fun captureScreenshot(file: java.io.File): Boolean {
+        if (!isInitialized || releaseRequested.get()) return false
+        return try {
+            file.parentFile?.mkdirs()
+            mpvClient.command("screenshot-to-file", file.absolutePath, "subtitles")
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     override fun stop() {
         engineDispatcher.post {
             pendingLoadRequest?.let { req ->

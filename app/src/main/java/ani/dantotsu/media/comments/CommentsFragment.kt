@@ -504,6 +504,40 @@ class CommentsFragment : Fragment() {
         NONE, EDIT, REPLY
     }
 
+    /**
+     * MAX MERGE M6 (upstream aa58a989, MPV-adapted): timestamp tap resolves
+     * the tagged episode, persists the position under the episode keys, and
+     * opens the player. No Exo `targetStartPosition`: the persisted custom
+     * value is what `ExoplayerView` resumes from.
+     */
+    fun onTimestampClicked(tag: String?, timestampMs: Long) {
+        val targetTag = tag ?: filterTag?.toString()
+        if (targetTag == null) {
+            snackString("No episode tagged in this comment")
+            return
+        }
+        val model: MediaDetailsViewModel by activityViewModels()
+        val currentMedia = model.getMedia().value ?: return
+
+        if (isAnime) {
+            val ep = currentMedia.anime?.episodes?.getEpisode(targetTag)
+            if (ep != null) {
+                val cleanEp = MediaNameAdapter.findEpisodeNumber(targetTag)?.let {
+                    if (it % 1 == 0f) it.toInt().toString() else it.toString()
+                }
+                PrefManager.setCustomVal("${currentMedia.id}_$targetTag", timestampMs)
+                if (cleanEp != null) {
+                    PrefManager.setCustomVal("${currentMedia.id}_$cleanEp", timestampMs)
+                }
+                model.onEpisodeClick(currentMedia, targetTag, childFragmentManager, true)
+            } else {
+                snackString("Episode $targetTag not found for this provider")
+            }
+        } else {
+            onTagClicked(targetTag)
+        }
+    }
+
     fun onTagClicked(tag: String) {
         val model: MediaDetailsViewModel by activityViewModels()
         val currentMedia = model.getMedia().value ?: return
