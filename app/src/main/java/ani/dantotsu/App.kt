@@ -111,7 +111,7 @@ class App : Application() {
                 animeExtensionManager.findAvailableExtensions()
             }
             Logger.log("Anime Extensions: ${animeExtensionManager.installedExtensionsFlow.first()}")
-            AnimeSources.init(animeExtensionManager.installedExtensionsFlow)
+            AnimeSources.init(animeExtensionManager.installedExtensionsFlow, animeExtensionManager)
         }
         scope.launch {
             mangaExtensionManager = Injekt.get()
@@ -119,7 +119,7 @@ class App : Application() {
                 mangaExtensionManager.findAvailableExtensions()
             }
             Logger.log("Manga Extensions: ${mangaExtensionManager.installedExtensionsFlow.first()}")
-            MangaSources.init(mangaExtensionManager.installedExtensionsFlow)
+            MangaSources.init(mangaExtensionManager.installedExtensionsFlow, mangaExtensionManager)
         }
         scope.launch {
             novelExtensionManager = Injekt.get()

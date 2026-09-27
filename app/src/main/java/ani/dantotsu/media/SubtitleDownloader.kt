@@ -93,17 +93,17 @@ class SubtitleDownloader {
 
                 val client = Injekt.get<NetworkHelper>().client
                 val request = Request.Builder().url(url).build()
-                val response = client.newCall(request).execute()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        snackString("Failed to download subtitle")
+                        return
+                    }
 
-                if (!response.isSuccessful) {
-                    snackString("Failed to download subtitle")
-                    return
-                }
-
-                response.body.byteStream().use { input ->
-                    subtitleFile.openOutputStream(context, false).use { output ->
-                        if (output == null) throw Exception("Could not open output stream")
-                        input.copyTo(output)
+                    response.body.byteStream().use { input ->
+                        subtitleFile.openOutputStream(context, false).use { output ->
+                            if (output == null) throw Exception("Could not open output stream")
+                            input.copyTo(output)
+                        }
                     }
                 }
             } catch (e: Exception) {

@@ -337,7 +337,7 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
                         oldItem: MangaExtension.Installed,
                         newItem: MangaExtension.Installed
                     ): Boolean {
-                        return oldItem.pkgName == newItem.pkgName
+                        return oldItem.pkgName == newItem.pkgName && oldItem.repository == newItem.repository
                     }
 
                     override fun areContentsTheSame(

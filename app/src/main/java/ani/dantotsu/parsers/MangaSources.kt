@@ -6,20 +6,24 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 
 object MangaSources : MangaReadSources() {
     override var list: List<Lazier<BaseParser>> = emptyList()
     var pinnedMangaSources: List<String> = emptyList()
     var isInitialized = false
 
-    suspend fun init(fromExtensions: StateFlow<List<MangaExtension.Installed>>) {
+    suspend fun init(
+        fromExtensions: StateFlow<List<MangaExtension.Installed>>,
+        extensionManager: eu.kanade.tachiyomi.extension.manga.MangaExtensionManager? = null
+    ) {
         pinnedMangaSources =
             PrefManager.getNullableVal<List<String>>(PrefName.MangaSourcesOrder, null)
                 ?: emptyList()
 
-        // Initialize with the first value from StateFlow
-        val initialExtensions = fromExtensions.first()
+        // Wait for extension scanning so the saved provider index resolves
+        // against the real parser list, not the empty first emission.
+        extensionManager?.awaitInitialized()
+        val initialExtensions = fromExtensions.value
         list = createParsersFromExtensions(initialExtensions) + listOf(
             Lazier({ LocalMangaParser() }, "Local"),
             Lazier({ OfflineMangaParser() }, "Downloaded")

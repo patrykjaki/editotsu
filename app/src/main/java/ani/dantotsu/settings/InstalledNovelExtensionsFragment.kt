@@ -320,7 +320,9 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
                         oldItem: NovelExtension,
                         newItem: NovelExtension
                     ): Boolean {
-                        return oldItem.pkgName == newItem.pkgName
+                        return oldItem.pkgName == newItem.pkgName &&
+                            (oldItem as? NovelExtension.Installed)?.repository ==
+                            (newItem as? NovelExtension.Installed)?.repository
                     }
 
                     override fun areContentsTheSame(

@@ -19,6 +19,7 @@ class AndroidCookieJar : CookieJar {
         val urlString = url.toString()
 
         cookies.forEach { manager?.setCookie(urlString, it.toString()) }
+        manager?.flush()
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
@@ -52,9 +53,16 @@ class AndroidCookieJar : CookieJar {
             .filterNames()
             .onEach { manager.setCookie(urlString, "$it=;Max-Age=$maxAge") }
             .count()
+            .also { manager.flush() }
     }
 
     fun removeAll() {
-        manager?.removeAllCookies {}
+        manager?.removeAllCookies {
+            manager.flush()
+        }
+    }
+
+    fun flush() {
+        manager?.flush()
     }
 }

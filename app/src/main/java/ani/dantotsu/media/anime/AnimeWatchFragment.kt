@@ -848,7 +848,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         episodeAdapter.offlineMode = isDownloaded
         episodeAdapter.notifyItemRangeRemoved(0, episodeAdapter.arr.size)
         var arr: ArrayList<Episode> = arrayListOf()
-        if (media.anime!!.episodes != null) {
+        if (!media.anime!!.episodes.isNullOrEmpty()) {
             val end = if (end != null && end!! < media.anime!!.episodes!!.size) end else null
             arr.addAll(
                 media.anime!!.episodes!!.values.toList()

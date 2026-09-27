@@ -106,6 +106,8 @@ suspend fun <A, B> Collection<A>.asyncMap(
         async(dispatcher) {
             try {
                 f(item)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 null
             }
@@ -129,6 +131,8 @@ suspend fun <A, B> Collection<A>.asyncMapNotNull(
         async(dispatcher) {
             try {
                 f(item)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 null
             }
@@ -187,10 +191,11 @@ suspend fun <T> tryWithSuspend(
 ): T? {
     return try {
         call.invoke()
+    } catch (e: CancellationException) {
+        // Cancellation is not an error: propagate, never log/snack.
+        throw e
     } catch (e: Throwable) {
         logError(e, post, snackbar)
-        null
-    } catch (e: CancellationException) {
         null
     }
 }

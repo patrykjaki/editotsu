@@ -45,10 +45,23 @@ class CookieCatcher : AppCompatActivity() {
         }
         WebView.setWebContentsDebuggingEnabled(true)
         webView.webViewClient = object : WebViewClient() {
-
+            override fun onPageFinished(view: WebView?, finishedUrl: String?) {
+                super.onPageFinished(view, finishedUrl)
+                cookies?.flush()
+            }
         }
 
         webView.loadUrl(url, headers)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Injekt.get<NetworkHelper>().cookieJar.flush()
+    }
+
+    override fun onDestroy() {
+        Injekt.get<NetworkHelper>().cookieJar.flush()
+        super.onDestroy()
     }
 
 }

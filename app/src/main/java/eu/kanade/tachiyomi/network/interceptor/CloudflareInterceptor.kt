@@ -95,6 +95,7 @@ class CloudflareInterceptor(
                     }
 
                     if (isCloudFlareBypassed()) {
+                        cookieManager.flush()
                         cloudflareBypassed = true
                         latch.countDown()
                     }

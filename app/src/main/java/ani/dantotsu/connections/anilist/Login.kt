@@ -1,5 +1,6 @@
 package ani.dantotsu.connections.anilist
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
@@ -12,7 +13,16 @@ import ani.dantotsu.themes.ThemeManager
 class Login : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleAuthIntent()
+    }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAuthIntent()
+    }
+
+    private fun handleAuthIntent() {
         ThemeManager(this).applyTheme()
         val data: Uri? = intent?.data
         try {

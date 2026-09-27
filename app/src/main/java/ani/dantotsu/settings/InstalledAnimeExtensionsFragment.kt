@@ -338,7 +338,7 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
                         oldItem: AnimeExtension.Installed,
                         newItem: AnimeExtension.Installed
                     ): Boolean {
-                        return oldItem.pkgName == newItem.pkgName
+                        return oldItem.pkgName == newItem.pkgName && oldItem.repository == newItem.repository
                     }
 
                     override fun areContentsTheSame(

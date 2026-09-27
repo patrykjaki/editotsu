@@ -19,6 +19,7 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import rx.Observable
 import tachiyomi.core.util.lang.launchNow
 import tachiyomi.core.util.lang.withUIContext
@@ -44,6 +45,14 @@ class AnimeExtensionManager(
 
     var isInitialized = false
         private set
+
+    private val _isInitializedFlow = MutableStateFlow(false)
+    val isInitializedFlow = _isInitializedFlow.asStateFlow()
+
+    suspend fun awaitInitialized() {
+        if (isInitialized) return
+        _isInitializedFlow.first { it }
+    }
 
     /**
      * API where all the available anime extensions can be found.
@@ -111,6 +120,7 @@ class AnimeExtensionManager(
             .map { it.extension }
 
         isInitialized = true
+        _isInitializedFlow.value = true
     }
 
     /**

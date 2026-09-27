@@ -6,20 +6,24 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 
 object AnimeSources : WatchSources() {
     override var list: List<Lazier<BaseParser>> = emptyList()
     var pinnedAnimeSources: List<String> = emptyList()
     var isInitialized = false
 
-    suspend fun init(fromExtensions: StateFlow<List<AnimeExtension.Installed>>) {
+    suspend fun init(
+        fromExtensions: StateFlow<List<AnimeExtension.Installed>>,
+        extensionManager: eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager? = null
+    ) {
         pinnedAnimeSources =
             PrefManager.getNullableVal<List<String>>(PrefName.AnimeSourcesOrder, null)
                 ?: emptyList()
 
-        // Initialize with the first value from StateFlow
-        val initialExtensions = fromExtensions.first()
+        // Wait for extension scanning so the saved provider index resolves
+        // against the real parser list, not the empty first emission.
+        extensionManager?.awaitInitialized()
+        val initialExtensions = fromExtensions.value
         list = createParsersFromExtensions(initialExtensions) + listOf(
             Lazier({ LocalAnimeParser() }, "Local"),
             Lazier({ OfflineAnimeParser() }, "Downloaded")
