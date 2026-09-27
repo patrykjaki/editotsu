@@ -56,6 +56,13 @@ import java.util.Locale
 class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
     val extension: AnimeExtension.Installed
     var sourceLanguage = 0
+        set(value) {
+            field = if (extension.sources.isNotEmpty()) {
+                value.coerceIn(0, extension.sources.size - 1)
+            } else {
+                0
+            }
+        }
 
     init {
         this.extension = extension
@@ -64,7 +71,7 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
     override val name = extension.name
     override val saveName = extension.name
     override val hostUrl =
-        (extension.sources.first() as? AnimeHttpSource)?.baseUrl ?: extension.sources.first().name
+        (extension.sources.firstOrNull() as? AnimeHttpSource)?.baseUrl ?: extension.sources.firstOrNull()?.name ?: ""
     override val isNSFW = extension.isNsfw
     override val icon = extension.icon
 
@@ -81,10 +88,7 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
     private val isDubAvailableCache = mutableMapOf<Int, Boolean>()
 
     private fun getDub(): Boolean {
-        if (sourceLanguage >= extension.sources.size) {
-            sourceLanguage = extension.sources.size - 1
-        }
-        val configurableSource = extension.sources[sourceLanguage] as? ConfigurableAnimeSource
+        val configurableSource = extension.sources.getOrNull(sourceLanguage) as? ConfigurableAnimeSource
             ?: return false
         currContext()?.let { context ->
             val sharedPreferences =
@@ -113,7 +117,7 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
     override fun isDubAvailableSeparately(sourceLang: Int?): Boolean {
         // Upstream 61e8248b (F): honor the requested language, avoid the
         // out-of-bounds index, and memoize the prefs scan.
-        val targetLang = sourceLang ?: sourceLanguage
+        val targetLang = (sourceLang ?: sourceLanguage).coerceAtLeast(0)
         isDubAvailableCache[targetLang]?.let { return it }
         val configurableSource = extension.sources.getOrNull(targetLang) as? ConfigurableAnimeSource
             ?: return false
@@ -484,6 +488,13 @@ class DynamicMangaParser(extension: MangaExtension.Installed) : MangaParser() {
     private val mangaCache = Injekt.get<MangaCache>()
     val extension: MangaExtension.Installed
     var sourceLanguage = 0
+        set(value) {
+            field = if (extension.sources.isNotEmpty()) {
+                value.coerceIn(0, extension.sources.size - 1)
+            } else {
+                0
+            }
+        }
 
     init {
         this.extension = extension
@@ -492,7 +503,7 @@ class DynamicMangaParser(extension: MangaExtension.Installed) : MangaParser() {
     override val name = extension.name
     override val saveName = extension.name
     override val hostUrl =
-        (extension.sources.first() as? HttpSource)?.baseUrl ?: extension.sources.first().name
+        (extension.sources.firstOrNull() as? HttpSource)?.baseUrl ?: extension.sources.firstOrNull()?.name ?: ""
     override val isNSFW = extension.isNsfw
     override val icon = extension.icon
 

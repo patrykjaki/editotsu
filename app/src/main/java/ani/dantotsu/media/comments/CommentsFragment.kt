@@ -69,6 +69,8 @@ class CommentsFragment : Fragment() {
     private var commentsLoaded = false
     private var isAutoFilterOn = false
     private var isSpoilerMode = false
+    private var markwonTextWatcher: TextWatcher? = null
+    private var limitTextWatcher: TextWatcher? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -104,11 +106,10 @@ class CommentsFragment : Fragment() {
 
         activity.binding.commentUserAvatar.loadImage(Anilist.avatar)
         val markwonEditor = MarkwonEditor.create(markwon)
-        activity.binding.commentInput.addTextChangedListener(
-            MarkwonEditorTextWatcher.withProcess(
-                markwonEditor
-            )
-        )
+        markwonTextWatcher?.let { activity.binding.commentInput.removeTextChangedListener(it) }
+        val watcher = MarkwonEditorTextWatcher.withProcess(markwonEditor)
+        markwonTextWatcher = watcher
+        activity.binding.commentInput.addTextChangedListener(watcher)
 
         val isOfflineOrLocal = !ani.dantotsu.isOnline(activity)
 
@@ -364,7 +365,7 @@ class CommentsFragment : Fragment() {
                 }
             })
 
-        activity.binding.commentInput.addTextChangedListener(object : TextWatcher {
+        val limitWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
             }
 
@@ -380,7 +381,10 @@ class CommentsFragment : Fragment() {
                     snackString("Comment cannot be longer than 300 characters")
                 }
             }
-        })
+        }
+        limitTextWatcher?.let { activity.binding.commentInput.removeTextChangedListener(it) }
+        activity.binding.commentInput.addTextChangedListener(limitWatcher)
+        limitTextWatcher = limitWatcher
 
         activity.binding.commentInput.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
@@ -1077,5 +1081,18 @@ class CommentsFragment : Fragment() {
                 )
             }
         }
+    }
+
+    override fun onDestroyView() {
+        // Upstream aa58a989: the comment input lives in the activity binding;
+        // detach our watchers so re-created fragments don't stack them.
+        (activity as? MediaDetailsActivity)?.binding?.let { actBinding ->
+            markwonTextWatcher?.let { actBinding.commentInput.removeTextChangedListener(it) }
+            limitTextWatcher?.let { actBinding.commentInput.removeTextChangedListener(it) }
+            actBinding.commentInput.onFocusChangeListener = null
+        }
+        markwonTextWatcher = null
+        limitTextWatcher = null
+        super.onDestroyView()
     }
 }
