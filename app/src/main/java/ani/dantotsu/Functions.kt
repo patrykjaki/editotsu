@@ -585,6 +585,18 @@ private fun applySystemFontToTextView(textView: TextView) {
 }
 
 /**
+ * MAX MERGE M3 (upstream 3dbce385): pure Wi-Fi-gate transport policy.
+ * Cellular (or unknown transports) never satisfy a Wi-Fi-only gate;
+ * Wi-Fi, Ethernet and Wi-Fi-Aware do. Framework-free, unit-proved
+ * (WifiGatePolicyTest).
+ */
+fun wifiGateSatisfied(
+    hasWifi: Boolean,
+    hasEthernet: Boolean,
+    hasWifiAware: Boolean,
+): Boolean = hasWifi || hasEthernet || hasWifiAware
+
+/**
  * MAX MERGE M3 (upstream 3dbce385): Wi-Fi-transport check for the
  * general download Wi-Fi-only gate. Unlike [isOnline], cellular does NOT
  * satisfy this. Ethernet counts (docked/fixed-line equivalent).
@@ -596,7 +608,11 @@ fun isWifiConnected(context: Context): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val network = connectivityManager.activeNetwork ?: return@tryWith false
             val cap = connectivityManager.getNetworkCapabilities(network) ?: return@tryWith false
-            cap.hasTransport(TRANSPORT_WIFI) || cap.hasTransport(TRANSPORT_ETHERNET) || cap.hasTransport(TRANSPORT_WIFI_AWARE)
+            wifiGateSatisfied(
+                cap.hasTransport(TRANSPORT_WIFI),
+                cap.hasTransport(TRANSPORT_ETHERNET),
+                cap.hasTransport(TRANSPORT_WIFI_AWARE)
+            )
         } else {
             @Suppress("DEPRECATION")
             connectivityManager.activeNetworkInfo?.run {
