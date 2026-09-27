@@ -130,6 +130,17 @@ class SettingsActivity : AppCompatActivity() {
                         },
                         isActivity = true
                     ),
+                    // MAX MERGE M3 (upstream e954d9f1).
+                    Settings(
+                        type = 1,
+                        name = getString(R.string.label_data_storage),
+                        desc = getString(R.string.label_data_storage_desc),
+                        icon = R.drawable.ic_round_folder_24,
+                        onClick = {
+                            startActivity(Intent(context, ani.dantotsu.settings.data.SettingsDataActivity::class.java))
+                        },
+                        isActivity = true
+                    ),
                     Settings(
                         type = 1,
                         name = getString(R.string.manga),

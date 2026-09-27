@@ -91,6 +91,17 @@ class App : Application() {
 
         initializeNetwork()
 
+        // MAX MERGE M3 (upstream e954d9f1): re-assert auto-backup cadence
+        // on cold start (idempotent UPDATE; cancels when OFF).
+        try {
+            ani.dantotsu.settings.data.AutoBackupWorker.schedule(
+                this@App,
+                PrefManager.getVal(PrefName.AutoBackupInterval)
+            )
+        } catch (e: Exception) {
+            Logger.log("Failed to schedule auto backup: ${e.message}")
+        }
+
         setupNotificationChannels()
         if (!LogcatLogger.isInstalled) {
             LogcatLogger.install(AndroidLogcatLogger(LogPriority.VERBOSE))
