@@ -19,7 +19,7 @@ import java.net.UnknownHostException
 class StoriesFetchCancellationTest {
 
     @Test
-    fun `cancelled stories fetch propagates and posts nothing`() = runBlocking {
+    fun `cancelled stories fetch propagates and posts no resolved result`() = runBlocking {
         try {
             fetchUserStatusLenient { throw CancellationException("gone") }
             fail("expected CancellationException")

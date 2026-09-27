@@ -311,6 +311,8 @@
     <string name="double_tap_info">Turning off will show fast forward &amp; rewind buttons</string>
     <string name="seek_time">Seek Time</string>
     <string name="seek_time_info">Amount of time in seconds for fast forward &amp; rewind.</string>
+    <string name="pip_rewind">Rewind %1$d s</string>
+    <string name="pip_forward">Forward %1$d s</string>
     <string name="skip_time">Skip Time</string>
     <string name="skip_time_info">Setting to 0, hides the Skip Button.</string>
     <string name="show_cast_button">Show Cast Button</string>

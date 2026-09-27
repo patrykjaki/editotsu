@@ -8,7 +8,9 @@ import kotlinx.coroutines.CancellationException
  * `AnilistHomeViewModel.initUserStatus`.
  *
  * Ordinary failure (or null) resolves to empty so the stories rail never
- * spins forever; cancellation propagates so the caller posts nothing.
+ * spins forever; cancellation propagates so no resolved EMPTY result is
+ * posted. (A loading/null state may already have been published before —
+ * the guarantee is specifically about the resolved result.)
  * Framework-free so the contract is unit-proved
  * (StoriesFetchCancellationTest).
  */

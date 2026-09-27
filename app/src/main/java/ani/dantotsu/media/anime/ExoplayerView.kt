@@ -1327,6 +1327,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private fun buildPipActions(isPlaying: Boolean): List<RemoteAction> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return emptyList()
 
+        // M6 HOLD: one configured distance feeds both labels and seeks —
+        // UI and behavior cannot diverge.
+        val seekSec = pipSeekSeconds(PrefManager.getVal(PrefName.SeekTime))
+        val rewindTitle = getString(R.string.pip_rewind, seekSec)
+        val forwardTitle = getString(R.string.pip_forward, seekSec)
+
         val prevEpAction = RemoteAction(
             Icon.createWithResource(this, R.drawable.ic_round_skip_previous_24),
             "Previous Episode",
@@ -1334,9 +1340,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             pipActionIntent(ACTION_PIP_PREV_EP, 10)
         )
         val rewindAction = RemoteAction(
-            Icon.createWithResource(this, R.drawable.ic_pip_rewind_10),
-            "Rewind 10s",
-            "Rewind 10s",
+            Icon.createWithResource(this, R.drawable.ic_round_fast_rewind_24),
+            rewindTitle,
+            rewindTitle,
             pipActionIntent(ACTION_PIP_REWIND, 1)
         )
         val playPauseIcon =
@@ -1349,9 +1355,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             pipActionIntent(ACTION_PIP_PLAY_PAUSE, 2)
         )
         val skipAction = RemoteAction(
-            Icon.createWithResource(this, R.drawable.ic_pip_skip_10),
-            "Skip 10s",
-            "Skip 10s",
+            Icon.createWithResource(this, R.drawable.ic_round_fast_forward_24),
+            forwardTitle,
+            forwardTitle,
             pipActionIntent(ACTION_PIP_SKIP, 3)
         )
         val nextEpAction = RemoteAction(
@@ -1393,9 +1399,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                         if (currentEpisodeIndex > 0) changeEpisode(currentEpisodeIndex - 1)
                     }
                     ACTION_PIP_REWIND -> {
-                        val seekMs = (PrefManager.getVal<Int>(PrefName.SeekTime) * 1000)
-                            .toLong().takeIf { it > 0 } ?: 10000L
-                        engine?.seekRelative(-seekMs)
+                        engine?.seekRelative(-pipSeekMs(PrefManager.getVal(PrefName.SeekTime)))
                     }
                     ACTION_PIP_PLAY_PAUSE -> {
                         // togglePlayPause posts async to the engine dispatcher,
@@ -1406,9 +1410,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                         updatePipActions(!(engine?.isPlaying == true))
                     }
                     ACTION_PIP_SKIP -> {
-                        val seekMs = (PrefManager.getVal<Int>(PrefName.SeekTime) * 1000)
-                            .toLong().takeIf { it > 0 } ?: 10000L
-                        engine?.seekRelative(seekMs)
+                        engine?.seekRelative(pipSeekMs(PrefManager.getVal(PrefName.SeekTime)))
                     }
                     ACTION_PIP_NEXT_EP -> {
                         if (this@ExoplayerView::progressManager.isInitialized) {
