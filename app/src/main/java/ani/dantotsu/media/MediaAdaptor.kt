@@ -324,13 +324,13 @@ class MediaAdaptor(
                         b.root.context,
                         (if (media.userScore != 0) R.drawable.item_user_score else R.drawable.item_score)
                     )
-                    if (media.genres.isNotEmpty()) {
-                        b.itemCompactGenres.text = media.genres.joinToString(" • ")
-                    } else if (media.tags.isNotEmpty()) {
-                        b.itemCompactGenres.text = media.tags.take(3).joinToString(" • ")
-                    } else {
-                        b.itemCompactGenres.text = ""
-                    }
+                    // Spoiler-safe: genres win; tag fallback excludes
+                    // AniList media-spoiler tags (M1 HOLD Blocker 1).
+                    b.itemCompactGenres.text = compactCardGenreLine(
+                        media.genres,
+                        media.tags,
+                        media.tagsIsSpoiler
+                    )
                     b.itemCompactStatus.text = media.status ?: ""
                     if (media.anime != null) {
                         b.itemTotal.text = " " + if ((media.anime.totalEpisodes

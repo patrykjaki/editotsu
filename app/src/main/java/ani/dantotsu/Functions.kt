@@ -182,7 +182,8 @@ fun clearBottomBar(expected: AnimatedBottomBar) {
     // Identity-scoped: only the owning activity may release the slot.
     // An earlier activity destroyed after a later one assigned its own
     // navbar must not erase the live owner's reference.
-    if (_bottomBarRef?.get() === expected) {
+    // Decision predicate is unit-tested (BottomBarOwnershipTest).
+    if (shouldReleaseBottomBarSlot(_bottomBarRef?.get(), expected)) {
         _bottomBarRef = null
     }
 }
