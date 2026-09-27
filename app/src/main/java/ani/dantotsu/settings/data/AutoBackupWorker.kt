@@ -43,8 +43,9 @@ class AutoBackupWorker(appContext: Context, workerParams: WorkerParameters) :
         }
 
         return try {
-            val exportableLocations = Location.entries.filter { it.exportable && it != Location.Protected }
-            val serialized = PrefManager.exportAllPrefs(exportableLocations)
+            // SECRET RULE: Protected locations never enter the scheduled
+            // plaintext payload (see autoBackupLocations).
+            val serialized = PrefManager.exportAllPrefs(autoBackupLocations())
 
             val backupDir = File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -68,14 +69,11 @@ class AutoBackupWorker(appContext: Context, workerParams: WorkerParameters) :
             val maxCopies = PrefManager.getVal<Int>(PrefName.AutoBackupMaxCopies).coerceAtLeast(1)
             val autoBackups = backupDir.listFiles { file ->
                 file.isFile && file.name.startsWith("editotsu_autobackup_") && file.name.endsWith(".ani")
-            }?.sortedBy { it.lastModified() } ?: emptyList()
+            }?.map { BackupCandidate(it.name, it.lastModified()) } ?: emptyList()
 
-            if (autoBackups.size > maxCopies) {
-                val toDelete = autoBackups.take(autoBackups.size - maxCopies)
-                toDelete.forEach { oldFile ->
-                    Logger.log("AutoBackupWorker: Pruning old backup ${oldFile.name}")
-                    oldFile.delete()
-                }
+            selectBackupsToPrune(autoBackups, maxCopies).forEach { stale ->
+                Logger.log("AutoBackupWorker: Pruning old backup ${stale.name}")
+                File(backupDir, stale.name).delete()
             }
 
             Result.success()
@@ -88,16 +86,7 @@ class AutoBackupWorker(appContext: Context, workerParams: WorkerParameters) :
     companion object {
         const val WORK_NAME = "ani.dantotsu.settings.data.AutoBackupWorker"
 
-        fun getIntervalHours(index: Int): Long {
-            return when (index) {
-                1 -> 6L
-                2 -> 12L
-                3 -> 24L
-                4 -> 48L
-                5 -> 168L
-                else -> 0L
-            }
-        }
+        fun getIntervalHours(index: Int): Long = autoBackupIntervalHours(index)
 
         fun schedule(context: Context, intervalIndex: Int) {
             val workManager = WorkManager.getInstance(context)

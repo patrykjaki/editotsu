@@ -153,6 +153,18 @@ object SettingsRegistry {
                 highlightKey = context.getString(R.string.backup_restore)
             )
         )
+        // MAX MERGE M3.
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.label_data_storage),
+                desc = context.getString(R.string.label_data_storage_desc),
+                icon = R.drawable.ic_round_folder_24,
+                category = context.getString(R.string.common),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.common)}",
+                targetActivity = SettingsCommonActivity::class.java,
+                highlightKey = context.getString(R.string.label_data_storage)
+            )
+        )
         list.add(
             SearchableSetting(
                 title = context.getString(R.string.change_download_location),
@@ -297,6 +309,18 @@ object SettingsRegistry {
                 breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.common)} > ${context.getString(R.string.ui_settings)}",
                 targetActivity = UserInterfaceSettingsActivity::class.java,
                 highlightKey = context.getString(R.string.layout_animations)
+            )
+        )
+        // MAX MERGE M3.
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.hide_spoiler_tags),
+                desc = context.getString(R.string.hide_spoiler_tags_desc),
+                icon = R.drawable.format_spoiler_24,
+                category = context.getString(R.string.ui_settings),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.common)} > ${context.getString(R.string.ui_settings)}",
+                targetActivity = UserInterfaceSettingsActivity::class.java,
+                highlightKey = context.getString(R.string.hide_spoiler_tags)
             )
         )
 

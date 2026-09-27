@@ -37,7 +37,7 @@ class DownloadResolutionTest {
     @Test
     fun `missing preference falls to next then max quality`() {
         val videos = listOf(video(480), video(720))
-        assertEquals(720, findBestVideoForDownload(videos, listOf("1080p", "480p"))?.quality)
+        assertEquals(480, findBestVideoForDownload(videos, listOf("1080p", "480p"))?.quality)
         assertEquals(720, findBestVideoForDownload(videos, listOf("2160p"))?.quality)
     }
 

@@ -736,7 +736,7 @@ class MediaInfoFragment : Fragment() {
                             false
                         ).root
                         val isSpoiler = media.tagsIsSpoiler.getOrNull(position) == true
-                        var isRevealed = !hideSpoilerTags || !isSpoiler
+                        var isRevealed = spoilerChipRevealed(hideSpoilerTags, isSpoiler)
 
                         fun updateChipAppearance() {
                             if (isSpoiler && !isRevealed) {
