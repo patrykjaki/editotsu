@@ -793,17 +793,31 @@ class DownloadsManager(private val context: Context) {
          * [ani.dantotsu.download.manga.MangaSafProbe.matchChild]).
          */
         private fun DocumentFile.findFolder(name: String): DocumentFile? {
-            val direct = findFile(name)
+            // MAX MERGE M3 (upstream 5ffa682b): sanitize the query first,
+            // then exact → dedup-suffix-insensitive → fuzzy. Read-only tier
+            // only; destructive selection stays exact-family via matchChild.
+            val validName = name.findValidName()
+            val direct = findFile(validName)
             if (direct != null && direct.isDirectory) return direct
             val list = listFiles()
-            return list.find { it.isDirectory && (it.name.equals(name, ignoreCase = true) || it.name?.trim().equals(name.trim(), ignoreCase = true)) }
-                ?: list.find { it.isDirectory && it.name != null && name.compareName(it.name!!) }
+            val exact = list.find {
+                it.isDirectory && it.name?.findValidName().equals(validName, ignoreCase = true)
+            }
+            if (exact != null) return exact
+            val baseNameWithoutSuffix = validName.replace(Regex("""\s*\(\d+\)$"""), "")
+            val withoutSuffixMatch = list.find {
+                it.isDirectory && it.name?.findValidName()?.replace(Regex("""\s*\(\d+\)$"""), "")
+                    .equals(baseNameWithoutSuffix, ignoreCase = true)
+            }
+            if (withoutSuffixMatch != null) return withoutSuffixMatch
+            return list.find { it.isDirectory && it.name != null && validName.compareName(it.name!!) }
         }
 
         private const val RATIO_THRESHOLD = 95
         fun Media.compareName(name: String): Boolean {
             val mainName = mainName().findValidName().lowercase()
-            val ratio = FuzzySearch.ratio(mainName, name.lowercase())
+            val compareName = name.findValidName().lowercase()
+            val ratio = FuzzySearch.ratio(mainName, compareName)
             return ratio > RATIO_THRESHOLD
         }
 
@@ -830,7 +844,14 @@ class DownloadsManager(private val context: Context) {
 
 private const val RESERVED_CHARS = "|\\?*<\":>+[]/'"
 fun String?.findValidName(): String {
-    return this?.replace("/", "_")?.filterNot { RESERVED_CHARS.contains(it) } ?: ""
+    // MAX MERGE M3 (upstream 5ffa682b): collapse runs of whitespace and
+    // trim so equivalent titles canonicalize. Upgrade note: pre-existing
+    // on-disk dirs with exotic spacing still resolve via the fuzzy
+    // read-only tier; new writes use this canonical form.
+    return this?.replace("/", "_")
+        ?.filterNot { RESERVED_CHARS.contains(it) }
+        ?.replace(Regex("""\s+"""), " ")
+        ?.trim() ?: ""
 }
 
 /**

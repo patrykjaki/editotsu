@@ -38,6 +38,7 @@ import ani.dantotsu.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 
@@ -62,6 +63,22 @@ class SettingsActivity : AppCompatActivity() {
                     copyToClipboard(getDeviceInfo(), false)
                     toast(getString(R.string.copied_device_info))
                     return@setOnLongClickListener true
+                }
+
+                // MAX MERGE M3 (upstream e1476cc7 badge, own pipeline):
+                // read-only outdated indicator. Quiet on failure, no
+                // pipeline mutation, no new cache, fdroid always null.
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val latest = AppUpdater.latestVersionIfNewer(this@SettingsActivity)
+                    if (latest != null) {
+                        withContext(Dispatchers.Main) {
+                            if (isDestroyed) return@withContext
+                            text = getString(R.string.version_current_outdated, BuildConfig.VERSION_NAME)
+                            setOnClickListener {
+                                openLinkInBrowser("https://github.com/${getString(R.string.repo)}/releases/latest")
+                            }
+                        }
+                    }
                 }
             }
             settingsContainer.updateLayoutParams<ViewGroup.MarginLayoutParams> {

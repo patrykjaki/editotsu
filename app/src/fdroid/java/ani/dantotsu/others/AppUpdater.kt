@@ -11,6 +11,11 @@ object AppUpdater {
         // no-op
     }
 
+    /**
+     * MAX MERGE M3: F-Droid never prompts (own pipeline no-op flavor).
+     */
+    suspend fun latestVersionIfNewer(activity: FragmentActivity): String? = null
+
     @Serializable
     data class GithubResponse(
         @SerialName("html_url")

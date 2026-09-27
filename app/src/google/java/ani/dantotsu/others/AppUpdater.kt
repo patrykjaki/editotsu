@@ -97,6 +97,24 @@ object AppUpdater {
         )
     }
 
+    /**
+     * MAX MERGE M3 (upstream e1476cc7 badge concept, own pipeline only):
+     * read-only latest-version probe for the settings outdated indicator.
+     * Reuses [fetchUpdateInfo] (own `R.string.repo`, channel-safe) and
+     * [AppUpdatePolicy.isUpdateAvailable]; quiet null on any failure.
+     * Never triggers download/install flows.
+     */
+    suspend fun latestVersionIfNewer(activity: FragmentActivity): String? {
+        return try {
+            val repo = activity.getString(R.string.repo)
+            val (_, version) = fetchUpdateInfo(repo, BuildConfig.DEBUG) ?: return null
+            if (AppUpdatePolicy.isUpdateAvailable(BuildConfig.VERSION_NAME, version)) version else null
+        } catch (e: Exception) {
+            Logger.log("Outdated check quiet-fail: ${e.message}")
+            null
+        }
+    }
+
     suspend fun check(activity: FragmentActivity, post: Boolean = false) {
         if (post) snackString(currContext()?.getString(R.string.checking_for_update))
         val repo = activity.getString(R.string.repo)
