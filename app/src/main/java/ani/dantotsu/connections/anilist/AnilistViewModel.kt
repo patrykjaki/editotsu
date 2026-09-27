@@ -137,10 +137,10 @@ class AnilistHomeViewModel : ViewModel() {
 
     fun getMissingSequels(): LiveData<ArrayList<Media>> = missingSequels
 
-    private val userStatus: MutableLiveData<ArrayList<User>> =
-        MutableLiveData<ArrayList<User>>(null)
+    private val userStatus: MutableLiveData<ArrayList<User>?> =
+        MutableLiveData<ArrayList<User>?>(null)
 
-    fun getUserStatus(): LiveData<ArrayList<User>> = userStatus
+    fun getUserStatus(): LiveData<ArrayList<User>?> = userStatus
     // Upstream 5ffa682b: pull-to-refresh bypasses the 15-min stories cache.
     // Upstream edb1a9eb: a failed fetch posts empty (not null) so the
     // stories rail resolves instead of spinning forever.
