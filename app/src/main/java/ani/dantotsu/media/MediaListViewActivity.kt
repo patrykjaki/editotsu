@@ -22,6 +22,7 @@ import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -122,6 +123,9 @@ class MediaListViewActivity : AppCompatActivity() {
                                         if (uniqueNew.isNotEmpty()) {
                                             addedMedia.addAll(uniqueNew)
                                         }
+                                    } catch (e: CancellationException) {
+                                        // V4 Blocker 2: cancellation is not a load failure.
+                                        throw e
                                     } catch (e: Exception) {
                                         Logger.log("Failed to load more recommendations: ${e.message}")
                                         break

@@ -320,7 +320,7 @@ fun fullMediaInformation(id: Int) = """
       }
     }
     ${standardMediaInformation()}
-    source(version: 3)
+    source
     duration
     season
     seasonYear
@@ -334,17 +334,24 @@ fun fullMediaInformation(id: Int) = """
       month
       day
     }
-    studios {
-      edges {
-        isMain
-        node {
-          id
-          name
-          isAnimationStudio
-          siteUrl
-          isFavourite
-          favourites
-        }
+    studios(isMain: true) {
+      nodes {
+        id
+        name
+        isAnimationStudio
+        siteUrl
+        isFavourite
+        favourites
+      }
+    }
+    producers: studios(isMain: false) {
+      nodes {
+        id
+        name
+        isAnimationStudio
+        siteUrl
+        isFavourite
+        favourites
       }
     }
     description
@@ -391,7 +398,7 @@ fun fullMediaInformation(id: Int) = """
     }
     relations {
       edges {
-        relationType(version: 3)
+        relationType(version: 2)
         node {
           ${standardMediaInformation()}
         }
@@ -414,37 +421,10 @@ fun fullMediaInformation(id: Int) = """
     }
     recommendations(sort: RATING_DESC) {
       nodes {
-        id
-        rating
-        userRating
         mediaRecommendation {
           ${standardMediaInformation()}
         }
-        user {
-          id
-          name
-        }
       }
-    }
-    stats {
-      scoreDistribution {
-        score
-        amount
-      }
-      statusDistribution {
-        status
-        amount
-      }
-    }
-    rankings {
-      id
-      rank
-      type
-      format
-      year
-      season
-      allTime
-      context
     }
     externalLinks {
       id

@@ -25,6 +25,7 @@ import ani.dantotsu.connections.syncPendingDeletions
 import ani.dantotsu.media.anime.Anime
 import ani.dantotsu.media.manga.Manga
 import ani.dantotsu.tryWithSuspend
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -120,6 +121,9 @@ class AnilistHomeViewModel : ViewModel() {
                 recommendation.postValue(currentList)
             }
             addedMedia
+        } catch (e: CancellationException) {
+            // V4 Blocker 2: cancellation is not a load failure.
+            throw e
         } catch (e: Exception) {
             Logger.log("Failed to load more recommendations: ${e.message}")
             null
