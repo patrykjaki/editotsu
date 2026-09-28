@@ -96,6 +96,7 @@ import ani.dantotsu.util.Logger
 import ani.dantotsu.util.customAlertDialog
 import com.bumptech.glide.Glide
 import com.google.android.material.slider.Slider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1540,6 +1541,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                         episodeImage = nextEpisode.thumb?.url ?: media.banner ?: media.cover
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.log("SmartDownloadAnime error: ${e.message}")
             }

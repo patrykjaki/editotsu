@@ -97,6 +97,7 @@ import com.alexvasilkov.gestures.views.GestureFrameLayout
 import com.bumptech.glide.load.resource.bitmap.BitmapTransformation
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -498,11 +499,17 @@ class MangaReaderActivity : AppCompatActivity() {
 
         scope.launch(Dispatchers.IO) {
             try {
-                var parser = model.mangaReadSources?.get(media.selected?.sourceIndex ?: 0) as? DynamicMangaParser
-                if (parser == null) {
-                    parser = model.mangaReadSources?.list?.mapNotNull { it.get?.value as? DynamicMangaParser }?.firstOrNull()
-                }
-                val images = parser?.imageList(nextChapter.sChapter) ?: return@launch
+                // M3 HOLD Blocker 7: origin must resolve deterministically.
+                // Unknown origin (offline slot, non-dynamic source) is a
+                // safe no-op — never first-installed-parser guessing.
+                val selectedIndex = media.selected?.sourceIndex ?: 0
+                val selectedIsOnlineDynamic =
+                    model.mangaReadSources?.get(selectedIndex) is DynamicMangaParser
+                val originIndex = selectSmartMangaSourceIndex(selectedIndex, selectedIsOnlineDynamic)
+                    ?: return@launch
+                val parser = model.mangaReadSources?.get(originIndex) as? DynamicMangaParser
+                    ?: return@launch
+                val images = parser.imageList(nextChapter.sChapter) ?: return@launch
                 if (images.isNotEmpty()) {
                     val downloadTask = MangaDownloaderService.DownloadTask(
                         title = media.mainName(),
@@ -520,6 +527,8 @@ class MangaReaderActivity : AppCompatActivity() {
                     }
                     MangaServiceDataSingleton.isServiceRunning = true
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 ani.dantotsu.util.Logger.log("SmartDownloadManga error: ${e.message}")
             }

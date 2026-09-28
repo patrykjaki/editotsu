@@ -17,10 +17,13 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import com.anggrayudi.storage.file.getAbsolutePath
 import androidx.recyclerview.widget.LinearLayoutManager
+import ani.dantotsu.BuildConfig
 import ani.dantotsu.R
 import ani.dantotsu.databinding.ActivitySettingsDataBinding
 import ani.dantotsu.download.DownloadsManager
+import ani.dantotsu.download.anime.AnimeDownloaderService
 import ani.dantotsu.download.manga.MangaDownloaderService
+import ani.dantotsu.download.novel.NovelDownloaderService
 import ani.dantotsu.initActivity
 import ani.dantotsu.media.MediaType
 import ani.dantotsu.navBarHeight
@@ -32,8 +35,11 @@ import ani.dantotsu.settings.Settings
 import ani.dantotsu.settings.SettingsAdapter
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
-import ani.dantotsu.settings.saving.internal.Location
 import ani.dantotsu.settings.saving.internal.PreferencePackager
+import ani.dantotsu.settings.saving.internal.BackupCheck
+import ani.dantotsu.settings.saving.internal.validateBackupPayload
+import ani.dantotsu.settings.saving.internal.wrapBackupEnvelope
+import ani.dantotsu.util.Logger
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.toast
@@ -61,6 +67,9 @@ class SettingsDataActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsDataBinding
     private lateinit var launcher: LauncherWrapper
     private var cacheSize: Long = 0L
+    private var pendingBackupPayload: String? = null
+    private var pendingBackupName: String? = null
+    private var createDocumentLauncher: androidx.activity.result.ActivityResultLauncher<String>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,22 +91,27 @@ class SettingsDataActivity : AppCompatActivity() {
         launcher = LauncherWrapper(this, contract)
 
         val openDocumentLauncher =
-            registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> restoreFromUri(uri) }
+
+        createDocumentLauncher =
+            registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+                // M3 HOLD Blocker 3: user-chosen destination, no legacy
+                // permission flow; write is atomic from the app side
+                // (single stream write, failure deletes nothing else).
                 if (uri != null) {
                     try {
-                        val jsonString =
-                            contentResolver.openInputStream(uri)?.readBytes()
-                                ?: throw Exception("Error reading file")
-                        val name = DocumentFile.fromSingleUri(this, uri)?.name ?: "settings"
-                        if (name.endsWith(".ani")) {
-                            val decryptedJson = jsonString.toString(Charsets.UTF_8)
-                            if (PreferencePackager.unpack(decryptedJson)) restartApp()
-                        } else {
-                            toast(getString(R.string.unknown_file_type))
-                        }
+                        val payload = pendingBackupPayload
+                            ?: throw Exception("Nothing to back up")
+                        contentResolver.openOutputStream(uri)?.use { out ->
+                            out.write(payload.toByteArray(Charsets.UTF_8))
+                        } ?: throw Exception("Could not open destination")
+                        toast(getString(R.string.saved_to_path, uri.toString()))
                     } catch (e: Exception) {
                         e.printStackTrace()
-                        toast(getString(R.string.error_importing_settings))
+                        toast(getString(R.string.error_saving_settings))
+                    } finally {
+                        pendingBackupPayload = null
+                        pendingBackupName = null
                     }
                 }
             }
@@ -132,6 +146,37 @@ class SettingsDataActivity : AppCompatActivity() {
             binding.storageDirectoryText.text = "Downloads: $displayPath"
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    /**
+     * M3 HOLD Blocker 4: restore path shared by the document callback.
+     * Validate BEFORE mutating — invalid input never reaches unpack.
+     */
+    private fun restoreFromUri(uri: Uri?) {
+        if (uri == null) return
+        try {
+            val jsonString =
+                contentResolver.openInputStream(uri)?.readBytes()
+                    ?: throw Exception("Error reading file")
+            val name = DocumentFile.fromSingleUri(this, uri)?.name ?: "settings"
+            if (name.endsWith(".ani")) {
+                when (val check =
+                    validateBackupPayload(jsonString.toString(Charsets.UTF_8))) {
+                    is BackupCheck.Valid -> {
+                        if (PreferencePackager.unpack(check.payloadJson)) restartApp()
+                    }
+                    is BackupCheck.Invalid -> {
+                        Logger.log("Backup restore rejected: ${check.reason}")
+                        toast(getString(R.string.error_importing_settings))
+                    }
+                }
+            } else {
+                toast(getString(R.string.unknown_file_type))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            toast(getString(R.string.error_importing_settings))
         }
     }
 
@@ -363,10 +408,25 @@ class SettingsDataActivity : AppCompatActivity() {
                         setTitle(R.string.purge_downloads)
                         setMessage(R.string.purge_confirm, "${getString(R.string.anime)} & ${getString(R.string.manga)}")
                         setPosButton(R.string.yes) {
+                            // M3 HOLD Blocker 5: all three categories. Active
+                            // anime/novel work is cancelled through the
+                            // existing safe paths first; manga travels its
+                            // service scope barrier.
+                            ContextCompat.startForegroundService(
+                                context,
+                                android.content.Intent(context, AnimeDownloaderService::class.java).apply {
+                                    action = AnimeDownloaderService.ACTION_CANCEL_ALL_DOWNLOADS
+                                }
+                            )
+                            ContextCompat.startForegroundService(
+                                context,
+                                android.content.Intent(context, NovelDownloaderService::class.java).apply {
+                                    action = NovelDownloaderService.ACTION_CANCEL_ALL_DOWNLOADS
+                                }
+                            )
                             val downloadsManager = Injekt.get<DownloadsManager>()
                             downloadsManager.purgeDownloads(MediaType.ANIME)
-                            // Manga purge refuses direct calls (live-owner race);
-                            // travel the service scope barrier instead.
+                            downloadsManager.purgeDownloads(MediaType.NOVEL)
                             val purgeIntent = android.content.Intent(
                                 context,
                                 MangaDownloaderService::class.java
@@ -501,14 +561,18 @@ class SettingsDataActivity : AppCompatActivity() {
                 desc = getString(R.string.backup_now_desc),
                 icon = R.drawable.backup_restore,
                 onClick = {
-                    StoragePermissions.downloadsPermission(context)
-                    val exportableLocations = Location.entries.filter { it.exportable }
+                    // M3 HOLD Blockers 1+3+4: safe-allowlist payload in a
+                    // versioned envelope, written to a user-chosen document
+                    // (no legacy permission flow).
                     val timestampStr = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault()).format(Date())
-                    savePrefsToDownloads(
-                        "Editotsu_${timestampStr}",
-                        PrefManager.exportAllPrefs(exportableLocations),
-                        context
+                    val payload = PrefManager.exportAllPrefs(plaintextBackupAllowlist())
+                    pendingBackupPayload = wrapBackupEnvelope(
+                        payload,
+                        BuildConfig.VERSION_NAME,
+                        System.currentTimeMillis()
                     )
+                    pendingBackupName = "Editotsu_${timestampStr}.ani"
+                    pendingBackupName?.let { createDocumentLauncher?.launch(it) }
                 }
             ),
 

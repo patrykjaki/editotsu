@@ -26,7 +26,22 @@ fun autoBackupIntervalHours(index: Int): Long {
  * is exportable for manual encrypted export.
  */
 fun autoBackupLocations(): List<Location> =
-    Location.entries.filter { it.exportable && it != Location.Protected }
+    plaintextBackupAllowlist()
+
+/**
+ * Plaintext backup allowlist (M3 HOLD Blockers 1+2): only explicitly
+ * reviewed non-sensitive locations may enter an unencrypted backup —
+ * General, UI, Player, Reader, NovelReader. This is an allowlist, never
+ * a denylist: Protected (secrets) and ExtensionSettings (unclassified
+ * third-party prefs) are excluded from BOTH quick and automatic
+ * plaintext backups. Full/protected backup stays on the existing
+ * password/encrypted `.sani` flow.
+ */
+fun plaintextBackupAllowlist(): List<Location> =
+    Location.entries.filter {
+        it == Location.General || it == Location.UI || it == Location.Player ||
+            it == Location.Reader || it == Location.NovelReader
+    }
 
 /** Oldest-first prune beyond [maxCopies] (minimum 1 kept). */
 fun selectBackupsToPrune(

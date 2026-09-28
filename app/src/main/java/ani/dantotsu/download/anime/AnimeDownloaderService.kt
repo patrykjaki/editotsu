@@ -24,6 +24,7 @@ import ani.dantotsu.addons.download.DownloadAddonManager
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.defaultHeaders
 import ani.dantotsu.download.DownloadedType
+import ani.dantotsu.download.WifiLossMonitor
 import ani.dantotsu.download.DownloadsManager
 import ani.dantotsu.download.DownloadsManager.Companion.getSubDirectory
 import ani.dantotsu.download.anime.AnimeDownloaderService.AnimeDownloadTask.Companion.getTaskName
@@ -119,10 +120,35 @@ class AnimeDownloaderService : Service() {
             IntentFilter(ACTION_CANCEL_DOWNLOAD),
             ContextCompat.RECEIVER_EXPORTED
         )
+        ensureWifiMonitor()
+    }
+
+    /**
+     * MAX MERGE M3 HOLD (Blocker 6): Wi-Fi → cellular mid-transfer guard.
+     * Edge-triggered exactly once per loss; stops active work through the
+     * existing safe path. Manual retry only — never auto-resume.
+     */
+    private var wifiLossMonitor: WifiLossMonitor? = null
+
+    private fun ensureWifiMonitor() {
+        val monitor = wifiLossMonitor ?: WifiLossMonitor(
+            this,
+            onBlocked = {
+                cancelAllDownloads()
+                snackString(getString(R.string.download_wifi_only_warning))
+            }
+        ).also { wifiLossMonitor = it }
+        monitor.ensure()
+    }
+
+    private fun releaseWifiMonitor() {
+        wifiLossMonitor?.release()
+        wifiLossMonitor = null
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        releaseWifiMonitor()
         AnimeServiceDataSingleton.downloadQueue.clear()
         downloadJobs.clear()
         AnimeServiceDataSingleton.isServiceRunning = false
@@ -131,6 +157,13 @@ class AnimeDownloaderService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         snackString("Download started")
+        ensureWifiMonitor()
+        if (intent?.action == ACTION_CANCEL_ALL_DOWNLOADS) {
+            // MAX MERGE M3 (Blocker 5): cancel-all through the safe
+            // per-task path; no new lifecycle.
+            cancelAllDownloads()
+            return START_NOT_STICKY
+        }
         val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         serviceScope.launch {
             mutex.withLock {
@@ -191,9 +224,21 @@ class AnimeDownloaderService : Service() {
         }
     }
 
+    /**
+     * MAX MERGE M3 (Blockers 5+6): cancel every known anime task through
+     * the existing per-task safe path (failure broadcast, engine cancel,
+     * record cleanup). Used by delete-all purge and the Wi-Fi-loss
+     * transition. No new lifecycle invented.
+     */
     @UnstableApi
-    fun cancelDownload(taskName: String) {
-        val tasks = mutableListOf<AnimeDownloadTask>()
+    fun cancelAllDownloads() {
+        val names = (AnimeServiceDataSingleton.downloadQueue.map { it.getTaskName() } +
+            currentTasks.map { it.getTaskName() }).distinct()
+        names.forEach { cancelDownload(it) }
+    }
+
+    @UnstableApi
+    fun cancelDownload(taskName: String) {        val tasks = mutableListOf<AnimeDownloadTask>()
         tasks.addAll(AnimeServiceDataSingleton.downloadQueue.filter { it.getTaskName() == taskName })
         tasks.addAll(currentTasks.filter { it.getTaskName() == taskName })
 
@@ -741,6 +786,8 @@ class AnimeDownloaderService : Service() {
         private const val NOTIFICATION_ID = 1103
         const val ACTION_CANCEL_DOWNLOAD = "action_cancel_download"
         const val EXTRA_TASK_NAME = "extra_task_name"
+        /** MAX MERGE M3 (Blocker 5): delete-all / Wi-Fi-loss entry point. */
+        const val ACTION_CANCEL_ALL_DOWNLOADS = "action_cancel_all_downloads"
     }
 }
 

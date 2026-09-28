@@ -21,6 +21,7 @@ import androidx.documentfile.provider.DocumentFile
 import ani.dantotsu.R
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.download.DownloadedType
+import ani.dantotsu.download.WifiLossMonitor
 import ani.dantotsu.download.DownloadsManager
 import ani.dantotsu.download.DownloadsManager.Companion.getSubDirectory
 import ani.dantotsu.download.MangaChapterDeleteResult
@@ -189,6 +190,7 @@ class MangaDownloaderService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        releaseWifiMonitor()
         // NOTE: the download queue is intentionally NOT cleared here. Teardown runs
         // only when idle (veto-safe stop with an empty queue and no newer starts), so
         // anything still queued is fresh work that must survive for the deterministic
@@ -253,8 +255,33 @@ class MangaDownloaderService : Service() {
             return START_NOT_STICKY
         }
         snackString("Download started")
+        ensureWifiMonitor()
         ensureProcessor()
         return START_NOT_STICKY
+    }
+
+    /**
+     * MAX MERGE M3 HOLD (Blocker 6): Wi-Fi → cellular mid-transfer guard.
+     * Edge-triggered exactly once per loss; clears queued + live work
+     * through the existing scope transaction (same as clear-all). Manual
+     * retry only — never auto-resume.
+     */
+    private var wifiLossMonitor: WifiLossMonitor? = null
+
+    private fun ensureWifiMonitor() {
+        val monitor = wifiLossMonitor ?: WifiLossMonitor(
+            this,
+            onBlocked = {
+                runClearMangaQueueCommand()
+                snackString(getString(R.string.download_wifi_only_warning))
+            }
+        ).also { wifiLossMonitor = it }
+        monitor.ensure()
+    }
+
+    private fun releaseWifiMonitor() {
+        wifiLossMonitor?.release()
+        wifiLossMonitor = null
     }
 
     /**

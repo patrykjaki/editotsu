@@ -19,6 +19,7 @@ import androidx.documentfile.provider.DocumentFile
 import ani.dantotsu.R
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.download.DownloadedType
+import ani.dantotsu.download.WifiLossMonitor
 import ani.dantotsu.download.DownloadsManager
 import ani.dantotsu.download.DownloadsManager.Companion.getSubDirectory
 import ani.dantotsu.media.Media
@@ -91,10 +92,35 @@ class NovelDownloaderService : Service() {
             startForeground(NOTIFICATION_ID, builder.build())
         }
         ContextCompat.registerReceiver(this, cancelReceiver, IntentFilter(ACTION_CANCEL_DOWNLOAD), ContextCompat.RECEIVER_EXPORTED)
+        ensureWifiMonitor()
+    }
+
+    /**
+     * MAX MERGE M3 HOLD (Blocker 6): Wi-Fi → cellular mid-transfer guard.
+     * Edge-triggered exactly once per loss; stops active work through the
+     * existing safe path. Manual retry only — never auto-resume.
+     */
+    private var wifiLossMonitor: WifiLossMonitor? = null
+
+    private fun ensureWifiMonitor() {
+        val monitor = wifiLossMonitor ?: WifiLossMonitor(
+            this,
+            onBlocked = {
+                cancelAllDownloads()
+                snackString(getString(R.string.download_wifi_only_warning))
+            }
+        ).also { wifiLossMonitor = it }
+        monitor.ensure()
+    }
+
+    private fun releaseWifiMonitor() {
+        wifiLossMonitor?.release()
+        wifiLossMonitor = null
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        releaseWifiMonitor()
         NovelServiceDataSingleton.downloadQueue.clear()
         NovelServiceDataSingleton.currentTasks.clear()
         NovelServiceDataSingleton.progress.clear()
@@ -105,6 +131,13 @@ class NovelDownloaderService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         snackString("Download started")
+        ensureWifiMonitor()
+        if (intent?.action == ACTION_CANCEL_ALL_DOWNLOADS) {
+            // MAX MERGE M3 (Blocker 5): cancel-all through the safe
+            // per-chapter path; no new lifecycle.
+            cancelAllDownloads()
+            return START_NOT_STICKY
+        }
         val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         serviceScope.launch {
             mutex.withLock {
@@ -159,6 +192,18 @@ class NovelDownloaderService : Service() {
                 withContext(Dispatchers.Main) { stopSelf() }
             }
         }
+    }
+
+    /**
+     * MAX MERGE M3 (Blockers 5+6): cancel every known novel task through
+     * the existing per-chapter safe path (failure broadcast, job cancel,
+     * queue cleanup). Used by delete-all purge and the Wi-Fi-loss
+     * transition. No new lifecycle invented.
+     */
+    fun cancelAllDownloads() {
+        val chapters = (NovelServiceDataSingleton.downloadQueue.map { it.chapter } +
+            NovelServiceDataSingleton.currentTasks.map { it.chapter }).distinct()
+        chapters.forEach { cancelDownload(it) }
     }
 
     fun cancelDownload(chapter: String) {
@@ -490,6 +535,8 @@ class NovelDownloaderService : Service() {
         private const val NOTIFICATION_ID = 1103
         const val ACTION_CANCEL_DOWNLOAD = "action_cancel_download"
         const val EXTRA_CHAPTER = "extra_chapter"
+        /** MAX MERGE M3 (Blocker 5): delete-all / Wi-Fi-loss entry point. */
+        const val ACTION_CANCEL_ALL_DOWNLOADS = "action_cancel_all_downloads"
     }
 }
 
