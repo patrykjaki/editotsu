@@ -1,7 +1,8 @@
 package ani.dantotsu.settings.data
 
 import ani.dantotsu.settings.saving.internal.Location
-import org.junit.Assert.assertEqualsimport org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
