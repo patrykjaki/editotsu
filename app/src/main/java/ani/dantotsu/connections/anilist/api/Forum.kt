@@ -120,6 +120,89 @@ data class ThreadCategory(
     val name: String? = null
 ) : java.io.Serializable
 
+/**
+ * MAX MERGE M2 correction (Blocker 2): typed view of one nested forum
+ * reply. AniList serves `childComments` as an opaque JSON payload, so
+ * parsing is defensive: arrays decode element-wise (bad elements drop,
+ * order preserved), common wrapper objects are unwrapped, anything else
+ * yields no children rather than failing the parent. Depth is unbounded
+ * in the type; rendering caps indentation, never data.
+ */
+@Serializable
+data class ThreadCommentNode(
+    @SerialName("id")
+    val id: Int = 0,
+    @SerialName("userId")
+    val userId: Int? = null,
+    @SerialName("threadId")
+    val threadId: Int? = null,
+    @SerialName("comment")
+    val comment: String? = null,
+    @SerialName("isLocked")
+    val isLocked: Boolean? = null,
+    @SerialName("isLiked")
+    val isLiked: Boolean? = null,
+    @SerialName("likeCount")
+    val likeCount: Int? = null,
+    @SerialName("createdAt")
+    val createdAt: Int? = null,
+    @SerialName("updatedAt")
+    val updatedAt: Int? = null,
+    @SerialName("siteUrl")
+    val siteUrl: String? = null,
+    @SerialName("user")
+    val user: ThreadUser? = null,
+    @SerialName("childComments")
+    val childComments: JsonElement? = null
+) : java.io.Serializable {
+    /** This node's own nested replies, oldest-first as served. */
+    fun typedChildren(): List<ThreadCommentNode> =
+        parseThreadCommentNodes(childComments)
+
+    /** Lossless view as a top-level comment (children handled by recursion). */
+    fun asThreadComment(): ThreadComment = ThreadComment(
+        id = id,
+        userId = userId,
+        threadId = threadId,
+        comment = comment,
+        isLocked = isLocked,
+        isLiked = isLiked,
+        likeCount = likeCount,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+        siteUrl = siteUrl,
+        user = user,
+        childComments = null
+    )
+}
+
+private val threadNodeJson = kotlinx.serialization.json.Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+    coerceInputValues = true
+}
+
+/** Lenient decode of one nested-reply payload; never throws. */
+fun parseThreadCommentNodes(element: JsonElement?): List<ThreadCommentNode> {
+    if (element == null || element is kotlinx.serialization.json.JsonNull) return emptyList()
+    if (element is kotlinx.serialization.json.JsonArray) {
+        return element.mapNotNull { item ->
+            runCatching { threadNodeJson.decodeFromJsonElement(ThreadCommentNode.serializer(), item) }.getOrNull()
+        }
+    }
+    if (element is kotlinx.serialization.json.JsonObject) {
+        val wrapped = element["edges"] ?: element["nodes"] ?: element["comments"] ?: element["childComments"]
+        if (wrapped != null) return parseThreadCommentNodes(wrapped)
+        val single = runCatching { threadNodeJson.decodeFromJsonElement(ThreadCommentNode.serializer(), element) }.getOrNull()
+        if (single != null && (single.id != 0 || single.comment != null)) return listOf(single)
+    }
+    return emptyList()
+}
+
+/** Top-level comment's nested replies, oldest-first as served. */
+fun ThreadComment.typedChildren(): List<ThreadCommentNode> =
+    parseThreadCommentNodes(childComments)
+
 @Serializable
 data class ThreadComment(
     @SerialName("id")

@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.api.ForumThread
+import ani.dantotsu.connections.anilist.api.typedChildren
 import ani.dantotsu.databinding.ActivityThreadViewBinding
 import ani.dantotsu.initActivity
 import ani.dantotsu.loadImage
@@ -33,10 +34,9 @@ class ThreadViewActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityThreadViewBinding
     private val commentsAdapter = GroupieAdapter()
+    private val gate = ForumPagedGate()
     private var threadId: Int = -1
     private var thread: ForumThread? = null
-    private var currentPage = 1
-    private var hasNextPage = true
     private var isSubscribed = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,6 +66,18 @@ class ThreadViewActivity : AppCompatActivity() {
         binding.commentsRecyclerView.adapter = commentsAdapter
         binding.commentsRecyclerView.layoutManager = LinearLayoutManager(this)
 
+        // MAX MERGE M2 correction (Blocker 1): the comments list lives
+        // inside a NestedScrollView, so pagination observes the outer
+        // scroll surface near the bottom. The gate serializes page
+        // requests (no duplicates) across refresh/pagination races.
+        binding.threadScrollView.setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+            if (scrollY <= oldScrollY) return@setOnScrollChangeListener
+            val view = binding.threadScrollView.getChildAt(0) ?: return@setOnScrollChangeListener
+            if (scrollY + binding.threadScrollView.height >= view.height - 600) {
+                loadComments(false)
+            }
+        }
+
         binding.threadReplyFab.visibility =
             if (Anilist.token != null) View.VISIBLE else View.GONE
         binding.threadReplyFab.setOnClickListener {
@@ -77,7 +89,13 @@ class ThreadViewActivity : AppCompatActivity() {
             )
         }
 
+        // Blocker 3: mutation-only controls never advertise while logged
+        // out (subscribe + like hidden without a session).
+        binding.threadSubscribe.visibility =
+            if (ForumAuthPolicy.canMutate(Anilist.token)) View.VISIBLE else View.GONE
+
         binding.threadSubscribe.setOnClickListener {
+            if (!ForumAuthPolicy.canMutate(Anilist.token)) return@setOnClickListener
             val newSub = !isSubscribed
             lifecycleScope.launch(Dispatchers.IO) {
                 val success = Anilist.mutation.toggleThreadSubscription(threadId, newSub)
@@ -132,7 +150,11 @@ class ThreadViewActivity : AppCompatActivity() {
         binding.threadLikeIcon.setColorFilter(if (t.isLiked == true) likeColor else notLikeColor)
         binding.threadLikeCount.text = (t.likeCount ?: 0).toString()
 
+        // Blocker 3: no session → no like action (count stays visible).
+        binding.threadLikeButton.visibility =
+            if (ForumAuthPolicy.canMutate(Anilist.token)) View.VISIBLE else View.GONE
         binding.threadLikeButton.setOnClickListener {
+            if (!ForumAuthPolicy.canMutate(Anilist.token)) return@setOnClickListener
             lifecycleScope.launch(Dispatchers.IO) {
                 val success = Anilist.mutation.toggleLike(t.id, "THREAD") != null
                 withContext(Dispatchers.Main) {
@@ -147,7 +169,9 @@ class ThreadViewActivity : AppCompatActivity() {
             }
         }
 
-        if (t.userId == Anilist.userid) {
+        // Delete stays owner-specific: a session AND an owner match are
+        // both required (a null viewer never equals an owner).
+        if (ForumAuthPolicy.deleteVisibleFor(t.userId, Anilist.userid, Anilist.token)) {
             binding.threadDelete.visibility = View.VISIBLE
             binding.threadDelete.setOnClickListener {
                 customAlertDialog().apply {
@@ -170,6 +194,8 @@ class ThreadViewActivity : AppCompatActivity() {
                     show()
                 }
             }
+        } else {
+            binding.threadDelete.visibility = View.GONE
         }
 
         binding.threadWebView.settings.apply {
@@ -223,30 +249,66 @@ class ThreadViewActivity : AppCompatActivity() {
     }
 
     private fun loadComments(refresh: Boolean) {
+        // Latest-wins + serialized pagination (Blockers 1+4): a refresh
+        // retires any in-flight older page; stale results apply nothing.
+        val generation: Int
+        val page: Int
         if (refresh) {
-            currentPage = 1
+            generation = gate.startRefresh()
+            page = 1
             binding.commentsProgressBar.visibility = View.VISIBLE
+        } else {
+            val next = gate.requestNext() ?: return
+            generation = next.generation
+            page = next.page
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val res = Anilist.query.getThreadComments(threadId, currentPage)
+            val res = try {
+                Anilist.query.getThreadComments(threadId, page)
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    binding.commentsProgressBar.visibility = View.GONE
+                    gate.fail(generation)
+                }
+                return@launch
+            }
             withContext(Dispatchers.Main) {
-                binding.commentsProgressBar.visibility = View.GONE
+                if (refresh) {
+                    binding.commentsProgressBar.visibility = View.GONE
+                }
                 val comments = res?.data?.page?.threadComments ?: emptyList()
-                hasNextPage = res?.data?.page?.pageInfo?.hasNextPage ?: false
+                val hasNext = res?.data?.page?.pageInfo?.hasNextPage ?: false
+                if (!gate.finish(generation, page, hasNext)) return@withContext
 
                 if (refresh) {
                     commentsAdapter.clear()
                 }
 
                 if (comments.isNotEmpty()) {
-                    val items = comments.map {
-                        ThreadCommentItem(it, threadId, this@ThreadViewActivity, commentsAdapter, lifecycleScope)
-                    }
-                    commentsAdapter.addAll(items)
-                    currentPage++
+                    commentsAdapter.addAll(flattenThreadComments(comments))
                 }
             }
         }
+    }
+
+    /**
+     * Blocker 2: every nested reply becomes a visible item. Top-level
+     * comments render at depth 0, their typed children recurse below them
+     * in served order with full user/body/like/identity. A refresh rebuilds
+     * the whole list, so children can never duplicate.
+     */
+    private fun flattenThreadComments(
+        comments: List<ani.dantotsu.connections.anilist.api.ThreadComment>
+    ): List<ThreadCommentItem> {
+        val items = mutableListOf<ThreadCommentItem>()
+        fun addNode(comment: ani.dantotsu.connections.anilist.api.ThreadComment, depth: Int) {
+            items.add(ThreadCommentItem(comment, threadId, this, commentsAdapter, lifecycleScope, depth))
+            comment.typedChildren().forEach { child ->
+                addNode(child.asThreadComment(), depth + 1)
+            }
+        }
+        comments.forEach { addNode(it, 0) }
+        return items
     }
 }

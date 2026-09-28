@@ -28,9 +28,7 @@ class ForumActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityForumBinding
     private val adapter = GroupieAdapter()
-    private var currentPage = 1
-    private var hasNextPage = true
-    private var isLoading = false
+    private val gate = ForumPagedGate()
     private var selectedCategoryId: Int? = null
     private var currentSearch: String? = null
 
@@ -59,7 +57,7 @@ class ForumActivity : AppCompatActivity() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(recyclerView, dx, dy)
                 val layoutManager = recyclerView.layoutManager as LinearLayoutManager
-                if (hasNextPage && !isLoading && layoutManager.findLastVisibleItemPosition() >= adapter.itemCount - 4) {
+                if (layoutManager.findLastVisibleItemPosition() >= adapter.itemCount - 4) {
                     loadThreads(false)
                 }
             }
@@ -127,29 +125,44 @@ class ForumActivity : AppCompatActivity() {
     }
 
     private fun loadThreads(refresh: Boolean) {
-        if (isLoading) return
-        isLoading = true
+        // MAX MERGE M2 correction (Blocker 4): latest-state-wins. A refresh
+        // bumps the generation so any in-flight older request is discarded
+        // on arrival instead of painting stale rows; pagination stays
+        // serialized through the gate (no duplicate same-page requests).
+        val generation: Int
+        val page: Int
         if (refresh) {
-            currentPage = 1
-            hasNextPage = true
+            generation = gate.startRefresh()
+            page = 1
             binding.forumProgressBar.visibility = View.VISIBLE
             binding.forumEmptyText.visibility = View.GONE
+        } else {
+            val next = gate.requestNext() ?: return
+            generation = next.generation
+            page = next.page
         }
+        val category = selectedCategoryId
+        val search = currentSearch
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val res = Anilist.query.getThreads(
-                categoryId = selectedCategoryId,
-                search = currentSearch,
-                page = currentPage
-            )
+            val res = try {
+                Anilist.query.getThreads(
+                    categoryId = category,
+                    search = search,
+                    page = page
+                )
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { gate.fail(generation) }
+                return@launch
+            }
 
             withContext(Dispatchers.Main) {
                 binding.forumProgressBar.visibility = View.GONE
                 binding.forumSwipeRefresh.isRefreshing = false
-                isLoading = false
 
                 val threads = res?.data?.page?.threads ?: emptyList()
-                hasNextPage = res?.data?.page?.pageInfo?.hasNextPage ?: false
+                val hasNext = res?.data?.page?.pageInfo?.hasNextPage ?: false
+                if (!gate.finish(generation, page, hasNext)) return@withContext
 
                 if (refresh) {
                     adapter.clear()
@@ -158,7 +171,6 @@ class ForumActivity : AppCompatActivity() {
                 if (threads.isNotEmpty()) {
                     val items = threads.map { ForumThreadItem(it, this@ForumActivity) }
                     adapter.addAll(items)
-                    currentPage++
                 }
 
                 binding.forumEmptyText.visibility =

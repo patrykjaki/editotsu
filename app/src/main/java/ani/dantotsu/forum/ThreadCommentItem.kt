@@ -3,6 +3,7 @@ package ani.dantotsu.forum
 import android.content.Context
 import android.content.Intent
 import android.view.View
+import androidx.core.view.updateLayoutParams
 import androidx.core.content.ContextCompat
 import ani.dantotsu.R
 import ani.dantotsu.buildMarkwon
@@ -27,10 +28,18 @@ class ThreadCommentItem(
     val threadId: Int,
     val context: Context,
     val parentAdapter: GroupieAdapter,
-    val scope: CoroutineScope
+    val scope: CoroutineScope,
+    val depth: Int = 0
 ) : BindableItem<ItemThreadCommentBinding>() {
 
     override fun bind(viewBinding: ItemThreadCommentBinding, position: Int) {
+        // Nested replies indent deterministically under their parent.
+        if (depth > 0) {
+            val indent = (depth * 16 * viewBinding.root.resources.displayMetrics.density).toInt()
+            viewBinding.root.updateLayoutParams<android.view.ViewGroup.MarginLayoutParams> {
+                marginStart = indent
+            }
+        }
         viewBinding.commentAvatar.loadImage(comment.user?.avatar?.medium)
         viewBinding.commentAuthor.text = comment.user?.name ?: "Unknown"
         viewBinding.commentTime.text = comment.createdAt?.let { ActivityItemBuilder.getDateTime(it) } ?: ""
@@ -43,7 +52,13 @@ class ThreadCommentItem(
         viewBinding.commentLikeIcon.setColorFilter(if (comment.isLiked == true) likeColor else notLikeColor)
         viewBinding.commentLikeCount.text = (comment.likeCount ?: 0).toString()
 
+        // Blocker 3: mutation-only controls hidden without a session; the
+        // click path can never dispatch while logged out.
+        val authed = ForumAuthPolicy.canMutate(Anilist.token)
+        viewBinding.commentLikeButton.visibility = if (authed) View.VISIBLE else View.GONE
+        viewBinding.commentReplyButton.visibility = if (authed) View.VISIBLE else View.GONE
         viewBinding.commentLikeButton.setOnClickListener {
+            if (!ForumAuthPolicy.canMutate(Anilist.token)) return@setOnClickListener
             scope.launch(Dispatchers.IO) {
                 val success = Anilist.mutation.toggleLike(comment.id, "THREAD_COMMENT") != null
                 withContext(Dispatchers.Main) {
@@ -58,7 +73,8 @@ class ThreadCommentItem(
             }
         }
 
-        viewBinding.commentDelete.visibility = if (comment.userId == Anilist.userid) View.VISIBLE else View.GONE
+        viewBinding.commentDelete.visibility =
+            if (ForumAuthPolicy.deleteVisibleFor(comment.userId, Anilist.userid, Anilist.token)) View.VISIBLE else View.GONE
         viewBinding.commentDelete.setOnClickListener {
             context.customAlertDialog().apply {
                 setTitle(R.string.delete)
@@ -82,6 +98,7 @@ class ThreadCommentItem(
         }
 
         viewBinding.commentReplyButton.setOnClickListener {
+            if (!ForumAuthPolicy.canMutate(Anilist.token)) return@setOnClickListener
             context.startActivity(
                 Intent(context, ActivityMarkdownCreator::class.java).apply {
                     putExtra("type", "threadComment")

@@ -2069,7 +2069,7 @@ Page(page:$page,perPage:50) {
     ): ani.dantotsu.connections.anilist.api.ForumThreadsResponse? {
         val categoryArg = if (categoryId != null) ", categoryId: $categoryId" else ""
         val mediaCategoryArg = if (mediaCategoryId != null) ", mediaCategoryId: $mediaCategoryId" else ""
-        val searchArg = if (!search.isNullOrBlank()) ", search: \"$search\"" else ""
+        val searchArg = if (!search.isNullOrBlank()) ", search: \"${escapeGraphqlString(search)}\"" else ""
         val query = """{Page(page:$page,perPage:25){pageInfo{hasNextPage currentPage}threads(sort:[$sort] $categoryArg $mediaCategoryArg $searchArg){id title body userId replyCount viewCount isLocked isSticky isSubscribed isLiked likeCount createdAt updatedAt siteUrl user{id name avatar{medium large}bannerImage}categories{id name}mediaCategories{id title{userPreferred}coverImage{medium}}}}}"""
         return executeQuery(query, force = true)
     }
@@ -2118,3 +2118,11 @@ data class UserBioResponse(
         ) : java.io.Serializable
     }
 }
+
+/**
+ * MAX MERGE M2 correction: escape user text interpolated into GraphQL
+ * string literals (forum search). Backslashes first so existing escapes
+ * are not double-processed.
+ */
+internal fun escapeGraphqlString(raw: String): String =
+    raw.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
