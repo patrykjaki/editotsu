@@ -147,6 +147,7 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
         ThemeManager(this).applyTheme(MediaSingleton.bitmap)
         initActivity(this)
         MediaSingleton.bitmap = null
+        MediaSingleton.media = null
 
         binding = ActivityMediaBinding.inflate(layoutInflater)
         setContentView(binding.root)

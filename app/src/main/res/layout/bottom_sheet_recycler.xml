@@ -23,22 +23,31 @@
 
         <TextView
             android:id="@+id/title"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="48dp"
+            android:layout_weight="1"
             android:fontFamily="@font/poppins"
-            android:gravity="bottom|center_horizontal"
+            android:gravity="center_vertical"
             android:text="@string/replies"
             android:textSize="20sp"
             android:textStyle="bold" />
 
         <ImageView
+            android:id="@+id/subscribeButton"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginEnd="8dp"
+            android:contentDescription="@string/subscriptions"
+            android:padding="6dp"
+            android:src="@drawable/ic_round_notifications_active_24"
+            app:tint="?attr/colorOnBackground" />
+
+        <ImageView
             android:id="@+id/replyButton"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:layout_gravity="center"
-            android:layout_marginStart="-48dp"
             android:contentDescription="@string/reply"
-            android:fontFamily="@font/poppins_bold"
+            android:padding="6dp"
             android:src="@drawable/ic_add"
             app:tint="?attr/colorPrimary" />
     </LinearLayout>
@@ -51,6 +60,35 @@
         android:layout_gravity="center"
         android:layout_marginTop="32dp"
         android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/repliesEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="32dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/repliesEmptyIcon"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_round_help_outline"
+            app:tint="?attr/colorOnSurfaceVariant"
+            tools:ignore="ContentDescription" />
+
+        <TextView
+            android:id="@+id/repliesEmptyText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:fontFamily="@font/poppins"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="15sp"
+            android:gravity="center"
+            tools:text="No items found" />
+    </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/repliesRecyclerView"

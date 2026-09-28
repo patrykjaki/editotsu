@@ -490,6 +490,7 @@ class AnilistQueries {
                 if (response != null) {
                     fun parse() {
                         val fetchedMedia = response?.data?.media ?: return
+                        if (fetchedMedia.idMal != null) media.idMAL = fetchedMedia.idMal
                         media.isFav = fetchedMedia.isFavourite ?: false
 
                         if (fetchedMedia.mediaListEntry != null) {
