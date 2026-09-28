@@ -34,6 +34,7 @@ class ActivityFragment : Fragment() {
     private var allActivities: MutableList<Activity> = mutableListOf()
     private var currentFilter: ActivityFilterType = ActivityFilterType.ALL
     private var hasMoreActivities: Boolean = true
+    private var shouldRefreshOnResume: Boolean = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -48,13 +49,13 @@ class ActivityFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         arguments?.let {
             type = it.getSerializableCompat<ActivityType>("type") as ActivityType
-            userId = it.getInt("userId")
-            activityId = it.getInt("activityId")
+            userId = if (it.containsKey("userId")) it.getInt("userId").takeIf { id -> id != 0 } else null
+            activityId = if (it.containsKey("activityId")) it.getInt("activityId").takeIf { id -> id != 0 } else null
         }
         binding.titleBar.visibility =
             if (type == ActivityType.OTHER_USER) View.VISIBLE else View.GONE
         binding.titleText.text =
-            if (userId == Anilist.userid) getString(R.string.create_new_activity) else getString(R.string.write_a_message)
+            if (userId == null || userId == Anilist.userid) getString(R.string.create_new_activity) else getString(R.string.write_a_message)
         
         // Set up filter icon visibility
         binding.filterButton.visibility = if (type == ActivityType.OTHER_USER) View.VISIBLE else View.GONE
@@ -79,14 +80,7 @@ class ActivityFragment : Fragment() {
             binding.listProgressBar.isVisible = false
         }
         binding.feedSwipeRefresh.setOnRefreshListener {
-            lifecycleScope.launch {
-                adapter.clear()
-                allActivities.clear()
-                page = 1
-                hasMoreActivities = true
-                getList()
-                binding.feedSwipeRefresh.isRefreshing = false
-            }
+            refreshFeed()
         }
         binding.listRecyclerView.addOnScrollListener(object :
             RecyclerView.OnScrollListener() {
@@ -134,11 +128,31 @@ class ActivityFragment : Fragment() {
     }
 
     private fun handleTitleImageClick() {
+        shouldRefreshOnResume = true
+        val isUserActivity = type == ActivityType.USER || type == ActivityType.GLOBAL || userId == null || userId == Anilist.userid
+        val targetUserId = if (isUserActivity) Anilist.userid else userId
         val intent = Intent(context, ActivityMarkdownCreator::class.java).apply {
-            putExtra("type", if (userId == Anilist.userid) "activity" else "message")
-            putExtra("userId", userId)
+            putExtra("type", if (isUserActivity) "activity" else "message")
+            if (targetUserId != null) {
+                putExtra("userId", targetUserId)
+            }
         }
         ContextCompat.startActivity(requireContext(), intent, null)
+    }
+
+    private fun refreshFeed() {
+        if (!isAdded || !this::binding.isInitialized) return
+        lifecycleScope.launch {
+            adapter.clear()
+            allActivities.clear()
+            page = 1
+            hasMoreActivities = true
+            binding.listProgressBar.isVisible = true
+            getList()
+            binding.emptyTextView.isVisible = adapter.itemCount == 0
+            binding.listProgressBar.isVisible = false
+            binding.feedSwipeRefresh.isRefreshing = false
+        }
     }
 
     private suspend fun getList() {
@@ -226,6 +240,10 @@ class ActivityFragment : Fragment() {
         super.onResume()
         if (this::binding.isInitialized) {
             binding.root.requestLayout()
+            if (shouldRefreshOnResume) {
+                shouldRefreshOnResume = false
+                refreshFeed()
+            }
         }
     }
 
