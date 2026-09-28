@@ -30,6 +30,8 @@ import ani.dantotsu.download.DownloadsManager.Companion.getSubDirectory
 import ani.dantotsu.download.anime.AnimeDownloaderService.AnimeDownloadTask.Companion.getTaskName
 import ani.dantotsu.download.findValidName
 import ani.dantotsu.media.Media
+import ani.dantotsu.download.PurgeCoordinator
+import ani.dantotsu.download.PurgeOutcome
 import ani.dantotsu.media.MediaType
 import ani.dantotsu.media.anime.AnimeWatchFragment
 import ani.dantotsu.media.anime.getEpisode
@@ -58,6 +60,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -80,6 +84,8 @@ class AnimeDownloaderService : Service() {
 
     private val downloadJobs = mutableMapOf<String, Job>()
     private val mutex = Mutex()
+    private val purgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val purgeCoordinator = PurgeCoordinator()
     private var isCurrentlyProcessing = false
     private val currentTasks get() = AnimeServiceDataSingleton.currentTasks
     private val ffExtension = Injekt.get<DownloadAddonManager>().extension?.extension
@@ -149,6 +155,7 @@ class AnimeDownloaderService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         releaseWifiMonitor()
+        purgeScope.cancel()
         AnimeServiceDataSingleton.downloadQueue.clear()
         downloadJobs.clear()
         AnimeServiceDataSingleton.isServiceRunning = false
@@ -162,6 +169,12 @@ class AnimeDownloaderService : Service() {
             // MAX MERGE M3 (Blocker 5): cancel-all through the safe
             // per-task path; no new lifecycle.
             cancelAllDownloads()
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_PURGE_ALL_ANIME) {
+            // MAX MERGE M3 HOLD (Blocker 2): ownership-safe purge
+            // transaction — cancel, join, then purge, then report.
+            runPurgeAllAnimeCommand()
             return START_NOT_STICKY
         }
         val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -185,6 +198,13 @@ class AnimeDownloaderService : Service() {
             val activeJobs = mutableListOf<Job>()
 
             while (AnimeServiceDataSingleton.downloadQueue.isNotEmpty()) {
+                // MAX MERGE M3 HOLD (Blocker 2): never launch fresh work
+                // into a live purge barrier; queued work survives and
+                // drains after the barrier clears.
+                if (purgeCoordinator.barrierActive) {
+                    delay(500)
+                    continue
+                }
                 val task = AnimeServiceDataSingleton.downloadQueue.poll() ?: continue
                 // MAX MERGE M3 (upstream 3dbce385): fail-closed Wi-Fi gate.
                 // Dropped task is failure-broadcast (user-visible retry),
@@ -221,6 +241,28 @@ class AnimeDownloaderService : Service() {
                     stopSelf()
                 }
             }
+        }
+    }
+
+    /**
+     * MAX MERGE M3 HOLD (Blocker 2): ownership-safe purge transaction.
+     * Cancel-all runs first; physical purge happens only after live
+     * writers are proven terminated (bounded); completion (or timeout)
+     * is broadcast — the UI must never purge directly.
+     */
+    private fun runPurgeAllAnimeCommand() {
+        purgeScope.launch {
+            val outcome = purgeCoordinator.runPurge(
+                cancelAll = { cancelAllDownloads() },
+                isSettled = {
+                    currentTasks.isEmpty() && downloadJobs.isEmpty() &&
+                        AnimeServiceDataSingleton.downloadQueue.isEmpty()
+                },
+                purge = { downloadsManager.purgeDownloads(MediaType.ANIME) }
+            )
+            sendBroadcast(Intent(ACTION_PURGE_ALL_ANIME_DONE).apply {
+                putExtra(EXTRA_PURGE_SUCCESS, outcome == PurgeOutcome.DONE)
+            })
         }
     }
 
@@ -788,6 +830,13 @@ class AnimeDownloaderService : Service() {
         const val EXTRA_TASK_NAME = "extra_task_name"
         /** MAX MERGE M3 (Blocker 5): delete-all / Wi-Fi-loss entry point. */
         const val ACTION_CANCEL_ALL_DOWNLOADS = "action_cancel_all_downloads"
+        /**
+         * MAX MERGE M3 HOLD (Blocker 2): ownership-safe purge entry +
+         * completion. Extra [EXTRA_PURGE_SUCCESS] reports DONE vs timeout.
+         */
+        const val ACTION_PURGE_ALL_ANIME = "action_purge_all_anime"
+        const val ACTION_PURGE_ALL_ANIME_DONE = "action_purge_all_anime_done"
+        const val EXTRA_PURGE_SUCCESS = "extra_purge_success"
     }
 }
 

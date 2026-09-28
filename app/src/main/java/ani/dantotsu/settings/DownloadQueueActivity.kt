@@ -356,7 +356,7 @@ class DownloadQueueActivity : AppCompatActivity() {
             }
             is QueueItem.Novel -> {
                 val intent = Intent(NovelDownloaderService.ACTION_CANCEL_DOWNLOAD).apply {
-                    putExtra(NovelDownloaderService.EXTRA_CHAPTER, item.uniqueId)
+                    putExtra(NovelDownloaderService.EXTRA_TASK_KEY, item.uniqueId)
                 }
                 sendBroadcast(intent)
             }
@@ -422,7 +422,10 @@ class DownloadQueueActivity : AppCompatActivity() {
         val novelActive = NovelServiceDataSingleton.currentTasks.toList()
         for (task in novelActive) {
             val intent = Intent(NovelDownloaderService.ACTION_CANCEL_DOWNLOAD).apply {
-                putExtra(NovelDownloaderService.EXTRA_CHAPTER, task.chapter)
+                putExtra(
+                    NovelDownloaderService.EXTRA_TASK_KEY,
+                    ani.dantotsu.download.novel.novelTaskKey(task.title, task.chapter)
+                )
             }
             sendBroadcast(intent)
         }
@@ -462,7 +465,7 @@ sealed class QueueItem {
         override val title: String get() = task.title
         override val subTitle: String get() = task.chapter
         override val type: String get() = "Novel"
-        override val uniqueId: String get() = task.chapter
+        override val uniqueId: String get() = ani.dantotsu.download.novel.novelTaskKey(task.title, task.chapter)
         override val mediaType: MediaType get() = MediaType.NOVEL
     }
 }

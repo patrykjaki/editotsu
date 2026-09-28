@@ -1,38 +1,20 @@
 package ani.dantotsu.settings.data
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * MAX MERGE M3 HOLD (Blocker 5): delete-all covers anime + manga + novel,
- * each through its safe path.
+ * MAX MERGE M3 HOLD (Blocker 2): delete-all covers anime + manga + novel,
+ * each through its service transaction — never direct UI deletion.
  */
 class DeleteAllPolicyTest {
 
     @Test
-    fun `all three categories covered`() {
-        val plan = deleteAllDownloadsPlan()
-        assertTrue(plan.contains(PurgeStep.AnimePurge))
-        assertTrue(plan.contains(PurgeStep.NovelPurge))
-        assertTrue(plan.contains(PurgeStep.MangaBarrierPurge))
-    }
-
-    @Test
-    fun `actives cancelled before physical purge`() {
-        val plan = deleteAllDownloadsPlan()
-        assertTrue(plan.indexOf(PurgeStep.AnimeCancelAll) < plan.indexOf(PurgeStep.AnimePurge))
-        assertTrue(plan.indexOf(PurgeStep.NovelCancelAll) < plan.indexOf(PurgeStep.NovelPurge))
-    }
-
-    @Test
-    fun `exact plan`() {
+    fun `all three categories covered through service transactions`() {
         assertEquals(
             listOf(
-                PurgeStep.AnimeCancelAll,
-                PurgeStep.AnimePurge,
-                PurgeStep.NovelCancelAll,
-                PurgeStep.NovelPurge,
+                PurgeStep.AnimeServicePurge,
+                PurgeStep.NovelServicePurge,
                 PurgeStep.MangaBarrierPurge
             ),
             deleteAllDownloadsPlan()

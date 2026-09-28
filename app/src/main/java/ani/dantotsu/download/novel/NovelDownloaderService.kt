@@ -19,6 +19,8 @@ import androidx.documentfile.provider.DocumentFile
 import ani.dantotsu.R
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.download.DownloadedType
+import ani.dantotsu.download.PurgeCoordinator
+import ani.dantotsu.download.PurgeOutcome
 import ani.dantotsu.download.WifiLossMonitor
 import ani.dantotsu.download.DownloadsManager
 import ani.dantotsu.download.DownloadsManager.Companion.getSubDirectory
@@ -46,6 +48,8 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -70,6 +74,8 @@ class NovelDownloaderService : Service() {
 
     private val downloadJobs = mutableMapOf<String, Job>()
     private val mutex = Mutex()
+    private val purgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val purgeCoordinator = PurgeCoordinator()
     private var isCurrentlyProcessing = false
 
     private val networkHelper = Injekt.get<NetworkHelper>()
@@ -121,6 +127,7 @@ class NovelDownloaderService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         releaseWifiMonitor()
+        purgeScope.cancel()
         NovelServiceDataSingleton.downloadQueue.clear()
         NovelServiceDataSingleton.currentTasks.clear()
         NovelServiceDataSingleton.progress.clear()
@@ -136,6 +143,12 @@ class NovelDownloaderService : Service() {
             // MAX MERGE M3 (Blocker 5): cancel-all through the safe
             // per-chapter path; no new lifecycle.
             cancelAllDownloads()
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_PURGE_ALL_NOVEL) {
+            // MAX MERGE M3 HOLD (Blocker 2): ownership-safe purge
+            // transaction — cancel, join, then purge, then report.
+            runPurgeAllNovelCommand()
             return START_NOT_STICKY
         }
         val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -159,6 +172,13 @@ class NovelDownloaderService : Service() {
             val activeJobs = mutableListOf<Job>()
 
             while (NovelServiceDataSingleton.downloadQueue.isNotEmpty()) {
+                // MAX MERGE M3 HOLD (Blocker 2): never launch fresh work
+                // into a live purge barrier; queued work survives and
+                // drains after the barrier clears.
+                if (purgeCoordinator.barrierActive) {
+                    delay(500)
+                    continue
+                }
                 val task = NovelServiceDataSingleton.downloadQueue.poll() ?: continue
                 // MAX MERGE M3 (upstream 3dbce385): fail-closed Wi-Fi gate.
                 if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(this@NovelDownloaderService)) {
@@ -195,17 +215,63 @@ class NovelDownloaderService : Service() {
     }
 
     /**
-     * MAX MERGE M3 (Blockers 5+6): cancel every known novel task through
-     * the existing per-chapter safe path (failure broadcast, job cancel,
-     * queue cleanup). Used by delete-all purge and the Wi-Fi-loss
-     * transition. No new lifecycle invented.
+     * MAX MERGE M3 HOLD (Blocker 2): ownership-safe purge transaction.
+     * Cancel-all runs first; physical purge happens only after live
+     * writers are proven terminated (bounded); completion (or timeout)
+     * is broadcast — the UI must never purge directly.
      */
-    fun cancelAllDownloads() {
-        val chapters = (NovelServiceDataSingleton.downloadQueue.map { it.chapter } +
-            NovelServiceDataSingleton.currentTasks.map { it.chapter }).distinct()
-        chapters.forEach { cancelDownload(it) }
+    private fun runPurgeAllNovelCommand() {
+        purgeScope.launch {
+            val outcome = purgeCoordinator.runPurge(
+                cancelAll = { cancelAllDownloads() },
+                isSettled = {
+                    NovelServiceDataSingleton.currentTasks.isEmpty() &&
+                        downloadJobs.isEmpty() &&
+                        NovelServiceDataSingleton.downloadQueue.isEmpty()
+                },
+                purge = { downloadsManager.purgeDownloads(MediaType.NOVEL) }
+            )
+            sendBroadcast(Intent(ACTION_PURGE_ALL_NOVEL_DONE).apply {
+                putExtra(EXTRA_PURGE_SUCCESS, outcome == PurgeOutcome.DONE)
+            })
+        }
     }
 
+    /**
+     * MAX MERGE M3 (Blockers 5+6): cancel every known novel task through
+     * EXACT keys (title+chapter). Chapter-only identity is ambiguous.
+     */
+    fun cancelAllDownloads() {
+        val ids = (NovelServiceDataSingleton.downloadQueue.map {
+            NovelTaskId(it.title, it.chapter)
+        } + NovelServiceDataSingleton.currentTasks.map {
+            NovelTaskId(it.title, it.chapter)
+        })
+        novelAllCancelKeys(ids).forEach { cancelDownloadByKey(it) }
+    }
+
+    /**
+     * Exact-key cancellation: only queue entries, active tasks, job
+     * records and progress rows matching this exact task are touched.
+     */
+    fun cancelDownloadByKey(taskKey: String) {
+        val match: (NovelDownloaderService.DownloadTask) -> Boolean =
+            { novelTaskKey(it.title, it.chapter) == taskKey }
+        NovelServiceDataSingleton.downloadQueue.filter(match).forEach { task ->
+            broadcastDownloadFailed(task.originalLink)
+        }
+        CoroutineScope(Dispatchers.Default).launch {
+            mutex.withLock {
+                downloadJobs[taskKey]?.cancel()
+                downloadJobs.remove(taskKey)
+                NovelServiceDataSingleton.downloadQueue.removeAll(match)
+                NovelServiceDataSingleton.progress.remove(taskKey)
+                updateNotification()
+            }
+        }
+    }
+
+    @Deprecated("Chapter-only identity is ambiguous; send EXTRA_TASK_KEY instead.")
     fun cancelDownload(chapter: String) {
         val tasks = NovelServiceDataSingleton.downloadQueue.filter { it.chapter == chapter }
         tasks.forEach { task ->
@@ -515,8 +581,11 @@ class NovelDownloaderService : Service() {
 
     private val cancelReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == ACTION_CANCEL_DOWNLOAD)
+            if (intent.action == ACTION_CANCEL_DOWNLOAD) {
+                // Exact key first; legacy chapter-only for old senders.
+                intent.getStringExtra(EXTRA_TASK_KEY)?.let { cancelDownloadByKey(it); return }
                 intent.getStringExtra(EXTRA_CHAPTER)?.let { cancelDownload(it) }
+            }
         }
     }
 
@@ -535,8 +604,17 @@ class NovelDownloaderService : Service() {
         private const val NOTIFICATION_ID = 1103
         const val ACTION_CANCEL_DOWNLOAD = "action_cancel_download"
         const val EXTRA_CHAPTER = "extra_chapter"
+        /** MAX MERGE M3 (Blocker 3): exact `"${title}_${chapter}"` key. */
+        const val EXTRA_TASK_KEY = "extra_task_key"
         /** MAX MERGE M3 (Blocker 5): delete-all / Wi-Fi-loss entry point. */
         const val ACTION_CANCEL_ALL_DOWNLOADS = "action_cancel_all_downloads"
+        /**
+         * MAX MERGE M3 HOLD (Blocker 2): ownership-safe purge entry +
+         * completion. Extra [EXTRA_PURGE_SUCCESS] reports DONE vs timeout.
+         */
+        const val ACTION_PURGE_ALL_NOVEL = "action_purge_all_novel"
+        const val ACTION_PURGE_ALL_NOVEL_DONE = "action_purge_all_novel_done"
+        const val EXTRA_PURGE_SUCCESS = "extra_purge_success"
     }
 }
 

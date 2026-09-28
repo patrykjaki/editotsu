@@ -1,10 +1,15 @@
 package ani.dantotsu.settings.saving.internal
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -108,6 +113,60 @@ private fun checkLocationsMap(map: JsonObject): String? {
                 return "unsupported value type: $location/$key ($typeName)"
             }
             if (!typeValue.containsKey("value")) return "missing value: $location/$key"
+            // M3 HOLD Blocker 1: the JSON value must match the declared
+            // type — unpack would otherwise null-write after clearing.
+            val shapeError = checkValueShape(location, key, typeName!!, typeValue["value"])
+            if (shapeError != null) return shapeError
+        }
+    }
+    return null
+}
+
+private fun checkValueShape(
+    location: String,
+    key: String,
+    typeName: String,
+    value: kotlinx.serialization.json.JsonElement?,
+): String? {
+    val where = "$location/$key ($typeName)"
+    if (value == null || value is kotlinx.serialization.json.JsonNull) {
+        return "null value: $where"
+    }
+    when (typeName) {
+        "kotlin.Boolean" -> {
+            if (value !is JsonPrimitive || value.booleanOrNull == null) {
+                return "not a boolean: $where"
+            }
+        }
+        "kotlin.String" -> {
+            if (value !is JsonPrimitive || !value.isString) {
+                return "not a string: $where"
+            }
+        }
+        "kotlin.Int" -> {
+            if (value !is JsonPrimitive || value.intOrNull == null) {
+                return "not an int: $where"
+            }
+        }
+        "kotlin.Long" -> {
+            if (value !is JsonPrimitive || value.longOrNull == null) {
+                return "not a long: $where"
+            }
+        }
+        "kotlin.Float" -> {
+            if (value !is JsonPrimitive || value.floatOrNull == null) {
+                return "not a float: $where"
+            }
+        }
+        "java.util.HashSet" -> {
+            if (value !is kotlinx.serialization.json.JsonArray) {
+                return "not an array: $where"
+            }
+            for (element in value) {
+                if (element !is JsonPrimitive || !element.isString) {
+                    return "non-string set element: $where"
+                }
+            }
         }
     }
     return null

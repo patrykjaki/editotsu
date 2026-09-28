@@ -28,7 +28,6 @@ import ani.dantotsu.initActivity
 import ani.dantotsu.media.MediaType
 import ani.dantotsu.navBarHeight
 import ani.dantotsu.util.LauncherWrapper
-import ani.dantotsu.util.StoragePermissions
 import ani.dantotsu.restartApp
 import ani.dantotsu.savePrefsToDownloads
 import ani.dantotsu.settings.Settings
@@ -119,6 +118,51 @@ class SettingsDataActivity : AppCompatActivity() {
         updateStorageInfo()
         setupRecyclerView(openDocumentLauncher)
         calculateCacheSize()
+        registerPurgeDoneReceivers()
+    }
+
+    /**
+     * M3 HOLD Blocker 2: purge completion arrives from the services
+     * (cancel → join → purge → report). Refresh storage info on either
+     * outcome; surface timeout failures instead of pretending success.
+     */
+    private var purgeDoneReceiver: android.content.BroadcastReceiver? = null
+
+    private fun registerPurgeDoneReceivers() {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+                val success = intent?.getBooleanExtra(
+                    AnimeDownloaderService.EXTRA_PURGE_SUCCESS, true
+                ) != false && intent?.getBooleanExtra(
+                    NovelDownloaderService.EXTRA_PURGE_SUCCESS, true
+                ) != false
+                updateStorageInfo()
+                if (!success) {
+                    toast(getString(R.string.purge_incomplete))
+                }
+            }
+        }
+        purgeDoneReceiver = receiver
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            receiver,
+            android.content.IntentFilter().apply {
+                addAction(AnimeDownloaderService.ACTION_PURGE_ALL_ANIME_DONE)
+                addAction(NovelDownloaderService.ACTION_PURGE_ALL_NOVEL_DONE)
+            },
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+    }
+
+    override fun onDestroy() {
+        purgeDoneReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (_: Exception) {
+            }
+            purgeDoneReceiver = null
+        }
+        super.onDestroy()
     }
 
     private fun updateStorageInfo() {
@@ -408,27 +452,27 @@ class SettingsDataActivity : AppCompatActivity() {
                 onClick = {
                     context.customAlertDialog().apply {
                         setTitle(R.string.purge_downloads)
-                        setMessage(R.string.purge_confirm, "${getString(R.string.anime)} & ${getString(R.string.manga)}")
+                        setMessage(
+                            R.string.purge_confirm,
+                            "${getString(R.string.anime)}, ${getString(R.string.manga)} & ${getString(R.string.novels)}"
+                        )
                         setPosButton(R.string.yes) {
-                            // M3 HOLD Blocker 5: all three categories. Active
-                            // anime/novel work is cancelled through the
-                            // existing safe paths first; manga travels its
-                            // service scope barrier.
+                            // M3 HOLD Blocker 2: purge runs INSIDE the
+                            // services (cancel → join → purge → report).
+                            // The activity never deletes directories
+                            // directly; completion refreshes below.
                             ContextCompat.startForegroundService(
                                 context,
                                 android.content.Intent(context, AnimeDownloaderService::class.java).apply {
-                                    action = AnimeDownloaderService.ACTION_CANCEL_ALL_DOWNLOADS
+                                    action = AnimeDownloaderService.ACTION_PURGE_ALL_ANIME
                                 }
                             )
                             ContextCompat.startForegroundService(
                                 context,
                                 android.content.Intent(context, NovelDownloaderService::class.java).apply {
-                                    action = NovelDownloaderService.ACTION_CANCEL_ALL_DOWNLOADS
+                                    action = NovelDownloaderService.ACTION_PURGE_ALL_NOVEL
                                 }
                             )
-                            val downloadsManager = Injekt.get<DownloadsManager>()
-                            downloadsManager.purgeDownloads(MediaType.ANIME)
-                            downloadsManager.purgeDownloads(MediaType.NOVEL)
                             val purgeIntent = android.content.Intent(
                                 context,
                                 MangaDownloaderService::class.java
@@ -436,7 +480,6 @@ class SettingsDataActivity : AppCompatActivity() {
                                 action = MangaDownloaderService.ACTION_PURGE_MANGA
                             }
                             ContextCompat.startForegroundService(context, purgeIntent)
-                            updateStorageInfo()
                         }
                         setNegButton(R.string.no)
                         show()
@@ -584,7 +627,8 @@ class SettingsDataActivity : AppCompatActivity() {
                 desc = getString(R.string.restore_backup_desc),
                 icon = R.drawable.backup_restore,
                 onClick = {
-                    StoragePermissions.downloadsPermission(context)
+                    // M3 HOLD cleanup: SAF picker grants its own access;
+                    // no legacy storage permission needed.
                     openDocumentLauncher.launch(arrayOf("*/*"))
                 }
             )

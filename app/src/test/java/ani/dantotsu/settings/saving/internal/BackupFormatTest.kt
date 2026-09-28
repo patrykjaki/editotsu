@@ -76,6 +76,75 @@ class BackupFormatTest {
     }
 
     @Test
+    fun `boolean with string value rejected`() {
+        assertTrue(
+            validateBackupPayload(legacy(entry("kotlin.Boolean", "\"not-a-boolean\"")))
+                is BackupCheck.Invalid
+        )
+    }
+
+    @Test
+    fun `int with string value rejected`() {
+        assertTrue(
+            validateBackupPayload(legacy(entry("kotlin.Int", "\"3\"")))
+                is BackupCheck.Invalid
+        )
+    }
+
+    @Test
+    fun `int overflow rejected`() {
+        assertTrue(
+            validateBackupPayload(legacy(entry("kotlin.Int", "9999999999")))
+                is BackupCheck.Invalid
+        )
+        // In-range ints pass.
+        assertTrue(
+            validateBackupPayload(legacy(entry("kotlin.Int", "3")))
+                is BackupCheck.Valid
+        )
+    }
+
+    @Test
+    fun `long with non-number rejected`() {
+        assertTrue(
+            validateBackupPayload(legacy(entry("kotlin.Long", "\"x\"")))
+                is BackupCheck.Invalid
+        )
+        assertTrue(
+            validateBackupPayload(legacy(entry("kotlin.Long", "9223372036854775807")))
+                is BackupCheck.Valid
+        )
+    }
+
+    @Test
+    fun `hashset with scalar value rejected`() {
+        assertTrue(
+            validateBackupPayload(legacy(entry("java.util.HashSet", "\"a\"")))
+                is BackupCheck.Invalid
+        )
+    }
+
+    @Test
+    fun `hashset with non-string elements rejected`() {
+        assertTrue(
+            validateBackupPayload(legacy(entry("java.util.HashSet", "[1,2]")))
+                is BackupCheck.Invalid
+        )
+        assertTrue(
+            validateBackupPayload(legacy(entry("java.util.HashSet", "[\"a\",\"b\"]")))
+                is BackupCheck.Valid
+        )
+    }
+
+    @Test
+    fun `explicit null value rejected`() {
+        assertTrue(
+            validateBackupPayload("""{"General":{"k":{"type":"kotlin.Boolean","value":null}}}""")
+                is BackupCheck.Invalid
+        )
+    }
+
+    @Test
     fun `unknown location rejected`() {
         val check = validateBackupPayload("""{"Nope":{"k":{"type":"kotlin.Boolean","value":true}}}""")
         assertTrue(check is BackupCheck.Invalid)
