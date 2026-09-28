@@ -33,12 +33,10 @@ class ThreadCommentItem(
 ) : BindableItem<ItemThreadCommentBinding>() {
 
     override fun bind(viewBinding: ItemThreadCommentBinding, position: Int) {
-        // Nested replies indent deterministically under their parent.
-        if (depth > 0) {
-            val indent = (depth * 16 * viewBinding.root.resources.displayMetrics.density).toInt()
-            viewBinding.root.updateLayoutParams<android.view.ViewGroup.MarginLayoutParams> {
-                marginStart = indent
-            }
+        // Indentation is unconditional (including zero): recycled views
+        // must never retain a stale child margin.
+        viewBinding.root.updateLayoutParams<android.view.ViewGroup.MarginLayoutParams> {
+            marginStart = indentForDepth(depth, viewBinding.root.resources.displayMetrics.density)
         }
         viewBinding.commentAvatar.loadImage(comment.user?.avatar?.medium)
         viewBinding.commentAuthor.text = comment.user?.name ?: "Unknown"
@@ -85,7 +83,10 @@ class ThreadCommentItem(
                         withContext(Dispatchers.Main) {
                             if (success) {
                                 snackString("Comment deleted")
-                                parentAdapter.remove(this@ThreadCommentItem)
+                                // The flattened descendants of this comment
+                                // must not orphan: remove the whole rendered
+                                // subtree, not just the parent row.
+                                removeRenderedSubtree()
                             } else {
                                 snackString("Failed to delete comment")
                             }
@@ -107,6 +108,22 @@ class ThreadCommentItem(
                     putExtra("other", "@${comment.user?.name} ")
                 }
             )
+        }
+    }
+
+    /**
+     * Removes exactly the rendered rows of this comment's subtree
+     * ([pos, end)) so flattened descendants never orphan after delete.
+     */
+    private fun removeRenderedSubtree() {
+        val pos = parentAdapter.getAdapterPosition(this@ThreadCommentItem)
+        if (pos == androidx.recyclerview.widget.RecyclerView.NO_POSITION) return
+        val depths = (0 until parentAdapter.itemCount).map { i ->
+            (parentAdapter.getItem(i) as? ThreadCommentItem)?.depth ?: -1
+        }
+        val end = threadSubtreeEnd(depths, pos)
+        for (i in end - 1 downTo pos) {
+            parentAdapter.remove(parentAdapter.getItem(i))
         }
     }
 

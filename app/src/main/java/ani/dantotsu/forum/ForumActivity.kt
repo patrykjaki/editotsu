@@ -68,12 +68,14 @@ class ForumActivity : AppCompatActivity() {
         }
 
         binding.forumCategoryChips.setOnCheckedStateChangeListener { _, checkedIds ->
+            // Shared catalog IDs (verified live): General=7, Anime=1,
+            // Manga=2, Release Discussion=5, News=8. Null = All (no filter).
             selectedCategoryId = when (checkedIds.firstOrNull()) {
-                R.id.chipGeneral -> 1
-                R.id.chipAnime -> 2
-                R.id.chipManga -> 3
-                R.id.chipRelease -> 4
-                R.id.chipNews -> 5
+                R.id.chipGeneral -> ForumCategories.idForLabel("General")
+                R.id.chipAnime -> ForumCategories.idForLabel("Anime")
+                R.id.chipManga -> ForumCategories.idForLabel("Manga")
+                R.id.chipRelease -> ForumCategories.idForLabel("Release Discussion")
+                R.id.chipNews -> ForumCategories.idForLabel("News")
                 else -> null
             }
             loadThreads(true)
@@ -108,7 +110,7 @@ class ForumActivity : AppCompatActivity() {
                     putExtra("type", "thread")
                     putIntegerArrayListExtra(
                         "categories",
-                        arrayListOf(selectedCategoryId ?: 1)
+                        arrayListOf(selectedCategoryId ?: ForumCategories.DEFAULT_CREATE_ID)
                     )
                 }
             )

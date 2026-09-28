@@ -203,6 +203,28 @@ fun parseThreadCommentNodes(element: JsonElement?): List<ThreadCommentNode> {
 fun ThreadComment.typedChildren(): List<ThreadCommentNode> =
     parseThreadCommentNodes(childComments)
 
+/** One rendered row: converted comment plus its nesting depth. */
+data class FlatThreadComment(val comment: ThreadComment, val depth: Int)
+
+/**
+ * Production flatten used by ThreadViewActivity: parents depth-first,
+ * children recurse on the NODE (never on a converted copy whose child
+ * payload was dropped), served order preserved at every level.
+ */
+fun flattenThreadCommentTree(comments: List<ThreadComment>): List<FlatThreadComment> {
+    val out = mutableListOf<FlatThreadComment>()
+    fun addNode(node: ThreadCommentNode, depth: Int) {
+        out.add(FlatThreadComment(node.asThreadComment(), depth))
+        node.typedChildren().forEach { addNode(it, depth + 1) }
+    }
+    fun addComment(comment: ThreadComment, depth: Int) {
+        out.add(FlatThreadComment(comment, depth))
+        comment.typedChildren().forEach { addNode(it, depth + 1) }
+    }
+    comments.forEach { addComment(it, 0) }
+    return out
+}
+
 @Serializable
 data class ThreadComment(
     @SerialName("id")

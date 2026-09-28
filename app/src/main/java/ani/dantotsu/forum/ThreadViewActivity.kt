@@ -301,14 +301,8 @@ class ThreadViewActivity : AppCompatActivity() {
     private fun flattenThreadComments(
         comments: List<ani.dantotsu.connections.anilist.api.ThreadComment>
     ): List<ThreadCommentItem> {
-        val items = mutableListOf<ThreadCommentItem>()
-        fun addNode(comment: ani.dantotsu.connections.anilist.api.ThreadComment, depth: Int) {
-            items.add(ThreadCommentItem(comment, threadId, this, commentsAdapter, lifecycleScope, depth))
-            comment.typedChildren().forEach { child ->
-                addNode(child.asThreadComment(), depth + 1)
-            }
+        return ani.dantotsu.connections.anilist.api.flattenThreadCommentTree(comments).map { flat ->
+            ThreadCommentItem(flat.comment, threadId, this, commentsAdapter, lifecycleScope, flat.depth)
         }
-        comments.forEach { addNode(it, 0) }
-        return items
     }
 }

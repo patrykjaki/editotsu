@@ -61,17 +61,9 @@ class ActivityMarkdownCreator : AppCompatActivity() {
     }
 
     companion object {
-        val FORUM_CATEGORIES = listOf(
-            1 to "General Discussion",
-            2 to "Anime",
-            3 to "Manga",
-            4 to "Release Discussion",
-            5 to "News",
-            7 to "Music",
-            8 to "Light Novels",
-            17 to "Gaming",
-            18 to "Visual Novels"
-        )
+        /** Single source: shared verified catalog (labels drive the dropdown). */
+        val FORUM_CATEGORIES: List<Pair<Int, String>> =
+            ani.dantotsu.forum.ForumCategories.ENTRIES.map { it.id to it.label }
     }
 
     @OptIn(DelicateCoroutinesApi::class)
@@ -107,7 +99,8 @@ class ActivityMarkdownCreator : AppCompatActivity() {
         val initialScore = intent.getIntExtra("score", 0)
         val initialTitle = intent.getStringExtra("title") ?: ""
         val initialCategories = intent.getIntegerArrayListExtra("categories")
-        var selectedCategoryId = initialCategories?.firstOrNull() ?: 1
+        var selectedCategoryId = initialCategories?.firstOrNull()
+            ?: ani.dantotsu.forum.ForumCategories.DEFAULT_CREATE_ID
         var private = intent.getBooleanExtra("private", false)
         parentId = intent.getIntExtra("parentId", -1)
 
@@ -164,7 +157,8 @@ class ActivityMarkdownCreator : AppCompatActivity() {
                     ?: FORUM_CATEGORIES.first()
                 binding.threadCategoryAutoComplete.setText(defaultCategory.second, false)
                 binding.threadCategoryAutoComplete.setOnItemClickListener { _, _, position, _ ->
-                    selectedCategoryId = FORUM_CATEGORIES.getOrNull(position)?.first ?: 1
+                    selectedCategoryId = FORUM_CATEGORIES.getOrNull(position)?.first
+                        ?: ani.dantotsu.forum.ForumCategories.DEFAULT_CREATE_ID
                 }
             }
         }
