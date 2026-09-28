@@ -84,4 +84,34 @@ class PurgeCoordinatorTest {
         )
         assertFalse(coordinator.barrierActive)
     }
+
+    @Test
+    fun `empty queue with no live writers still purges`() = runBlocking {
+        // No-service / idle case: cancel is a no-op, settlement is
+        // immediate, purge must still run and report DONE.
+        var purged = false
+        val outcome = PurgeCoordinator().runPurge(
+            cancelAll = {},
+            isSettled = { true },
+            purge = { purged = true }
+        )
+        assertEquals(PurgeOutcome.DONE, outcome)
+        assertTrue(purged)
+    }
+
+    @Test
+    fun `barrier is held during the physical purge`() = runBlocking {
+        // The queue loops in the services observe `barrierActive` and defer
+        // fresh launches while it is held, so work starting outside the
+        // cutoff cannot be deleted from under itself.
+        val coordinator = PurgeCoordinator()
+        var heldDuringPurge = false
+        coordinator.runPurge(
+            cancelAll = {},
+            isSettled = { true },
+            purge = { heldDuringPurge = coordinator.barrierActive }
+        )
+        assertTrue(heldDuringPurge)
+        assertFalse(coordinator.barrierActive)
+    }
 }

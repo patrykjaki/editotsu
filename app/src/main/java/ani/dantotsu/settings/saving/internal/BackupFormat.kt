@@ -154,9 +154,13 @@ private fun checkValueShape(
             }
         }
         "kotlin.Float" -> {
-            if (value !is JsonPrimitive || value.isString || value.floatOrNull == null) {
+            if (value !is JsonPrimitive || value.isString) {
                 return "not a float: $where"
             }
+            // M3 HOLD Blocker 1: non-finite floats have no SharedPreferences
+            // contract; reject rather than writing Infinity/NaN.
+            val parsed = value.floatOrNull ?: return "not a float: $where"
+            if (!parsed.isFinite()) return "non-finite float: $where"
         }
         "java.util.HashSet" -> {
             if (value !is kotlinx.serialization.json.JsonArray) {

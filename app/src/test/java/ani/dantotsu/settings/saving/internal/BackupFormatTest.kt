@@ -165,4 +165,47 @@ class BackupFormatTest {
         assertTrue(check is BackupCheck.Valid)
         assertEquals(payload, (check as BackupCheck.Valid).payloadJson)
     }
+
+    @Test
+    fun `finite float passes, quoted float rejected`() {
+        assertTrue(
+            validateBackupPayload(legacy(entry("kotlin.Float", "3.14")))
+                is BackupCheck.Valid
+        )
+        assertTrue(
+            validateBackupPayload(legacy(entry("kotlin.Float", "\"3.14\"")))
+                is BackupCheck.Invalid
+        )
+    }
+
+    @Test
+    fun `every rejected fixture carries no unpack payload`() {
+        // M3 HOLD Blocker 1: the restore gate only calls
+        // `PreferencePackager.unpack` on `BackupCheck.Valid` (which alone
+        // carries `payloadJson`). Every fixture below must come back
+        // `Invalid` — structurally incapable of reaching the mutating
+        // Phase B — so live preferences are untouched by construction.
+        val rejected = listOf(
+            legacy(entry("kotlin.Boolean", "\"not-a-boolean\"")),
+            legacy(entry("kotlin.Int", "\"3\"")),
+            legacy(entry("kotlin.Int", "9999999999")),
+            legacy(entry("kotlin.Long", "\"x\"")),
+            legacy(entry("java.util.HashSet", "\"a\"")),
+            legacy(entry("java.util.HashSet", "[1,2]")),
+            """{"General":{"k":{"type":"kotlin.Boolean","value":null}}}""",
+            legacy(entry("java.util.ArrayList", "[]")),
+            """{"General":{""",
+            """{"General":[]}""",
+            """{}"""
+        )
+        for (fixture in rejected) {
+            val check = validateBackupPayload(fixture)
+            assertTrue("must reject: $fixture", check is BackupCheck.Invalid)
+            // Invalid carries no payloadJson — there is nothing TO unpack.
+            assertTrue((check as BackupCheck.Invalid).reason.isNotEmpty())
+        }
+        // Gate contract: only Valid may proceed to unpack.
+        val valid = validateBackupPayload(legacy(entry("kotlin.Boolean", "true")))
+        assertTrue(valid is BackupCheck.Valid)
+    }
 }
