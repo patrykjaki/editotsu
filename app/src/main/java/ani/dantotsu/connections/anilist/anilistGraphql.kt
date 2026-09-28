@@ -320,7 +320,7 @@ fun fullMediaInformation(id: Int) = """
       }
     }
     ${standardMediaInformation()}
-    source
+    source(version: 3)
     duration
     season
     seasonYear
@@ -398,7 +398,7 @@ fun fullMediaInformation(id: Int) = """
     }
     relations {
       edges {
-        relationType(version: 2)
+        relationType(version: 3)
         node {
           ${standardMediaInformation()}
         }
@@ -421,10 +421,37 @@ fun fullMediaInformation(id: Int) = """
     }
     recommendations(sort: RATING_DESC) {
       nodes {
+        id
+        rating
+        userRating
         mediaRecommendation {
           ${standardMediaInformation()}
         }
+        user {
+          id
+          name
+        }
       }
+    }
+    stats {
+      scoreDistribution {
+        score
+        amount
+      }
+      statusDistribution {
+        status
+        amount
+      }
+    }
+    rankings {
+      id
+      rank
+      type
+      format
+      year
+      season
+      allTime
+      context
     }
     externalLinks {
       id

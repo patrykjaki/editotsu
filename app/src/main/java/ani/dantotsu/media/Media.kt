@@ -89,6 +89,9 @@ data class Media(
     var sequel: Media? = null,
     var relations: ArrayList<Media>? = null,
     var recommendations: ArrayList<Media>? = null,
+    var recommendationList: ArrayList<ani.dantotsu.connections.anilist.api.Recommendation>? = null,
+    var stats: ani.dantotsu.connections.anilist.api.MediaStats? = null,
+    var rankings: List<ani.dantotsu.connections.anilist.api.MediaRank>? = null,
     var users: ArrayList<User>? = null,
     var vrvId: String? = null,
     var crunchySlug: String? = null,
@@ -143,6 +146,33 @@ data class Media(
         apiMedia.tags?.let { tagList ->
             this.tags = ArrayList(tagList.mapNotNull { it.name })
             this.tagsIsSpoiler = ArrayList(tagList.map { it.isMediaSpoiler == true })
+        }
+        // Upstream 95db71ee studio fix: prefer the animation studio as the
+        // main studio instead of blindly taking the first studio node.
+        apiMedia.studios?.nodes?.let { nodes ->
+            if (nodes.isNotEmpty()) {
+                val studioNode = nodes.firstOrNull { it.isAnimationStudio == true } ?: nodes[0]
+                this.anime?.mainStudio = Studio(
+                    id = studioNode.id.toString(),
+                    name = studioNode.name ?: "N/A",
+                    isFavourite = studioNode.isFavourite ?: false,
+                    favourites = studioNode.favourites ?: 0,
+                    imageUrl = null
+                )
+            }
+        }
+        apiMedia.producers?.nodes?.let { nodes ->
+            if (nodes.isNotEmpty()) {
+                this.anime?.producers = ArrayList(nodes.map {
+                    Studio(
+                        id = it.id.toString(),
+                        name = it.name ?: "N/A",
+                        isFavourite = it.isFavourite ?: false,
+                        favourites = it.favourites ?: 0,
+                        imageUrl = null
+                    )
+                })
+            }
         }
     }
 
