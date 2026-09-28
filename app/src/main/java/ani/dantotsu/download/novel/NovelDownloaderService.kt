@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Request
 import okio.buffer
 import okio.sink
@@ -260,6 +261,12 @@ class NovelDownloaderService : Service() {
                     }
                 }
                 if (!admitted) {
+                    // Correction-4 Blocker 2: the never-admitted LAZY job
+                    // must be explicitly terminated — otherwise an
+                    // unstarted, uncancelled child lingers on the processor
+                    // after its task was requeued. Cancelling before start
+                    // never executes the body.
+                    job.cancel()
                     delay(500)
                     continue
                 }
@@ -404,27 +411,27 @@ class NovelDownloaderService : Service() {
     /**
      * Exact-key cancellation: only queue entries, active tasks, job
      * records and progress rows matching this exact task are touched.
+     * A started live Job's record retires in its own completion finally —
+     * never erased here — so a later purge can still join the unwinding
+     * writer. (Correction-4 Blocker 1.)
      */
     fun cancelDownloadByKey(taskKey: String) {
         val match: (NovelDownloaderService.DownloadTask) -> Boolean =
             { novelTaskKey(it.title, it.chapter) == taskKey }
+        // Queued tasks never launched: drop directly + broadcast.
         NovelServiceDataSingleton.downloadQueue.filter(match).forEach { task ->
             broadcastDownloadFailed(task.originalLink)
         }
+        NovelServiceDataSingleton.downloadQueue.removeAll(match)
+        NovelServiceDataSingleton.progress.remove(taskKey)
         CoroutineScope(Dispatchers.Default).launch {
-            mutex.withLock {
-                val victim = downloadJobs[taskKey]
-                victim?.cancel()
-                // Identity-safe: the job's own outer finally retires the
-                // record; eagerly drop only the exact instance cancelled
-                // here so a fresher same-key replacement is never stolen.
-                if (victim != null && downloadJobs[taskKey] === victim) {
-                    downloadJobs.remove(taskKey)
-                }
-                NovelServiceDataSingleton.downloadQueue.removeAll(match)
-                NovelServiceDataSingleton.progress.remove(taskKey)
-                updateNotification()
+            val victim = mutex.withLock {
+                downloadJobs[taskKey]?.also { it.cancel() }
             }
+            // Await actual termination (bounded; the record stays
+            // discoverable until the job's own finally retires it).
+            withTimeoutOrNull(30_000) { victim?.join() }
+            updateNotification()
         }
     }
 
@@ -434,17 +441,13 @@ class NovelDownloaderService : Service() {
         tasks.forEach { task ->
             broadcastDownloadFailed(task.originalLink)
         }
+        NovelServiceDataSingleton.downloadQueue.removeAll { it.chapter == chapter }
         CoroutineScope(Dispatchers.Default).launch {
-            mutex.withLock {
-                val victim = downloadJobs[chapter]
-                victim?.cancel()
-                // Identity-safe eager drop (see cancelDownloadByKey).
-                if (victim != null && downloadJobs[chapter] === victim) {
-                    downloadJobs.remove(chapter)
-                }
-                NovelServiceDataSingleton.downloadQueue.removeAll { it.chapter == chapter }
-                updateNotification()
+            val victim = mutex.withLock {
+                downloadJobs[chapter]?.also { it.cancel() }
             }
+            withTimeoutOrNull(30_000) { victim?.join() }
+            updateNotification()
         }
     }
 

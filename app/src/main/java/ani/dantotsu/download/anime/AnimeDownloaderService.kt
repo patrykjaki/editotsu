@@ -68,6 +68,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.net.HttpURLConnection
@@ -316,6 +317,12 @@ class AnimeDownloaderService : Service() {
                     }
                 }
                 if (!admitted) {
+                    // Correction-4 Blocker 2: the never-admitted LAZY job
+                    // must be explicitly terminated — otherwise an
+                    // unstarted, uncancelled child lingers on the processor
+                    // after its task was requeued. Cancelling before start
+                    // never executes the body.
+                    job.cancel()
                     delay(500)
                     continue
                 }
@@ -469,39 +476,30 @@ class AnimeDownloaderService : Service() {
     }
 
     @UnstableApi
-    fun cancelDownload(taskName: String) {        val tasks = mutableListOf<AnimeDownloadTask>()
-        tasks.addAll(AnimeServiceDataSingleton.downloadQueue.filter { it.getTaskName() == taskName })
-        tasks.addAll(currentTasks.filter { it.getTaskName() == taskName })
-
-        // Mark canceled first so any in-flight publishProgress is dropped
-        tasks.forEach { it.cancelled = true }
-
-        tasks.forEach { task ->
-            task.sourceMedia?.id?.let { mediaId ->
-                AnimeDownloader.stopDownload(mediaId, task.episode)
-                broadcastDownloadFailed(task.episode, mediaId)
-            }
-            // Cancel engine session (may still be -1 if cancel raced before executeFFMpeg)
-            if (task.sessionId != -1L) {
-                runCatching { ffExtension?.cancelDownload(task.sessionId) }
-            }
-        }
-
-        currentTasks.removeAll { it.getTaskName() == taskName }
+    fun cancelDownload(taskName: String) {
+        // Queued tasks never launched: drop directly through the safe path.
+        val queued =
+            AnimeServiceDataSingleton.downloadQueue.filter { it.getTaskName() == taskName }
+        queued.forEach { markTaskCancelled(it) }
         AnimeServiceDataSingleton.downloadQueue.removeAll { it.getTaskName() == taskName }
         AnimeServiceDataSingleton.progress.remove(taskName)
+        // Live tasks: mark (engine stop + failure broadcast + cancelled
+        // flag) and cancel the exact victim — but NEVER erase the live
+        // currentTasks entry or the downloadJobs record here. Those retire
+        // in the task's own completion finally, so a later purge snapshot
+        // can still discover and join the unwinding writer. (Correction-4
+        // Blocker 1: removal is never proof of termination.)
+        val live = currentTasks.filter { it.getTaskName() == taskName }
+        live.forEach { markTaskCancelled(it) }
 
         CoroutineScope(Dispatchers.Default).launch {
-            mutex.withLock {
-                val victim = downloadJobs[taskName]
-                victim?.cancel()
-                // Identity-safe: the job's own outer finally retires the
-                // record; eagerly drop only the exact instance cancelled
-                // here so a fresher same-key replacement is never stolen.
-                if (victim != null && downloadJobs[taskName] === victim) {
-                    downloadJobs.remove(taskName)
-                }
+            val victim = mutex.withLock {
+                downloadJobs[taskName]?.also { it.cancel() }
             }
+            // Await actual termination (bounded: a stuck engine must not
+            // leak this coroutine; the record stays discoverable either
+            // way until the job's own finally retires it).
+            withTimeoutOrNull(30_000) { victim?.join() }
             // Dismiss notification when nothing is left
             val stillBusy = currentTasks.isNotEmpty() ||
                 AnimeServiceDataSingleton.downloadQueue.isNotEmpty() ||

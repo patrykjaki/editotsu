@@ -2,6 +2,7 @@ package ani.dantotsu.download
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,6 +16,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -489,11 +491,146 @@ class PurgeCoordinatorTest {
     }
 
     /**
-     * Correction-2 Blocker 2 regression: the processor idle-stop rule
-     * defers while a purge transaction owns the lifecycle, using the REAL
-     * coordinator barrier. Settle → purge → publish precedes the final
-     * stop; the stop happens only after completion + true settlement.
+     * Correction-4 Blocker 1 regression, shared helper for the anime and
+     * novel single-cancel shapes: J is active; single-item cancel marks +
+     * cancels the victim but erases NOTHING; a purge requested while J
+     * unwinds must still snapshot and join J; records retire only at the
+     * completion boundary; purge runs last.
      */
+    private suspend fun CoroutineScope.singleCancelPurgeScenario(key: String): List<String> {
+        val mutex = Mutex()
+        val records = mutableMapOf<String, Job>()
+        val current = mutableSetOf<String>()
+        val events = mutableListOf<String>()
+        // Exact service loop shape: LAZY + outer-finally identity retire.
+        var jobRef: Job? = null
+        val job = launch(start = CoroutineStart.LAZY) {
+            val self = jobRef
+            try {
+                mutex.withLock { current.add(key) }
+                try {
+                    events.add("enter")
+                    delay(Long.MAX_VALUE)
+                } finally {
+                    withContext(NonCancellable) { delay(300) }
+                    mutex.withLock { current.remove(key) }
+                }
+            } finally {
+                mutex.withLock {
+                    if (self != null && records[key] === self) records.remove(key)
+                }
+                events.add("retire")
+            }
+        }
+        jobRef = job
+        mutex.withLock { records[key] = job }
+        job.start()
+        while ("enter" !in events) delay(10)
+        // Single-item cancel: mark + cancel the exact victim, erase nothing.
+        val victim = mutex.withLock {
+            records[key]?.also { it.cancel() }
+        }
+        assertTrue(victim === job)
+        // Ownership preserved mid-unwind (the reported hole was erasure).
+        assertTrue(mutex.withLock { key in records })
+        assertTrue(mutex.withLock { key in current })
+        // Purge requested before J completes: the snapshot still obtains J.
+        val coordinator = PurgeCoordinator()
+        val outcome = coordinator.runPurge(
+            timeoutMs = 5_000,
+            snapshotAndCancel = {
+                mutex.withLock {
+                    val jobs = records.values.toList()
+                    assertTrue(job in jobs)
+                    PurgeSnapshot(jobs, setOf(key))
+                }
+            },
+            settle = {
+                mutex.withLock { records.isEmpty() && current.isEmpty() }
+            },
+            purge = { events.add("purge") }
+        )
+        assertEquals(PurgeOutcome.DONE, outcome)
+        // The single-cancel cancelAndJoin side also terminated.
+        withTimeoutOrNull(5_000) { victim?.join() }
+        assertTrue(job.isCompleted)
+        return events
+    }
+
+    @Test
+    fun `single cancel preserves live anime job for a later purge`() = runBlocking {
+        assertEquals(
+            listOf("enter", "retire", "purge"),
+            singleCancelPurgeScenario("Title/Ep1")
+        )
+    }
+
+    @Test
+    fun `single cancel preserves live novel job for a later purge`() = runBlocking {
+        assertEquals(
+            listOf("enter", "retire", "purge"),
+            singleCancelPurgeScenario("Title_1")
+        )
+    }
+
+    /**
+     * Correction-4 Blocker 2 regression, shared anime/novel loop shape:
+     * the LAZY job loses the admission race (barrier wins after poll but
+     * before publication). The task is requeued AND the never-admitted job
+     * is explicitly cancelled: completed, body never runs, no record, no
+     * unfinished child, task available for the post-purge processor.
+     */
+    @Test
+    fun `barrier-loss lazy job is terminated without executing`() = runBlocking {
+        val coordinator = PurgeCoordinator()
+        val gate = CompletableDeferred<Unit>()
+        val purgeStarted = CompletableDeferred<Unit>()
+        val purgeJob = async {
+            coordinator.runPurge(
+                timeoutMs = 5_000,
+                snapshotAndCancel = {
+                    purgeStarted.complete(Unit)
+                    PurgeSnapshot(emptyList(), emptySet())
+                },
+                settle = { true },
+                purge = { gate.await() }
+            )
+        }
+        purgeStarted.await()
+        assertTrue(coordinator.barrierActive)
+        // One loop iteration losing the race: outer check passed earlier,
+        // task polled, LAZY created, barrier wins at admission.
+        val queue = ArrayDeque(listOf("t1"))
+        val records = mutableMapOf<String, Job>()
+        var bodyRan = false
+        var jobRef: Job? = null
+        val job = launch(start = CoroutineStart.LAZY) {
+            val self = jobRef
+            bodyRan = true
+        }
+        jobRef = job
+        var admitted = false
+        if (!coordinator.barrierActive) {
+            records["t1"] = job
+            admitted = true
+        } else {
+            queue.addLast(queue.removeFirst())
+        }
+        if (!admitted) {
+            job.cancel()
+        }
+        assertFalse(admitted)
+        job.join()
+        assertTrue(job.isCompleted)
+        assertFalse(bodyRan)
+        assertTrue(records.isEmpty())
+        assertEquals(listOf("t1"), queue.toList())
+        gate.complete(Unit)
+        assertEquals(PurgeOutcome.DONE, purgeJob.await())
+        // No unfinished child left on this scope from that iteration.
+        assertTrue(coroutineContext[Job]?.children?.all { it.isCompleted } == true)
+    }
+
     @Test
     fun `processor idle stop defers to the active purge`() = runBlocking {
         val coordinator = PurgeCoordinator()
