@@ -91,6 +91,12 @@ class AnimeDownloaderService : Service() {
     private var isCurrentlyProcessing = false
     @Volatile private var lastStartId = 0
     /**
+     * Correction-2 Blocker 2: true from the purge command's synchronous
+     * entry until its outcome is published. Every service stop decision
+     * defers to it — the purge path owns the final stop.
+     */
+    @Volatile private var purgeActive = false
+    /**
      * Keys requeued by the queue loop after hitting a live purge barrier.
      * Guarded by [mutex]. Drained as old scope at the settle check so a
      * task polled just before the snapshot can neither leak into the
@@ -231,7 +237,10 @@ class AnimeDownloaderService : Service() {
                 }
             }
             updateNotification()
-            withContext(Dispatchers.Main) { stopSelfResult(lastStartId) }
+            // Correction-2 Blocker 2: defer to a live purge transaction.
+            if (!purgeActive) {
+                withContext(Dispatchers.Main) { stopSelfResult(lastStartId) }
+            }
         }
     }
 
@@ -261,20 +270,35 @@ class AnimeDownloaderService : Service() {
                     }
                     continue
                 }
+                // The record holder breaks the LAZY self-reference: the
+                // outer finally must retire by Job identity (see below).
+                var jobRef: Job? = null
                 val job = launch(start = CoroutineStart.LAZY) {
-                    semaphore.withPermit {
-                        currentTasks.add(task)
-                        try {
-                            download(task)
-                        } finally {
-                            mutex.withLock {
+                    val self = jobRef
+                    try {
+                        semaphore.withPermit {
+                            currentTasks.add(task)
+                            try {
+                                download(task)
+                            } finally {
+                                currentTasks.remove(task)
+                            }
+                        }
+                    } finally {
+                        // MAX MERGE M3 HOLD (correction-2 Blocker 1): retire
+                        // the record even when cancellation lands BEFORE
+                        // permit entry (a waiter never runs the inner
+                        // finally). Identity-safe: never removes a fresher
+                        // replacement recorded under the same key.
+                        mutex.withLock {
+                            if (self != null && downloadJobs[task.getTaskName()] === self) {
                                 downloadJobs.remove(task.getTaskName())
                             }
-                            currentTasks.remove(task)
-                            updateNotification()
                         }
+                        updateNotification()
                     }
                 }
+                jobRef = job
                 // MAX MERGE M3 HOLD (correction Blocker 1): close the
                 // poll→record gap. The job record is published under the
                 // same mutex the purge snapshot uses; a task that loses
@@ -299,7 +323,13 @@ class AnimeDownloaderService : Service() {
                 activeJobs.add(job)
             }
             activeJobs.joinAll()
-            if (AnimeServiceDataSingleton.downloadQueue.isEmpty()) {
+            // MAX MERGE M3 HOLD (correction-2 Blocker 2): the legacy
+            // processor must not stop the service while a purge
+            // transaction owns the lifecycle. The purge path owns the
+            // final stop decision (or keeps draining fresh work).
+            if (AnimeServiceDataSingleton.downloadQueue.isEmpty() &&
+                !purgeActive && !purgeCoordinator.barrierActive
+            ) {
                 withContext(Dispatchers.Main) {
                     stopSelf()
                 }
@@ -317,17 +347,25 @@ class AnimeDownloaderService : Service() {
      * no purge-started foreground service lingers.
      */
     private fun runPurgeAllAnimeCommand() {
+        // MAX MERGE M3 HOLD (correction-2 Blocker 2): synchronous ownership
+        // claim on the command thread — the legacy processor and every
+        // other stop path must defer while the transaction is unfinished.
+        purgeActive = true
         purgeScope.launch {
-            val outcome = purgeCoordinator.runPurge(
-                snapshotAndCancel = { snapshotPurgeScope() },
-                settle = { snapshot -> settlePurgeScope(snapshot) },
-                purge = { downloadsManager.purgeDownloads(MediaType.ANIME) }
-            )
-            val done = outcome == PurgeOutcome.DONE
-            Logger.log("Anime purge ${if (done) "DONE" else "TIMEOUT"}")
-            sendBroadcast(Intent(ACTION_PURGE_ALL_ANIME_DONE).apply {
-                putExtra(EXTRA_PURGE_SUCCESS, done)
-            })
+            try {
+                val outcome = purgeCoordinator.runPurge(
+                    snapshotAndCancel = { snapshotPurgeScope() },
+                    settle = { snapshot -> settlePurgeScope(snapshot) },
+                    purge = { downloadsManager.purgeDownloads(MediaType.ANIME) }
+                )
+                val done = outcome == PurgeOutcome.DONE
+                Logger.log("Anime purge ${if (done) "DONE" else "TIMEOUT"}")
+                sendBroadcast(Intent(ACTION_PURGE_ALL_ANIME_DONE).apply {
+                    putExtra(EXTRA_PURGE_SUCCESS, done)
+                })
+            } finally {
+                purgeActive = false
+            }
             if (isPurgeSettled()) {
                 withContext(Dispatchers.Main) { stopSelfResult(lastStartId) }
             } else {
@@ -422,7 +460,9 @@ class AnimeDownloaderService : Service() {
                 downloadJobs.values.forEach { it.cancel() }
             }
             updateNotification()
-            if (isPurgeSettled()) {
+            // Correction-2 Blocker 2: never steal the stop from a live
+            // purge transaction (it owns the final stop decision).
+            if (isPurgeSettled() && !purgeActive) {
                 withContext(Dispatchers.Main) { stopSelfResult(lastStartId) }
             }
         }
@@ -453,14 +493,21 @@ class AnimeDownloaderService : Service() {
 
         CoroutineScope(Dispatchers.Default).launch {
             mutex.withLock {
-                downloadJobs[taskName]?.cancel()
-                downloadJobs.remove(taskName)
+                val victim = downloadJobs[taskName]
+                victim?.cancel()
+                // Identity-safe: the job's own outer finally retires the
+                // record; eagerly drop only the exact instance cancelled
+                // here so a fresher same-key replacement is never stolen.
+                if (victim != null && downloadJobs[taskName] === victim) {
+                    downloadJobs.remove(taskName)
+                }
             }
             // Dismiss notification when nothing is left
             val stillBusy = currentTasks.isNotEmpty() ||
                 AnimeServiceDataSingleton.downloadQueue.isNotEmpty() ||
                 downloadJobs.isNotEmpty()
-            if (!stillBusy) {
+            // Correction-2 Blocker 2: a live purge owns the stop decision.
+            if (!stillBusy && !purgeActive) {
                 notificationManager.cancel(NOTIFICATION_ID)
                 withContext(Dispatchers.Main) {
                     stopSelf()

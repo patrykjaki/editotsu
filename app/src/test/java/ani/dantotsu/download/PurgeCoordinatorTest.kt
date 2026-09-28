@@ -2,6 +2,7 @@ package ani.dantotsu.download
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -393,5 +394,167 @@ class PurgeCoordinatorTest {
         }
         assertTrue(thrown is CancellationException)
         assertFalse(purged)
+    }
+
+    /**
+     * Correction-2 Blocker 1 regression: the EXACT service loop
+     * bookkeeping shape (job map + mutex + LAZY launch + outer-finally
+     * identity retirement). Anime and novel loops share this shape.
+     *
+     * ```text
+     * maxParallel = 1, A entered permit/current,
+     * B recorded in downloadJobs but waiting permit;
+     * purge snapshot → cancel A+B → join A+B;
+     * B never enters the permit body;
+     * both exact map records retire (no stale waiter);
+     * settle true → purge last.
+     * ```
+     */
+    @Test
+    fun `service loop shape retires pre-permit waiter records`() = runBlocking {
+        val mutex = Mutex()
+        val downloadJobs = mutableMapOf<String, Job>()
+        val current = mutableSetOf<String>()
+        val entered = mutableSetOf<String>()
+        val events = mutableListOf<String>()
+        val semaphore = Semaphore(1)
+
+        suspend fun launchServiceJob(key: String): Job {
+            var jobRef: Job? = null
+            val job = launch(start = CoroutineStart.LAZY) {
+                val self = jobRef
+                try {
+                    semaphore.withPermit {
+                        mutex.withLock { current.add(key) }
+                        try {
+                            entered.add(key)
+                            delay(Long.MAX_VALUE)
+                        } finally {
+                            mutex.withLock { current.remove(key) }
+                        }
+                    }
+                } finally {
+                    mutex.withLock {
+                        if (self != null && downloadJobs[key] === self) {
+                            downloadJobs.remove(key)
+                        }
+                    }
+                    events.add("retire-$key")
+                }
+            }
+            jobRef = job
+            mutex.withLock { downloadJobs[key] = job }
+            job.start()
+            return job
+        }
+
+        launchServiceJob("a")
+        delay(100)
+        launchServiceJob("b")
+        delay(100)
+        // B is recorded but parked: never entered the permit body.
+        assertTrue(mutex.withLock { "b" in downloadJobs })
+        assertFalse("b" in entered)
+
+        val coordinator = PurgeCoordinator()
+        val outcome = coordinator.runPurge(
+            timeoutMs = 5_000,
+            snapshotAndCancel = {
+                mutex.withLock {
+                    val jobs = downloadJobs.values.toList()
+                    jobs.forEach { it.cancel() }
+                    PurgeSnapshot(jobs, setOf("a", "b"))
+                }
+            },
+            settle = { snapshot ->
+                mutex.withLock {
+                    // Mirror settlePurgeScope: no stale completed waiter.
+                    downloadJobs.isEmpty() && current.isEmpty() &&
+                        snapshot.scopeKeys == setOf("a", "b")
+                }
+            },
+            purge = {
+                events.add("purge")
+            }
+        )
+        assertEquals(PurgeOutcome.DONE, outcome)
+        // B never entered; both records retired; purge ran after the join
+        // (retire order between A and B is scheduling-dependent).
+        assertFalse("b" in entered)
+        assertTrue(mutex.withLock { downloadJobs.isEmpty() })
+        assertTrue(mutex.withLock { current.isEmpty() })
+        assertEquals(setOf("retire-a", "retire-b"), events.dropLast(1).toSet())
+        assertEquals("purge", events.last())
+        assertEquals(3, events.size)
+    }
+
+    /**
+     * Correction-2 Blocker 2 regression: the processor idle-stop rule
+     * defers while a purge transaction owns the lifecycle, using the REAL
+     * coordinator barrier. Settle → purge → publish precedes the final
+     * stop; the stop happens only after completion + true settlement.
+     */
+    @Test
+    fun `processor idle stop defers to the active purge`() = runBlocking {
+        val coordinator = PurgeCoordinator()
+        val events = mutableListOf<String>()
+        var stopped = false
+
+        // The service loop-tail rule under test:
+        // stop only when the queue is empty AND no purge owns the lifecycle.
+        fun processorIdleStop(queueEmpty: Boolean) {
+            if (queueEmpty && !coordinator.barrierActive) {
+                stopped = true
+                events.add("stop")
+            }
+        }
+
+        val worker = launch {
+            try {
+                delay(Long.MAX_VALUE)
+            } finally {
+                withContext(NonCancellable) { events.add("worker-done") }
+            }
+        }
+        delay(50)
+
+        // Processor reaches its tail exactly as the purge starts: the queue
+        // is already pruned by the snapshot, the worker still unwinding.
+        val purgeGate = CompletableDeferred<Unit>()
+        val purgeJob = async {
+            coordinator.runPurge(
+                timeoutMs = 5_000,
+                snapshotAndCancel = {
+                    worker.cancel()
+                    // Snapshot prunes the queue first (service behavior).
+                    events.add("snapshot")
+                    PurgeSnapshot(listOf(worker), setOf("a"))
+                },
+                settle = {
+                    events.add("settle")
+                    true
+                },
+                purge = {
+                    purgeGate.await()
+                    events.add("purge")
+                }
+            )
+        }
+        // Barrier is up: the racing processor tail must NOT stop.
+        delay(100)
+        assertTrue(coordinator.barrierActive)
+        processorIdleStop(queueEmpty = true)
+        assertFalse(stopped)
+        assertFalse("stop" in events)
+        // Let the transaction finish: settle → purge → publish → THEN stop.
+        purgeGate.complete(Unit)
+        assertEquals(PurgeOutcome.DONE, purgeJob.await())
+        events.add("publish")
+        processorIdleStop(queueEmpty = true)
+        assertTrue(stopped)
+        assertEquals(
+            listOf("snapshot", "worker-done", "settle", "purge", "publish", "stop"),
+            events
+        )
     }
 }
