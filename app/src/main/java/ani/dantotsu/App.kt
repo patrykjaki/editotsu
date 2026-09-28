@@ -31,6 +31,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import logcat.AndroidLogcatLogger
@@ -100,6 +101,17 @@ class App : Application() {
             )
         } catch (e: Exception) {
             Logger.log("Failed to schedule auto backup: ${e.message}")
+        }
+
+        // MAX MERGE M5 (upstream 36d57c56): keep the offline AniSkip CSV
+        // dump fresh in the background (weekly, no-op when current).
+        CoroutineScope(Dispatchers.IO).launch {
+            delay(10_000)
+            runCatching {
+                ani.dantotsu.others.AniskipCsvFallback.getInstance(this@App).syncIfNeeded()
+            }.onFailure {
+                Logger.log("AniSkip CSV sync failed: ${it.message}")
+            }
         }
 
         setupNotificationChannels()

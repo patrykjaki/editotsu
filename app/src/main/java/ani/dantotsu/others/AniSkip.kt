@@ -64,3 +64,15 @@ object AniSkip {
         val endTime: Double
     )
 }
+
+/**
+ * MAX MERGE M5: provider results are untrusted input — drop reversed,
+ * negative or non-finite ranges and order deterministically by start.
+ * Valid data passes through unchanged.
+ */
+internal fun List<AniSkip.Stamp>.sanitizedStamps(): List<AniSkip.Stamp> =
+    filter {
+        val s = it.interval.startTime
+        val e = it.interval.endTime
+        s.isFinite() && e.isFinite() && s >= 0 && e > s
+    }.sortedBy { it.interval.startTime }

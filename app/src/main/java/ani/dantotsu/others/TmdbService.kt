@@ -1,6 +1,8 @@
 package ani.dantotsu.others
 
+import ani.dantotsu.FileUrl
 import ani.dantotsu.client
+import ani.dantotsu.media.anime.Episode
 import ani.dantotsu.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -56,4 +58,54 @@ object TmdbService {
             null
         }
     }
+
+    /**
+     * MAX MERGE M5 (upstream 36d57c56): TMDB season fallback for episode
+     * titles, synopses and thumbnails when extension/AniZip metadata is
+     * missing. Keys are plain episode numbers, matching Anify's map shape.
+     */
+    suspend fun getEpisodeDetails(tmdbId: Int, season: Int = 1): Map<String, Episode>? = withContext(Dispatchers.IO) {
+        if (tmdbId <= 0) return@withContext null
+        val url = "$BASE_URL/tv/$tmdbId/season/$season?api_key=$API_KEY"
+
+        try {
+            val response = client.get(url)
+            val text = response.text
+            if (text.isBlank()) return@withContext null
+            val root = json.parseToJsonElement(text).jsonObject
+            val episodesArray = root["episodes"]?.jsonArray ?: return@withContext null
+
+            val result = mutableMapOf<String, Episode>()
+            for (item in episodesArray) {
+                val epObj = item.jsonObject
+                val epNum = epObj["episode_number"]?.jsonPrimitive?.intOrNull ?: continue
+                val name = epObj["name"]?.jsonPrimitive?.contentOrNull
+                val overview = epObj["overview"]?.jsonPrimitive?.contentOrNull
+                val stillPath = epObj["still_path"]?.jsonPrimitive?.contentOrNull
+                val thumbUrl = if (!stillPath.isNullOrBlank()) "$IMAGE_BASE_W500$stillPath" else null
+
+                val key = epNum.toString()
+                result[key] = Episode(
+                    number = key,
+                    title = name,
+                    desc = overview,
+                    thumb = thumbUrl?.let { FileUrl[it] },
+                    extra = buildMap {
+                        epObj["air_date"]?.jsonPrimitive?.contentOrNull?.let { put("airDate", it) }
+                        put("season", season.toString())
+                        put("episode", key)
+                    }
+                )
+            }
+
+            if (result.isNotEmpty()) result else null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.log("$TAG: getEpisodeDetails failed for $url: ${e.message}")
+            null
+        }
+    }
+
+    private const val IMAGE_BASE_W500 = "https://image.tmdb.org/t/p/w500"
 }
