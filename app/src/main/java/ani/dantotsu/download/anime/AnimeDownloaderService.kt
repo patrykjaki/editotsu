@@ -32,6 +32,7 @@ import ani.dantotsu.download.findValidName
 import ani.dantotsu.media.Media
 import ani.dantotsu.download.PurgeCoordinator
 import ani.dantotsu.download.PurgeOutcome
+import ani.dantotsu.download.PurgeSnapshot
 import ani.dantotsu.media.MediaType
 import ani.dantotsu.media.anime.AnimeWatchFragment
 import ani.dantotsu.media.anime.getEpisode
@@ -57,6 +58,7 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SChapterImpl
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -87,6 +89,14 @@ class AnimeDownloaderService : Service() {
     private val purgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val purgeCoordinator = PurgeCoordinator()
     private var isCurrentlyProcessing = false
+    @Volatile private var lastStartId = 0
+    /**
+     * Keys requeued by the queue loop after hitting a live purge barrier.
+     * Guarded by [mutex]. Drained as old scope at the settle check so a
+     * task polled just before the snapshot can neither leak into the
+     * purge window nor survive it.
+     */
+    private val purgeGatedKeys = mutableSetOf<String>()
     private val currentTasks get() = AnimeServiceDataSingleton.currentTasks
     private val ffExtension = Injekt.get<DownloadAddonManager>().extension?.extension
 
@@ -97,11 +107,10 @@ class AnimeDownloaderService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        if (ffExtension == null) {
-            toast(getString(R.string.download_addon_not_found))
-            stopSelf()
-            return
-        }
+        // MAX MERGE M3 HOLD (correction Blocker 3): control-mode init is
+        // unconditional. Purge / cancel / cleanup commands must run even
+        // when the download add-on is absent (already-downloaded files can
+        // outlive the add-on). Only ordinary DOWNLOAD execution requires it.
         notificationManager = NotificationManagerCompat.from(this)
         builder =
             NotificationCompat.Builder(this, Notifications.CHANNEL_DOWNLOADER_PROGRESS).apply {
@@ -156,6 +165,7 @@ class AnimeDownloaderService : Service() {
         super.onDestroy()
         releaseWifiMonitor()
         purgeScope.cancel()
+        purgeCoordinator.shutdown()
         AnimeServiceDataSingleton.downloadQueue.clear()
         downloadJobs.clear()
         AnimeServiceDataSingleton.isServiceRunning = false
@@ -163,20 +173,36 @@ class AnimeDownloaderService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        snackString("Download started")
+        lastStartId = startId
         ensureWifiMonitor()
         if (intent?.action == ACTION_CANCEL_ALL_DOWNLOADS) {
             // MAX MERGE M3 (Blocker 5): cancel-all through the safe
-            // per-task path; no new lifecycle.
+            // full-scope path (queue + current + semaphore waiters).
             cancelAllDownloads()
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_PURGE_ALL_ANIME) {
             // MAX MERGE M3 HOLD (Blocker 2): ownership-safe purge
-            // transaction — cancel, join, then purge, then report.
+            // transaction — snapshot real jobs, cancel, JOIN, settle,
+            // then purge, then report. Stops the service when settled.
             runPurgeAllAnimeCommand()
             return START_NOT_STICKY
         }
+        if (ffExtension == null) {
+            // Control mode without the add-on: ordinary downloads cannot
+            // run. Fail the queued work visibly instead of crashing, then
+            // settle. Purge/cancel commands above are unaffected.
+            toast(getString(R.string.download_addon_not_found))
+            failQueueNoAddon()
+            return START_NOT_STICKY
+        }
+        snackString("Download started")
+        ensureProcessor()
+        return START_NOT_STICKY
+    }
+
+    /** Ordinary download-processor kick (existing semantics, extracted). */
+    private fun ensureProcessor() {
         val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         serviceScope.launch {
             mutex.withLock {
@@ -187,7 +213,26 @@ class AnimeDownloaderService : Service() {
                 }
             }
         }
-        return START_NOT_STICKY
+    }
+
+    /**
+     * Fail-closed drain when the download add-on is unavailable: every
+     * queued task gets a failure broadcast (user-visible retry), no job
+     * is ever launched, then the service settles.
+     */
+    private fun failQueueNoAddon() {
+        purgeScope.launch {
+            mutex.withLock {
+                val stale = AnimeServiceDataSingleton.downloadQueue.toList()
+                AnimeServiceDataSingleton.downloadQueue.clear()
+                stale.forEach { task ->
+                    task.cancelled = true
+                    broadcastDownloadFailed(task.episode, task.sourceMedia?.id)
+                }
+            }
+            updateNotification()
+            withContext(Dispatchers.Main) { stopSelfResult(lastStartId) }
+        }
     }
 
     private fun processQueue() {
@@ -216,7 +261,7 @@ class AnimeDownloaderService : Service() {
                     }
                     continue
                 }
-                val job = launch {
+                val job = launch(start = CoroutineStart.LAZY) {
                     semaphore.withPermit {
                         currentTasks.add(task)
                         try {
@@ -230,9 +275,27 @@ class AnimeDownloaderService : Service() {
                         }
                     }
                 }
+                // MAX MERGE M3 HOLD (correction Blocker 1): close the
+                // poll→record gap. The job record is published under the
+                // same mutex the purge snapshot uses; a task that loses
+                // the race to a live barrier is requeued (tagged as old
+                // scope) instead of launching into the purge window. The
+                // LAZY job never executes unless admitted here.
+                var admitted = false
                 mutex.withLock {
-                    downloadJobs[task.getTaskName()] = job
+                    if (!purgeCoordinator.barrierActive) {
+                        downloadJobs[task.getTaskName()] = job
+                        admitted = true
+                    } else {
+                        purgeGatedKeys.add(task.getTaskName())
+                        AnimeServiceDataSingleton.downloadQueue.offer(task)
+                    }
                 }
+                if (!admitted) {
+                    delay(500)
+                    continue
+                }
+                job.start()
                 activeJobs.add(job)
             }
             activeJobs.joinAll()
@@ -245,38 +308,124 @@ class AnimeDownloaderService : Service() {
     }
 
     /**
-     * MAX MERGE M3 HOLD (Blocker 2): ownership-safe purge transaction.
-     * Cancel-all runs first; physical purge happens only after live
-     * writers are proven terminated (bounded); completion (or timeout)
-     * is broadcast — the UI must never purge directly.
+     * MAX MERGE M3 HOLD (correction Blocker 2): ownership-safe purge
+     * transaction. The snapshot cancels every REAL live job (queued,
+     * current AND semaphore waiters only present in [downloadJobs]); the
+     * coordinator joins those actual jobs outside the lock, settles old
+     * scope, and only then purges. Completion (or timeout) is broadcast;
+     * the UI must never purge directly. A settled service stops itself so
+     * no purge-started foreground service lingers.
      */
     private fun runPurgeAllAnimeCommand() {
         purgeScope.launch {
             val outcome = purgeCoordinator.runPurge(
-                cancelAll = { cancelAllDownloads() },
-                isSettled = {
-                    currentTasks.isEmpty() && downloadJobs.isEmpty() &&
-                        AnimeServiceDataSingleton.downloadQueue.isEmpty()
-                },
+                snapshotAndCancel = { snapshotPurgeScope() },
+                settle = { snapshot -> settlePurgeScope(snapshot) },
                 purge = { downloadsManager.purgeDownloads(MediaType.ANIME) }
             )
+            val done = outcome == PurgeOutcome.DONE
+            Logger.log("Anime purge ${if (done) "DONE" else "TIMEOUT"}")
             sendBroadcast(Intent(ACTION_PURGE_ALL_ANIME_DONE).apply {
-                putExtra(EXTRA_PURGE_SUCCESS, outcome == PurgeOutcome.DONE)
+                putExtra(EXTRA_PURGE_SUCCESS, done)
             })
+            if (isPurgeSettled()) {
+                withContext(Dispatchers.Main) { stopSelfResult(lastStartId) }
+            } else {
+                // Fresh post-purge work survived the cutoff: keep draining.
+                ensureProcessor()
+            }
+        }
+    }
+
+    /**
+     * Correction Blocker 1: snapshot the ENTIRE live writer set under
+     * [mutex] — queue keys, current keys, and every [downloadJobs] entry
+     * (waiters included) — mark engine/task state through the existing
+     * safe path, cancel every job, prune old scope from the queue.
+     * Returns the actual jobs for the join barrier. Records are left for
+     * each job's own finally to retire; removal is never the proof.
+     */
+    private suspend fun snapshotPurgeScope(): PurgeSnapshot {
+        return mutex.withLock {
+            val queueTasks = AnimeServiceDataSingleton.downloadQueue.toList()
+            val liveTasks = currentTasks.toList()
+            val scopeKeys = (queueTasks.map { it.getTaskName() } +
+                liveTasks.map { it.getTaskName() }).toSet()
+            (queueTasks + liveTasks).forEach { markTaskCancelled(it) }
+            AnimeServiceDataSingleton.downloadQueue.removeAll { it.getTaskName() in scopeKeys }
+            val jobs = downloadJobs.values.toList()
+            jobs.forEach { it.cancel() }
+            PurgeSnapshot(jobs, scopeKeys)
+        }
+    }
+
+    /**
+     * Settle check under [mutex]: drop old-scope leftovers (snapshot keys
+     * plus barrier-gated requeues) and report whether no writer remains.
+     * Fresh keys enqueued after the snapshot survive by construction.
+     */
+    private suspend fun settlePurgeScope(snapshot: PurgeSnapshot): Boolean {
+        return mutex.withLock {
+            AnimeServiceDataSingleton.downloadQueue.removeAll {
+                it.getTaskName() in snapshot.scopeKeys || it.getTaskName() in purgeGatedKeys
+            }
+            purgeGatedKeys.clear()
+            AnimeServiceDataSingleton.downloadQueue.isEmpty() &&
+                currentTasks.isEmpty() && downloadJobs.isEmpty()
+        }
+    }
+
+    /** Truthful settled state for the post-purge stop decision. */
+    private suspend fun isPurgeSettled(): Boolean {
+        return mutex.withLock {
+            AnimeServiceDataSingleton.downloadQueue.isEmpty() &&
+                currentTasks.isEmpty() && downloadJobs.isEmpty()
+        }
+    }
+
+    /**
+     * Shared marking path (call under [mutex]): engine stop + failure
+     * broadcast + cancelled flag. Record/queue pruning is per-caller.
+     */
+    private fun markTaskCancelled(task: AnimeDownloadTask) {
+        task.cancelled = true
+        task.sourceMedia?.id?.let { mediaId ->
+            AnimeDownloader.stopDownload(mediaId, task.episode)
+            broadcastDownloadFailed(task.episode, mediaId)
+        }
+        if (task.sessionId != -1L) {
+            runCatching { ffExtension?.cancelDownload(task.sessionId) }
         }
     }
 
     /**
      * MAX MERGE M3 (Blockers 5+6): cancel every known anime task through
-     * the existing per-task safe path (failure broadcast, engine cancel,
-     * record cleanup). Used by delete-all purge and the Wi-Fi-loss
+     * the existing safe path (failure broadcast, engine cancel, record
+     * cleanup). Scope covers queue + current + live jobs (semaphore
+     * waiters included). Used by delete-all purge and the Wi-Fi-loss
      * transition. No new lifecycle invented.
      */
     @UnstableApi
     fun cancelAllDownloads() {
-        val names = (AnimeServiceDataSingleton.downloadQueue.map { it.getTaskName() } +
-            currentTasks.map { it.getTaskName() }).distinct()
-        names.forEach { cancelDownload(it) }
+        purgeScope.launch {
+            mutex.withLock {
+                val queued = AnimeServiceDataSingleton.downloadQueue.toList()
+                val live = currentTasks.toList()
+                (queued + live).forEach { markTaskCancelled(it) }
+                val scopeKeys = (queued.map { it.getTaskName() } +
+                    live.map { it.getTaskName() }).toSet()
+                AnimeServiceDataSingleton.downloadQueue.removeAll { it.getTaskName() in scopeKeys }
+                currentTasks.removeAll { it.getTaskName() in scopeKeys }
+                AnimeServiceDataSingleton.progress.keys.removeAll(scopeKeys)
+                // Cancel EVERY live job, including waiters absent from
+                // queue/current. Records retire in each job's finally.
+                downloadJobs.values.forEach { it.cancel() }
+            }
+            updateNotification()
+            if (isPurgeSettled()) {
+                withContext(Dispatchers.Main) { stopSelfResult(lastStartId) }
+            }
+        }
     }
 
     @UnstableApi
@@ -346,6 +495,15 @@ class AnimeDownloaderService : Service() {
 
     @androidx.annotation.OptIn(UnstableApi::class)
     suspend fun download(task: AnimeDownloadTask) {
+        // MAX MERGE M3 HOLD (correction Blocker 3): without the add-on no
+        // engine session can exist. Fail visibly instead of crashing.
+        if (ffExtension == null) {
+            task.cancelled = true
+            task.sourceMedia?.id?.let { mediaId ->
+                broadcastDownloadFailed(task.episode, mediaId)
+            }
+            return
+        }
         withContext(Dispatchers.IO) {
             // MAX MERGE M3: Wi-Fi gate at task start (covers direct calls
             // and in-flight network transitions).

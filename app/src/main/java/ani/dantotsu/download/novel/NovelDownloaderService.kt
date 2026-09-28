@@ -21,6 +21,7 @@ import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.download.DownloadedType
 import ani.dantotsu.download.PurgeCoordinator
 import ani.dantotsu.download.PurgeOutcome
+import ani.dantotsu.download.PurgeSnapshot
 import ani.dantotsu.download.WifiLossMonitor
 import ani.dantotsu.download.DownloadsManager
 import ani.dantotsu.download.DownloadsManager.Companion.getSubDirectory
@@ -44,6 +45,7 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -76,6 +78,12 @@ class NovelDownloaderService : Service() {
     private val mutex = Mutex()
     private val purgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val purgeCoordinator = PurgeCoordinator()
+    @Volatile private var lastStartId = 0
+    /**
+     * Keys requeued by the queue loop after hitting a live purge barrier.
+     * Guarded by [mutex]. Drained as old scope at the settle check.
+     */
+    private val purgeGatedKeys = mutableSetOf<String>()
     private var isCurrentlyProcessing = false
 
     private val networkHelper = Injekt.get<NetworkHelper>()
@@ -128,6 +136,7 @@ class NovelDownloaderService : Service() {
         super.onDestroy()
         releaseWifiMonitor()
         purgeScope.cancel()
+        purgeCoordinator.shutdown()
         NovelServiceDataSingleton.downloadQueue.clear()
         NovelServiceDataSingleton.currentTasks.clear()
         NovelServiceDataSingleton.progress.clear()
@@ -137,20 +146,28 @@ class NovelDownloaderService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        lastStartId = startId
         snackString("Download started")
         ensureWifiMonitor()
         if (intent?.action == ACTION_CANCEL_ALL_DOWNLOADS) {
-            // MAX MERGE M3 (Blocker 5): cancel-all through the safe
-            // per-chapter path; no new lifecycle.
+            // MAX MERGE M3 (Blocker 5): cancel-all through the full-scope
+            // safe path (queue + current + semaphore waiters).
             cancelAllDownloads()
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_PURGE_ALL_NOVEL) {
             // MAX MERGE M3 HOLD (Blocker 2): ownership-safe purge
-            // transaction — cancel, join, then purge, then report.
+            // transaction — snapshot real jobs, cancel, JOIN, settle,
+            // then purge, then report. Stops the service when settled.
             runPurgeAllNovelCommand()
             return START_NOT_STICKY
         }
+        ensureProcessor()
+        return START_NOT_STICKY
+    }
+
+    /** Ordinary download-processor kick (existing semantics, extracted). */
+    private fun ensureProcessor() {
         val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         serviceScope.launch {
             mutex.withLock {
@@ -161,7 +178,6 @@ class NovelDownloaderService : Service() {
                 }
             }
         }
-        return START_NOT_STICKY
     }
 
     private fun processQueue() {
@@ -189,7 +205,7 @@ class NovelDownloaderService : Service() {
                     continue
                 }
                 val taskKey = "${task.title}_${task.chapter}"
-                val job = launch {
+                val job = launch(start = CoroutineStart.LAZY) {
                     semaphore.withPermit {
                         NovelServiceDataSingleton.currentTasks.add(task)
                         try {
@@ -204,7 +220,27 @@ class NovelDownloaderService : Service() {
                         }
                     }
                 }
-                mutex.withLock { downloadJobs[taskKey] = job }
+                // MAX MERGE M3 HOLD (correction Blocker 1): close the
+                // poll→record gap. The job record is published under the
+                // same mutex the purge snapshot uses; a task that loses
+                // the race to a live barrier is requeued (tagged as old
+                // scope) instead of launching into the purge window. The
+                // LAZY job never executes unless admitted here.
+                var admitted = false
+                mutex.withLock {
+                    if (!purgeCoordinator.barrierActive) {
+                        downloadJobs[taskKey] = job
+                        admitted = true
+                    } else {
+                        purgeGatedKeys.add(taskKey)
+                        NovelServiceDataSingleton.downloadQueue.offer(task)
+                    }
+                }
+                if (!admitted) {
+                    delay(500)
+                    continue
+                }
+                job.start()
                 activeJobs.add(job)
             }
             activeJobs.joinAll()
@@ -223,31 +259,107 @@ class NovelDownloaderService : Service() {
     private fun runPurgeAllNovelCommand() {
         purgeScope.launch {
             val outcome = purgeCoordinator.runPurge(
-                cancelAll = { cancelAllDownloads() },
-                isSettled = {
-                    NovelServiceDataSingleton.currentTasks.isEmpty() &&
-                        downloadJobs.isEmpty() &&
-                        NovelServiceDataSingleton.downloadQueue.isEmpty()
-                },
+                snapshotAndCancel = { snapshotPurgeScope() },
+                settle = { snapshot -> settlePurgeScope(snapshot) },
                 purge = { downloadsManager.purgeDownloads(MediaType.NOVEL) }
             )
+            val done = outcome == PurgeOutcome.DONE
+            Logger.log("Novel purge ${if (done) "DONE" else "TIMEOUT"}")
             sendBroadcast(Intent(ACTION_PURGE_ALL_NOVEL_DONE).apply {
-                putExtra(EXTRA_PURGE_SUCCESS, outcome == PurgeOutcome.DONE)
+                putExtra(EXTRA_PURGE_SUCCESS, done)
             })
+            if (isPurgeSettled()) {
+                withContext(Dispatchers.Main) { stopSelfResult(lastStartId) }
+            } else {
+                // Fresh post-purge work survived the cutoff: keep draining.
+                ensureProcessor()
+            }
+        }
+    }
+
+    /**
+     * Correction Blocker 1: snapshot the ENTIRE live writer set under
+     * [mutex] — queue, current, and every [downloadJobs] entry (waiters
+     * included) — mark state through the existing safe path, cancel every
+     * job, prune old scope from the queue. Records retire in each job's
+     * own finally; removal is never the proof.
+     */
+    private suspend fun snapshotPurgeScope(): PurgeSnapshot {
+        return mutex.withLock {
+            val queued = NovelServiceDataSingleton.downloadQueue.toList()
+            val live = NovelServiceDataSingleton.currentTasks.toList()
+            val ids = (queued.map { NovelTaskId(it.title, it.chapter) } +
+                live.map { NovelTaskId(it.title, it.chapter) })
+            val scopeKeys = novelAllCancelKeys(ids).toSet()
+            val match: (NovelDownloaderService.DownloadTask) -> Boolean =
+                { novelTaskKey(it.title, it.chapter) in scopeKeys }
+            (queued + live).filter(match).forEach { task ->
+                broadcastDownloadFailed(task.originalLink)
+            }
+            NovelServiceDataSingleton.downloadQueue.removeAll(match)
+            NovelServiceDataSingleton.progress.keys.removeAll(scopeKeys)
+            val jobs = downloadJobs.values.toList()
+            jobs.forEach { it.cancel() }
+            PurgeSnapshot(jobs, scopeKeys)
+        }
+    }
+
+    /**
+     * Settle check under [mutex]: drop old-scope leftovers (snapshot keys
+     * plus barrier-gated requeues) and report whether no writer remains.
+     * Fresh keys enqueued after the snapshot survive by construction.
+     */
+    private suspend fun settlePurgeScope(snapshot: PurgeSnapshot): Boolean {
+        return mutex.withLock {
+            NovelServiceDataSingleton.downloadQueue.removeAll {
+                val key = novelTaskKey(it.title, it.chapter)
+                key in snapshot.scopeKeys || key in purgeGatedKeys
+            }
+            purgeGatedKeys.clear()
+            NovelServiceDataSingleton.downloadQueue.isEmpty() &&
+                NovelServiceDataSingleton.currentTasks.isEmpty() && downloadJobs.isEmpty()
+        }
+    }
+
+    /** Truthful settled state for the post-purge stop decision. */
+    private suspend fun isPurgeSettled(): Boolean {
+        return mutex.withLock {
+            NovelServiceDataSingleton.downloadQueue.isEmpty() &&
+                NovelServiceDataSingleton.currentTasks.isEmpty() && downloadJobs.isEmpty()
         }
     }
 
     /**
      * MAX MERGE M3 (Blockers 5+6): cancel every known novel task through
-     * EXACT keys (title+chapter). Chapter-only identity is ambiguous.
+     * EXACT keys (title+chapter). Scope covers queue + current + live jobs
+     * (semaphore waiters included). Used by delete-all purge and the
+     * Wi-Fi-loss transition.
      */
     fun cancelAllDownloads() {
-        val ids = (NovelServiceDataSingleton.downloadQueue.map {
-            NovelTaskId(it.title, it.chapter)
-        } + NovelServiceDataSingleton.currentTasks.map {
-            NovelTaskId(it.title, it.chapter)
-        })
-        novelAllCancelKeys(ids).forEach { cancelDownloadByKey(it) }
+        purgeScope.launch {
+            mutex.withLock {
+                val queued = NovelServiceDataSingleton.downloadQueue.toList()
+                val live = NovelServiceDataSingleton.currentTasks.toList()
+                val ids = (queued.map { NovelTaskId(it.title, it.chapter) } +
+                    live.map { NovelTaskId(it.title, it.chapter) })
+                val scopeKeys = novelAllCancelKeys(ids).toSet()
+                val match: (NovelDownloaderService.DownloadTask) -> Boolean =
+                    { novelTaskKey(it.title, it.chapter) in scopeKeys }
+                (queued + live).filter(match).forEach { task ->
+                    broadcastDownloadFailed(task.originalLink)
+                }
+                NovelServiceDataSingleton.downloadQueue.removeAll(match)
+                NovelServiceDataSingleton.currentTasks.removeAll(match)
+                NovelServiceDataSingleton.progress.keys.removeAll(scopeKeys)
+                // Cancel EVERY live job, including waiters absent from
+                // queue/current. Records retire in each job's finally.
+                downloadJobs.values.forEach { it.cancel() }
+            }
+            updateNotification()
+            if (isPurgeSettled()) {
+                withContext(Dispatchers.Main) { stopSelfResult(lastStartId) }
+            }
+        }
     }
 
     /**
