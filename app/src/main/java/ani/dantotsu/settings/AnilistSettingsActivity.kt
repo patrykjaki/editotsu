@@ -1,5 +1,6 @@
 package ani.dantotsu.settings
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
@@ -241,6 +242,19 @@ class AnilistSettingsActivity : AppCompatActivity() {
 
         binding.settingsRecyclerView2.adapter = SettingsAdapter(
             arrayListOf(
+                Settings(
+                    type = 1,
+                    name = getString(R.string.edit_bio),
+                    desc = "Update your AniList profile bio and 'About Me' description",
+                    icon = R.drawable.ic_round_edit_note_24,
+                    onClick = {
+                        startActivity(
+                            Intent(this, ani.dantotsu.util.ActivityMarkdownCreator::class.java).apply {
+                                putExtra("type", "bio")
+                            }
+                        )
+                    }
+                ),
                 Settings(
                     type = 2,
                     name = getString(R.string.restrict_messages),
