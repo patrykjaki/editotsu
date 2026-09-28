@@ -1,6 +1,5 @@
 package ani.dantotsu.settings
 
-import android.content.Intent
 import android.os.Bundle
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
@@ -150,29 +149,8 @@ class TorrentSettingsActivity : AppCompatActivity() {
                 }
             )
 
-            // (quota + purge rows removed — canonical home is Data & Storage)
-
-            // MAX MERGE M3: quota + purge moved to Data & Storage
-            // (canonical storage home). This row navigates there; the usage
-            // text is read-only, never an editable duplicate.
-            val cacheManager = ani.dantotsu.torrent.TorrentCacheManager.getInstance(context)
-            val torrentCacheNavItem = Settings(
-                type = 1,
-                name = getString(R.string.torrent_cache_manage),
-                desc = getString(
-                    R.string.torrent_cache_manage_desc,
-                    formatSize(cacheManager.getStorageBreakdown().torrentCacheBytes)
-                ),
-                icon = R.drawable.ic_round_folder_24,
-                onClick = {
-                    startActivity(
-                        Intent(
-                            context,
-                            ani.dantotsu.settings.data.SettingsDataActivity::class.java
-                        )
-                    )
-                }
-            )
+            // (quota + purge rows removed — canonical home is Data & Storage;
+            // no duplicate management entry here by owner decision)
 
             val highlightKey = intent.getStringExtra(ani.dantotsu.settings.search.SettingsSearchAdapter.EXTRA_HIGHLIGHT_KEY)
             settingsRecyclerView.adapter = SettingsAdapter(
@@ -184,8 +162,7 @@ class TorrentSettingsActivity : AppCompatActivity() {
                     maxConnectionsItem,
                     batterySavingItem,
                     portItem,
-                    disableUtpItem,
-                    torrentCacheNavItem
+                    disableUtpItem
                 ),
                 highlightKey = highlightKey
             )
@@ -193,13 +170,6 @@ class TorrentSettingsActivity : AppCompatActivity() {
             settingsRecyclerView.layoutManager =
                 LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
         }
-    }
-
-    private fun formatSize(bytes: Long): String {
-        if (bytes <= 0) return "0 B"
-        val units = arrayOf("B", "KB", "MB", "GB", "TB")
-        val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, units.size - 1)
-        return String.format(java.util.Locale.US, "%.2f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
     }
 
     private fun showNumberInputDialog(

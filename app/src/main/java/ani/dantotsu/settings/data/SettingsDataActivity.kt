@@ -234,15 +234,8 @@ class SettingsDataActivity : AppCompatActivity() {
         return size
     }
 
-    private fun formatSize(bytes: Long): String {
-        if (bytes <= 0) return "0 B"
-        val units = arrayOf("B", "KB", "MB", "GB", "TB")
-        val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, units.size - 1)
-        return String.format(java.util.Locale.US, "%.2f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
-    }
-
     private fun torrentQuotaOptions(): Pair<Array<String>, LongArray> {
-        val options = arrayOf("1 GB", "2 GB", "3 GB (Default)", "5 GB", "10 GB", "No Auto-Eviction (Unlimited)")
+        val options = arrayOf("1 GB", "2 GB", "3 GB", "5 GB", "10 GB", "No Auto-Eviction (Unlimited)")
         val values = longArrayOf(
             1L * 1024L * 1024L * 1024L,
             2L * 1024L * 1024L * 1024L,
@@ -261,7 +254,7 @@ class SettingsDataActivity : AppCompatActivity() {
 
     private fun torrentCacheUsageText(): String {
         val breakdown = TorrentCacheManager.getInstance(this).getStorageBreakdown()
-        return "Torrent cache: ${formatSize(breakdown.torrentCacheBytes)} (Tap to purge)"
+        return "${formatStorageSize(breakdown.torrentCacheBytes)} used"
     }
 
     private fun clearAppCache() {
@@ -275,7 +268,7 @@ class SettingsDataActivity : AppCompatActivity() {
             }
             cacheSize = 0L
             withContext(Dispatchers.Main) {
-                val formatted = Formatter.formatFileSize(this@SettingsDataActivity, sizeToClear)
+                val formatted = formatStorageSize(sizeToClear)
                 toast(getString(R.string.cache_cleared, formatted))
                 binding.dataSettingsRecyclerView.adapter?.notifyDataSetChanged()
                 calculateCacheSize()
@@ -303,7 +296,7 @@ class SettingsDataActivity : AppCompatActivity() {
                 name = getString(R.string.clear_cache),
                 desc = getString(
                     R.string.clear_cache_desc,
-                    if (cacheSize > 0) Formatter.formatFileSize(context, cacheSize) else getString(R.string.cache_calculating)
+                    if (cacheSize > 0) formatStorageSize(cacheSize) else getString(R.string.cache_calculating)
                 ),
                 icon = R.drawable.ic_round_delete_24,
                 onClick = {
@@ -314,6 +307,132 @@ class SettingsDataActivity : AppCompatActivity() {
                             clearAppCache()
                         }
                         setNegButton(R.string.cancel)
+                        show()
+                    }
+                }
+            ),
+
+            Settings(
+                type = 1,
+                name = getString(R.string.change_download_directory),
+                desc = getString(R.string.change_download_directory_desc),
+                icon = R.drawable.ic_round_folder_24,
+                onClick = {
+                    val oldUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
+                    context.customAlertDialog().apply {
+                        setTitle(R.string.change_download_directory)
+                        setMessage(R.string.change_download_directory_confirm)
+                        setPosButton(R.string.ok) {
+                            launcher.registerForCallback { success ->
+                                if (success) {
+                                    toast(getString(R.string.please_wait))
+                                    val newUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        Injekt.get<DownloadsManager>().moveDownloadsDir(
+                                            context,
+                                            Uri.parse(oldUri),
+                                            Uri.parse(newUri),
+                                        ) { finished, message ->
+                                            if (finished) {
+                                                toast(getString(R.string.success))
+                                                updateStorageInfo()
+                                            } else {
+                                                toast(message)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    toast(getString(R.string.error))
+                                }
+                            }
+                            launcher.launch()
+                        }
+                        setNegButton(R.string.cancel)
+                        show()
+                    }
+                }
+            ),
+
+            Settings(
+                type = 1,
+                name = getString(R.string.purge_downloads),
+                desc = getString(R.string.purge_downloads_desc),
+                icon = R.drawable.ic_round_delete_24,
+                onClick = {
+                    context.customAlertDialog().apply {
+                        setTitle(R.string.purge_downloads)
+                        setMessage(R.string.purge_confirm, "${getString(R.string.anime)} & ${getString(R.string.manga)}")
+                        setPosButton(R.string.yes) {
+                            val downloadsManager = Injekt.get<DownloadsManager>()
+                            downloadsManager.purgeDownloads(MediaType.ANIME)
+                            // Manga purge refuses direct calls (live-owner race);
+                            // travel the service scope barrier instead.
+                            val purgeIntent = android.content.Intent(
+                                context,
+                                MangaDownloaderService::class.java
+                            ).apply {
+                                action = MangaDownloaderService.ACTION_PURGE_MANGA
+                            }
+                            ContextCompat.startForegroundService(context, purgeIntent)
+                            updateStorageInfo()
+                        }
+                        setNegButton(R.string.no)
+                        show()
+                    }
+                }
+            ),
+
+            // MAX MERGE M3: torrent cache quota + managed purge live here
+            // (canonical storage home; moved out of Torrent Settings — no
+            // duplicated editable UI).
+            Settings(
+                type = 1,
+                name = getString(R.string.torrent_cache_quota),
+                desc = torrentQuotaOptions().let { opts ->
+                    opts.first[torrentQuotaIndex()]
+                },
+                icon = R.drawable.ic_round_folder_24,
+                onClick = { view ->
+                    val (options, values) = torrentQuotaOptions()
+                    val selected = torrentQuotaIndex()
+                    context.customAlertDialog().apply {
+                        setTitle(getString(R.string.torrent_cache_quota))
+                        singleChoiceItems(options, selected) { index ->
+                            val chosenQuota = values[index]
+                            PrefManager.setVal(PrefName.TorrentRetainedCacheQuota, chosenQuota)
+                            view.settingsDesc.text = options[index]
+                            val cacheMgr = TorrentCacheManager.getInstance(context)
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                cacheMgr.evictIfNeeded(chosenQuota)
+                            }
+                        }
+                        show()
+                    }
+                }
+            ),
+
+            Settings(
+                type = 1,
+                name = getString(R.string.clear_torrent_cache),
+                desc = torrentCacheUsageText(),
+                icon = R.drawable.ic_round_delete_24,
+                onClick = { view ->
+                    context.customAlertDialog().apply {
+                        setTitle(getString(R.string.clear_torrent_cache))
+                        setMessage("Purge all dormant/retained torrent downloads? Active playback streams will be preserved.")
+                        setPosButton(R.string.yes) {
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                val cacheManager = TorrentCacheManager.getInstance(context)
+                                val result = cacheManager.clearTorrentCache()
+                                val updated = torrentCacheUsageText()
+                                withContext(Dispatchers.Main) {
+                                    view.settingsDesc.text = updated
+                                    val skippedMsg = if (result.activeBytesSkipped > 0) " (${formatStorageSize(result.activeBytesSkipped)} active stream skipped)" else ""
+                                    toast("Freed ${formatStorageSize(result.bytesFreed)}$skippedMsg")
+                                }
+                            }
+                        }
+                        setNegButton(R.string.no)
                         show()
                     }
                 }
@@ -401,132 +520,6 @@ class SettingsDataActivity : AppCompatActivity() {
                 onClick = {
                     StoragePermissions.downloadsPermission(context)
                     openDocumentLauncher.launch(arrayOf("*/*"))
-                }
-            ),
-
-            // MAX MERGE M3: torrent cache quota + managed purge live here
-            // (canonical storage home; moved out of Torrent Settings — no
-            // duplicated editable UI).
-            Settings(
-                type = 1,
-                name = getString(R.string.torrent_cache_quota),
-                desc = torrentQuotaOptions().let { opts ->
-                    opts.first[torrentQuotaIndex()]
-                },
-                icon = R.drawable.ic_round_folder_24,
-                onClick = { view ->
-                    val (options, values) = torrentQuotaOptions()
-                    val selected = torrentQuotaIndex()
-                    context.customAlertDialog().apply {
-                        setTitle(getString(R.string.torrent_cache_quota))
-                        singleChoiceItems(options, selected) { index ->
-                            val chosenQuota = values[index]
-                            PrefManager.setVal(PrefName.TorrentRetainedCacheQuota, chosenQuota)
-                            view.settingsDesc.text = options[index]
-                            val cacheMgr = TorrentCacheManager.getInstance(context)
-                            lifecycleScope.launch(Dispatchers.IO) {
-                                cacheMgr.evictIfNeeded(chosenQuota)
-                            }
-                        }
-                        show()
-                    }
-                }
-            ),
-
-            Settings(
-                type = 1,
-                name = getString(R.string.clear_torrent_cache),
-                desc = torrentCacheUsageText(),
-                icon = R.drawable.ic_round_delete_24,
-                onClick = { view ->
-                    context.customAlertDialog().apply {
-                        setTitle(getString(R.string.clear_torrent_cache))
-                        setMessage("Purge all dormant/retained torrent downloads? Active playback streams will be preserved.")
-                        setPosButton(R.string.yes) {
-                            lifecycleScope.launch(Dispatchers.IO) {
-                                val cacheManager = TorrentCacheManager.getInstance(context)
-                                val result = cacheManager.clearTorrentCache()
-                                val updated = torrentCacheUsageText()
-                                withContext(Dispatchers.Main) {
-                                    view.settingsDesc.text = updated
-                                    val skippedMsg = if (result.activeBytesSkipped > 0) " (${formatSize(result.activeBytesSkipped)} active stream skipped)" else ""
-                                    toast("Freed ${formatSize(result.bytesFreed)}$skippedMsg")
-                                }
-                            }
-                        }
-                        setNegButton(R.string.no)
-                        show()
-                    }
-                }
-            ),
-
-            Settings(
-                type = 1,
-                name = getString(R.string.change_download_directory),
-                desc = getString(R.string.change_download_directory_desc),
-                icon = R.drawable.ic_round_folder_24,
-                onClick = {
-                    val oldUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
-                    context.customAlertDialog().apply {
-                        setTitle(R.string.change_download_directory)
-                        setMessage(R.string.change_download_directory_confirm)
-                        setPosButton(R.string.ok) {
-                            launcher.registerForCallback { success ->
-                                if (success) {
-                                    toast(getString(R.string.please_wait))
-                                    val newUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
-                                    lifecycleScope.launch(Dispatchers.IO) {
-                                        Injekt.get<DownloadsManager>().moveDownloadsDir(
-                                            context,
-                                            Uri.parse(oldUri),
-                                            Uri.parse(newUri),
-                                        ) { finished, message ->
-                                            if (finished) {
-                                                toast(getString(R.string.success))
-                                                updateStorageInfo()
-                                            } else {
-                                                toast(message)
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    toast(getString(R.string.error))
-                                }
-                            }
-                            launcher.launch()
-                        }
-                        setNegButton(R.string.cancel)
-                        show()
-                    }
-                }
-            ),
-
-            Settings(
-                type = 1,
-                name = getString(R.string.purge_downloads),
-                desc = getString(R.string.purge_downloads_desc),
-                icon = R.drawable.ic_round_delete_24,
-                onClick = {
-                    context.customAlertDialog().apply {
-                        setTitle(R.string.purge_downloads)
-                        setMessage(R.string.purge_confirm, "${getString(R.string.anime)} & ${getString(R.string.manga)}")
-                        setPosButton(R.string.yes) {
-                            val downloadsManager = Injekt.get<DownloadsManager>()
-                            downloadsManager.purgeDownloads(MediaType.ANIME)
-                            // Manga purge refuses direct calls (live-owner race);
-                            // travel the service scope barrier instead.
-                            val purgeIntent = android.content.Intent(
-                                context,
-                                MangaDownloaderService::class.java
-                            ).apply {
-                                action = MangaDownloaderService.ACTION_PURGE_MANGA
-                            }
-                            ContextCompat.startForegroundService(context, purgeIntent)
-                            updateStorageInfo()
-                        }
-                        setNegButton(R.string.no)
-                        show()
-                    }
                 }
             )
         )
