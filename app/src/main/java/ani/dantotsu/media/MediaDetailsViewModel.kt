@@ -26,6 +26,7 @@ import ani.dantotsu.others.IntroDbService
 import ani.dantotsu.others.Jikan
 import ani.dantotsu.others.Kitsu
 import ani.dantotsu.others.TmdbService
+import ani.dantotsu.others.sanitizedStamps
 import ani.dantotsu.parsers.AnimeSources
 import ani.dantotsu.parsers.Book
 import ani.dantotsu.parsers.MangaImage
