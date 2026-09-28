@@ -134,7 +134,7 @@ private fun checkValueShape(
     }
     when (typeName) {
         "kotlin.Boolean" -> {
-            if (value !is JsonPrimitive || value.booleanOrNull == null) {
+            if (value !is JsonPrimitive || value.isString || value.booleanOrNull == null) {
                 return "not a boolean: $where"
             }
         }
@@ -144,17 +144,17 @@ private fun checkValueShape(
             }
         }
         "kotlin.Int" -> {
-            if (value !is JsonPrimitive || value.intOrNull == null) {
+            if (value !is JsonPrimitive || value.isString || value.intOrNull == null) {
                 return "not an int: $where"
             }
         }
         "kotlin.Long" -> {
-            if (value !is JsonPrimitive || value.longOrNull == null) {
+            if (value !is JsonPrimitive || value.isString || value.longOrNull == null) {
                 return "not a long: $where"
             }
         }
         "kotlin.Float" -> {
-            if (value !is JsonPrimitive || value.floatOrNull == null) {
+            if (value !is JsonPrimitive || value.isString || value.floatOrNull == null) {
                 return "not a float: $where"
             }
         }
