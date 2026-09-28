@@ -160,7 +160,9 @@ class SettingsDataActivity : AppCompatActivity() {
                 contentResolver.openInputStream(uri)?.readBytes()
                     ?: throw Exception("Error reading file")
             val name = DocumentFile.fromSingleUri(this, uri)?.name ?: "settings"
-            if (name.endsWith(".ani")) {
+            // System pickers may append an extension (e.g. `.ani.json`
+            // from our own CreateDocument flow); validation decides.
+            if (name.endsWith(".ani") || name.endsWith(".json")) {
                 when (val check =
                     validateBackupPayload(jsonString.toString(Charsets.UTF_8))) {
                     is BackupCheck.Valid -> {
