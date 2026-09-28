@@ -52,13 +52,22 @@ class ActivityFragment : Fragment() {
             userId = if (it.containsKey("userId")) it.getInt("userId").takeIf { id -> id != 0 } else null
             activityId = if (it.containsKey("activityId")) it.getInt("activityId").takeIf { id -> id != 0 } else null
         }
+        val isUserActivity = type == ActivityType.USER || type == ActivityType.GLOBAL || userId == null || userId == Anilist.userid
         binding.titleBar.visibility =
-            if (type == ActivityType.OTHER_USER) View.VISIBLE else View.GONE
-        binding.titleText.text =
-            if (userId == null || userId == Anilist.userid) getString(R.string.create_new_activity) else getString(R.string.write_a_message)
-        
+            if (type != ActivityType.ONE) View.VISIBLE else View.GONE
+        binding.titleText.text = when (type) {
+            ActivityType.OTHER_USER -> if (userId == null || userId == Anilist.userid) getString(R.string.create_new_activity) else getString(R.string.write_a_message)
+            ActivityType.USER, ActivityType.GLOBAL -> getString(R.string.create_new_activity)
+            ActivityType.ONE -> ""
+        }
+        binding.titleImage.visibility = when (type) {
+            ActivityType.OTHER_USER -> View.VISIBLE
+            ActivityType.USER, ActivityType.GLOBAL -> if (Anilist.token != null) View.VISIBLE else View.GONE
+            else -> View.GONE
+        }
+
         // Set up filter icon visibility
-        binding.filterButton.visibility = if (type == ActivityType.OTHER_USER) View.VISIBLE else View.GONE
+        binding.filterButton.visibility = if (type != ActivityType.ONE) View.VISIBLE else View.GONE
         binding.filterButton.setOnClickListener {
             showFilterBottomSheet()
         }
@@ -121,9 +130,13 @@ class ActivityFragment : Fragment() {
         binding.emptyTextView.isVisible = filteredActivities.isEmpty()
         binding.emptyTextView.text = when (currentFilter) {
             ActivityFilterType.ALL -> getString(R.string.nothing_here)
+            ActivityFilterType.TEXT -> getString(R.string.no_text_activities)
             ActivityFilterType.ANIME_PROGRESS -> getString(R.string.no_anime_progress)
             ActivityFilterType.MANGA_PROGRESS -> getString(R.string.no_manga_progress)
+            ActivityFilterType.ALL_PROGRESS -> getString(R.string.no_all_progress)
             ActivityFilterType.MESSAGES -> getString(R.string.no_messages)
+            ActivityFilterType.PINNED -> getString(R.string.no_pinned_activities)
+            ActivityFilterType.SUBSCRIBED -> getString(R.string.no_subscribed_activities)
         }
     }
 
@@ -182,14 +195,26 @@ class ActivityFragment : Fragment() {
     private fun getFilteredActivities(): List<Activity> {
         return when (currentFilter) {
             ActivityFilterType.ALL -> allActivities
+            ActivityFilterType.TEXT -> allActivities.filter {
+                it.typename == "TextActivity" || it.type == "TEXT"
+            }
             ActivityFilterType.ANIME_PROGRESS -> allActivities.filter {
                 it.type == "ANIME_LIST"
             }
             ActivityFilterType.MANGA_PROGRESS -> allActivities.filter {
                 it.type == "MANGA_LIST"
             }
+            ActivityFilterType.ALL_PROGRESS -> allActivities.filter {
+                it.type == "ANIME_LIST" || it.type == "MANGA_LIST" || it.typename == "ListActivity"
+            }
             ActivityFilterType.MESSAGES -> allActivities.filter {
-                it.typename == "MessageActivity"
+                it.typename == "MessageActivity" || it.type == "MESSAGE"
+            }
+            ActivityFilterType.PINNED -> allActivities.filter {
+                it.isPinned == true
+            }
+            ActivityFilterType.SUBSCRIBED -> allActivities.filter {
+                it.isSubscribed == true
             }
         }
     }
