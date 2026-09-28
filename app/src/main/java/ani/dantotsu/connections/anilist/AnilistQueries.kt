@@ -366,6 +366,34 @@ class AnilistQueries {
                             media.anime.season = fetchedMedia.season?.toString()
                             media.anime.seasonYear = fetchedMedia.seasonYear
 
+                            val studioEdges = fetchedMedia.studios?.edges
+                            if (!studioEdges.isNullOrEmpty()) {
+                                val mainNode = studioEdges.firstOrNull { it.isMain == true }?.node
+                                    ?: studioEdges.firstOrNull { it.node?.isAnimationStudio == true }?.node
+                                    ?: studioEdges.firstOrNull()?.node
+                                if (mainNode != null) {
+                                    media.anime.mainStudio = Studio(
+                                        mainNode.id.toString(),
+                                        mainNode.name ?: "N/A",
+                                        mainNode.isFavourite ?: false,
+                                        mainNode.favourites ?: 0,
+                                        null
+                                    )
+                                }
+                                val producerNodes = studioEdges.filter { it.isMain != true }.mapNotNull { it.node }
+                                    .filter { it.id.toString() != media.anime.mainStudio?.id }
+                                if (producerNodes.isNotEmpty()) {
+                                    media.anime.producers = ArrayList(producerNodes.map {
+                                        Studio(
+                                            it.id.toString(),
+                                            it.name ?: "N/A",
+                                            it.isFavourite ?: false,
+                                            it.favourites ?: 0,
+                                            null
+                                        )
+                                    })
+                                }
+                            } else {
                             fetchedMedia.studios?.nodes?.apply {
                                 if (isNotEmpty()) {
                                     val studioNode = firstOrNull { it.isAnimationStudio == true } ?: get(0)
@@ -389,8 +417,6 @@ class AnilistQueries {
                                     )
                                 }
                             }
-
-                            // Map non-main studios (isMain: false) as producers, excluding mainStudio
                             fetchedMedia.producers?.nodes?.apply {
                                 val remaining = filter { it.id.toString() != media.anime.mainStudio?.id }
                                 if (remaining.isNotEmpty()) {
@@ -404,6 +430,7 @@ class AnilistQueries {
                                         )
                                     } as ArrayList<Studio>
                                 }
+                            }
                             }
 
                             fetchedMedia.staff?.edges?.find { authorRoles.contains(it.role?.trim()) }?.node?.let {

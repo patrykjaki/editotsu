@@ -147,8 +147,37 @@ data class Media(
             this.tags = ArrayList(tagList.mapNotNull { it.name })
             this.tagsIsSpoiler = ArrayList(tagList.map { it.isMediaSpoiler == true })
         }
-        // Upstream 95db71ee studio fix: prefer the animation studio as the
-        // main studio instead of blindly taking the first studio node.
+        // Upstream studio fixes (95db71ee nodes + 3d0666df edges): prefer
+        // the isMain/isAnimationStudio edge as main studio, fall back to
+        // nodes for queries that still fetch them.
+        val studioEdges = apiMedia.studios?.edges
+        if (!studioEdges.isNullOrEmpty()) {
+            val mainNode = studioEdges.firstOrNull { it.isMain == true }?.node
+                ?: studioEdges.firstOrNull { it.node?.isAnimationStudio == true }?.node
+                ?: studioEdges.firstOrNull()?.node
+            if (mainNode != null) {
+                this.anime?.mainStudio = Studio(
+                    id = mainNode.id.toString(),
+                    name = mainNode.name ?: "N/A",
+                    isFavourite = mainNode.isFavourite ?: false,
+                    favourites = mainNode.favourites ?: 0,
+                    imageUrl = null
+                )
+            }
+            val producerNodes = studioEdges.filter { it.isMain != true }.mapNotNull { it.node }
+                .filter { it.id.toString() != this.anime?.mainStudio?.id }
+            if (producerNodes.isNotEmpty()) {
+                this.anime?.producers = ArrayList(producerNodes.map {
+                    Studio(
+                        id = it.id.toString(),
+                        name = it.name ?: "N/A",
+                        isFavourite = it.isFavourite ?: false,
+                        favourites = it.favourites ?: 0,
+                        imageUrl = null
+                    )
+                })
+            }
+        } else {
         apiMedia.studios?.nodes?.let { nodes ->
             if (nodes.isNotEmpty()) {
                 val studioNode = nodes.firstOrNull { it.isAnimationStudio == true } ?: nodes[0]
@@ -173,6 +202,7 @@ data class Media(
                     )
                 })
             }
+        }
         }
     }
 
