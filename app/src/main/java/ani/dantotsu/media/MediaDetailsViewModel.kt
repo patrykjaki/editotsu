@@ -14,6 +14,10 @@ import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.mal.MAL
 import ani.dantotsu.currContext
 import ani.dantotsu.media.anime.Episode
+import ani.dantotsu.media.EpisodeMapper
+import ani.dantotsu.others.firstNonEmptyProvider
+import ani.dantotsu.others.shouldQueryLiveSkip
+import ani.dantotsu.others.suspendNullOnError
 import ani.dantotsu.media.anime.SelectorDialogFragment
 import ani.dantotsu.media.anime.getEpisode
 import ani.dantotsu.media.manga.MangaChapter
@@ -675,12 +679,18 @@ class MediaDetailsViewModel : ViewModel() {
                 val malId = s.idMAL
                 var episodes = Anify.fetchAndParseMetadata(anilistId = anilistId, malId = malId)
                 // MAX MERGE M5 (upstream 36d57c56): TMDB season fallback
-                // for episode titles/synopses/thumbnails when Anify is empty.
+                // for episode titles/synopses/thumbnails when Anify is
+                // empty. The season comes from the existing episode
+                // mapper (S1 + local keys is the documented fallback);
+                // TMDB season keys already align with local keys.
                 if (episodes.isEmpty()) {
                     val tmdbId = s.idTMDB?.toIntOrNull()
-                        ?: runCatching { IdMappers.getIds(s.id)?.tmdbId }.getOrNull()
+                        ?: suspendNullOnError { IdMappers.getIds(s.id)?.tmdbId }
                     if (tmdbId != null && tmdbId > 0) {
-                        val tmdbEpisodes = TmdbService.getEpisodeDetails(tmdbId)
+                        val season = suspendNullOnError {
+                            EpisodeMapper.mapEpisode(s, 1)
+                        }?.season ?: 1
+                        val tmdbEpisodes = TmdbService.getEpisodeDetails(tmdbId, season)
                         if (!tmdbEpisodes.isNullOrEmpty()) {
                             episodes = tmdbEpisodes
                         }
@@ -789,38 +799,79 @@ class MediaDetailsViewModel : ViewModel() {
         episodeNum: Int?,
         duration: Long,
         useProxyForTimeStamps: Boolean,
-        extensionTimestamps: List<eu.kanade.tachiyomi.animesource.model.TimeStamp> = emptyList()
+        extensionTimestamps: List<eu.kanade.tachiyomi.animesource.model.TimeStamp> = emptyList(),
+        episode: Episode? = null
     ) {
         episodeNum ?: return
         if (timeStampsMap.containsKey(episodeNum) && !timeStampsMap[episodeNum].isNullOrEmpty()) {
             return timeStamps.postValue(timeStampsMap[episodeNum])
         }
-        if (duration <= 0 && extensionTimestamps.isEmpty()) return
 
-        // Extension timestamps take priority; fall back through skip
-        // providers when the extension has none (upstream 36d57c56):
-        // live AniSkip API → offline CSV dump DB → IntroDB APIs.
-        val result: List<AniSkip.Stamp>? = if (extensionTimestamps.isNotEmpty()) {
-            extensionTimestamps.map { it.toAniSkipStamp() }
-        } else {
-            var stamps: List<AniSkip.Stamp>? = null
-            if (malId != null) {
-                stamps = AniSkip.getResult(malId, episodeNum, duration, useProxyForTimeStamps)
+        // Extension timestamps take priority.
+        if (extensionTimestamps.isNotEmpty()) {
+            val result = extensionTimestamps.map { it.toAniSkipStamp() }
+            if (result.isNotEmpty() || duration > 0) {
+                timeStampsMap[episodeNum] = result
             }
-            if (stamps.isNullOrEmpty() && malId != null) {
-                val ctx = currContext()
-                if (ctx != null) {
-                    stamps = AniskipCsvFallback.getInstance(ctx).lookup(malId, episodeNum)
-                }
-            }
-            if (stamps.isNullOrEmpty()) {
-                val mediaVal = media.value
-                val imdbId = mediaVal?.idIMDB ?: mediaVal?.id?.let { runCatching { IdMappers.getImdbId(it) }.getOrNull() }
-                val tmdbId = mediaVal?.idTMDB?.toIntOrNull() ?: mediaVal?.id?.let { runCatching { IdMappers.getIds(it)?.tmdbId }.getOrNull() }
-                stamps = IntroDbService.getSkipTimes(imdbId = imdbId, tmdbId = tmdbId, episode = episodeNum.toString())
-            }
-            stamps?.sanitizedStamps()
+            return timeStamps.postValue(result)
         }
+
+        // Provider fallback chain (upstream 36d57c56): live AniSkip API →
+        // offline CSV dump DB → IntroDB APIs. Live AniSkip needs a known
+        // duration; CSV/IntroDB bounded ranges may run without one, while
+        // open-ended credits still require duration (handled inside
+        // IntroDbService). Cancellation aborts the chain via rethrow.
+        val durationSec = duration.takeIf { it > 0 }
+        val durationMs = durationSec?.times(1000)
+        val result = firstNonEmptyProvider(
+            {
+                // Non-null asserted: shouldQueryLiveSkip is the single
+                // definition of this gate (unit-proved).
+                if (shouldQueryLiveSkip(malId, durationSec)) {
+                    AniSkip.getResult(malId!!, episodeNum, durationSec!!, useProxyForTimeStamps)
+                } else {
+                    null
+                }
+            },
+            {
+                if (malId != null) {
+                    val ctx = currContext()
+                    if (ctx != null) {
+                        AniskipCsvFallback.getInstance(ctx).lookup(malId, episodeNum, durationSec)
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            },
+            {
+                val mediaVal = media.value
+                val imdbId = mediaVal?.idIMDB
+                    ?: mediaVal?.id?.let { suspendNullOnError { IdMappers.getImdbId(it) } }
+                val tmdbId = mediaVal?.idTMDB?.toIntOrNull()
+                    ?: mediaVal?.id?.let { suspendNullOnError { IdMappers.getIds(it)?.tmdbId } }
+                // External season/episode via the existing mapper seam;
+                // S1 + local number is the documented fallback when the
+                // mapper cannot resolve (previous behavior).
+                val mapped = if (mediaVal != null) {
+                    suspendNullOnError {
+                        EpisodeMapper.mapEpisode(mediaVal, episodeNum, episode)
+                    }
+                } else {
+                    null
+                }
+                val season = (mapped?.season ?: 1).toString()
+                val ep = (mapped?.episode ?: episodeNum).toString()
+                IntroDbService.getSkipTimes(
+                    imdbId = imdbId,
+                    tmdbId = tmdbId,
+                    season = season,
+                    episode = ep,
+                    durationMs = durationMs
+                )
+            }
+        )?.sanitizedStamps()
         if (result != null || duration > 0) {
             timeStampsMap[episodeNum] = result
         }

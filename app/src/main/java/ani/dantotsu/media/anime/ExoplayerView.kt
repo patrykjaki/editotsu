@@ -1255,20 +1255,23 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (!aniSkipManager.isTimeStampsLoaded && PrefManager.getVal(PrefName.TimeStampsEnabled)) {
             val dur = engine.durationMs
             val extTimestamps = extractor?.server?.video?.timestamps ?: emptyList()
-            if (extTimestamps.isNotEmpty() || dur > 0L) {
-                val epString = if (this::episode.isInitialized) episode.number else (media.anime?.selectedEpisode ?: "1")
-                val epNum = Regex("""\d+""").find(epString)?.value?.toIntOrNull()
-                    ?: epString.trim().toIntOrNull()
-                    ?: 1
-                lifecycleScope.launch(Dispatchers.IO) {
-                    model.loadTimeStamps(
-                        media.idMAL,
-                        epNum,
-                        if (dur > 0L) dur / 1000L else 0L,
-                        PrefManager.getVal(PrefName.UseProxyForTimeStamps),
-                        extTimestamps
-                    )
-                }
+            // M5 correction: no duration gate here. Live AniSkip still
+            // needs duration, but CSV/IntroDB bounded ranges may resolve
+            // without it; the ViewModel dispatches per provider.
+            val epString = if (this::episode.isInitialized) episode.number else (media.anime?.selectedEpisode ?: "1")
+            val epNum = Regex("""\d+""").find(epString)?.value?.toIntOrNull()
+                ?: epString.trim().toIntOrNull()
+                ?: 1
+            val epObj = if (this::episode.isInitialized) episode else null
+            lifecycleScope.launch(Dispatchers.IO) {
+                model.loadTimeStamps(
+                    media.idMAL,
+                    epNum,
+                    if (dur > 0L) dur / 1000L else 0L,
+                    PrefManager.getVal(PrefName.UseProxyForTimeStamps),
+                    extTimestamps,
+                    episode = epObj
+                )
             }
         }
     }

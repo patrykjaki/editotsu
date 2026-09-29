@@ -17,86 +17,128 @@ object IntroDbService {
         imdbId: String? = null,
         tmdbId: Int? = null,
         season: String = "1",
-        episode: String
+        episode: String,
+        durationMs: Long? = null
     ): List<AniSkip.Stamp>? = withContext(Dispatchers.IO) {
         val epInt = episode.toIntOrNull() ?: return@withContext null
 
         // 1. Try IntroDB App API via IMDB ID
         if (!imdbId.isNullOrBlank()) {
-            val fromImdb = fetchFromIntroDbApp(imdbId, season, episode, epInt)
+            val fromImdb = fetchFromIntroDbApp(imdbId, season, episode, epInt, durationMs)
             if (!fromImdb.isNullOrEmpty()) return@withContext fromImdb
         }
 
         // 2. Try TheIntroDb API via TMDB ID
         if (tmdbId != null && tmdbId > 0) {
-            val fromTmdb = fetchFromTheIntroDb(tmdbId, season, episode, epInt)
+            val fromTmdb = fetchFromTheIntroDb(tmdbId, season, episode, epInt, durationMs)
             if (!fromTmdb.isNullOrEmpty()) return@withContext fromTmdb
         }
 
         null
     }
 
+    /**
+     * Pure IntroDB-app payload parser (org.json is JVM-plain, unit-proved).
+     * Null intro/recap starts mean 0; a missing end resolves against the
+     * known media duration, else the segment is safely omitted.
+     */
+    internal fun parseIntroDbAppSegments(
+        root: JsonObject,
+        imdbId: String,
+        episodeInt: Int,
+        durationMs: Long?
+    ): List<AniSkip.Stamp> {
+        val durationSec = durationMs?.takeIf { it > 0 }?.div(1000.0)
+        val stamps = mutableListOf<AniSkip.Stamp>()
+        fun segment(obj: JsonObject, type: String, idKind: String) {
+            val start = obj["start_sec"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+            var end = obj["end_sec"]?.jsonPrimitive?.doubleOrNull
+            if (end == null) {
+                end = durationSec
+            }
+            if (end == null || !start.isFinite() || !end.isFinite() || end <= start || start < 0) return
+            stamps.add(
+                AniSkip.Stamp(
+                    interval = AniSkip.AniSkipInterval(start, end),
+                    skipType = type,
+                    skipId = "introdb_${idKind}_${imdbId}_$episodeInt",
+                    episodeLength = 0.0
+                )
+            )
+        }
+        root["intro"]?.jsonObject?.let { segment(it, "op", "op") }
+        root["outro"]?.jsonObject?.let { segment(it, "ed", "ed") }
+        root["recap"]?.jsonObject?.let { segment(it, "recap", "recap") }
+        return stamps
+    }
+
+    /**
+     * Pure TheIntroDB payload parser. Null intro/recap starts mean 0;
+     * credits with a null end run to the known media duration, and are
+     * omitted when duration is unknown rather than inventing a bound.
+     */
+    internal fun parseTheIntroDbSegments(
+        root: JsonObject,
+        tmdbId: Int,
+        episodeInt: Int,
+        durationMs: Long?
+    ): List<AniSkip.Stamp> {
+        val durationSec = durationMs?.takeIf { it > 0 }?.div(1000.0)
+        val stamps = mutableListOf<AniSkip.Stamp>()
+        fun parseSegments(type: String, key: String) {
+            val array = root[key]?.jsonArray ?: return
+            for (item in array) {
+                val obj = item.jsonObject
+                val start = obj["start_ms"]?.jsonPrimitive?.longOrNull?.div(1000.0) ?: 0.0
+                var end = obj["end_ms"]?.jsonPrimitive?.longOrNull?.div(1000.0)
+                if (end == null) {
+                    end = durationSec
+                }
+                if (end == null || !start.isFinite() || !end.isFinite() || end <= start || start < 0) continue
+                stamps.add(
+                    AniSkip.Stamp(
+                        interval = AniSkip.AniSkipInterval(start, end),
+                        skipType = type,
+                        skipId = "theintrodb_${type}_${tmdbId}_$episodeInt",
+                        episodeLength = 0.0
+                    )
+                )
+            }
+        }
+        parseSegments("op", "intro")
+        parseSegments("ed", "credits")
+        parseSegments("recap", "recap")
+        return stamps
+    }
+
+    internal fun introDbAppUrl(imdbId: String, season: String, episode: String): String =
+        "$INTRODB_APP_URL?imdb_id=$imdbId&season=$season&episode=$episode"
+
+    internal fun theIntroDbUrl(tmdbId: Int, season: String, episode: String, durationMs: Long?): String {
+        var url = "$THE_INTRODB_URL?tmdb_id=$tmdbId&season=$season&episode=$episode"
+        if (durationMs != null && durationMs > 0) {
+            url += "&duration_ms=$durationMs"
+        }
+        return url
+    }
+
     private suspend fun fetchFromIntroDbApp(
         imdbId: String,
         season: String,
         episode: String,
-        episodeInt: Int
+        episodeInt: Int,
+        durationMs: Long? = null
     ): List<AniSkip.Stamp>? {
-        val url = "$INTRODB_APP_URL?imdb_id=$imdbId&season=$season&episode=$episode"
+        val url = introDbAppUrl(imdbId, season, episode)
         return try {
             val response = client.get(url)
             val text = response.text
             if (text.isBlank()) return null
             val root = json.parseToJsonElement(text).jsonObject
-
-            val stamps = mutableListOf<AniSkip.Stamp>()
-
-            root["intro"]?.jsonObject?.let { obj ->
-                val start = obj["start_sec"]?.jsonPrimitive?.doubleOrNull
-                val end = obj["end_sec"]?.jsonPrimitive?.doubleOrNull
-                if (start != null && end != null && end > start) {
-                    stamps.add(
-                        AniSkip.Stamp(
-                            interval = AniSkip.AniSkipInterval(start, end),
-                            skipType = "op",
-                            skipId = "introdb_op_${imdbId}_$episodeInt",
-                            episodeLength = 0.0
-                        )
-                    )
-                }
-            }
-
-            root["outro"]?.jsonObject?.let { obj ->
-                val start = obj["start_sec"]?.jsonPrimitive?.doubleOrNull
-                val end = obj["end_sec"]?.jsonPrimitive?.doubleOrNull
-                if (start != null && end != null && end > start) {
-                    stamps.add(
-                        AniSkip.Stamp(
-                            interval = AniSkip.AniSkipInterval(start, end),
-                            skipType = "ed",
-                            skipId = "introdb_ed_${imdbId}_$episodeInt",
-                            episodeLength = 0.0
-                        )
-                    )
-                }
-            }
-
-            root["recap"]?.jsonObject?.let { obj ->
-                val start = obj["start_sec"]?.jsonPrimitive?.doubleOrNull
-                val end = obj["end_sec"]?.jsonPrimitive?.doubleOrNull
-                if (start != null && end != null && end > start) {
-                    stamps.add(
-                        AniSkip.Stamp(
-                            interval = AniSkip.AniSkipInterval(start, end),
-                            skipType = "recap",
-                            skipId = "introdb_recap_${imdbId}_$episodeInt",
-                            episodeLength = 0.0
-                        )
-                    )
-                }
-            }
-
-            if (stamps.isNotEmpty()) stamps else null
+            parseIntroDbAppSegments(root, imdbId, episodeInt, durationMs)
+                .ifEmpty { null }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.log("$TAG: fetchFromIntroDbApp failed for $url: ${e.message}")
             null
@@ -107,41 +149,19 @@ object IntroDbService {
         tmdbId: Int,
         season: String,
         episode: String,
-        episodeInt: Int
+        episodeInt: Int,
+        durationMs: Long? = null
     ): List<AniSkip.Stamp>? {
-        val url = "$THE_INTRODB_URL?tmdb_id=$tmdbId&season=$season&episode=$episode"
+        val url = theIntroDbUrl(tmdbId, season, episode, durationMs)
         return try {
             val response = client.get(url)
             val text = response.text
             if (text.isBlank()) return null
             val root = json.parseToJsonElement(text).jsonObject
-
-            val stamps = mutableListOf<AniSkip.Stamp>()
-
-            fun parseSegments(type: String, key: String) {
-                val array = root[key]?.jsonArray ?: return
-                for (item in array) {
-                    val obj = item.jsonObject
-                    val startMs = obj["start_ms"]?.jsonPrimitive?.longOrNull ?: 0L
-                    val endMs = obj["end_ms"]?.jsonPrimitive?.longOrNull ?: continue
-                    if (endMs > startMs) {
-                        stamps.add(
-                            AniSkip.Stamp(
-                                interval = AniSkip.AniSkipInterval(startMs / 1000.0, endMs / 1000.0),
-                                skipType = type,
-                                skipId = "theintrodb_${type}_${tmdbId}_$episodeInt",
-                                episodeLength = 0.0
-                            )
-                        )
-                    }
-                }
-            }
-
-            parseSegments("op", "intro")
-            parseSegments("ed", "credits")
-            parseSegments("recap", "recap")
-
-            if (stamps.isNotEmpty()) stamps else null
+            parseTheIntroDbSegments(root, tmdbId, episodeInt, durationMs)
+                .ifEmpty { null }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.log("$TAG: fetchFromTheIntroDb failed for $url: ${e.message}")
             null
