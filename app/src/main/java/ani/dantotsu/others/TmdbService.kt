@@ -110,15 +110,16 @@ object TmdbService {
     private const val IMAGE_BASE_W500 = "https://image.tmdb.org/t/p/w500"
 
     /**
-     * MAX MERGE M5 correction 2: bulk season fetch translated back to
-     * LOCAL episode keys. Each local key is mapped individually through
+     * MAX MERGE M5 correction 3: bulk season fetch translated back to
+     * LOCAL episode identity. Each local key maps individually through
      * [mapEpisode]; keys group by external season so every required
-     * season is fetched at most once; only explicitly mapped rows are
-     * emitted under their local key, so wrong-season rows can never
-     * populate another local episode. Mapping cancellation escapes (never
-     * converted to a fallback); ordinary mapping failure falls back to
-     * season 1 + the numeric local key (documented previous behavior).
-     * Unit-proved (TmdbMappingTest exercises this seam, not URLs).
+     * season is fetched at most once; emitted rows carry the LOCAL key
+     * both as map key AND as Episode.number (external season/episode
+     * preserved in extra). Only explicitly mapped rows are emitted, so
+     * wrong-season rows can never populate another local episode.
+     * Ordinary mapping failure OMITS that local key (a clean miss beats
+     * valid-looking wrong-season metadata); mapping CancellationException
+     * escapes. Unit-proved (TmdbMappingTest exercises this seam).
      */
     internal suspend fun resolveTmdbEpisodes(
         localKeys: List<String>,
@@ -132,8 +133,8 @@ object TmdbService {
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
-                ani.dantotsu.media.EpisodeMapper.SeasonEpisode(1, key.toIntOrNull() ?: 1)
-            }
+                null
+            } ?: continue
             mapped[key] = se
         }
         val fetched = mutableMapOf<Int, Map<String, Episode>>()
@@ -143,7 +144,13 @@ object TmdbService {
         val out = mutableMapOf<String, Episode>()
         for ((localKey, se) in mapped) {
             val row = fetched[se.season]?.get(se.episode.toString()) ?: continue
-            out[localKey] = row
+            out[localKey] = row.copy(
+                number = localKey,
+                extra = (row.extra ?: emptyMap()) + mapOf(
+                    "season" to se.season.toString(),
+                    "episode" to se.episode.toString()
+                )
+            )
         }
         return out
     }

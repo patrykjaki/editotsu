@@ -47,7 +47,7 @@ class TmdbMappingTest {
     }
 
     @Test
-    fun `local E13 to S2E1 lands on local key 13`() = runBlocking {
+    fun `local E13 to S2E1 lands on local key 13 with local number`() = runBlocking {
         val out = TmdbService.resolveTmdbEpisodes(
             listOf("13"),
             mapEpisode = { EpisodeMapper.SeasonEpisode(2, 1) },
@@ -58,6 +58,9 @@ class TmdbMappingTest {
         )
         assertEquals(listOf("13"), out.keys.toList())
         assertEquals("S2E1 Title", out["13"]?.title)
+        assertEquals("13", out["13"]?.number)
+        assertEquals("2", out["13"]?.extra?.get("season"))
+        assertEquals("1", out["13"]?.extra?.get("episode"))
     }
 
     @Test
@@ -107,6 +110,18 @@ class TmdbMappingTest {
     }
 
     @Test
+    fun `empty local domain fetches nothing`() = runBlocking {
+        var fetched = false
+        val out = TmdbService.resolveTmdbEpisodes(
+            emptyList(),
+            mapEpisode = { EpisodeMapper.SeasonEpisode(1, 1) },
+            fetchSeason = { fetched = true; emptyMap() }
+        )
+        assertTrue(out.isEmpty())
+        assertEquals(false, fetched)
+    }
+
+    @Test
     fun `mapper cancellation escapes without fetching`() = runBlocking {
         var fetched = false
         try {
@@ -122,17 +137,24 @@ class TmdbMappingTest {
     }
 
     @Test
-    fun `ordinary mapping failure uses documented S1 fallback`() = runBlocking {
+    fun `ordinary mapping failure omits that key without touching others`() = runBlocking {
         var fetchedSeason = -1
         val out = TmdbService.resolveTmdbEpisodes(
-            listOf("4"),
-            mapEpisode = { throw IOException("map down") },
+            listOf("4", "5"),
+            mapEpisode = { key ->
+                if (key == "4") throw IOException("map down")
+                EpisodeMapper.SeasonEpisode(2, 1)
+            },
             fetchSeason = { season ->
                 fetchedSeason = season
-                season(mapOf("4" to "S1E4"))
+                season(mapOf("1" to "S2E1"))
             }
         )
-        assertEquals(1, fetchedSeason)
-        assertEquals("S1E4", out["4"]?.title)
+        // Failed key receives no unverified S1 row; the mapped key still
+        // resolves correctly.
+        assertEquals(2, fetchedSeason)
+        assertEquals(listOf("5"), out.keys.toList())
+        assertEquals("S2E1", out["5"]?.title)
+        assertEquals("5", out["5"]?.number)
     }
 }
