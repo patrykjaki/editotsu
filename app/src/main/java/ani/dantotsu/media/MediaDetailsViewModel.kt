@@ -678,20 +678,33 @@ class MediaDetailsViewModel : ViewModel() {
                 val anilistId = s.id.takeIf { it != 0 }
                 val malId = s.idMAL
                 var episodes = Anify.fetchAndParseMetadata(anilistId = anilistId, malId = malId)
-                // MAX MERGE M5 (upstream 36d57c56): TMDB season fallback
-                // for episode titles/synopses/thumbnails when Anify is
-                // empty. The season comes from the existing episode
-                // mapper (S1 + local keys is the documented fallback);
-                // TMDB season keys already align with local keys.
+                // MAX MERGE M5 correction 2 (upstream 36d57c56 TMDB
+                // fallback, fixed): resolve every relevant local episode
+                // through EpisodeMapper, fetch each required TMDB season
+                // once, and translate rows back to local keys. Never
+                // assume episode 1's season covers the whole media.
                 if (episodes.isEmpty()) {
                     val tmdbId = s.idTMDB?.toIntOrNull()
                         ?: suspendNullOnError { IdMappers.getIds(s.id)?.tmdbId }
                     if (tmdbId != null && tmdbId > 0) {
-                        val season = suspendNullOnError {
-                            EpisodeMapper.mapEpisode(s, 1)
-                        }?.season ?: 1
-                        val tmdbEpisodes = TmdbService.getEpisodeDetails(tmdbId, season)
-                        if (!tmdbEpisodes.isNullOrEmpty()) {
+                        val total = s.anime?.totalEpisodes ?: 0
+                        val tmdbEpisodes = if (total > 0) {
+                            val localKeys = (1..total).map { it.toString() }
+                            TmdbService.resolveTmdbEpisodes(
+                                localKeys,
+                                mapEpisode = { key ->
+                                    EpisodeMapper.mapEpisode(s, key.toIntOrNull() ?: 1)
+                                },
+                                fetchSeason = { season ->
+                                    TmdbService.getEpisodeDetails(tmdbId, season)
+                                }
+                            )
+                        } else {
+                            // Unknown episode count: previous behavior
+                            // (single season-1 fetch, keys as served).
+                            TmdbService.getEpisodeDetails(tmdbId, 1) ?: emptyMap()
+                        }
+                        if (tmdbEpisodes.isNotEmpty()) {
                             episodes = tmdbEpisodes
                         }
                     }

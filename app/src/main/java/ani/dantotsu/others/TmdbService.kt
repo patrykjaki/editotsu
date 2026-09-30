@@ -108,4 +108,43 @@ object TmdbService {
     }
 
     private const val IMAGE_BASE_W500 = "https://image.tmdb.org/t/p/w500"
+
+    /**
+     * MAX MERGE M5 correction 2: bulk season fetch translated back to
+     * LOCAL episode keys. Each local key is mapped individually through
+     * [mapEpisode]; keys group by external season so every required
+     * season is fetched at most once; only explicitly mapped rows are
+     * emitted under their local key, so wrong-season rows can never
+     * populate another local episode. Mapping cancellation escapes (never
+     * converted to a fallback); ordinary mapping failure falls back to
+     * season 1 + the numeric local key (documented previous behavior).
+     * Unit-proved (TmdbMappingTest exercises this seam, not URLs).
+     */
+    internal suspend fun resolveTmdbEpisodes(
+        localKeys: List<String>,
+        mapEpisode: suspend (localKey: String) -> ani.dantotsu.media.EpisodeMapper.SeasonEpisode,
+        fetchSeason: suspend (season: Int) -> Map<String, Episode>?
+    ): Map<String, Episode> {
+        val mapped = mutableMapOf<String, ani.dantotsu.media.EpisodeMapper.SeasonEpisode>()
+        for (key in localKeys) {
+            val se = try {
+                mapEpisode(key)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                ani.dantotsu.media.EpisodeMapper.SeasonEpisode(1, key.toIntOrNull() ?: 1)
+            }
+            mapped[key] = se
+        }
+        val fetched = mutableMapOf<Int, Map<String, Episode>>()
+        for (season in mapped.values.map { it.season }.toSet()) {
+            fetched[season] = fetchSeason(season) ?: emptyMap()
+        }
+        val out = mutableMapOf<String, Episode>()
+        for ((localKey, se) in mapped) {
+            val row = fetched[se.season]?.get(se.episode.toString()) ?: continue
+            out[localKey] = row
+        }
+        return out
+    }
 }
