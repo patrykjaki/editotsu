@@ -58,6 +58,38 @@ class EpisodePlaybackSessionTest {
         fun close() { engines.forEach { it.close() } }
     }
 
+    @Test fun legacyWholeNumberResumeAliasIsRetainedWhenUnambiguous() {
+        assertEquals("1", EpisodeResumeKeys.compatibleAlias("1.0", setOf("1.0", "2.0")))
+        assertEquals("1.5", EpisodeResumeKeys.compatibleAlias("1.50", setOf("1.50", "2.0")))
+    }
+
+    @Test fun distinctEpisodeKeysCannotShareNumericResumeAlias() {
+        val keys = setOf("1", "1.0", "1.5", "1.50")
+        assertNull(EpisodeResumeKeys.compatibleAlias("1.0", keys))
+        assertNull(EpisodeResumeKeys.compatibleAlias("1.50", keys))
+    }
+
+    @Test fun specialIdentifiersCannotPublishNumericEpisodePositions() {
+        assertNull(EpisodeResumeKeys.compatibleAlias("Special 1", setOf("Special 1", "1")))
+        assertNull(EpisodeResumeKeys.compatibleAlias("OVA 2.0", setOf("OVA 2.0")))
+    }
+
+    @Test fun fractionalAndLargeAliasesAvoidIntegerOrFloatCoercion() {
+        assertNull(EpisodeResumeKeys.compatibleAlias("12.5", setOf("12.5")))
+        assertEquals("99999999999999999999", EpisodeResumeKeys.compatibleAlias("99999999999999999999.0", emptySet()))
+    }
+
+    @Test fun collidingAliasCannotContaminateBResumeOrMaximumDuration() {
+        val saved = mutableMapOf("1" to 270000L, "1_max" to 1440000L)
+        val keys = setOf("1", "1.0")
+        val keyA = "1.0"
+        saved[keyA] = 1260000L
+        EpisodeResumeKeys.compatibleAlias(keyA, keys)?.let { saved[it] = 1260000L }
+        assertEquals(270000L, saved["1"])
+        assertEquals(1440000L, saved["1_max"])
+        assertNull(EpisodeResumeKeys.compatibleAlias(keyA, keys))
+    }
+
     @Test fun newEpisodeWithoutSavedProgressStartsAtBeginning() {
         val lane = Lane()
         try {

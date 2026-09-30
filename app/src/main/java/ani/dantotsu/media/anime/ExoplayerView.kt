@@ -64,6 +64,7 @@ import ani.dantotsu.media.MediaNameAdapter
 import ani.dantotsu.media.anime.player.CastScreenView
 import ani.dantotsu.media.anime.player.DantotsuPlayerManager
 import ani.dantotsu.media.anime.player.DantotsuPlayerView
+import ani.dantotsu.media.anime.player.EpisodeResumeKeys
 import ani.dantotsu.media.anime.player.EpisodePlaybackSession
 import ani.dantotsu.media.anime.player.PlayerDisplayFormat
 import ani.dantotsu.media.anime.player.PlaybackSpeedSelection
@@ -817,9 +818,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (this::episodes.isInitialized) episodes.getEpisodeKey(media.anime?.selectedEpisode) else null
 
     private fun savedEpisodePosition(key: String): Long {
-        val alias = MediaNameAdapter.findEpisodeNumber(key)?.let {
-            if (it % 1 == 0f) it.toInt().toString() else it.toString()
-        }
+        val alias = EpisodeResumeKeys.compatibleAlias(key, episodes.keys)
         val fallback = if (alias != null && alias != key) PrefManager.getCustomVal("${media.id}_$alias", 0L) else 0L
         return PrefManager.getCustomVal("${media.id}_$key", fallback)
     }
@@ -827,9 +826,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private fun saveActivePosition() {
         playbackSession.savePosition { key, position ->
             PrefManager.setCustomVal("${media.id}_$key", position)
-            val alias = MediaNameAdapter.findEpisodeNumber(key)?.let {
-                if (it % 1 == 0f) it.toInt().toString() else it.toString()
-            }
+            val alias = EpisodeResumeKeys.compatibleAlias(key, episodes.keys)
             if (alias != null && alias != key) PrefManager.setCustomVal("${media.id}_$alias", position)
         }
     }
@@ -1004,9 +1001,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         hideSystemBars()
 
         val selEp = media.anime?.selectedEpisode
-        val cleanEp = selEp?.let { MediaNameAdapter.findEpisodeNumber(it) }?.let {
-            if (it % 1 == 0f) it.toInt().toString() else it.toString()
-        }
+        val cleanEp = selEp?.let { EpisodeResumeKeys.compatibleAlias(it, episodes.keys) }
         val savedMax = selEp?.let { PrefManager.getCustomVal("${media.id}_${it}_max", Long.MAX_VALUE) }
             ?.takeIf { it != Long.MAX_VALUE }
             ?: (cleanEp?.let { PrefManager.getCustomVal("${media.id}_${cleanEp}_max", Long.MAX_VALUE) }?.takeIf { it != Long.MAX_VALUE })
