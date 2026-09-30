@@ -35,7 +35,6 @@ import ani.dantotsu.toPx
 import com.google.android.material.slider.Slider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -64,7 +63,6 @@ class PlayerGestureManager(
 
     private var fastForwardStartX = 0f
     private var fastForwardInitialSpeed = 1f
-    private var fastForwardOriginalSpeed = 1f
     private var lastFastForwardSpeed = 1f
 
     private val minLongPressSpeed = 0.25f
@@ -72,6 +70,19 @@ class PlayerGestureManager(
     private val dragSpeedSensitivity = 4f
     private val minSpeedUpdateDelta = 0.01f
     private val horizontalDeadZoneRatio = 0.03f
+
+    private val temporarySpeed = TemporaryPlaybackSpeed(getEngine) { speed ->
+        playerView.findViewById<TextView>(R.id.exo_fast_forward_text).apply {
+            text = PlayerDisplayFormat.speed(speed)
+            visibility = View.VISIBLE
+        }
+    }
+
+    fun stopTemporarySpeed() {
+        isFastForwarding = false
+        temporarySpeed.stop()
+        playerView.findViewById<TextView>(R.id.exo_fast_forward_text).visibility = View.GONE
+    }
 
     fun updateNotchHeight(height: Int) {
         this.notchHeight = height
@@ -331,26 +342,17 @@ class PlayerGestureManager(
                 volumeHide()
             }
 
-            val fastForward = playerView.findViewById<TextView>(R.id.exo_fast_forward_text)
-
-            fun updateFastForwardText(speed: Float) {
-                fastForward.text = String.format(Locale.US, "%.2fx", speed)
-            }
-
             fun fastForward(event: MotionEvent) {
                 val engine = getEngine() ?: return
                 isFastForwarding = true
                 fastForwardStartX = event.rawX
-                fastForwardOriginalSpeed = engine.playbackSpeed
-                fastForwardInitialSpeed = clamp(fastForwardOriginalSpeed * 2f, minLongPressSpeed, maxLongPressSpeed)
-                engine.setPlaybackSpeed(fastForwardInitialSpeed)
+                fastForwardInitialSpeed = clamp(engine.playbackSpeed * 2f, minLongPressSpeed, maxLongPressSpeed)
+                temporarySpeed.start(fastForwardInitialSpeed)
                 lastFastForwardSpeed = fastForwardInitialSpeed
-                fastForward.visibility = View.VISIBLE
-                updateFastForwardText(engine.playbackSpeed)
             }
 
             fun updateFastForwardSpeed(event: MotionEvent) {
-                val engine = getEngine() ?: return
+                if (getEngine() == null) return
                 if (!isFastForwarding) return
                 val width = playerView.width.toFloat().takeIf { it > 0f } ?: return
                 val deltaX = event.rawX - fastForwardStartX
@@ -362,18 +364,12 @@ class PlayerGestureManager(
                     maxLongPressSpeed
                 )
                 if (abs(targetSpeed - lastFastForwardSpeed) < minSpeedUpdateDelta) return
-                engine.setPlaybackSpeed(targetSpeed)
+                temporarySpeed.update(targetSpeed)
                 lastFastForwardSpeed = targetSpeed
-                updateFastForwardText(engine.playbackSpeed)
             }
 
             fun stopFastForward() {
-                val engine = getEngine()
-                if (isFastForwarding && engine != null) {
-                    isFastForwarding = false
-                    engine.setPlaybackSpeed(fastForwardOriginalSpeed)
-                    fastForward.visibility = View.GONE
-                }
+                stopTemporarySpeed()
             }
 
             val fastRewindDetector = GestureDetector(

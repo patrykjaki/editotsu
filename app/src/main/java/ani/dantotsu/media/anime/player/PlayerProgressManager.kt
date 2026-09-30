@@ -18,16 +18,17 @@ import ani.dantotsu.util.customAlertDialog
 import ani.dantotsu.widgets.continue_widget.ContinueWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 class PlayerProgressManager(
     private val activity: AppCompatActivity,
     private val model: MediaDetailsViewModel,
-    private val getEngine: () -> PlaybackEngine?,
-    private val isPlayerInitialized: () -> Boolean
+    private val getProgress: () -> EpisodePlaybackProgress?
 ) {
 
     private val handler = Handler(Looper.getMainLooper())
     private var preloading = false
+    private var preloadJob: Job? = null
     private var lastSubscriptionPromptEpisode: String? = null
     private var isTrackingProgress = false
     private var isProgressSavedForCurrentEpisode = false
@@ -56,6 +57,15 @@ class PlayerProgressManager(
         handler.post(progressRunnable)
     }
 
+    fun resetForNewEpisode() {
+        stopTracking()
+        preloadJob?.cancel()
+        preloadJob = null
+        episodeLength = 0f
+        preloading = false
+        isProgressSavedForCurrentEpisode = false
+    }
+
     fun stopTracking() {
         isTrackingProgress = false
         handler.removeCallbacks(progressRunnable)
@@ -74,14 +84,14 @@ class PlayerProgressManager(
     }
 
     private fun checkAndPreloadProgress() {
-        val engine = getEngine() ?: return
+        val progress = getProgress() ?: return
         val m = media ?: return
-        if (!isPlayerInitialized() || engine.durationMs <= 0L) return
+        if (progress.durationMs <= 0L) return
 
-        val duration = if (episodeLength > 0f) episodeLength else engine.durationMs.toFloat()
+        val duration = if (episodeLength > 0f) episodeLength else progress.durationMs.toFloat()
         if (duration <= 0f) return
 
-        val watchRatio = engine.positionMs.toFloat() / duration
+        val watchRatio = progress.positionMs.toFloat() / duration
         val watchPercentage = PrefManager.getVal<Float>(PrefName.WatchPercentage)
 
         if (watchRatio > watchPercentage) {
@@ -94,8 +104,8 @@ class PlayerProgressManager(
                 nextEpisode(false) { i ->
                     val nextKey = episodeArr.getOrNull(currentEpisodeIndex + i) ?: return@nextEpisode
                     val ep = episodes[nextKey] ?: return@nextEpisode
-                    val selected = m.selected ?: return@nextEpisode
-                    activity.lifecycleScope.launch(Dispatchers.IO) {
+                    val selected = m.selected?.copy() ?: return@nextEpisode
+                    preloadJob = activity.lifecycleScope.launch(Dispatchers.IO) {
                         if (selected.server != null) {
                             model.loadEpisodeSingleVideo(ep, selected, false)
                         } else {
@@ -108,14 +118,10 @@ class PlayerProgressManager(
     }
 
     fun updateAniProgress(forceComplete: Boolean = false) {
-        val engine = getEngine() ?: return
+        val progress = getProgress() ?: return
         val m = media ?: return
         val incognito = PrefManager.getVal<Boolean>(PrefName.Incognito)
-        val duration = if (episodeLength > 0f) episodeLength else engine.durationMs.toFloat()
-
-        val episodeEnd = forceComplete ||
-                engine.playbackState is PlaybackState.Ended ||
-                (duration > 0f && engine.positionMs.toFloat() / duration > PrefManager.getVal<Float>(PrefName.WatchPercentage))
+        val episodeEnd = progress.isComplete(PrefManager.getVal(PrefName.WatchPercentage), episodeLength, forceComplete)
         val episode0 = currentEpisodeIndex == 0 && PrefManager.getVal<Boolean>(PrefName.ChapterZeroPlayer)
 
         if (!incognito && (episodeEnd || episode0) && Anilist.userid != null) {
@@ -125,9 +131,7 @@ class PlayerProgressManager(
             if (saveProgress &&
                 (if (m.isAdult) PrefManager.getVal(PrefName.UpdateForHPlayer) else true)
             ) {
-                val epNum = m.anime?.selectedEpisode
-                    ?: episodeArr.getOrNull(currentEpisodeIndex)
-                    ?: "1"
+                val epNum = progress.episodeKey
                 if (episode0 && !episodeEnd) {
                     updateProgress(m, "0")
                 } else {
@@ -135,20 +139,19 @@ class PlayerProgressManager(
                 }
             }
         }
-        maybeHandleSubscriptionAfterEpisodeCompletion(episodeEnd, incognito)
+        maybeHandleSubscriptionAfterEpisodeCompletion(episodeEnd, incognito, progress.episodeKey)
     }
 
-    private fun maybeHandleSubscriptionAfterEpisodeCompletion(episodeEnd: Boolean, incognito: Boolean) {
+    private fun maybeHandleSubscriptionAfterEpisodeCompletion(episodeEnd: Boolean, incognito: Boolean, currentEpisode: String) {
         if (!episodeEnd || incognito) return
         val m = media ?: return
-        val currentEpisode = m.anime?.selectedEpisode ?: episodeArr.getOrNull(currentEpisodeIndex) ?: return
         if (lastSubscriptionPromptEpisode == currentEpisode) return
         lastSubscriptionPromptEpisode = currentEpisode
 
         val subscriptionsEnabled = PrefManager.getVal<Boolean>(PrefName.SubscriptionPromptAtEnd)
         if (!subscriptionsEnabled) return
 
-        val isCompleted = isAnimeCompleted(m)
+        val isCompleted = isAnimeCompleted(m, currentEpisode)
         val alreadySubscribed = SubscriptionHelper.getSubscriptions().containsKey(m.id)
         if (isCompleted) {
             if (alreadySubscribed) {
@@ -177,11 +180,11 @@ class PlayerProgressManager(
         }
     }
 
-    private fun isAnimeCompleted(m: Media): Boolean {
+    private fun isAnimeCompleted(m: Media, episodeKey: String): Boolean {
         if (m.status == "FINISHED") return true
         if (m.userStatus == "COMPLETED") return true
         val totalEpisodes = m.anime?.totalEpisodes ?: return false
-        val currentEpisodeNumber = m.anime?.selectedEpisode?.toFloatOrNull() ?: return false
+        val currentEpisodeNumber = episodeKey.toFloatOrNull() ?: return false
         return currentEpisodeNumber >= totalEpisodes
     }
 

@@ -64,6 +64,9 @@ import ani.dantotsu.media.MediaNameAdapter
 import ani.dantotsu.media.anime.player.CastScreenView
 import ani.dantotsu.media.anime.player.DantotsuPlayerManager
 import ani.dantotsu.media.anime.player.DantotsuPlayerView
+import ani.dantotsu.media.anime.player.EpisodePlaybackSession
+import ani.dantotsu.media.anime.player.PlayerDisplayFormat
+import ani.dantotsu.media.anime.player.PlaybackSpeedSelection
 import ani.dantotsu.media.anime.player.ErrorCategory
 import ani.dantotsu.media.anime.player.PlaybackError
 import ani.dantotsu.media.anime.player.PlaybackListener
@@ -186,6 +189,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     private var currentWindow = 0
     private var playbackPosition: Long = 0
+    private val playbackSession = EpisodePlaybackSession()
     private var isFullscreen: Int = 0
     private var isPlayerPlaying = true
     // Discontinuity-based throttle: publishes only on seeks, scrub stops, and play/pause —
@@ -355,7 +359,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         )
         discordManager = PlayerDiscordManager(this)
         progressManager = PlayerProgressManager(
-            this, model, { playerManager.playbackEngine }, { playerManager.isInitialized }
+            this, model, { playbackSession.progress(selectedEpisodeKey()) }
         )
 
         castManager = PlayerCastManager(this, playerView) { isPlaying ->
@@ -393,7 +397,6 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             },
             onNextClick = {
                 progressManager.nextEpisode { i ->
-                    progressManager.updateAniProgress()
                     changeEpisode(currentEpisodeIndex + i)
                 }
             },
@@ -424,8 +427,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         )
         castManager.castScreenView = castScreenView
 
-        castManager.onSessionStartedListener = { deviceName ->
-            playerManager.playbackEngine?.pause()
+        castManager.onSessionStartedListener = started@{ deviceName, owner ->
+            if (!playbackSession.acceptsEngine(owner, selectedEpisodeKey())) return@started
+            owner?.pause()
             if (initialized) {
                 castScreenView.updateMediaInfo(media, if (this::episode.isInitialized) episode else null)
             }
@@ -433,9 +437,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             castScreenView.show(true)
         }
 
-        castManager.onSessionEndedListener = { resumePositionMs, shouldPlay ->
+        castManager.onSessionEndedListener = { owner, resumePositionMs, shouldPlay ->
             castScreenView.hide(true)
-            playerManager.playbackEngine?.let { engine ->
+            owner?.takeIf { playbackSession.acceptsEngine(it, selectedEpisodeKey()) }?.let { engine ->
                 engine.seekTo(resumePositionMs)
                 if (shouldPlay) engine.play() else engine.pause()
             }
@@ -614,7 +618,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             val ep = it.value
             val cleanedTitle = MediaNameAdapter.removeEpisodeNumberCompletely(ep.title ?: "")
             episodeTitleArr.add(
-                "Episode ${ep.number}${if (ep.filler) " [Filler]" else ""}${if (cleanedTitle.isNotBlank() && cleanedTitle != "null") ": $cleanedTitle" else ""}"
+                "Episode ${PlayerDisplayFormat.episodeNumber(ep.number)}${if (ep.filler) " [Filler]" else ""}${if (cleanedTitle.isNotBlank() && cleanedTitle != "null") ": $cleanedTitle" else ""}"
             )
         }
 
@@ -642,7 +646,6 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             if (this::playerManager.isInitialized && playerManager.isInitialized) {
                 if (this::progressManager.isInitialized) {
                     progressManager.nextEpisode { i ->
-                        progressManager.updateAniProgress()
                         changeEpisode(currentEpisodeIndex + i)
                     }
                 }
@@ -662,23 +665,23 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         model.getEpisode().observe(this) { ep ->
             hideSystemBars()
             if (ep != null && !epChanging) {
-                val currentPos = playerManager.playbackEngine?.positionMs
+                val epKey = episodes.getEpisodeKey(ep.number)
+                    ?: episodeArr.find { episodes[it] === ep || episodes[it]?.number == ep.number }
+                    ?: return@observe
+                // Reject a late load result from a previously selected episode.
+                if (epKey != selectedEpisodeKey()) return@observe
+                val savedPosition = savedEpisodePosition(epKey)
+                val startPosition = playbackSession.resumePosition(epKey, savedPosition)
+                saveActivePosition()
+                releasePlayer()
+                playbackPosition = startPosition
                 episode = ep
                 media.selected = model.loadSelected(media)
                 model.setMedia(media)
-                val epKey = episodes.getEpisodeKey(ep.number)
-                    ?: episodeArr.find { episodes[it] == ep || episodes[it]?.number == ep.number }
-                    ?: episodeArr.firstOrNull()
-                currentEpisodeIndex = if (epKey != null) max(0, episodeArr.indexOf(epKey)) else 0
+                currentEpisodeIndex = max(0, episodeArr.indexOf(epKey))
                 progressManager.currentEpisodeIndex = currentEpisodeIndex
                 if (currentEpisodeIndex in 0 until episodeTitleArr.size) {
                     episodeTitle.setSelection(currentEpisodeIndex)
-                }
-                if (this::playerManager.isInitialized && playerManager.isInitialized) {
-                    releasePlayer()
-                    playbackPosition = currentPos ?: PrefManager.getCustomVal("${media.id}_${epKey ?: ep.number}", 0L)
-                } else {
-                    playbackPosition = PrefManager.getCustomVal("${media.id}_${epKey ?: ep.number}", 0L)
                 }
                 if (this::aniSkipManager.isInitialized) {
                     aniSkipManager.resetForNewEpisode()
@@ -713,16 +716,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         // Settings Button
         exoSettings.setOnClickListener {
             playerManager.playbackEngine?.let { engine ->
-                val selEp = media.anime?.selectedEpisode
-                if (selEp != null) {
-                    PrefManager.setCustomVal("${media.id}_${selEp}", engine.positionMs)
-                    val cleanEp = MediaNameAdapter.findEpisodeNumber(selEp)?.let {
-                        if (it % 1 == 0f) it.toInt().toString() else it.toString()
-                    }
-                    if (cleanEp != null && cleanEp != selEp) {
-                        PrefManager.setCustomVal("${media.id}_${cleanEp}", engine.positionMs)
-                    }
-                }
+                saveActivePosition()
                 engine.pause()
             }
             val intent = Intent(this, PlayerSettingsActivity::class.java).apply {
@@ -732,11 +726,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
 
         // Speed Dialog
-        val speeds = if (PrefManager.getVal(PrefName.CursedSpeeds)) {
-            arrayOf(1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f, 5f, 10f, 25f, 50f)
-        } else {
-            arrayOf(0.25f, 0.33f, 0.5f, 0.66f, 0.75f, 1f, 1.15f, 1.25f, 1.33f, 1.5f, 1.66f, 1.75f, 2f)
-        }
+        val speeds = PlaybackSpeedSelection.values(PrefManager.getVal(PrefName.CursedSpeeds))
         val speedsName = speeds.map { "${it}x" }.toTypedArray()
         val savedIndex = PrefManager.getCustomVal("${media.id}_speed", PrefManager.getVal<Int>(PrefName.DefaultSpeed))
         var curSpeed = savedIndex.coerceIn(0, speeds.size - 1)
@@ -823,41 +813,47 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         playerManager.playbackEngine?.setResizeMode(resizeMode)
     }
 
-    private fun changeEpisode(index: Int) {
-        if (this::playerManager.isInitialized && playerManager.isInitialized && this::episodeArr.isInitialized && index in episodeArr.indices) {
-            changingServer = false
-            // Reset Discord throttle baseline so the new episode's first position
-            // callback is not misdetected as a seek/discontinuity.
-            discordThrottle.onOwnershipChange()
-            val prevEpKey = episodeArr.getOrNull(currentEpisodeIndex)
-            if (prevEpKey != null) {
-                playerManager.playbackEngine?.let { engine ->
-                    PrefManager.setCustomVal("${media.id}_$prevEpKey", engine.positionMs)
-                    val cleanEp = MediaNameAdapter.findEpisodeNumber(prevEpKey)?.let {
-                        if (it % 1 == 0f) it.toInt().toString() else it.toString()
-                    }
-                    if (cleanEp != null && cleanEp != prevEpKey) {
-                        PrefManager.setCustomVal("${media.id}_${cleanEp}", engine.positionMs)
-                    }
-                }
-                if (this::subtitleManager.isInitialized) {
-                    subtitleManager.clearTransientSubtitleCache("${media.id}-$prevEpKey")
-                }
-            }
-            if (this::aniSkipManager.isInitialized) {
-                aniSkipManager.resetForNewEpisode()
-            }
-            if (this::progressManager.isInitialized) {
-                progressManager.episodeLength = 0f
-            }
-            val newEpKey = episodeArr[index]
-            media.anime?.selectedEpisode = newEpKey
-            val targetEpisode = episodes[newEpKey] ?: return
-            model.setMedia(media)
-            model.epChanged.postValue(false)
-            model.setEpisode(targetEpisode, "change")
-            model.onEpisodeClick(media, newEpKey, supportFragmentManager, false, prevEpKey ?: "", false)
+    private fun selectedEpisodeKey(): String? =
+        if (this::episodes.isInitialized) episodes.getEpisodeKey(media.anime?.selectedEpisode) else null
+
+    private fun savedEpisodePosition(key: String): Long {
+        val alias = MediaNameAdapter.findEpisodeNumber(key)?.let {
+            if (it % 1 == 0f) it.toInt().toString() else it.toString()
         }
+        val fallback = if (alias != null && alias != key) PrefManager.getCustomVal("${media.id}_$alias", 0L) else 0L
+        return PrefManager.getCustomVal("${media.id}_$key", fallback)
+    }
+
+    private fun saveActivePosition() {
+        playbackSession.savePosition { key, position ->
+            PrefManager.setCustomVal("${media.id}_$key", position)
+            val alias = MediaNameAdapter.findEpisodeNumber(key)?.let {
+                if (it % 1 == 0f) it.toInt().toString() else it.toString()
+            }
+            if (alias != null && alias != key) PrefManager.setCustomVal("${media.id}_$alias", position)
+        }
+    }
+
+    private fun changeEpisode(index: Int) {
+        if (!this::episodeArr.isInitialized || index !in episodeArr.indices) return
+        val newEpKey = episodeArr[index]
+        val targetEpisode = episodes[newEpKey] ?: return
+        val prevEpKey = playbackSession.binding?.episodeKey ?: selectedEpisodeKey()
+        changingServer = false
+        discordThrottle.onOwnershipChange()
+        // Publish/save A while A still owns the engine, then retire it BEFORE selecting B.
+        progressManager.updateAniProgress()
+        saveActivePosition()
+        releasePlayer()
+        prevEpKey?.let { subtitleManager.clearTransientSubtitleCache("${media.id}-$it") }
+        aniSkipManager.resetForNewEpisode()
+        currentEpisodeIndex = index
+        progressManager.currentEpisodeIndex = index
+        media.anime?.selectedEpisode = newEpKey
+        model.setMedia(media)
+        model.epChanged.postValue(false)
+        model.setEpisode(targetEpisode, "change")
+        model.onEpisodeClick(media, newEpKey, supportFragmentManager, false, prevEpKey ?: "", false)
     }
 
     private fun initPlayer() {
@@ -872,7 +868,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         list.add(media.id)
         PrefManager.setCustomVal("continueAnimeList", list)
 
-        lifecycleScope.launch(Dispatchers.IO) { extractor?.onVideoStopped(video) }
+        val stoppedExtractor = extractor
+        val stoppedVideo = video
+        lifecycleScope.launch(Dispatchers.IO) { stoppedExtractor?.onVideoStopped(stoppedVideo) }
 
         val ext = episode.extractors?.find { it.server.name == episode.selectedExtractor }
             ?: episode.extractors?.firstOrNull() ?: return
@@ -945,7 +943,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         exoSubtitle.isVisible = true
         exoSubtitle.setOnClickListener { subClick() }
 
-        lifecycleScope.launch(Dispatchers.IO) { ext.onVideoPlayed(video) }
+        val playingVideo = video
+        lifecycleScope.launch(Dispatchers.IO) { ext.onVideoPlayed(playingVideo) }
 
         if (ext.server.offline) {
             val titleName = ext.server.name.split("/").first()
@@ -1015,20 +1014,14 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         val savedPosition = savedMax?.let { if (it <= playbackPosition) max(0, it - 5000L) else playbackPosition }
             ?: playbackPosition
 
-        val speeds = if (PrefManager.getVal(PrefName.CursedSpeeds)) {
-            arrayOf(1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f, 5f, 10f, 25f, 50f)
-        } else {
-            arrayOf(0.25f, 0.33f, 0.5f, 0.66f, 0.75f, 1f, 1.15f, 1.25f, 1.33f, 1.5f, 1.66f, 1.75f, 2f)
-        }
+        val speeds = PlaybackSpeedSelection.values(PrefManager.getVal(PrefName.CursedSpeeds))
         val savedSpeedIndex = PrefManager.getCustomVal("${media.id}_speed", PrefManager.getVal<Int>(PrefName.DefaultSpeed))
             .coerceIn(0, speeds.size - 1)
         val currentSpeed = speeds[savedSpeedIndex]
 
-        val engine = playerManager.initPlayer(
-            savedPosition,
-            currentSpeed,
-            this
-        )
+        val engine = playerManager.initPlayer(savedPosition, currentSpeed, object : PlaybackListener {})
+        val active = playbackSession.bind(selEp ?: episode.number, engine)
+        engine.addListener(playbackSession.listener(active, { selectedEpisodeKey() }, this))
         videoInfo.text = video?.quality?.toString()?.takeIf { it.isNotBlank() && !it.equals("null", true) } ?: ""
 
         val episodeDisplayName = episodeTitleArr.getOrNull(currentEpisodeIndex) ?: episode.number
@@ -1082,7 +1075,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             isPlayerPlaying = engine.isPlaying
             playbackPosition = engine.positionMs
         }
-        progressManager.stopTracking()
+        playbackSession.invalidate()
+        gestureManager.stopTemporarySpeed()
+        progressManager.resetForNewEpisode()
+        aniSkipManager.stopTracking()
         progressManager.updateWidgetState(isExiting = true)
         discordManager.clear()
         playerManager.releasePlayer()
@@ -1093,10 +1089,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
         media.selected?.server = null
         playerManager.playbackEngine?.let { engine ->
-            PrefManager.setCustomVal(
-                "${media.id}_${media.anime?.selectedEpisode}",
-                engine.positionMs
-            )
+            saveActivePosition()
             engine.pause()
         }
         media.selected?.let { model.saveSelected(media.id, it) }
@@ -1110,12 +1103,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     private fun subClick() {
-        playerManager.playbackEngine?.let { engine ->
-            PrefManager.setCustomVal(
-                "${media.id}_${media.anime?.selectedEpisode}",
-                engine.positionMs
-            )
-        }
+        saveActivePosition()
         media.selected?.let { model.saveSelected(media.id, it) }
         val dialog = SubtitleDialogFragment()
         dialog.show(supportFragmentManager, "dialog")
@@ -1730,18 +1718,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             playerManager.playbackCoordinator?.setLifecycleSuppressed(true)
         }
         if (this::playerManager.isInitialized && playerManager.isInitialized) {
-            playerManager.playbackEngine?.let { engine ->
-                val selEp = if (initialized) media.anime?.selectedEpisode else null
-                if (selEp != null) {
-                    PrefManager.setCustomVal("${media.id}_${selEp}", engine.positionMs)
-                    val cleanEp = MediaNameAdapter.findEpisodeNumber(selEp)?.let {
-                        if (it % 1 == 0f) it.toInt().toString() else it.toString()
-                    }
-                    if (cleanEp != null && cleanEp != selEp) {
-                        PrefManager.setCustomVal("${media.id}_${cleanEp}", engine.positionMs)
-                    }
-                }
-            }
+            saveActivePosition()
             if (this::progressManager.isInitialized) {
                 progressManager.updateAniProgress()
             }
@@ -1760,9 +1737,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         unregisterPipReceiver()
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         orientationListener?.disable()
+        val stoppedExtractor = extractor
+        val stoppedVideo = video
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                extractor?.onVideoStopped(video)
+                stoppedExtractor?.onVideoStopped(stoppedVideo)
             } catch (_: Exception) {}
         }
         if (this::playerManager.isInitialized && playerManager.isInitialized) {

@@ -54,6 +54,8 @@ class PlayerCastManager(
     var currentVideo: Video? = null
         private set
     private var playbackEngine: PlaybackEngine? = null
+    // The engine whose media was handed to the receiver, not the next local episode.
+    private var remotePlaybackEngine: PlaybackEngine? = null
     private var playbackCoordinator: PlaybackCoordinator? = null
 
     var castScreenView: CastScreenView? = null
@@ -67,8 +69,8 @@ class PlayerCastManager(
     var isBuffering: Boolean = false
         private set
 
-    var onSessionStartedListener: ((deviceName: String?) -> Unit)? = null
-    var onSessionEndedListener: ((resumePositionMs: Long, shouldPlay: Boolean) -> Unit)? = null
+    var onSessionStartedListener: ((deviceName: String?, owner: PlaybackEngine?) -> Unit)? = null
+    var onSessionEndedListener: ((owner: PlaybackEngine?, resumePositionMs: Long, shouldPlay: Boolean) -> Unit)? = null
 
     private val progressHandler = Handler(Looper.getMainLooper())
     private var isTrackingProgress = false
@@ -101,7 +103,7 @@ class PlayerCastManager(
             activeDeviceName = session.castDevice?.friendlyName
             castScreenView?.updateDeviceName(activeDeviceName)
             session.remoteMediaClient?.addProgressListener(remoteProgressListener, 100)
-            onSessionStartedListener?.invoke(activeDeviceName)
+            onSessionStartedListener?.invoke(activeDeviceName, remotePlaybackEngine)
         }
 
         override fun onSessionEnded(session: CastSession, error: Int) {
@@ -111,14 +113,14 @@ class PlayerCastManager(
             session.remoteMediaClient?.removeProgressListener(remoteProgressListener)
             stopProgressTracking()
             CastProxyServerService.stop(activity)
-            onSessionEndedListener?.invoke(resumePos, wasPlaying)
+            onSessionEndedListener?.invoke(remotePlaybackEngine, resumePos, wasPlaying)
         }
 
         override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
             activeDeviceName = session.castDevice?.friendlyName
             castScreenView?.updateDeviceName(activeDeviceName)
             session.remoteMediaClient?.addProgressListener(remoteProgressListener, 100)
-            onSessionStartedListener?.invoke(activeDeviceName)
+            onSessionStartedListener?.invoke(activeDeviceName, remotePlaybackEngine)
         }
 
         override fun onSessionResumeFailed(session: CastSession, error: Int) {}
@@ -374,12 +376,13 @@ class PlayerCastManager(
 
             val proxiedItem = getProxiedMediaItem(item, currentVideo)
 
+            remotePlaybackEngine = playbackEngine
             castPlayer?.setMediaItem(proxiedItem, handoverPosition)
             castPlayer?.prepare()
             castPlayer?.play()
 
             startProgressTracking()
-            onSessionStartedListener?.invoke(activeDeviceName)
+            onSessionStartedListener?.invoke(activeDeviceName, remotePlaybackEngine)
         }
     }
 
@@ -423,11 +426,14 @@ class PlayerCastManager(
         val resumePosition = currentPositionMs
         val wasPlaying = castPlayer?.isPlaying == true
         stopProgressTracking()
-        playbackCoordinator?.setPlaybackTarget(PlaybackTarget.LOCAL)
-        onSessionEndedListener?.invoke(resumePosition, wasPlaying)
+        if (remotePlaybackEngine === playbackEngine) {
+            playbackCoordinator?.setPlaybackTarget(PlaybackTarget.LOCAL)
+        }
+        onSessionEndedListener?.invoke(remotePlaybackEngine, resumePosition, wasPlaying)
     }
 
     fun release() {
+        remotePlaybackEngine = null
         stopProgressTracking()
         try {
             castContext?.sessionManager?.removeSessionManagerListener(sessionManagerListener, CastSession::class.java)
