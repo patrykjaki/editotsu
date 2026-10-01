@@ -147,13 +147,13 @@ fun saveImage(
 }
 
 class MangaCache {
+    // HOLD2 bitmap-cache correction: the M4 candidate added a Bitmap LRU
+    // here, but its budget was 30 KiB (sizeOf KiB vs maxSize 30), it had no
+    // put callers, and sharing decoded Bitmaps across adapter/dialog owners
+    // that recycle() them risks recycled-bitmap crashes. The unused path is
+    // removed rather than claimed; ImageData caching is unchanged.
     private val maxEntries = 500
     private val cache = LruCache<String, ImageData>(maxEntries)
-    private val bitmapCache = object : LruCache<String, Bitmap>(30) {
-        override fun sizeOf(key: String, value: Bitmap): Int {
-            return (value.byteCount / 1024).coerceAtLeast(1)
-        }
-    }
 
     @Synchronized
     fun put(key: String, imageDate: ImageData) {
@@ -166,26 +166,11 @@ class MangaCache {
     @Synchronized
     fun remove(key: String) {
         cache.remove(key)
-        bitmapCache.remove(key)
     }
 
     @Synchronized
     fun clear() {
         cache.evictAll()
-        bitmapCache.evictAll()
-    }
-
-    @Synchronized
-    fun putBitmap(key: String, bitmap: Bitmap) {
-        bitmapCache.put(key, bitmap)
-    }
-
-    @Synchronized
-    fun getBitmap(key: String): Bitmap? = bitmapCache.get(key)
-
-    @Synchronized
-    fun clearBitmaps() {
-        bitmapCache.evictAll()
     }
 
     fun size(): Int = cache.size()

@@ -128,7 +128,9 @@ class DantotsuPlayerManager(
             sourceClass = sourceClass,
             // Beta03: validated extension mpv per-file options.
             extraMpvOptions = mpvFileOptions,
-            sourceLease = sourceLease
+            sourceLease = sourceLease,
+            // MAX MERGE M4B DRM: carried for backend selection + session config.
+            drm = video.drm
         )
     }
 
@@ -137,11 +139,18 @@ class DantotsuPlayerManager(
     fun initPlayer(
         playbackPosition: Long = 0L,
         speed: Float = 1.0f,
-        listener: PlaybackListener
+        listener: PlaybackListener,
+        // MAX MERGE M4B DRM: true creates the narrow Media3 DRM backend
+        // instead of MPV. Caller decides via DrmBackendPolicy.selectBackend.
+        preferDrmBackend: Boolean = false
     ): PlaybackEngine {
         releasePlayer()
 
-        val engine = MpvPlaybackEngine(activity)
+        val engine: PlaybackEngine = if (preferDrmBackend) {
+            Media3DrmPlaybackEngine(activity)
+        } else {
+            MpvPlaybackEngine(activity)
+        }
         this.playbackEngine = engine
 
         val focusController = AndroidAudioFocusController(activity)

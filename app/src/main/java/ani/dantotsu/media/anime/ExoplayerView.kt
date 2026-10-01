@@ -1014,7 +1014,15 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             .coerceIn(0, speeds.size - 1)
         val currentSpeed = speeds[savedSpeedIndex]
 
-        val engine = playerManager.initPlayer(savedPosition, currentSpeed, object : PlaybackListener {})
+        val engine = playerManager.initPlayer(
+            savedPosition,
+            currentSpeed,
+            object : PlaybackListener {},
+            // MAX MERGE M4B DRM: DRM-tagged streams route to the narrow
+            // Media3 DRM backend; everything else stays on MPV.
+            preferDrmBackend = ani.dantotsu.media.anime.player.DrmBackendPolicy.selectBackend(video?.drm) ==
+                ani.dantotsu.media.anime.player.DrmBackendPolicy.Backend.MEDIA3_DRM
+        )
         val active = playbackSession.bind(selEp ?: episode.number, engine)
         engine.addListener(playbackSession.listener(active, { selectedEpisodeKey() }, this))
         videoInfo.text = video?.quality?.toString()?.takeIf { it.isNotBlank() && !it.equals("null", true) } ?: ""

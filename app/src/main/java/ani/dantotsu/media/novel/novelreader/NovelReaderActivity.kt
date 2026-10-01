@@ -530,6 +530,22 @@ class NovelReaderActivity : AppCompatActivity() {
         val savedLocator = savedLocatorJson?.let {
             runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull()
         }
+        // HOLD2 A1: one-shot legacy resume migration. The pre-Readium reader
+        // persisted `${book}_progress` (EPUB CFI); only `${book}_locator`
+        // (Readium Locator JSON) is restored now. A valid saved Locator
+        // always wins; a legacy-only CFI resolves to its chapter start;
+        // anything else is a safe miss that preserves the legacy key.
+        val legacyCfi = PrefManager.getNullableCustomVal("${sanitizedBookId}_progress", null, String::class.java)
+        val resumePlan = LegacyNovelResume.plan(
+            savedLocatorPresent = savedLocator != null,
+            legacyCfi = legacyCfi,
+            readingOrderHrefs = pub.readingOrder.map { it.href.toString() },
+        )
+        val migratedLocator = (resumePlan as? LegacyNovelResume.Plan.Migrate)?.let { migrate ->
+            pub.readingOrder.firstOrNull { it.href.toString() == migrate.href }
+                ?.let(pub::locatorFromLink)
+        }
+        val startLocator = savedLocator ?: migratedLocator
 
         defaultSettings = loadReaderSettings("${sanitizedBookId}_current_settings") ?: defaultSettings
 
@@ -540,7 +556,7 @@ class NovelReaderActivity : AppCompatActivity() {
                 pdfEngineProvider = PdfiumEngineProvider()
             )
             val fragmentFactory = pdfFactory.createFragmentFactory(
-                initialLocator = savedLocator,
+                initialLocator = startLocator,
                 initialPreferences = PdfiumPreferences(
                     scroll = defaultSettings.layout == CurrentNovelReaderSettings.Layouts.SCROLLED
                 )
@@ -556,7 +572,7 @@ class NovelReaderActivity : AppCompatActivity() {
         } else {
             val epubFactory = EpubNavigatorFactory(publication = pub)
             val fragmentFactory = epubFactory.createFragmentFactory(
-                initialLocator = savedLocator,
+                initialLocator = startLocator,
                 initialPreferences = buildEpubPreferences(),
                 configuration = EpubNavigatorFragment.Configuration {
                     selectionActionModeCallback = this@NovelReaderActivity.selectionActionModeCallback
@@ -591,6 +607,16 @@ class NovelReaderActivity : AppCompatActivity() {
             visualNavigator = fragment
             epubNavigator = fragment
             pdfNavigator = null
+        }
+
+        // HOLD2 A1: persist the migrated Locator and drop the legacy key only
+        // after the navigator was created with it. A null migratedLocator
+        // (unresolvable href) or a Miss keeps the legacy key untouched.
+        if (resumePlan is LegacyNovelResume.Plan.Migrate && migratedLocator != null) {
+            runCatching {
+                PrefManager.setCustomVal("${sanitizedBookId}_locator", migratedLocator.toJSON().toString())
+                PrefManager.removeCustomVal("${sanitizedBookId}_progress")
+            }
         }
 
         setupChapterSelect(pub)

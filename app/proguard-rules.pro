@@ -160,3 +160,11 @@
 #############################################
 -keep class com.antonkarpenko.ffmpegkit.** { *; }
 -dontwarn com.antonkarpenko.ffmpegkit.**
+
+#############################################
+# ML Kit Text Recognition (MAX MERGE M4C OCR)
+#############################################
+-keep class com.google.mlkit.vision.** { *; }
+-dontwarn com.google.mlkit.vision.**
+-keep class com.google.android.gms.internal.mlkit_vision_text** { *; }
+-dontwarn com.google.android.gms.internal.mlkit_vision_text**

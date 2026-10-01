@@ -101,6 +101,7 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.BitmapTransformation
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
+import ani.dantotsu.media.manga.mangareader.BaseImageAdapter.Companion.loadBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -431,10 +432,43 @@ class MangaReaderActivity : AppCompatActivity() {
             ReaderSettingsDialogFragment.newInstance().show(supportFragmentManager, "settings")
         }
 
-        // MAX MERGE M4C: on-device OCR translation deferred (MLKit dependency
-        // + device-only validation). The translate button is hidden until the
-        // OCR tranche lands; it must not sit dead-visible in the meantime.
-        binding.mangaReaderTranslate.isVisible = false
+        // MAX MERGE M4C OCR (upstream aa98472a): on-device Japanese/Latin
+        // OCR with optional translation. Bitmap decode failure or a missing
+        // page image degrades to a toast; the sheet itself owns all failure
+        // UI and never blocks ordinary reading.
+        binding.mangaReaderTranslate.setSafeOnClickListener {
+            if (!::chapter.isInitialized) return@setSafeOnClickListener
+            val chapImages = if (directionPagedBT) {
+                chapter.images().reversed()
+            } else {
+                chapter.images()
+            }
+            val pageIndex = (currentChapterPage.toInt() - 1).coerceIn(0, (chapImages.size - 1).coerceAtLeast(0))
+            val currentImage = chapImages.getOrNull(pageIndex)
+            if (currentImage != null) {
+                snackString(getString(R.string.translating_page))
+                scope.launch(Dispatchers.IO) {
+                    val loadedBitmap = loadBitmap(currentImage.url, emptyList<BitmapTransformation>())
+                    if (loadedBitmap != null) {
+                        val softwareBitmap = if (loadedBitmap.config == Bitmap.Config.HARDWARE) {
+                            loadedBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                        } else {
+                            loadedBitmap
+                        }
+                        withContext(Dispatchers.Main) {
+                            ani.dantotsu.media.manga.mangareader.ocr.OcrTranslationBottomSheet.newInstance(softwareBitmap)
+                                .show(supportFragmentManager, "ocr_translate")
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            snackString(getString(R.string.error_loading_data, "page image"))
+                        }
+                    }
+                }
+            } else {
+                snackString(getString(R.string.error_loading_data, "current page"))
+            }
+        }
 
         binding.autoScrollPlayPause.setOnClickListener {
             val isRunning = autoScrollHelper.toggle()
@@ -1716,18 +1750,23 @@ class MangaReaderActivity : AppCompatActivity() {
     private fun onChapterScrolledTo(newChapter: MangaChapter, pageNum: Int, totalPages: Int) {
         if (newChapter.uniqueNumber() != chapter.uniqueNumber()) {
             val oldChapter = chapter
-            // Mark previous chapter as read (100% completed)
-            PrefManager.setCustomVal("${media.id}_${oldChapter.number}", maxChapterPage)
-            val cleanOldChapNum = MediaNameAdapter.findChapterNumber(oldChapter.number)?.let {
-                if (it % 1 == 0f) it.toInt().toString() else it.toString()
-            }
-            cleanOldChapNum?.let { PrefManager.setCustomVal("${media.id}_$it", maxChapterPage) }
-
-            // Sync progress if allowed
+            val newIndex = chaptersArr.indexOf(newChapter.uniqueNumber())
+            // HOLD2 C1: only a genuine forward transition (per chapter
+            // ordering + directionRLBT) completes/publishes the outgoing
+            // chapter. Backward scrolls switch identity/resume/UI below
+            // without marking anything complete.
             val incognito: Boolean = PrefManager.getVal(PrefName.Incognito)
-            if (!incognito && PrefManager.getCustomVal("${media.id}_save_progress", true)
+            val progressAllowed = !incognito && PrefManager.getCustomVal("${media.id}_save_progress", true)
                 && if (media.isAdult) PrefManager.getVal(PrefName.UpdateForHReader) else true
-            ) {
+            if (shouldCompleteOutgoingChapter(currentChapterIndex, newIndex, directionRLBT, progressAllowed)) {
+                // Mark previous chapter as read (100% completed)
+                PrefManager.setCustomVal("${media.id}_${oldChapter.number}", maxChapterPage)
+                val cleanOldChapNum = MediaNameAdapter.findChapterNumber(oldChapter.number)?.let {
+                    if (it % 1 == 0f) it.toInt().toString() else it.toString()
+                }
+                cleanOldChapNum?.let { PrefManager.setCustomVal("${media.id}_$it", maxChapterPage) }
+
+                // Sync progress if allowed (gate already evaluated above)
                 val oldChapNumStr = cleanOldChapNum ?: oldChapter.number
                 if (oldChapNumStr.isNotEmpty()) {
                     updateProgress(media, oldChapNumStr)

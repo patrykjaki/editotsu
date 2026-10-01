@@ -47,7 +47,10 @@ data class PlaybackRequest(
     // Beta03: validated extension mpv per-file options (e.g. demuxer-lavf-o),
     // appended to the loadfile options string. Empty = no extension options.
     val extraMpvOptions: String = "",
-    val sourceLease: AutoCloseable? = null
+    val sourceLease: AutoCloseable? = null,
+    // MAX MERGE M4B DRM: non-null routes playback to the Media3 DRM backend
+    // (DrmBackendPolicy); null stays on MPV. Carried from Video.drm.
+    val drm: ani.dantotsu.parsers.DrmInfo? = null
 )
 
 enum class TrackType {

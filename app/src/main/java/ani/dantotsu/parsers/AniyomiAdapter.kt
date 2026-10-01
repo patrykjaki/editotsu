@@ -45,6 +45,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import org.json.JSONObject
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.UnsupportedEncodingException
@@ -786,8 +787,23 @@ class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtrac
             number,
             format!!,
             FileUrl(videoUrl, headersMap),
-            null
+            null,
+            // MAX MERGE M4B DRM (upstream be6c4d99, adapted): extension
+            // DRM metadata rides internalData; null stays clear-content.
+            drm = parseDrmInfo(aniVideo.internalData)
         )
+    }
+
+    /**
+     * Thin Android adapter over the pure [drmInfoFromMap]: converts the
+     * extension's `internalData` JSON string to plain maps, then delegates
+     * every decision. Null for absent/malformed input.
+     */
+    private fun parseDrmInfo(internalData: String): DrmInfo? {
+        if (internalData.isBlank()) return null
+        return runCatching {
+            drmInfoFromMap(JSONObject(internalData).toPlainMap())
+        }.getOrNull()
     }
 
     private fun getVideoType(fileName: String): VideoType? {

@@ -79,9 +79,14 @@ class DownloadsManager(private val context: Context) {
      * @return number of entries recovered
      */
     fun rebuildIndexFromDisk(): Int {
-        val indexed = metadataStore.snapshot()
-        val toAdd = mutableListOf<DownloadedType>()
-        for (type in listOf(MediaType.ANIME, MediaType.MANGA, MediaType.NOVEL)) {
+        // HOLD2 B1: generic reconstruction is ANIME + NOVEL only. Manga
+        // completion is CP5-authoritative (all pages validated + exact owner
+        // + commit gate); a directory containing a non-empty file proves
+        // nothing for Manga (failed/cancelled/active partials have JPGs) and
+        // reconstruction would also drop scanlator/pageCount identity.
+        // Manga recovery needs a separate CP5-authoritative flow.
+        val scanned = mutableListOf<Triple<MediaType, String, String>>()
+        for (type in listOf(MediaType.ANIME, MediaType.NOVEL)) {
             val directory = getBaseDirectory(context, type) ?: continue
             if (!directory.exists() || !directory.isDirectory) continue
 
@@ -94,21 +99,23 @@ class DownloadsManager(private val context: Context) {
                     val chapter = chapterDir.name ?: continue
                     // Skip empty shells left behind by a cancelled download.
                     if (chapterDir.listFiles().none { it.isFile && it.length() > 0 }) continue
-
-                    val alreadyIndexed = indexed.any {
-                        it.type == type && it.titleName == title && it.chapterName == chapter
-                    }
-                    if (!alreadyIndexed) {
-                        toAdd.add(DownloadedType(title, chapter, type))
-                    }
+                    scanned.add(Triple(type, title, chapter))
                 }
             }
         }
-        if (toAdd.isNotEmpty()) {
-            metadataStore.transact { it.addAll(toAdd) }
-            Logger.log("rebuildIndexFromDisk: recovered ${toAdd.size} download(s)")
+        val candidates = planIndexRecovery(metadataStore.snapshot(), scanned)
+        if (candidates.isEmpty()) return 0
+        // Re-check membership inside the transaction: a normal completion
+        // racing this scan must not create duplicate logical metadata.
+        val added = metadataStore.transact { live ->
+            candidates.filterNot { c ->
+                live.any { sameTypedDownload(it, c.titleName, c.chapterName, c.type) }
+            }.onEach(live::add)
         }
-        return toAdd.size
+        if (added.isNotEmpty()) {
+            Logger.log("rebuildIndexFromDisk: recovered ${added.size} download(s)")
+        }
+        return added.size
     }
 
     fun addDownload(downloadedType: DownloadedType) {
@@ -778,20 +785,34 @@ class DownloadsManager(private val context: Context) {
          * @return the subdirectory
          */
         @Synchronized
-        // MAX MERGE M4B (upstream be6c4d99): unlike getSubDirectory this
-        // never creates anything, so it is safe to call for media that may
-        // simply not be downloaded. Dual-use: migrator-adjacent lookup today,
-        // DRM refresh lookup if offline licensed play is ever designed for MPV.
+        // HOLD2: genuinely non-creating end-to-end. Unlike
+        // [getBaseDirectory] (which creates base/type dirs via
+        // findOrCreateFolder), every step here is a pure lookup, so probes
+        // for not-downloaded media leave zero filesystem trace. DRM refresh
+        // and recovery callers can rely on that contract.
         fun findSubDirectory(
             context: Context,
             type: MediaType,
             title: String,
             chapter: String? = null
         ): DocumentFile? {
-            val folder = getBaseDirectory(context, type)?.findFolder(title.findValidName())
+            val folder = findBaseDirectory(context, type)?.findFolder(title.findValidName())
                 ?: return null
             val safeChapter = chapter?.findValidName()
             return if (safeChapter.isNullOrEmpty()) folder else folder.findFolder(safeChapter)
+        }
+
+        private fun findBaseDirectory(context: Context, type: MediaType): DocumentFile? {
+            val baseDirectory = Uri.parse(PrefManager.getVal<String>(PrefName.DownloadsDir))
+            if (baseDirectory == Uri.EMPTY) return null
+            val base = DocumentFile.fromTreeUri(context, baseDirectory)?.findFile(BASE_LOCATION)
+                ?: return null
+            val sub = when (type) {
+                MediaType.MANGA -> MANGA_SUB_LOCATION
+                MediaType.ANIME -> ANIME_SUB_LOCATION
+                else -> NOVEL_SUB_LOCATION
+            }
+            return base.findFile(sub)
         }
 
         fun getSubDirectory(
@@ -981,6 +1002,27 @@ fun chapterDeletePrecheck(baseAvailable: Boolean): MangaChapterDeleteResult? =
  */
 fun sameTypedDownload(entry: DownloadedType, title: String, chapter: String, type: MediaType): Boolean =
     entry.titleName == title && entry.chapterName == chapter && entry.type == type
+
+/**
+ * Index-recovery plan (pure, unit-tested; HOLD2 B1).
+ *
+ * Returns the scanned `(type, title, chapter)` rows missing from the index
+ * as new [DownloadedType] metadata. MANGA rows are never reconstructed here
+ * even if a caller passes them: Manga completion is CP5-authoritative and a
+ * non-empty directory proves nothing about completeness or identity
+ * (scanlator/pageCount). Callers still re-check inside the transaction
+ * against live state before inserting.
+ */
+fun planIndexRecovery(
+    indexed: List<DownloadedType>,
+    scanned: List<Triple<MediaType, String, String>>,
+): List<DownloadedType> =
+    scanned
+        .filter { (type, _, _) -> type == MediaType.ANIME || type == MediaType.NOVEL }
+        .filterNot { (type, title, chapter) ->
+            indexed.any { sameTypedDownload(it, title, chapter, type) }
+        }
+        .map { (type, title, chapter) -> DownloadedType(title, chapter, type) }
 
 /**
  * Generic-cleanup doomed decision (pure, unit-tested).

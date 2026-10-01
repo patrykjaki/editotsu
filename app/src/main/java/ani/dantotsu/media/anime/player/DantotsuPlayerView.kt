@@ -18,6 +18,9 @@ class DantotsuPlayerView @JvmOverloads constructor(
 
     val surfaceView: SurfaceView = SurfaceView(context)
     private var engine: PlaybackEngine? = null
+    // MAX MERGE M4B DRM: cue overlay used only by the Media3 DRM backend
+    // (MPV draws its own OSD). Created on bind, removed on unbind.
+    private var drmSubtitleView: androidx.media3.ui.SubtitleView? = null
 
     var isControllerFullyVisible: Boolean = true
         private set
@@ -75,11 +78,28 @@ class DantotsuPlayerView @JvmOverloads constructor(
                 engine.setVideoSurfaceSize(surfaceView.width, surfaceView.height)
             }
         }
+
+        // DRM backend renders cues through a SubtitleView overlay; MPV draws
+        // its own OSD so the overlay only exists for the DRM engine.
+        if (engine is Media3DrmPlaybackEngine) {
+            val overlay = androidx.media3.ui.SubtitleView(context).apply {
+                layoutParams = LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+            addView(overlay)
+            drmSubtitleView = overlay
+            engine.setCuesListener { cues -> post { overlay.setCues(cues) } }
+        }
     }
 
     fun unbindEngine() {
         engine?.removeListener(this)
         engine?.setVideoSurface(null)
+        (engine as? Media3DrmPlaybackEngine)?.setCuesListener(null)
+        drmSubtitleView?.let { removeView(it) }
+        drmSubtitleView = null
         engine = null
     }
 
