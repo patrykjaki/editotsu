@@ -62,6 +62,21 @@ object DrmBackendPolicy {
     /** Reverse lookup for scheme-aware license handling; null when unknown. */
     fun schemeForUuid(uuid: UUID): Scheme? = Scheme.entries.firstOrNull { it.uuid == uuid }
 
+    /**
+     * Video-level backend routing (HOLD4 B5): an explicit parse error fails
+     * closed before [decideBackend] is even consulted.
+     */
+    fun decideForVideo(
+        drm: DrmInfo?,
+        drmParseError: String?,
+        isSchemeSupportedOnDevice: (UUID) -> Boolean = { false },
+    ): BackendDecision {
+        if (drmParseError != null) {
+            return BackendDecision.Unsupported("invalid DRM metadata: $drmParseError")
+        }
+        return decideBackend(drm, isSchemeSupportedOnDevice)
+    }
+
     /** Validated license request carried into the DRM session configuration. */
     data class LicenseRequest(val url: String, val headers: Map<String, String>)
 
@@ -121,4 +136,20 @@ object DrmBackendPolicy {
 
     /** Fixed envelope-failure message: raw license bodies never enter logs/errors. */
     const val LICENSE_ENVELOPE_ERROR = "license server returned an error response"
+
+    /**
+     * HOLD4 H3: strip a UTF-8 BOM and leading ASCII JSON whitespace so the
+     * envelope bytes that reach the JSON parser never carry the BOM the
+     * candidacy check already tolerated.
+     */
+    fun stripJsonPrefix(raw: ByteArray): ByteArray {
+        var i = 0
+        if (raw.size >= 3 && raw[0] == 0xEF.toByte() && raw[1] == 0xBB.toByte() && raw[2] == 0xBF.toByte()) {
+            i = 3
+        }
+        while (i < raw.size && (raw[i] == 0x20.toByte() || raw[i] == 0x09.toByte() || raw[i] == 0x0A.toByte() || raw[i] == 0x0D.toByte())) {
+            i++
+        }
+        return if (i == 0) raw else raw.copyOfRange(i, raw.size)
+    }
 }

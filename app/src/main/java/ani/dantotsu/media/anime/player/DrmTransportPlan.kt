@@ -61,10 +61,23 @@ object DrmTransportPlan {
     data class SideAudio(
         val url: String,
         val mime: String?,
+        val kind: AudioSourceKind,
         val headers: Map<String, String>,
         val language: String?,
         val title: String?,
     )
+
+    /** Adaptive vs progressive side source, inferred deterministically. */
+    enum class AudioSourceKind { PROGRESSIVE, HLS, DASH }
+
+    fun audioSourceKind(url: String): AudioSourceKind {
+        val lower = url.substringBefore("?").lowercase()
+        return when {
+            lower.endsWith(".m3u8") -> AudioSourceKind.HLS
+            lower.endsWith(".mpd") -> AudioSourceKind.DASH
+            else -> AudioSourceKind.PROGRESSIVE
+        }
+    }
 
     data class AudioMergePlan(
         val primaryUri: String,
@@ -87,6 +100,7 @@ object DrmTransportPlan {
             SideAudio(
                 url = url,
                 mime = audioMimeFor(url),
+                kind = audioSourceKind(url),
                 headers = track.headers.toMap(),
                 language = track.language,
                 title = track.title
@@ -119,4 +133,73 @@ object DrmTransportPlan {
                 selected = sub.selected
             )
         }
+
+    /**
+     * HOLD4 H1: caption-style plan honoring SubtitleStyleMode.
+     * SOURCE → embedded styles/sizes respected, no custom override.
+     * CUSTOM → embedded styling disabled, Editotsu style applied
+     * deterministically (colors, clamped size, margin, typeface hint).
+     */
+    data class CaptionPlan(
+        val applyEmbeddedStyles: Boolean,
+        val applyEmbeddedFontSizes: Boolean,
+        val useCustomStyle: Boolean,
+        val fgColor: Int,
+        val bgColor: Int,
+        val edgeColor: Int,
+        val fontSizeSp: Float,
+        val bottomMarginDp: Int,
+        val fontFamily: String?,
+        val fontFile: java.io.File?,
+    )
+
+    fun planCaptionStyle(style: SubtitleStyle): CaptionPlan {
+        val custom = style.mode == SubtitleStyleMode.CUSTOM
+        return CaptionPlan(
+            applyEmbeddedStyles = !custom,
+            applyEmbeddedFontSizes = !custom,
+            useCustomStyle = custom,
+            fgColor = style.textColor,
+            bgColor = style.backgroundColor,
+            edgeColor = style.borderColor,
+            fontSizeSp = style.fontSizeSp.coerceIn(8f, 48f),
+            bottomMarginDp = style.bottomMarginDp.coerceAtLeast(0),
+            fontFamily = style.fontFamily?.takeIf { it.isNotBlank() },
+            fontFile = style.fontFile
+        )
+    }
+
+    /**
+     * HOLD4 B3: complete per-URI header routing. The base factory stays
+     * header-free; every URI resolves its EXACT header set here:
+     *
+     * - primary manifest/segments → exact request headers;
+     * - each subtitle/side-audio URI → its own headers, plus a safe
+     *   User-Agent fallback (own → request → default) when it carries none.
+     *
+     * Primary Authorization/Cookie never reach another host: a distinct-host
+     * subtitle only ever carries its own explicit context. License headers
+     * are not an input and can never enter this map.
+     */
+    fun planRequestHeaders(
+        primaryUri: String,
+        requestHeaders: Map<String, String>,
+        subtitles: List<SubAttachment>,
+        audioSides: List<SideAudio>,
+        defaultUa: String,
+    ): Map<String, Map<String, String>> {
+        val requestUa = requestHeaders.entries.firstOrNull {
+            it.key.equals("User-Agent", ignoreCase = true)
+        }
+        fun withUaFallback(own: Map<String, String>): Map<String, String> {
+            if (own.keys.any { it.equals("User-Agent", ignoreCase = true) }) return own.toMap()
+            val fallback = requestUa?.let { it.key to it.value } ?: ("User-Agent" to defaultUa)
+            return own + fallback
+        }
+        val out = LinkedHashMap<String, Map<String, String>>()
+        out[primaryUri] = ensureUserAgent(requestHeaders, defaultUa)
+        for (sub in subtitles) out[sub.url] = withUaFallback(sub.headers)
+        for (side in audioSides) out[side.url] = withUaFallback(side.headers)
+        return out
+    }
 }

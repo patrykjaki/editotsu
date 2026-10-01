@@ -783,27 +783,20 @@ class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtrac
             aniVideo.headers?.toMultimap()?.mapValues { it.value.joinToString() } ?: mapOf()
 
 
+        // HOLD4 B5: tri-state DRM metadata. Explicit-but-malformed DRM rides
+        // drmParseError so playback fails closed instead of silently going
+        // clear/MPV.
+        val drmResult = parseDrmMetadata(
+            runCatching { JSONObject(aniVideo.internalData).toPlainMap() }.getOrNull()
+        )
         return Video(
             number,
             format!!,
             FileUrl(videoUrl, headersMap),
             null,
-            // MAX MERGE M4B DRM (upstream be6c4d99, adapted): extension
-            // DRM metadata rides internalData; null stays clear-content.
-            drm = parseDrmInfo(aniVideo.internalData)
+            drm = (drmResult as? DrmParseResult.Valid)?.info,
+            drmParseError = (drmResult as? DrmParseResult.Invalid)?.reason
         )
-    }
-
-    /**
-     * Thin Android adapter over the pure [drmInfoFromMap]: converts the
-     * extension's `internalData` JSON string to plain maps, then delegates
-     * every decision. Null for absent/malformed input.
-     */
-    private fun parseDrmInfo(internalData: String): DrmInfo? {
-        if (internalData.isBlank()) return null
-        return runCatching {
-            drmInfoFromMap(JSONObject(internalData).toPlainMap())
-        }.getOrNull()
     }
 
     private fun getVideoType(fileName: String): VideoType? {

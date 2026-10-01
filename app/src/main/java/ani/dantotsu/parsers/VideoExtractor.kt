@@ -137,15 +137,16 @@ data class Video(
     val extraNote: String? = null,
 
     /**
-     * MAX MERGE M4B DRM (upstream be6c4d99, adapted): DRM parameters for
-     * encrypted streams (Widevine / PlayReady / ClearKey).
-     *
-     * When set, backend selection routes playback to the Media3 DRM engine
-     * and these reach Android's own CDM via ExoPlayer's MediaDrm
-     * integration. Null for clear streams, which is the overwhelming
-     * majority and stays on MPV.
+     * See [drmParseError]: exactly one of [drm]/[drmParseError] is set.
      * **/
     val drm: DrmInfo? = null,
+
+    /**
+     * HOLD4 B5: explicit but malformed DRM metadata from the extension.
+     * Non-null means the stream claimed DRM yet supplied no usable
+     * configuration — fail closed, never clear/MPV.
+     * **/
+    val drmParseError: String? = null,
 ) : Serializable {
 
     constructor(

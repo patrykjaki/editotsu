@@ -53,7 +53,7 @@ class WrappedDrmCallback(private val delegate: HttpMediaDrmCallback) : MediaDrmC
 
     private fun unwrapJsonEnvelope(raw: ByteArray): ByteArray {
         if (!DrmBackendPolicy.isJsonEnvelopeCandidate(raw)) return raw
-        val text = String(raw, Charsets.UTF_8)
+        val text = String(DrmBackendPolicy.stripJsonPrefix(raw), Charsets.UTF_8)
         val encoded = runCatching {
             val obj = JSONObject(text)
             obj.optString("license").ifEmpty { obj.optString("licenseMessage") }

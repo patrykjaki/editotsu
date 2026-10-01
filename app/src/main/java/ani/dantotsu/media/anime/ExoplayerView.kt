@@ -1014,7 +1014,13 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             .coerceIn(0, speeds.size - 1)
         val currentSpeed = speeds[savedSpeedIndex]
 
-        val drmDecision = ani.dantotsu.media.anime.player.DrmBackendPolicy.decideBackend(video?.drm) { uuid ->
+        // HOLD3 D4 + HOLD4 B5 fail-closed: explicit DRM signals (valid or
+        // malformed) never reach MPV; only the total absence of DRM means
+        // clear content.
+        val drmDecision = ani.dantotsu.media.anime.player.DrmBackendPolicy.decideForVideo(
+            video?.drm,
+            video?.drmParseError
+        ) { uuid ->
             runCatching { android.media.MediaDrm.isCryptoSchemeSupported(uuid) }.getOrDefault(false)
         }
         if (drmDecision is ani.dantotsu.media.anime.player.DrmBackendPolicy.BackendDecision.Unsupported) {

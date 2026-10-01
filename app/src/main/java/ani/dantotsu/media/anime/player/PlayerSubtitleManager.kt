@@ -225,16 +225,29 @@ class PlayerSubtitleManager(
         )
     }
 
-    fun setSubtitleDelay(delayMs: Long) {
+    fun setSubtitleDelay(delayMs: Long): Boolean {
+        // HOLD4 B6: when the bound backend cannot apply delays, refuse here
+        // so the Sync UI never displays an unapplied value as current.
+        // A no-op reset to the already-current value stays allowed.
+        if (!resolveDelayApplicable(getEngine()?.supportsSubtitleDelay ?: true, delayMs, subtitleDelayMs)) {
+            snackString("Sync delay is not available for DRM playback yet", activity)
+            return false
+        }
         subtitleDelayMs = delayMs
         Logger.log("PlayerSubtitleManager: Subtitle delay set to ${delayMs}ms")
         getEngine()?.setSubtitleDelay(delayMs)
+        return true
     }
 
-    fun setAudioDelay(delayMs: Long) {
+    fun setAudioDelay(delayMs: Long): Boolean {
+        if (!resolveDelayApplicable(getEngine()?.supportsAudioDelay ?: true, delayMs, audioDelayMs)) {
+            snackString("Sync delay is not available for DRM playback yet", activity)
+            return false
+        }
         audioDelayMs = delayMs
         Logger.log("PlayerSubtitleManager: Audio delay set to ${delayMs}ms")
         getEngine()?.setAudioDelay(delayMs)
+        return true
     }
 
     fun shiftSubtitleTimestamps(content: String, format: String, delayMs: Long): String {
@@ -641,3 +654,13 @@ class PlayerSubtitleManager(
         serverSubJob = null
     }
 }
+
+/**
+ * HOLD4 B6 delay capability gate (pure, unit-tested): a delay change is
+ * applicable when the bound backend supports it, or when it is a no-op
+ * reset to the already-current value. Anything else must be refused before
+ * any displayed value mutates, so the UI can never report a no-op as
+ * applied (M4_DRM_SYNC_PARITY deferred follow-up).
+ */
+internal fun resolveDelayApplicable(supported: Boolean, requestedMs: Long, currentMs: Long): Boolean =
+    supported || requestedMs == currentMs

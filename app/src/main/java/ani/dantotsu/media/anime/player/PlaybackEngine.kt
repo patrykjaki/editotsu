@@ -46,6 +46,13 @@ interface PlaybackEngine {
     fun addExternalSubtitle(uri: String, title: String?, language: String?, select: Boolean, explicitUserAction: Boolean = false)
     fun setSubtitleDelay(delayMs: Long) {}
     fun setAudioDelay(delayMs: Long) {}
+    /**
+     * HOLD4 B6: delay capability gate. MPV supports both; backends without a
+     * real delay path override to false so the Sync UI can refuse to display
+     * an unapplied value (M4_DRM_SYNC_PARITY deferred follow-up).
+     */
+    val supportsSubtitleDelay: Boolean get() = true
+    val supportsAudioDelay: Boolean get() = true
     fun applySubtitleStyle(style: SubtitleStyle)
     fun applyVideoPipeline(config: VideoPipelineConfig) {}
     fun setResizeMode(mode: ResizeMode)

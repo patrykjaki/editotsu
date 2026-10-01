@@ -96,6 +96,21 @@ class DrmBackendPolicyTest {
     }
 
     @Test
+    fun `video parse error fails closed before policy`() {
+        val decision = DrmBackendPolicy.decideForVideo(null, "explicit DRM metadata without a license URL") { true }
+        assertTrue(decision is DrmBackendPolicy.BackendDecision.Unsupported)
+        // Without an error the policy decides normally.
+        assertEquals(
+            DrmBackendPolicy.BackendDecision.DrmReady,
+            DrmBackendPolicy.decideForVideo(drm("widevine", "https://lic.example/wv"), null) { true }
+        )
+        assertEquals(
+            DrmBackendPolicy.BackendDecision.ClearMpv,
+            DrmBackendPolicy.decideForVideo(null, null) { true }
+        )
+    }
+
+    @Test
     fun `license url and headers reach request configuration`() {
         val req = DrmBackendPolicy.licenseRequest(
             DrmInfo("widevine", "https://lic.example/wv", mapOf("Authorization" to "Bearer x"))
@@ -194,6 +209,25 @@ class DrmBackendPolicyTest {
         assertEquals(
             "license server returned an error response",
             DrmBackendPolicy.LICENSE_ENVELOPE_ERROR
+        )
+    }
+
+    @Test
+    fun `bom envelope normalization reaches parser without BOM`() {
+        val bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
+        val withBom = bom + "  {\"license\":\"x\"}".toByteArray()
+        assertTrue(DrmBackendPolicy.isJsonEnvelopeCandidate(withBom))
+        assertEquals(
+            "{\"license\":\"x\"}".toByteArray().toList(),
+            DrmBackendPolicy.stripJsonPrefix(withBom).toList()
+        )
+        assertEquals(
+            "{\"a\":1}".toByteArray().toList(),
+            DrmBackendPolicy.stripJsonPrefix("{\"a\":1}".toByteArray()).toList()
+        )
+        assertEquals(
+            emptyList<Byte>(),
+            DrmBackendPolicy.stripJsonPrefix(byteArrayOf()).toList()
         )
     }
 }

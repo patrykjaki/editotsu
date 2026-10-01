@@ -81,6 +81,10 @@ class DantotsuPlayerView @JvmOverloads constructor(
 
         // DRM backend renders cues through a SubtitleView overlay; MPV draws
         // its own OSD so the overlay only exists for the DRM engine.
+        // HOLD4 H2: the overlay lives in the video content frame directly
+        // above the SurfaceView (below controller chrome), never on top of
+        // the root hierarchy. MPV draws its own OSD; DRM-only, removed on
+        // unbind as before.
         if (engine is Media3DrmPlaybackEngine) {
             val overlay = androidx.media3.ui.SubtitleView(context).apply {
                 layoutParams = LayoutParams(
@@ -88,7 +92,10 @@ class DantotsuPlayerView @JvmOverloads constructor(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
             }
-            addView(overlay)
+            val frame = findViewById<ViewGroup>(androidx.media3.ui.R.id.exo_content_frame) ?: this
+            val anchor = frame.indexOfChild(surfaceView)
+            if (anchor >= 0) frame.addView(overlay, anchor + 1)
+            else frame.addView(overlay)
             drmSubtitleView = overlay
             engine.setCuesListener { cues -> post { overlay.setCues(cues) } }
             engine.setStyleApplier { style -> post { applyDrmSubtitleStyle(overlay, style) } }
@@ -104,19 +111,41 @@ class DantotsuPlayerView @JvmOverloads constructor(
         overlay: androidx.media3.ui.SubtitleView,
         style: SubtitleStyle,
     ) {
-        overlay.setStyle(
-            androidx.media3.ui.CaptionStyleCompat(
-                style.textColor,
-                style.backgroundColor,
-                android.graphics.Color.TRANSPARENT,
-                androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                style.borderColor,
-                null
+        // HOLD4 H1: SOURCE respects embedded styling; CUSTOM disables it
+        // and applies the Editotsu style deterministically.
+        val plan = DrmTransportPlan.planCaptionStyle(style)
+        overlay.setApplyEmbeddedStyles(plan.applyEmbeddedStyles)
+        overlay.setApplyEmbeddedFontSizes(plan.applyEmbeddedFontSizes)
+        if (plan.useCustomStyle) {
+            val typeface = plan.fontFamily?.let {
+                runCatching { android.graphics.Typeface.create(it, android.graphics.Typeface.NORMAL) }.getOrNull()
+            } ?: plan.fontFile?.takeIf { it.exists() }?.let {
+                runCatching { android.graphics.Typeface.createFromFile(it) }.getOrNull()
+            }
+            overlay.setStyle(
+                androidx.media3.ui.CaptionStyleCompat(
+                    plan.fgColor,
+                    plan.bgColor,
+                    android.graphics.Color.TRANSPARENT,
+                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                    plan.edgeColor,
+                    typeface
+                )
             )
-        )
-        overlay.setFixedTextSize(
-            android.util.TypedValue.COMPLEX_UNIT_SP,
-            style.fontSizeSp.coerceIn(8f, 48f)
+            overlay.setFixedTextSize(
+                android.util.TypedValue.COMPLEX_UNIT_SP,
+                plan.fontSizeSp
+            )
+        } else {
+            overlay.setUserDefaultStyle()
+            overlay.setUserDefaultTextSize()
+        }
+        val marginPx = (plan.bottomMarginDp * resources.displayMetrics.density).toInt()
+        overlay.setPadding(
+            overlay.paddingLeft,
+            overlay.paddingTop,
+            overlay.paddingRight,
+            marginPx
         )
     }
 
@@ -125,7 +154,7 @@ class DantotsuPlayerView @JvmOverloads constructor(
         engine?.setVideoSurface(null)
         (engine as? Media3DrmPlaybackEngine)?.setCuesListener(null)
         (engine as? Media3DrmPlaybackEngine)?.setStyleApplier(null)
-        drmSubtitleView?.let { removeView(it) }
+        drmSubtitleView?.let { (it.parent as? ViewGroup)?.removeView(it) }
         drmSubtitleView = null
         engine = null
     }

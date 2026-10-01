@@ -60,8 +60,39 @@ fun drmInfoFromMap(root: Map<String, Any?>?): DrmInfo? {
     )
 }
 
+/**
+ * Explicit DRM parse result (HOLD4 B5): a blank license or an unknown
+ * scheme on otherwise explicit DRM metadata is an *invalid DRM signal*,
+ * never clear content. Only the total absence of DRM keys means clear.
+ */
+sealed interface DrmParseResult {
+    data object Clear : DrmParseResult
+    data class Valid(val info: DrmInfo) : DrmParseResult
+    data class Invalid(val reason: String) : DrmParseResult
+}
+
+private val DRM_SIGNAL_KEYS = setOf("drmScheme", "licenseUrl", "offline")
+
 private fun String?.ifNullOrBlank(default: () -> String): String =
     if (isNullOrBlank()) default() else this
+
+fun parseDrmMetadata(root: Map<String, Any?>?): DrmParseResult {
+    if (root.isNullOrEmpty()) return DrmParseResult.Clear
+    if (DRM_SIGNAL_KEYS.none { root.containsKey(it) }) return DrmParseResult.Clear
+    val schemeRaw = (root["drmScheme"] as? String)?.trim().orEmpty()
+    val licenseUrl = (root["licenseUrl"] as? String)?.trim().orEmpty()
+    if (licenseUrl.isEmpty()) {
+        return DrmParseResult.Invalid("explicit DRM metadata without a license URL")
+    }
+    if (schemeRaw.isNotEmpty() && schemeRaw.lowercase() !in setOf("widevine", "playready", "clearkey", "clear-key", "clear_key")) {
+        return DrmParseResult.Invalid("unknown DRM scheme '$schemeRaw'")
+    }
+    // Reuse the field mapping; it cannot fail here (license present).
+    return DrmParseResult.Valid(
+        drmInfoFromMap(root)
+            ?: DrmInfo(scheme = schemeRaw.ifBlank { "widevine" }, licenseUrl = licenseUrl)
+    )
+}
 
 /**
  * Thin JSONObject → plain-map bridge for [drmInfoFromMap]. Recursive over

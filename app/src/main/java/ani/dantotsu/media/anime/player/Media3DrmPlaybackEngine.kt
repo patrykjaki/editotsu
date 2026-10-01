@@ -68,12 +68,17 @@ class Media3DrmPlaybackEngine(
     private var subtitleGroups: List<Pair<Int, Int>> = emptyList()
     private var cuesListener: ((List<androidx.media3.common.text.Cue>) -> Unit)? = null
     private var styleApplier: ((SubtitleStyle) -> Unit)? = null
+    // HOLD4 B1/B2: output-affecting commands arrive before ExoPlayer exists
+    // (bind time) and must survive creation + header rebuilds. The real
+    // Surface stays here; everything replayable lives in [pendingOutput].
+    private var boundSurface: Surface? = null
+    private val pendingOutput = PendingDrmOutput()
     // HOLD3 D1: request-scoped transport. The player (and its factories)
     // are rebuilt when the request headers change so source headers always
     // reach manifest/segment/subtitle loads exactly as carried.
-    private var activeMediaHeaders: Map<String, String> = emptyMap()
-    private var activeSubtitleHeaders: Map<String, Map<String, String>> = emptyMap()
+    private var activeHeaderMap: Map<String, Map<String, String>> = emptyMap()
     private var mediaSourceFactory: DefaultMediaSourceFactory? = null
+    private var sideSourceFactory: HeaderRoutingDataSource.Factory? = null
 
     fun setCuesListener(listener: ((List<androidx.media3.common.text.Cue>) -> Unit)?) {
         cuesListener = listener
@@ -230,19 +235,26 @@ class Media3DrmPlaybackEngine(
     }
 
     override fun setPlaybackSpeed(speed: Float) {
+        // Single clamp site: applied and reported values are identical.
+        val applied = PendingDrmOutput.clampSpeed(speed)
+        pendingOutput.speed = applied
         mainHandler.post {
-            player?.setPlaybackSpeed(speed.coerceIn(0.25f, 4f))
-            listeners.forEach { it.onPlaybackSpeedChanged(speed) }
+            player?.setPlaybackSpeed(applied)
+            listeners.forEach { it.onPlaybackSpeedChanged(applied) }
         }
     }
 
     override fun setVideoSurface(surface: Surface?) {
+        boundSurface = surface
+        if (surface == null) pendingOutput.clearSurface()
+        else pendingOutput.hasSurface = true
         mainHandler.post { player?.setVideoSurface(surface) }
     }
 
     override fun setVideoSurfaceSize(width: Int, height: Int) {
-        // No-op: the player view's SurfaceView layout owns sizing; ExoPlayer
-        // scales into whatever surface is attached.
+        pendingOutput.surfaceWidth = width
+        pendingOutput.surfaceHeight = height
+        // No ExoPlayer size API: the view's SurfaceView layout owns sizing.
     }
 
     override fun selectAudioTrack(id: Int?) {
@@ -323,27 +335,33 @@ class Media3DrmPlaybackEngine(
         // MPV-only aspects (stretch, fixed-ratio overrides) have no Media3
         // equivalent and keep aspect on this backend; FIT/ZOOM map to the
         // matching scaling modes. See matrix for the exact gap list.
-        mainHandler.post {
-            player?.videoScalingMode = when (mode) {
-                ResizeMode.FIT -> C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                ResizeMode.ZOOM -> C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
-                else -> {
-                    Logger.log("Media3DrmPlaybackEngine: $mode has no scaling equivalent, keeping aspect")
-                    C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                }
+        pendingOutput.resize = mode
+        mainHandler.post { applyResizeModeToPlayer(mode) }
+    }
+
+    private fun applyResizeModeToPlayer(mode: ResizeMode) {
+        player?.videoScalingMode = when (mode) {
+            ResizeMode.FIT -> C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+            ResizeMode.ZOOM -> C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+            else -> {
+                Logger.log("Media3DrmPlaybackEngine: $mode has no scaling equivalent, keeping aspect")
+                C.VIDEO_SCALING_MODE_SCALE_TO_FIT
             }
         }
     }
 
     override fun setSubtitleDelay(delayMs: Long) {
-        // Explicitly unsupported on this backend (no Media3 cue-offset API);
-        // logged + documented instead of silently accepted.
+        // B6: no Media3 cue-offset path; the capability gate in
+        // PlayerSubtitleManager keeps this unreachable in product flows.
         Logger.log("Media3DrmPlaybackEngine: subtitle delay unsupported, ignoring ${delayMs}ms")
     }
 
     override fun setAudioDelay(delayMs: Long) {
         Logger.log("Media3DrmPlaybackEngine: audio delay unsupported, ignoring ${delayMs}ms")
     }
+
+    override val supportsSubtitleDelay: Boolean get() = false
+    override val supportsAudioDelay: Boolean get() = false
 
     override fun loadMedia(request: PlaybackRequest) {
         activeRequest = request
@@ -375,6 +393,8 @@ class Media3DrmPlaybackEngine(
         mainHandler.post {
             stopTicker()
             releasePlayerInternal()
+            boundSurface = null
+            pendingOutput.clearSurface()
             cuesListener = null
             styleApplier = null
             listeners.clear()
@@ -390,30 +410,32 @@ class Media3DrmPlaybackEngine(
     }
 
     private fun ensurePlayer(request: PlaybackRequest) {
-        // HOLD3 D1: the media factory is request-scoped. Extension headers
-        // (incl. User-Agent) reach every manifest/segment/subtitle load
-        // exactly as carried; nothing is overwritten with a synthetic UA.
-        // The license factory stays header-free so media Authorization/Cookie
-        // never leaks to an unrelated license host.
-        if (player != null && activeMediaHeaders == request.headers &&
-            activeSubtitleHeaders == subtitleHeaderMap(request)
-        ) {
+        // HOLD4 B3: the base factory is header-free; one routing map resolves
+        // the EXACT header set per URI (primary vs each sub/side), so primary
+        // credentials can never leak onto another host.
+        val subAttachments = DrmTransportPlan.planSubtitleAttachments(request.externalSubtitles)
+        val audioPlan = DrmTransportPlan.planAudioMerge(request.uri, request.externalAudioTracks)
+        val headerMap = DrmTransportPlan.planRequestHeaders(
+            request.uri,
+            request.headers,
+            subAttachments,
+            audioPlan.sides,
+            defaultDrmUa()
+        )
+        if (player != null && activeHeaderMap == headerMap) {
             return
         }
         releasePlayerInternal()
-        activeMediaHeaders = request.headers.toMap()
-        activeSubtitleHeaders = subtitleHeaderMap(request)
-        val subHeaders = activeSubtitleHeaders
-        val mediaFactory = OkHttpDataSource.Factory(httpClient).apply {
-            setDefaultRequestProperties(DrmTransportPlan.ensureUserAgent(request.headers, defaultDrmUa()))
-        }
-        val routedFactory = HeaderRoutingDataSource.Factory(mediaFactory) { uri ->
-            subHeaders[uri] ?: emptyMap()
+        activeHeaderMap = headerMap
+        val baseFactory = OkHttpDataSource.Factory(httpClient)
+        val routedFactory = HeaderRoutingDataSource.Factory(baseFactory) { uri ->
+            headerMap[uri] ?: emptyMap()
         }
         val licenseFactory = OkHttpDataSource.Factory(httpClient)
         mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(routedFactory)
             .setDrmSessionManagerProvider(WrappedDrmCallback.providerFor(licenseFactory))
+        sideSourceFactory = routedFactory
         val exo = ExoPlayer.Builder(context)
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(mediaSourceFactory!!)
@@ -421,13 +443,14 @@ class Media3DrmPlaybackEngine(
             .build()
         exo.addListener(exoListener)
         player = exo
+        // HOLD4 B1/B2: replay everything bound before creation (surface,
+        // speed, resize) so a header rebuild never loses output state.
+        exo.setVideoSurface(boundSurface)
+        exo.setPlaybackSpeed(pendingOutput.speed)
+        listeners.forEach { it.onPlaybackSpeedChanged(pendingOutput.speed) }
+        applyResizeModeToPlayer(pendingOutput.resize)
         startTicker()
     }
-
-    private fun subtitleHeaderMap(request: PlaybackRequest): Map<String, Map<String, String>> =
-        DrmTransportPlan.planSubtitleAttachments(request.externalSubtitles)
-            .associate { it.url to it.headers }
-            .filterValues { it.isNotEmpty() }
 
     private fun defaultDrmUa(): String = "Editotsu/${android.os.Build.MODEL}"
 
@@ -442,40 +465,39 @@ class Media3DrmPlaybackEngine(
     }
 
     /**
-     * HOLD3 D2: primary DRM source merged with 0..N external-audio side
-     * sources (each with its own preserved header context). Skipped tracks
-     * never reach the merge; they were excluded by the plan, not dropped
-     * silently here.
+     * HOLD4 B4: primary DRM source merged with 0..N external-audio side
+     * sources, each built by content type (HLS/DASH adaptive vs progressive)
+     * through the shared header-routing factory. Period offsets adjust
+     * across the merge; durations are not clipped.
      */
     private fun buildMediaSource(request: PlaybackRequest): androidx.media3.exoplayer.source.MergingMediaSource {
         val factory = mediaSourceFactory
+            ?: throw IllegalStateException("player must be ensured before building sources")
+        val routed = sideSourceFactory
             ?: throw IllegalStateException("player must be ensured before building sources")
         val primary = factory.createMediaSource(buildMediaItem(request, request.drm, request.subtitleConfigs))
         val plan = DrmTransportPlan.planAudioMerge(request.uri, request.externalAudioTracks)
         if (!plan.hasSides) return androidx.media3.exoplayer.source.MergingMediaSource(primary)
         val sides = plan.sides.map { side ->
-            // Side tracks usually share the source host: inherit the request
-            // UA only when the side carries none of its own; never overwrite.
-            val withFallback = if (side.headers.keys.any { it.equals("User-Agent", ignoreCase = true) }) {
-                side.headers
-            } else {
-                val reqUa = request.headers.entries.firstOrNull {
-                    it.key.equals("User-Agent", ignoreCase = true)
-                }
-                if (reqUa == null) side.headers else side.headers + (reqUa.key to reqUa.value)
+            val item = MediaItem.Builder()
+                .setUri(side.url)
+                .apply { side.mime?.let(::setMimeType) }
+                .build()
+            when (side.kind) {
+                DrmTransportPlan.AudioSourceKind.HLS ->
+                    androidx.media3.exoplayer.hls.HlsMediaSource.Factory(routed).createMediaSource(item)
+                DrmTransportPlan.AudioSourceKind.DASH ->
+                    androidx.media3.exoplayer.dash.DashMediaSource.Factory(routed).createMediaSource(item)
+                DrmTransportPlan.AudioSourceKind.PROGRESSIVE ->
+                    androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(routed).createMediaSource(item)
             }
-            val sideFactory = OkHttpDataSource.Factory(httpClient).apply {
-                setDefaultRequestProperties(DrmTransportPlan.ensureUserAgent(withFallback, defaultDrmUa()))
-            }
-            androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(sideFactory)
-                .createMediaSource(
-                    MediaItem.Builder()
-                        .setUri(side.url)
-                        .apply { side.mime?.let(::setMimeType) }
-                        .build()
-                )
         }
-        return androidx.media3.exoplayer.source.MergingMediaSource(primary, *sides.toTypedArray())
+        return androidx.media3.exoplayer.source.MergingMediaSource(
+            true,
+            false,
+            primary,
+            *sides.toTypedArray()
+        )
     }
 
     private fun buildMediaItem(

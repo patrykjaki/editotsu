@@ -72,4 +72,51 @@ class DrmInfoParserTest {
         )!!
         assertEquals(mapOf("Authorization" to ""), info.licenseHeaders)
     }
+
+    @Test
+    fun `unrelated internalData stays clear`() {
+        assertTrue(parseDrmMetadata(null) is DrmParseResult.Clear)
+        assertTrue(parseDrmMetadata(emptyMap()) is DrmParseResult.Clear)
+        assertTrue(
+            parseDrmMetadata(mapOf("unrelated" to "extension-data")) is DrmParseResult.Clear
+        )
+    }
+
+    @Test
+    fun `valid license with default scheme is valid widevine`() {
+        val result = parseDrmMetadata(mapOf("licenseUrl" to "https://lic.example/wv"))
+        assertTrue(result is DrmParseResult.Valid)
+        assertEquals("widevine", (result as DrmParseResult.Valid).info.scheme)
+    }
+
+    @Test
+    fun `explicit widevine plus blank license is invalid, never clear`() {
+        val result = parseDrmMetadata(
+            mapOf("drmScheme" to "widevine", "licenseUrl" to "")
+        )
+        assertTrue(result is DrmParseResult.Invalid)
+    }
+
+    @Test
+    fun `unknown explicit scheme is invalid, never clear`() {
+        val result = parseDrmMetadata(
+            mapOf("drmScheme" to "rot13", "licenseUrl" to "https://lic.example/x")
+        )
+        assertTrue(result is DrmParseResult.Invalid)
+    }
+
+    @Test
+    fun `supported metadata parses valid end to end`() {
+        val result = parseDrmMetadata(
+            mapOf(
+                "drmScheme" to "playready",
+                "licenseUrl" to "https://lic.example/pr",
+                "licenseHeaders" to mapOf("Authorization" to "Bearer x")
+            )
+        )
+        assertTrue(result is DrmParseResult.Valid)
+        val info = (result as DrmParseResult.Valid).info
+        assertEquals("playready", info.scheme)
+        assertEquals("https://lic.example/pr", info.licenseUrl)
+    }
 }

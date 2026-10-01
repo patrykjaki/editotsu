@@ -121,6 +121,118 @@ class DrmTransportPlanTest {
     }
 
     @Test
+    fun `distinct-host subtitle does not inherit primary credentials`() {
+        val plan = DrmTransportPlan.planRequestHeaders(
+            primaryUri = "https://media.example/v.mpd",
+            requestHeaders = mapOf(
+                "Authorization" to "media-secret",
+                "Cookie" to "media-cookie",
+                "User-Agent" to "Ext/1.0"
+            ),
+            subtitles = listOf(
+                DrmTransportPlan.SubAttachment(
+                    url = "https://different.example/en.srt",
+                    mime = MimeTypes.APPLICATION_SUBRIP,
+                    headers = mapOf("Referer" to "subtitle-ref"),
+                    language = "en",
+                    title = "English",
+                    selected = true
+                )
+            ),
+            audioSides = emptyList(),
+            defaultUa = "Default/2.0"
+        )
+        val sub = plan["https://different.example/en.srt"]!!
+        assertTrue(!sub.values.contains("media-secret"))
+        assertTrue(!sub.values.contains("media-cookie"))
+        assertEquals("subtitle-ref", sub["Referer"])
+        // Primary keeps everything.
+        val primary = plan["https://media.example/v.mpd"]!!
+        assertEquals("media-secret", primary["Authorization"])
+        assertEquals("media-cookie", primary["Cookie"])
+    }
+
+    @Test
+    fun `same-context subtitle retains explicit headers`() {
+        val plan = DrmTransportPlan.planRequestHeaders(
+            primaryUri = "https://media.example/v.mpd",
+            requestHeaders = mapOf("Authorization" to "media-secret"),
+            subtitles = listOf(
+                DrmTransportPlan.SubAttachment(
+                    url = "https://media.example/en.srt",
+                    mime = MimeTypes.APPLICATION_SUBRIP,
+                    headers = mapOf(
+                        "Authorization" to "media-secret",
+                        "Referer" to "https://media.example/"
+                    ),
+                    language = "en",
+                    title = "English",
+                    selected = false
+                )
+            ),
+            audioSides = emptyList(),
+            defaultUa = "Default/2.0"
+        )
+        val sub = plan["https://media.example/en.srt"]!!
+        assertEquals("media-secret", sub["Authorization"])
+        assertEquals("https://media.example/", sub["Referer"])
+    }
+
+    @Test
+    fun `hls external audio gets adaptive plan`() {
+        val plan = DrmTransportPlan.planAudioMerge(
+            "https://cdn.example/v.mpd",
+            listOf(ExternalAudioTrack(url = "https://cdn.example/a-eng.m3u8", language = "en"))
+        )
+        assertTrue(plan.hasSides)
+        assertEquals(DrmTransportPlan.AudioSourceKind.HLS, plan.sides[0].kind)
+    }
+
+    @Test
+    fun `dash external audio gets adaptive plan`() {
+        val plan = DrmTransportPlan.planAudioMerge(
+            "https://cdn.example/v.mpd",
+            listOf(ExternalAudioTrack(url = "https://cdn.example/a-jpn.mpd", language = "ja"))
+        )
+        assertTrue(plan.hasSides)
+        assertEquals(DrmTransportPlan.AudioSourceKind.DASH, plan.sides[0].kind)
+    }
+
+    @Test
+    fun `progressive audio stays progressive`() {
+        assertEquals(
+            DrmTransportPlan.AudioSourceKind.PROGRESSIVE,
+            DrmTransportPlan.audioSourceKind("https://cdn.example/a.mp3")
+        )
+        assertEquals(
+            DrmTransportPlan.AudioSourceKind.HLS,
+            DrmTransportPlan.audioSourceKind("https://cdn.example/a.M3U8?tok=1")
+        )
+    }
+
+    @Test
+    fun `caption plan honors source versus custom modes`() {
+        val source = SubtitleStyle(mode = SubtitleStyleMode.SOURCE)
+        val sourcePlan = DrmTransportPlan.planCaptionStyle(source)
+        assertTrue(sourcePlan.applyEmbeddedStyles)
+        assertTrue(sourcePlan.applyEmbeddedFontSizes)
+        assertTrue(!sourcePlan.useCustomStyle)
+        val custom = SubtitleStyle(
+            mode = SubtitleStyleMode.CUSTOM,
+            textColor = 0xFF112233.toInt(),
+            fontSizeSp = 99f,
+            bottomMarginDp = -4
+        )
+        val customPlan = DrmTransportPlan.planCaptionStyle(custom)
+        assertTrue(!customPlan.applyEmbeddedStyles)
+        assertTrue(!customPlan.applyEmbeddedFontSizes)
+        assertTrue(customPlan.useCustomStyle)
+        assertEquals(0xFF112233.toInt(), customPlan.fgColor)
+        assertEquals(48f, customPlan.fontSizeSp, 0f)
+        assertEquals(0, customPlan.bottomMarginDp)
+    }
+
+    @Test
     fun `subtitle attachments keep header context`() {
         val plan = DrmTransportPlan.planSubtitleAttachments(
             listOf(
