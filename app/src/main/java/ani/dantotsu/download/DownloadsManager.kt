@@ -66,6 +66,51 @@ class DownloadsManager(private val context: Context) {
         }
     }
 
+    /**
+     * MAX MERGE M4B (upstream be6c4d99, migrator subset): rebuilds the index
+     * by scanning the downloads folder, keeping existing entries.
+     *
+     * The index lives in SharedPreferences while the files live in a user-picked
+     * folder, so a reinstall or a change of applicationId leaves every file intact
+     * but the index empty. The layout `<base>/<MediaType>/<title>/<chapter>` is
+     * enough to reconstruct it. Adapted to the local metadataStore API
+     * (snapshot for reads, transact for writes+persistence).
+     *
+     * @return number of entries recovered
+     */
+    fun rebuildIndexFromDisk(): Int {
+        val indexed = metadataStore.snapshot()
+        val toAdd = mutableListOf<DownloadedType>()
+        for (type in listOf(MediaType.ANIME, MediaType.MANGA, MediaType.NOVEL)) {
+            val directory = getBaseDirectory(context, type) ?: continue
+            if (!directory.exists() || !directory.isDirectory) continue
+
+            for (titleDir in directory.listFiles()) {
+                if (!titleDir.isDirectory) continue
+                val title = titleDir.name ?: continue
+
+                for (chapterDir in titleDir.listFiles()) {
+                    if (!chapterDir.isDirectory) continue
+                    val chapter = chapterDir.name ?: continue
+                    // Skip empty shells left behind by a cancelled download.
+                    if (chapterDir.listFiles().none { it.isFile && it.length() > 0 }) continue
+
+                    val alreadyIndexed = indexed.any {
+                        it.type == type && it.titleName == title && it.chapterName == chapter
+                    }
+                    if (!alreadyIndexed) {
+                        toAdd.add(DownloadedType(title, chapter, type))
+                    }
+                }
+            }
+        }
+        if (toAdd.isNotEmpty()) {
+            metadataStore.transact { it.addAll(toAdd) }
+            Logger.log("rebuildIndexFromDisk: recovered ${toAdd.size} download(s)")
+        }
+        return toAdd.size
+    }
+
     fun addDownload(downloadedType: DownloadedType) {
         metadataStore.transact { it.add(downloadedType) }
     }
@@ -191,19 +236,30 @@ class DownloadsManager(private val context: Context) {
         }
         if (directory?.exists() == true && directory.isDirectory) {
             val files = directory.listFiles()
-            for (file in files) {
-                if (!downloadsSubLists.any { it.titleName == file.name }) {
-                    // Fence: never wipe a manga title folder with a live owner. An
-                    // actively-downloading title is absent from the metadata list until
-                    // COMPLETE; deleting its partial files here would corrupt it.
-                    if (type == MediaType.MANGA &&
-                        ani.dantotsu.download.manga.MangaServiceDataSingleton.downloadOwnership.hasLiveMangaOwner(
-                            file.name ?: ""
-                        )
-                    ) {
-                        continue
+            // MAX MERGE M4B (upstream be6c4d99): an empty index with folders
+            // still on disk means the index was lost, not that every folder is
+            // orphaned - deleting here would wipe the library. Skip the sweep
+            // and point at rebuildIndexFromDisk() instead.
+            if (downloadsSubLists.isEmpty() && files.isNotEmpty()) {
+                Logger.log(
+                    "cleanDownload($type): index empty but ${files.size} folder(s) on disk " +
+                        "-- skipping delete, run rebuildIndexFromDisk()"
+                )
+            } else {
+                for (file in files) {
+                    if (!downloadsSubLists.any { it.titleName == file.name }) {
+                        // Fence: never wipe a manga title folder with a live owner. An
+                        // actively-downloading title is absent from the metadata list until
+                        // COMPLETE; deleting its partial files here would corrupt it.
+                        if (type == MediaType.MANGA &&
+                            ani.dantotsu.download.manga.MangaServiceDataSingleton.downloadOwnership.hasLiveMangaOwner(
+                                file.name ?: ""
+                            )
+                        ) {
+                            continue
+                        }
+                        file.deleteRecursively(context, false)
                     }
-                    file.deleteRecursively(context, false)
                 }
             }
         }
@@ -722,6 +778,22 @@ class DownloadsManager(private val context: Context) {
          * @return the subdirectory
          */
         @Synchronized
+        // MAX MERGE M4B (upstream be6c4d99): unlike getSubDirectory this
+        // never creates anything, so it is safe to call for media that may
+        // simply not be downloaded. Dual-use: migrator-adjacent lookup today,
+        // DRM refresh lookup if offline licensed play is ever designed for MPV.
+        fun findSubDirectory(
+            context: Context,
+            type: MediaType,
+            title: String,
+            chapter: String? = null
+        ): DocumentFile? {
+            val folder = getBaseDirectory(context, type)?.findFolder(title.findValidName())
+                ?: return null
+            val safeChapter = chapter?.findValidName()
+            return if (safeChapter.isNullOrEmpty()) folder else folder.findFolder(safeChapter)
+        }
+
         fun getSubDirectory(
             context: Context,
             type: MediaType,

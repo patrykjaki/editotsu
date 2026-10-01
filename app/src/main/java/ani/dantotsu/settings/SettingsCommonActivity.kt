@@ -387,6 +387,35 @@ class SettingsCommonActivity : AppCompatActivity() {
                         ),
                         Settings(
                             type = 1,
+                            name = getString(R.string.rebuild_download_index),
+                            desc = getString(R.string.rebuild_download_index_desc),
+                            icon = R.drawable.ic_download_24,
+                            onClick = {
+                                context.customAlertDialog().apply {
+                                    setTitle(R.string.rebuild_download_index)
+                                    setMessage(R.string.rebuild_download_index_msg)
+                                    setPosButton(R.string.ok) {
+                                        toast(getString(R.string.please_wait))
+                                        GlobalScope.launch(Dispatchers.IO) {
+                                            val recovered = Injekt.get<DownloadsManager>()
+                                                .rebuildIndexFromDisk()
+                                            withContext(Dispatchers.Main) {
+                                                toast(
+                                                    getString(
+                                                        R.string.rebuild_download_index_done,
+                                                        recovered,
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                    setNegButton(R.string.cancel)
+                                    show()
+                                }
+                            },
+                        ),
+                        Settings(
+                            type = 1,
                             name = getString(R.string.clear_app_cache),
                             desc = getString(R.string.clear_app_cache_desc),
                             icon = R.drawable.ic_round_delete_24,
