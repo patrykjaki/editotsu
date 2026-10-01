@@ -48,23 +48,25 @@ class ChapterLoaderDialog : BottomSheetDialogFragment() {
                 loaded = true
                 binding.selectorAutoText.text = chp.title
                 lifecycleScope.launch(Dispatchers.IO) {
-                    if (model.loadMangaChapterImages(
-                            chp,
-                            selected
-                        )
-                    ) {
-                        val activity = currActivity()
-                        activity?.runOnUiThread {
-                            if (!isAdded || activity.isFinishing || activity.isDestroyed) return@runOnUiThread
-                            tryWith { dismiss() }
+                    val success = model.loadMangaChapterImages(
+                        chp,
+                        selected
+                    )
+                    val activity = currActivity()
+                    activity?.runOnUiThread {
+                        if (!isAdded || activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                        tryWith { dismiss() }
+                        if (success) {
                             if (launch) {
                                 MediaSingleton.media = m
                                 val intent = Intent(
                                     activity,
                                     MangaReaderActivity::class.java
-                                )//.apply { putExtra("media", m) }
+                                )
                                 activity.startActivity(intent)
                             }
+                        } else {
+                            ani.dantotsu.snackString(activity.getString(R.string.error_loading_data, chp.title ?: chp.number))
                         }
                     }
                 }
@@ -85,9 +87,9 @@ class ChapterLoaderDialog : BottomSheetDialogFragment() {
         return binding.root
     }
 
-    override fun onDestroy() {
+    override fun onDestroyView() {
         _binding = null
-        super.onDestroy()
+        super.onDestroyView()
     }
 
     companion object {

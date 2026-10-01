@@ -178,6 +178,8 @@ fun isCloudflareOr403(e: Throwable): Boolean {
 }
 
 fun logError(e: Throwable, post: Boolean = true, snackbar: Boolean = true) {
+    // MAX MERGE M4C (upstream aa98472a): never log cancellation as an error.
+    if (e is CancellationException) return
     val sw = StringWriter()
     val pw = PrintWriter(sw)
     e.printStackTrace(pw)

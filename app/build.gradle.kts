@@ -349,6 +349,7 @@ dependencies {
     implementation(libs.readium.navigator.media.tts)
     implementation(libs.readium.adapter.pdfium.document)
     implementation(libs.readium.adapter.pdfium.navigator)
+    implementation(libs.image.decoder)
     implementation(libs.dialogs)
     implementation(libs.charts)
 

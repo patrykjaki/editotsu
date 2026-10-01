@@ -345,11 +345,17 @@ object Anilist {
         lastError = null
         return try {
             if (show) Logger.log("Anilist Query: $query")
-            if (rateLimitReset > System.currentTimeMillis() / 1000) {
-                val rateMsg = "Rate limited. Try after ${rateLimitReset - (System.currentTimeMillis() / 1000)} seconds"
+            // Upstream aa98472a: single nowSec snapshot; clear a stale reset
+            // instead of comparing against a dead timestamp forever.
+            val nowSec = System.currentTimeMillis() / 1000
+            val secondsRemaining = rateLimitReset - nowSec
+            if (secondsRemaining > 0) {
+                val rateMsg = "Rate limited. Try after $secondsRemaining seconds"
                 toast(rateMsg)
                 lastError = rateMsg
                 throw Exception(rateMsg)
+            } else {
+                rateLimitReset = 0
             }
             val headers = mutableMapOf(
                 "Content-Type" to "application/json; charset=utf-8",
@@ -389,14 +395,28 @@ object Anilist {
                 val remaining = json.headers["X-RateLimit-Remaining"]?.toIntOrNull() ?: -1
                 Logger.log("Remaining requests: $remaining")
                 if (json.code == 429) {
+                    // Upstream aa98472a: normalize ms-vs-s reset headers, honor
+                    // Retry-After first, fall back to the reset timestamp, and
+                    // always set a concrete positive wait (60s default).
+                    val currentSec = System.currentTimeMillis() / 1000
                     val retry = json.headers["Retry-After"]?.toIntOrNull() ?: -1
-                    val passedLimitReset = json.headers["X-RateLimit-Reset"]?.toLongOrNull() ?: 0
-                    if (retry > 0) {
-                        rateLimitReset = passedLimitReset
+                    var passedLimitReset = json.headers["X-RateLimit-Reset"]?.toLongOrNull() ?: 0L
+                    if (passedLimitReset > 10_000_000_000L) {
+                        passedLimitReset /= 1000
                     }
+                    val waitFromReset = if (passedLimitReset > currentSec) (passedLimitReset - currentSec).toInt() else 0
+                    val actualWait = when {
+                        retry > 0 -> retry
+                        waitFromReset > 0 -> waitFromReset
+                        else -> 60
+                    }.coerceAtLeast(1)
 
-                    toast("Rate limited. Try after $retry seconds")
-                    throw Exception("Rate limited after $retry seconds")
+                    rateLimitReset = currentSec + actualWait
+
+                    val rateMsg = "Rate limited. Try after $actualWait seconds"
+                    toast(rateMsg)
+                    lastError = rateMsg
+                    throw Exception(rateMsg)
                 }
 
                 if (json.code == 403 || json.code == 400) {

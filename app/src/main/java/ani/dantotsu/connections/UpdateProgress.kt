@@ -91,9 +91,11 @@ fun updateProgress(media: Media, number: String) {
                         a, null, status
                     )
                     toast(currContext()?.getString(R.string.setting_progress, a))
+                    media.userProgress = a
                 }
             }
-            media.userProgress = progressInt
+            // Upstream aa98472a anti-regression: userProgress advances only on a
+            // successful forward update, never on a skipped/stale one.
             // Upstream 5ffa682b: progress updates must drop stale home/stories
             // caches (covers the rescue-mode path; the AniList branch also
             // invalidates inside editList itself).
@@ -116,8 +118,9 @@ fun updateProgress(media: Media, number: String) {
                         if (media.userStatus == "REPEATING") media.userStatus!! else "CURRENT"
                     )
                     toast(currContext()?.getString(R.string.setting_progress, a))
+                    // Upstream aa98472a anti-regression: see rescue branch above.
+                    media.userProgress = a
                 }
-                media.userProgress = a
                 // Upstream 5ffa682b (see above).
                 Anilist.query.invalidateHomePageCache()
                 Anilist.query.invalidateUserStatusCache()

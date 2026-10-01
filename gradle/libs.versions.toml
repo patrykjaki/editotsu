@@ -16,6 +16,7 @@ nanohttpd = "2.3.1"
 mpv = "0.1.12"
 readium = "3.4.0"
 desugar-jdk-libs = "2.1.5"
+image-decoder = "10"
 
 
 [libraries]
@@ -101,6 +102,7 @@ readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", v
 readium-navigator-media-tts = { module = "org.readium.kotlin-toolkit:readium-navigator-media-tts", version.ref = "readium" }
 readium-adapter-pdfium-document = { module = "org.readium.kotlin-toolkit:readium-adapter-pdfium-document", version.ref = "readium" }
 readium-adapter-pdfium-navigator = { module = "org.readium.kotlin-toolkit:readium-adapter-pdfium-navigator", version.ref = "readium" }
+image-decoder = { module = "ca.mpreg:imagedecoder", version.ref = "image-decoder" }
 dialogs = "com.github.eltos:simpledialogfragments:v3.7"
 charts = "com.github.AAChartModel:AAChartCore-Kotlin:7.2.3"
 

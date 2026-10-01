@@ -14,6 +14,7 @@ import ani.dantotsu.util.Logger
 import ani.dantotsu.util.createDataSaver
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -37,6 +38,10 @@ data class ImageData(
                 var bitmap: Bitmap? = null
                 var success = false
 
+                val decodeOptions = BitmapFactory.Options().apply {
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                }
+
                 if (compressedUrl != originalUrl) {
                     try {
                         page.imageUrl = compressedUrl
@@ -45,12 +50,14 @@ data class ImageData(
                         if (response.isSuccessful) {
                             bitmap = response.use {
                                 it.body.byteStream().use { inputStream ->
-                                    BitmapFactory.decodeStream(inputStream)
+                                    BitmapFactory.decodeStream(inputStream, null, decodeOptions)
                                 }
                             }
                             if (bitmap != null) {
                                 success = true
                             }
+                        } else {
+                            response.close()
                         }
                     } catch (e: Exception) {
                         Logger.log("DataSaver failed, falling back to original: ${e.message}")
@@ -65,17 +72,22 @@ data class ImageData(
                     }
                     val response = httpSource.getImage(page)
                     Logger.log("Response: ${response.code} - ${response.message}")
-                    bitmap = response.use {
-                        it.body.byteStream().use { inputStream ->
-                            BitmapFactory.decodeStream(inputStream)
+                    if (response.isSuccessful) {
+                        bitmap = response.use {
+                            it.body.byteStream().use { inputStream ->
+                                BitmapFactory.decodeStream(inputStream, null, decodeOptions)
+                            }
                         }
+                    } else {
+                        response.close()
                     }
                 }
 
                 return@withContext bitmap
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Logger.log("An error occurred: ${e.message}")
-                snackString("An error occurred: ${e.message}")
+                Logger.log("MangaCache image fetch error: ${e.message}")
                 return@withContext null
             }
         }
@@ -135,8 +147,13 @@ fun saveImage(
 }
 
 class MangaCache {
-    private val maxMemory = (Runtime.getRuntime().maxMemory() / 1024 / 2).toInt()
-    private val cache = LruCache<String, ImageData>(maxMemory)
+    private val maxEntries = 500
+    private val cache = LruCache<String, ImageData>(maxEntries)
+    private val bitmapCache = object : LruCache<String, Bitmap>(30) {
+        override fun sizeOf(key: String, value: Bitmap): Int {
+            return (value.byteCount / 1024).coerceAtLeast(1)
+        }
+    }
 
     @Synchronized
     fun put(key: String, imageDate: ImageData) {
@@ -149,11 +166,26 @@ class MangaCache {
     @Synchronized
     fun remove(key: String) {
         cache.remove(key)
+        bitmapCache.remove(key)
     }
 
     @Synchronized
     fun clear() {
         cache.evictAll()
+        bitmapCache.evictAll()
+    }
+
+    @Synchronized
+    fun putBitmap(key: String, bitmap: Bitmap) {
+        bitmapCache.put(key, bitmap)
+    }
+
+    @Synchronized
+    fun getBitmap(key: String): Bitmap? = bitmapCache.get(key)
+
+    @Synchronized
+    fun clearBitmaps() {
+        bitmapCache.evictAll()
     }
 
     fun size(): Int = cache.size()
