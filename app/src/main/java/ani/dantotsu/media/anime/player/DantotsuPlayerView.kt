@@ -117,10 +117,15 @@ class DantotsuPlayerView @JvmOverloads constructor(
         overlay.setApplyEmbeddedStyles(plan.applyEmbeddedStyles)
         overlay.setApplyEmbeddedFontSizes(plan.applyEmbeddedFontSizes)
         if (plan.useCustomStyle) {
-            val typeface = plan.fontFamily?.let {
-                runCatching { android.graphics.Typeface.create(it, android.graphics.Typeface.NORMAL) }.getOrNull()
-            } ?: plan.fontFile?.takeIf { it.exists() }?.let {
-                runCatching { android.graphics.Typeface.createFromFile(it) }.getOrNull()
+            // HOLD5 hardening: resolve precedence purely; Android Typeface
+            // construction stays guarded with fallthrough.
+            val typeface = when (val source =
+                DrmTransportPlan.resolveCustomTypefaceSource(plan.fontFamily, plan.fontFile)) {
+                is DrmTransportPlan.CustomTypefaceSource.FontFile ->
+                    runCatching { android.graphics.Typeface.createFromFile(source.file) }.getOrNull()
+                is DrmTransportPlan.CustomTypefaceSource.Family ->
+                    runCatching { android.graphics.Typeface.create(source.name, android.graphics.Typeface.NORMAL) }.getOrNull()
+                DrmTransportPlan.CustomTypefaceSource.None -> null
             }
             overlay.setStyle(
                 androidx.media3.ui.CaptionStyleCompat(

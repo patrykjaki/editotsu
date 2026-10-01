@@ -117,7 +117,16 @@ object DrmTransportPlan {
         val language: String?,
         val title: String?,
         val selected: Boolean,
+        /** file://, content://, or absolute-path subs ride the multi-scheme path. */
+        val local: Boolean,
     )
+
+    /** Local (non-HTTP) subtitle/file detection for the multi-scheme path. */
+    fun isLocalUri(url: String): Boolean {
+        val lower = url.trim().lowercase()
+        return lower.startsWith("file://") || lower.startsWith("content://") ||
+            (!lower.contains("://") && lower.startsWith("/"))
+    }
 
     /** Blank-URL subtitles are skipped; the rest keep their header context. */
     fun planSubtitleAttachments(subs: List<ExternalSubtitle>): List<SubAttachment> =
@@ -130,7 +139,8 @@ object DrmTransportPlan {
                 headers = sub.headers.toMap(),
                 language = sub.language,
                 title = sub.title,
-                selected = sub.selected
+                selected = sub.selected,
+                local = isLocalUri(url)
             )
         }
 
@@ -170,8 +180,31 @@ object DrmTransportPlan {
     }
 
     /**
-     * HOLD4 B3: complete per-URI header routing. The base factory stays
-     * header-free; every URI resolves its EXACT header set here:
+     * HOLD5 hardening: custom typeface source precedence (pure, unit-tested).
+     * A valid bundled fontFile wins over Typeface.create(), which can return
+     * a silent fallback for an uninstalled family name.
+     */
+    sealed interface CustomTypefaceSource {
+        data class FontFile(val file: java.io.File) : CustomTypefaceSource
+        data class Family(val name: String) : CustomTypefaceSource
+        data object None : CustomTypefaceSource
+    }
+
+    fun resolveCustomTypefaceSource(
+        fontFamily: String?,
+        fontFile: java.io.File?,
+    ): CustomTypefaceSource {
+        val validFile = fontFile?.takeIf { it.isFile }
+        if (validFile != null) return CustomTypefaceSource.FontFile(validFile)
+        val family = fontFamily?.takeIf { it.isNotBlank() }
+        if (family != null) return CustomTypefaceSource.Family(family)
+        return CustomTypefaceSource.None
+    }
+
+    /**
+     * HOLD5: complete per-source header routing. Every source gets its EXACT
+     * header set, served by its own source-scoped factory (whose child
+     * requests inherit it):
      *
      * - primary manifest/segments → exact request headers;
      * - each subtitle/side-audio URI → its own headers, plus a safe
@@ -179,15 +212,21 @@ object DrmTransportPlan {
      *
      * Primary Authorization/Cookie never reach another host: a distinct-host
      * subtitle only ever carries its own explicit context. License headers
-     * are not an input and can never enter this map.
+     * are not an input and can never enter this plan.
      */
-    fun planRequestHeaders(
+    data class SourceHeaderPlan(
+        val primary: Map<String, String>,
+        val subtitles: Map<String, Map<String, String>>,
+        val audioSides: Map<String, Map<String, String>>,
+    )
+
+    fun planSourceHeaders(
         primaryUri: String,
         requestHeaders: Map<String, String>,
         subtitles: List<SubAttachment>,
         audioSides: List<SideAudio>,
         defaultUa: String,
-    ): Map<String, Map<String, String>> {
+    ): SourceHeaderPlan {
         val requestUa = requestHeaders.entries.firstOrNull {
             it.key.equals("User-Agent", ignoreCase = true)
         }
@@ -196,10 +235,47 @@ object DrmTransportPlan {
             val fallback = requestUa?.let { it.key to it.value } ?: ("User-Agent" to defaultUa)
             return own + fallback
         }
-        val out = LinkedHashMap<String, Map<String, String>>()
-        out[primaryUri] = ensureUserAgent(requestHeaders, defaultUa)
-        for (sub in subtitles) out[sub.url] = withUaFallback(sub.headers)
-        for (side in audioSides) out[side.url] = withUaFallback(side.headers)
-        return out
+        return SourceHeaderPlan(
+            primary = ensureUserAgent(requestHeaders, defaultUa),
+            subtitles = subtitles.associate { it.url to withUaFallback(it.headers) },
+            audioSides = audioSides.associate { it.url to withUaFallback(it.headers) }
+        )
+    }
+
+    /**
+     * HOLD5 B3: live subtitle attachment as a pure request transform.
+     * Appends the new subtitle (blank/duplicate URLs are no-ops) while
+     * preserving every other request field — position/play intent live
+     * outside the request and are captured/restored by the engine around
+     * the source rebuild.
+     */
+    fun withLiveSubtitle(
+        existing: List<ExternalSubtitle>,
+        added: ExternalSubtitle,
+    ): List<ExternalSubtitle> {
+        val url = added.url.trim()
+        if (url.isEmpty()) return existing
+        if (existing.any { it.url.trim() == url }) return existing
+        return existing + added
+    }
+
+    fun attachLiveSubtitle(request: PlaybackRequest, sub: ExternalSubtitle): PlaybackRequest =
+        request.copy(externalSubtitles = withLiveSubtitle(request.externalSubtitles, sub))
+
+    /**
+     * HOLD5 B4: authoritative primary MIME. An explicit caller MIME always
+     * wins; otherwise VideoType decides (MPV behavior untouched — only the
+     * DRM engine reads request.mimeType).
+     */
+    fun primaryMimeForFormat(
+        explicit: String?,
+        format: ani.dantotsu.parsers.VideoType,
+    ): String? {
+        if (!explicit.isNullOrBlank()) return explicit
+        return when (format) {
+            ani.dantotsu.parsers.VideoType.DASH -> MimeTypes.APPLICATION_MPD
+            ani.dantotsu.parsers.VideoType.M3U8 -> MimeTypes.APPLICATION_M3U8
+            else -> null
+        }
     }
 }

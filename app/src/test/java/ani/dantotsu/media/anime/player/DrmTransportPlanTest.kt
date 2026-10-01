@@ -122,7 +122,7 @@ class DrmTransportPlanTest {
 
     @Test
     fun `distinct-host subtitle does not inherit primary credentials`() {
-        val plan = DrmTransportPlan.planRequestHeaders(
+        val plan = DrmTransportPlan.planSourceHeaders(
             primaryUri = "https://media.example/v.mpd",
             requestHeaders = mapOf(
                 "Authorization" to "media-secret",
@@ -136,25 +136,25 @@ class DrmTransportPlanTest {
                     headers = mapOf("Referer" to "subtitle-ref"),
                     language = "en",
                     title = "English",
-                    selected = true
+                    selected = true,
+                    local = false
                 )
             ),
             audioSides = emptyList(),
             defaultUa = "Default/2.0"
         )
-        val sub = plan["https://different.example/en.srt"]!!
+        val sub = plan.subtitles["https://different.example/en.srt"]!!
         assertTrue(!sub.values.contains("media-secret"))
         assertTrue(!sub.values.contains("media-cookie"))
         assertEquals("subtitle-ref", sub["Referer"])
         // Primary keeps everything.
-        val primary = plan["https://media.example/v.mpd"]!!
-        assertEquals("media-secret", primary["Authorization"])
-        assertEquals("media-cookie", primary["Cookie"])
+        assertEquals("media-secret", plan.primary["Authorization"])
+        assertEquals("media-cookie", plan.primary["Cookie"])
     }
 
     @Test
     fun `same-context subtitle retains explicit headers`() {
-        val plan = DrmTransportPlan.planRequestHeaders(
+        val plan = DrmTransportPlan.planSourceHeaders(
             primaryUri = "https://media.example/v.mpd",
             requestHeaders = mapOf("Authorization" to "media-secret"),
             subtitles = listOf(
@@ -167,13 +167,14 @@ class DrmTransportPlanTest {
                     ),
                     language = "en",
                     title = "English",
-                    selected = false
+                    selected = false,
+                    local = false
                 )
             ),
             audioSides = emptyList(),
             defaultUa = "Default/2.0"
         )
-        val sub = plan["https://media.example/en.srt"]!!
+        val sub = plan.subtitles["https://media.example/en.srt"]!!
         assertEquals("media-secret", sub["Authorization"])
         assertEquals("https://media.example/", sub["Referer"])
     }
@@ -250,5 +251,128 @@ class DrmTransportPlanTest {
         assertEquals(MimeTypes.APPLICATION_SUBRIP, plan[0].mime)
         assertEquals(mapOf("Referer" to "https://src.example/"), plan[0].headers)
         assertEquals(true, plan[0].selected)
+    }
+
+    @Test
+    fun `local and content subtitles take the multi-scheme path`() {
+        val plan = DrmTransportPlan.planSubtitleAttachments(
+            listOf(
+                ExternalSubtitle(url = "/sdcard/subs/en.srt"),
+                ExternalSubtitle(url = "file:///sdcard/subs/jp.ass"),
+                ExternalSubtitle(url = "content://media/subs/es.vtt"),
+                ExternalSubtitle(url = "https://src.example/de.vtt")
+            )
+        )
+        assertEquals(listOf(true, true, true, false), plan.map { it.local })
+    }
+
+    @Test
+    fun `live-added remote subtitle joins the plan with headers`() {
+        val base = listOf(
+            ExternalSubtitle(url = "https://src.example/en.srt", language = "en")
+        )
+        val live = ExternalSubtitle(
+            url = "https://other.example/fr.srt",
+            language = "fr",
+            selected = true,
+            headers = mapOf("Referer" to "https://other.example/")
+        )
+        val merged = DrmTransportPlan.withLiveSubtitle(base, live)
+        assertEquals(2, merged.size)
+        val plan = DrmTransportPlan.planSourceHeaders(
+            primaryUri = "https://media.example/v.mpd",
+            requestHeaders = mapOf("Authorization" to "media-secret"),
+            subtitles = DrmTransportPlan.planSubtitleAttachments(merged),
+            audioSides = emptyList(),
+            defaultUa = "Default/2.0"
+        )
+        val added = plan.subtitles["https://other.example/fr.srt"]!!
+        assertEquals(mapOf("Referer" to "https://other.example/"), added.filterKeys { it != "User-Agent" })
+        assertTrue(!added.values.contains("media-secret"))
+    }
+
+    @Test
+    fun `live-added local subtitle is supported`() {
+        val merged = DrmTransportPlan.withLiveSubtitle(
+            emptyList(),
+            ExternalSubtitle(url = "file:///sdcard/subs/en.srt", language = "en", selected = true)
+        )
+        val attachments = DrmTransportPlan.planSubtitleAttachments(merged)
+        assertEquals(1, attachments.size)
+        assertTrue(attachments[0].local)
+        assertEquals(MimeTypes.APPLICATION_SUBRIP, attachments[0].mime)
+    }
+
+    @Test
+    fun `live attachment preserves request identity and start position`() {
+        val req = PlaybackRequest(
+            uri = "https://media.example/v.mpd",
+            startPositionMs = 12345L,
+            headers = mapOf("Authorization" to "media-secret")
+        )
+        val merged = DrmTransportPlan.attachLiveSubtitle(
+            req,
+            ExternalSubtitle(url = "https://other.example/fr.srt", language = "fr")
+        )
+        assertEquals("https://media.example/v.mpd", merged.uri)
+        assertEquals(12345L, merged.startPositionMs)
+        assertEquals(mapOf("Authorization" to "media-secret"), merged.headers)
+        assertEquals(1, merged.externalSubtitles.size)
+        assertEquals("https://other.example/fr.srt", merged.externalSubtitles[0].url)
+    }
+
+    @Test
+    fun `custom fontfile wins over unresolved family fallback`() {
+        val real = java.io.File.createTempFile("font", ".ttf")
+        try {
+            val won = DrmTransportPlan.resolveCustomTypefaceSource("MaybeMissing", real)
+            assertTrue(won is DrmTransportPlan.CustomTypefaceSource.FontFile)
+            val fallback = DrmTransportPlan.resolveCustomTypefaceSource(
+                "MaybeMissing",
+                java.io.File("/nonexistent/font.ttf")
+            )
+            assertTrue(fallback is DrmTransportPlan.CustomTypefaceSource.Family)
+            assertTrue(
+                DrmTransportPlan.resolveCustomTypefaceSource("  ", null) is
+                    DrmTransportPlan.CustomTypefaceSource.None
+            )
+        } finally {
+            real.delete()
+        }
+    }
+
+    @Test
+    fun `dash plus opaque url resolves mpd`() {
+        assertEquals(
+            MimeTypes.APPLICATION_MPD,
+            DrmTransportPlan.primaryMimeForFormat(null, ani.dantotsu.parsers.VideoType.DASH)
+        )
+        assertEquals(
+            MimeTypes.APPLICATION_MPD,
+            DrmTransportPlan.primaryMimeForFormat("", ani.dantotsu.parsers.VideoType.DASH)
+        )
+    }
+
+    @Test
+    fun `m3u8 plus opaque url resolves m3u8`() {
+        assertEquals(
+            MimeTypes.APPLICATION_M3U8,
+            DrmTransportPlan.primaryMimeForFormat(null, ani.dantotsu.parsers.VideoType.M3U8)
+        )
+    }
+
+    @Test
+    fun `explicit mimetype still wins`() {
+        assertEquals(
+            "video/mp4",
+            DrmTransportPlan.primaryMimeForFormat("video/mp4", ani.dantotsu.parsers.VideoType.DASH)
+        )
+    }
+
+    @Test
+    fun `container remains unchanged`() {
+        assertNull(
+            DrmTransportPlan.primaryMimeForFormat(null, ani.dantotsu.parsers.VideoType.CONTAINER)
+        )
     }
 }

@@ -76,9 +76,8 @@ class Media3DrmPlaybackEngine(
     // HOLD3 D1: request-scoped transport. The player (and its factories)
     // are rebuilt when the request headers change so source headers always
     // reach manifest/segment/subtitle loads exactly as carried.
-    private var activeHeaderMap: Map<String, Map<String, String>> = emptyMap()
+    private var activeHeaderPlan: DrmTransportPlan.SourceHeaderPlan? = null
     private var mediaSourceFactory: DefaultMediaSourceFactory? = null
-    private var sideSourceFactory: HeaderRoutingDataSource.Factory? = null
 
     fun setCuesListener(listener: ((List<androidx.media3.common.text.Cue>) -> Unit)?) {
         cuesListener = listener
@@ -303,25 +302,24 @@ class Media3DrmPlaybackEngine(
         explicitUserAction: Boolean
     ) {
         mainHandler.post {
-            val p = player ?: return@post
+            // HOLD5 B3: live attachment rebuilds transport from the merged
+            // request (the new URI joins its source plan) while preserving
+            // position, play intent, output state, and the engine binding.
+            // Same MIME inference as initial subtitles.
             val req = activeRequest ?: return@post
-            // Same MIME inference as initial subtitles (HOLD3 D3); the
-            // request-scoped routing factory preserves header context.
-            val extra = ExternalSubtitle(
-                url = uri,
-                title = title,
-                language = language,
-                selected = select
+            val merged = DrmTransportPlan.attachLiveSubtitle(
+                req,
+                ExternalSubtitle(url = uri, title = title, language = language, selected = select)
             )
-            val merged = req.copy(
-                externalSubtitles = req.externalSubtitles + extra
-            )
+            if (merged.externalSubtitles.size == req.externalSubtitles.size) return@post
+            val position = player?.currentPosition ?: req.startPositionMs
+            val autoplay = player?.playWhenReady ?: true
+            ensurePlayer(merged)
             activeRequest = merged
-            val position = p.currentPosition
-            val autoplay = p.playWhenReady
+            val p = player ?: return@post
             p.setMediaSource(buildMediaSource(merged))
             p.prepare()
-            p.seekTo(position)
+            p.seekTo(position.coerceAtLeast(0L))
             p.playWhenReady = autoplay
         }
     }
@@ -410,32 +408,27 @@ class Media3DrmPlaybackEngine(
     }
 
     private fun ensurePlayer(request: PlaybackRequest) {
-        // HOLD4 B3: the base factory is header-free; one routing map resolves
-        // the EXACT header set per URI (primary vs each sub/side), so primary
-        // credentials can never leak onto another host.
-        val subAttachments = DrmTransportPlan.planSubtitleAttachments(request.externalSubtitles)
-        val audioPlan = DrmTransportPlan.planAudioMerge(request.uri, request.externalAudioTracks)
-        val headerMap = DrmTransportPlan.planRequestHeaders(
+        // HOLD5: source-scoped factories. Each source (primary, every side,
+        // every subtitle) resolves its EXACT header set through its own
+        // multi-scheme factory, so child segments inherit their manifest's
+        // context and primary credentials can never leak cross-host.
+        // License loads stay on a separate header-free factory.
+        val headerPlan = DrmTransportPlan.planSourceHeaders(
             request.uri,
             request.headers,
-            subAttachments,
-            audioPlan.sides,
+            DrmTransportPlan.planSubtitleAttachments(request.externalSubtitles),
+            DrmTransportPlan.planAudioMerge(request.uri, request.externalAudioTracks).sides,
             defaultDrmUa()
         )
-        if (player != null && activeHeaderMap == headerMap) {
+        if (player != null && activeHeaderPlan == headerPlan) {
             return
         }
         releasePlayerInternal()
-        activeHeaderMap = headerMap
-        val baseFactory = OkHttpDataSource.Factory(httpClient)
-        val routedFactory = HeaderRoutingDataSource.Factory(baseFactory) { uri ->
-            headerMap[uri] ?: emptyMap()
-        }
+        activeHeaderPlan = headerPlan
         val licenseFactory = OkHttpDataSource.Factory(httpClient)
         mediaSourceFactory = DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(routedFactory)
+            .setDataSourceFactory(scopedFactory(headerPlan.primary))
             .setDrmSessionManagerProvider(WrappedDrmCallback.providerFor(licenseFactory))
-        sideSourceFactory = routedFactory
         val exo = ExoPlayer.Builder(context)
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(mediaSourceFactory!!)
@@ -465,49 +458,72 @@ class Media3DrmPlaybackEngine(
     }
 
     /**
-     * HOLD4 B4: primary DRM source merged with 0..N external-audio side
-     * sources, each built by content type (HLS/DASH adaptive vs progressive)
-     * through the shared header-routing factory. Period offsets adjust
-     * across the merge; durations are not clipped.
+     * Source-scoped multi-scheme factory: exact headers for its source,
+     * file:// / content:// / asset transparently, http(s) through OkHttp.
+     */
+    private fun scopedFactory(headers: Map<String, String>): androidx.media3.datasource.DefaultDataSource.Factory {
+        val http = OkHttpDataSource.Factory(httpClient).apply {
+            setDefaultRequestProperties(headers)
+        }
+        return androidx.media3.datasource.DefaultDataSource.Factory(context, http)
+    }
+
+    /**
+     * HOLD5: primary DRM source merged with 0..N external-audio side
+     * sources (per-kind adaptive or progressive, each with its own header
+     * context) and 0..N single-sample subtitle sources (each with its own
+     * context, local or remote). Period offsets adjust across the merge;
+     * durations are not clipped.
      */
     private fun buildMediaSource(request: PlaybackRequest): androidx.media3.exoplayer.source.MergingMediaSource {
         val factory = mediaSourceFactory
             ?: throw IllegalStateException("player must be ensured before building sources")
-        val routed = sideSourceFactory
+        val headerPlan = activeHeaderPlan
             ?: throw IllegalStateException("player must be ensured before building sources")
-        val primary = factory.createMediaSource(buildMediaItem(request, request.drm, request.subtitleConfigs))
+        val primary = factory.createMediaSource(buildMediaItem(request, request.drm))
         val plan = DrmTransportPlan.planAudioMerge(request.uri, request.externalAudioTracks)
-        if (!plan.hasSides) return androidx.media3.exoplayer.source.MergingMediaSource(primary)
-        val sides = plan.sides.map { side ->
+        val audioSources = plan.sides.map { side ->
+            val sideHeaders = headerPlan.audioSides[side.url] ?: side.headers
             val item = MediaItem.Builder()
                 .setUri(side.url)
                 .apply { side.mime?.let(::setMimeType) }
                 .build()
             when (side.kind) {
                 DrmTransportPlan.AudioSourceKind.HLS ->
-                    androidx.media3.exoplayer.hls.HlsMediaSource.Factory(routed).createMediaSource(item)
+                    androidx.media3.exoplayer.hls.HlsMediaSource.Factory(scopedFactory(sideHeaders)).createMediaSource(item)
                 DrmTransportPlan.AudioSourceKind.DASH ->
-                    androidx.media3.exoplayer.dash.DashMediaSource.Factory(routed).createMediaSource(item)
+                    androidx.media3.exoplayer.dash.DashMediaSource.Factory(scopedFactory(sideHeaders)).createMediaSource(item)
                 DrmTransportPlan.AudioSourceKind.PROGRESSIVE ->
-                    androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(routed).createMediaSource(item)
+                    androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(scopedFactory(sideHeaders)).createMediaSource(item)
             }
         }
+        val subtitleSingles = DrmTransportPlan.planSubtitleAttachments(request.externalSubtitles).map { sub ->
+            val subHeaders = headerPlan.subtitles[sub.url] ?: sub.headers
+            val config = MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(sub.url))
+                .setMimeType(sub.mime)
+                .setLanguage(sub.language)
+                .setLabel(sub.title)
+                .apply { if (sub.selected) setSelectionFlags(C.SELECTION_FLAG_DEFAULT) }
+                .build()
+            androidx.media3.exoplayer.source.SingleSampleMediaSource.Factory(scopedFactory(subHeaders))
+                .createMediaSource(config, C.TIME_UNSET)
+        }
+        val all = audioSources + subtitleSingles
+        if (all.isEmpty()) return androidx.media3.exoplayer.source.MergingMediaSource(primary)
         return androidx.media3.exoplayer.source.MergingMediaSource(
             true,
             false,
             primary,
-            *sides.toTypedArray()
+            *all.toTypedArray()
         )
     }
 
     private fun buildMediaItem(
         request: PlaybackRequest,
         drm: DrmInfo?,
-        subtitleConfigs: List<MediaItem.SubtitleConfiguration>,
     ): MediaItem {
         val builder = MediaItem.Builder()
             .setUri(request.uri)
-            .setSubtitleConfigurations(subtitleConfigs)
         request.mimeType?.takeIf { it.isNotBlank() }?.let { builder.setMimeType(it) }
         drm?.let { info ->
             buildDrmConfiguration(info)?.let(builder::setDrmConfiguration)
@@ -568,13 +584,3 @@ internal fun buildDrmConfiguration(drm: ani.dantotsu.parsers.DrmInfo): MediaItem
         .setMultiSession(true)
         .build()
 }
-
-private val PlaybackRequest.subtitleConfigs: List<MediaItem.SubtitleConfiguration>
-    get() = DrmTransportPlan.planSubtitleAttachments(externalSubtitles).map { sub ->
-        MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(sub.url))
-            .setMimeType(sub.mime)
-            .setLanguage(sub.language)
-            .setLabel(sub.title)
-            .apply { if (sub.selected) setSelectionFlags(C.SELECTION_FLAG_DEFAULT) }
-            .build()
-    }

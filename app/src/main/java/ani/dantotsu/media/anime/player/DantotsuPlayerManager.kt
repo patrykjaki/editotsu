@@ -121,7 +121,11 @@ class DantotsuPlayerManager(
             seriesTitle = seriesTitle,
             episodeNumber = episodeNumber,
             coverUrl = coverUrl,
-            mimeType = mimeType,
+            mimeType = mimeType
+                // HOLD5 B4: authoritative primary MIME. Explicit caller MIME
+                // wins; otherwise VideoType decides (DASH/M3U8 opaque URLs
+                // included). MPV never reads request.mimeType — unaffected.
+                ?: DrmTransportPlan.primaryMimeForFormat(null, video.format),
             externalSubtitles = externalSubs,
             externalAudioTracks = externalAudios,
             preferredSubLang = preferredSubLang,
