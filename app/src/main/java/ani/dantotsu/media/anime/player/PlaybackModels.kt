@@ -18,7 +18,10 @@ data class ExternalSubtitle(
     val id: String? = null,
     // Beta03: source transport context (video/source headers incl. referer).
     // Applied to mpv before `sub-add` so header-gated softsubs fetch correctly.
-    val headers: Map<String, String> = emptyMap()
+    val headers: Map<String, String> = emptyMap(),
+    // HOLD6: authoritative MIME from parser knowledge (Subtitle.type).
+    // Non-null wins over URL inference in the DRM backend; ignored by MPV.
+    val mimeType: String? = null
 )
 
 data class ExternalAudioTrack(

@@ -73,7 +73,10 @@ class DantotsuPlayerManager(
                     selected = isSelected,
                     // Beta03: preserve the source header context (adapter now
                     // attaches video headers to sub.file) for sub-add transport.
-                    headers = sub.file.headers
+                    headers = sub.file.headers,
+                    // HOLD6: preserve authoritative parser MIME (Subtitle.type)
+                    // so opaque URLs keep ASS/SRT instead of defaulting to VTT.
+                    mimeType = DrmTransportPlan.subtitleMimeForType(sub.type)
                 )
             }
         } ?: emptyList()
@@ -122,10 +125,11 @@ class DantotsuPlayerManager(
             episodeNumber = episodeNumber,
             coverUrl = coverUrl,
             mimeType = mimeType
-                // HOLD5 B4: authoritative primary MIME. Explicit caller MIME
-                // wins; otherwise VideoType decides (DASH/M3U8 opaque URLs
-                // included). MPV never reads request.mimeType — unaffected.
-                ?: DrmTransportPlan.primaryMimeForFormat(null, video.format),
+                // HOLD5 B4 + HOLD6 hardening: authoritative primary MIME.
+                // primaryMimeForFormat treats blank explicit as absent, so ""
+                // can never suppress an authoritative DASH/M3U8 format.
+                // MPV never reads request.mimeType — unaffected.
+                .let { DrmTransportPlan.primaryMimeForFormat(it, video.format) },
             externalSubtitles = externalSubs,
             externalAudioTracks = externalAudios,
             preferredSubLang = preferredSubLang,

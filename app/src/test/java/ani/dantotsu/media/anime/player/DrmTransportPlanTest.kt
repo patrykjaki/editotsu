@@ -1,5 +1,7 @@
 package ani.dantotsu.media.anime.player
 
+import ani.dantotsu.parsers.DrmParseResult
+import ani.dantotsu.parsers.parseDrmMetadata
 import androidx.media3.common.MimeTypes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -373,6 +375,147 @@ class DrmTransportPlanTest {
     fun `container remains unchanged`() {
         assertNull(
             DrmTransportPlan.primaryMimeForFormat(null, ani.dantotsu.parsers.VideoType.CONTAINER)
+        )
+    }
+
+    @Test
+    fun `explicit ASS MIME plus opaque url stays SSA`() {
+        val plan = DrmTransportPlan.planSubtitleAttachments(
+            listOf(
+                ExternalSubtitle(
+                    url = "https://provider.example/subtitle?id=123",
+                    language = "en",
+                    mimeType = MimeTypes.TEXT_SSA
+                )
+            )
+        )
+        assertEquals(1, plan.size)
+        assertEquals(MimeTypes.TEXT_SSA, plan[0].mime)
+    }
+
+    @Test
+    fun `explicit SRT MIME plus query url stays subrip`() {
+        val plan = DrmTransportPlan.planSubtitleAttachments(
+            listOf(
+                ExternalSubtitle(
+                    url = "https://provider.example/subtitle?file=en.srt",
+                    language = "en",
+                    mimeType = MimeTypes.APPLICATION_SUBRIP
+                )
+            )
+        )
+        assertEquals(MimeTypes.APPLICATION_SUBRIP, plan[0].mime)
+    }
+
+    @Test
+    fun `explicit VTT MIME stays VTT`() {
+        val plan = DrmTransportPlan.planSubtitleAttachments(
+            listOf(
+                ExternalSubtitle(
+                    url = "https://provider.example/subtitle?id=9",
+                    mimeType = MimeTypes.TEXT_VTT
+                )
+            )
+        )
+        assertEquals(MimeTypes.TEXT_VTT, plan[0].mime)
+    }
+
+    @Test
+    fun `explicit MIME beats URL inference`() {
+        val plan = DrmTransportPlan.planSubtitleAttachments(
+            listOf(
+                ExternalSubtitle(
+                    url = "https://provider.example/en.vtt",
+                    mimeType = MimeTypes.TEXT_SSA
+                )
+            )
+        )
+        assertEquals(MimeTypes.TEXT_SSA, plan[0].mime)
+    }
+
+    @Test
+    fun `no explicit MIME still uses URL inference`() {
+        val plan = DrmTransportPlan.planSubtitleAttachments(
+            listOf(
+                ExternalSubtitle(url = "https://provider.example/en.ass"),
+                ExternalSubtitle(url = "https://provider.example/en.srt"),
+                ExternalSubtitle(url = "https://provider.example/en.vtt"),
+                ExternalSubtitle(url = "https://provider.example/en", mimeType = "  ")
+            )
+        )
+        assertEquals(
+            listOf(
+                MimeTypes.TEXT_SSA,
+                MimeTypes.APPLICATION_SUBRIP,
+                MimeTypes.TEXT_VTT,
+                MimeTypes.TEXT_VTT
+            ),
+            plan.map { it.mime }
+        )
+    }
+
+    @Test
+    fun `ttml cache subtitle keeps native TTML`() {
+        assertEquals(
+            MimeTypes.APPLICATION_TTML,
+            DrmTransportPlan.subtitleMimeFor("file:///cache/subs/cached.ttml")
+        )
+        val plan = DrmTransportPlan.planSubtitleAttachments(
+            listOf(ExternalSubtitle(url = "/cache/subs/cached.ttml"))
+        )
+        assertEquals(MimeTypes.APPLICATION_TTML, plan[0].mime)
+        assertTrue(plan[0].local)
+    }
+
+    @Test
+    fun `authoritative subtitle type mapping is deterministic`() {
+        assertEquals(
+            MimeTypes.TEXT_VTT,
+            DrmTransportPlan.subtitleMimeForType(ani.dantotsu.parsers.SubtitleType.VTT)
+        )
+        assertEquals(
+            MimeTypes.TEXT_SSA,
+            DrmTransportPlan.subtitleMimeForType(ani.dantotsu.parsers.SubtitleType.ASS)
+        )
+        assertEquals(
+            MimeTypes.APPLICATION_SUBRIP,
+            DrmTransportPlan.subtitleMimeForType(ani.dantotsu.parsers.SubtitleType.SRT)
+        )
+        assertNull(DrmTransportPlan.subtitleMimeForType(ani.dantotsu.parsers.SubtitleType.UNKNOWN))
+        assertNull(DrmTransportPlan.subtitleMimeForType(null))
+        // Same input, same output, every time.
+        repeat(3) {
+            assertEquals(
+                MimeTypes.TEXT_SSA,
+                DrmTransportPlan.subtitleMimeForType(ani.dantotsu.parsers.SubtitleType.ASS)
+            )
+        }
+    }
+
+    @Test
+    fun `blank primary explicit MIME falls back to VideoType`() {
+        assertEquals(
+            MimeTypes.APPLICATION_MPD,
+            DrmTransportPlan.primaryMimeForFormat("", ani.dantotsu.parsers.VideoType.DASH)
+        )
+        assertEquals(
+            MimeTypes.APPLICATION_M3U8,
+            DrmTransportPlan.primaryMimeForFormat("   ", ani.dantotsu.parsers.VideoType.M3U8)
+        )
+        assertNull(
+            DrmTransportPlan.primaryMimeForFormat("", ani.dantotsu.parsers.VideoType.CONTAINER)
+        )
+    }
+
+    @Test
+    fun `MPV clear-content selection remains unchanged`() {
+        // No DRM signal anywhere: parser clear, policy clear, no MIME needed.
+        assertTrue(
+            parseDrmMetadata(mapOf("unrelated" to "x")) is DrmParseResult.Clear
+        )
+        assertEquals(
+            DrmBackendPolicy.BackendDecision.ClearMpv,
+            DrmBackendPolicy.decideForVideo(null, null) { true }
         )
     }
 }

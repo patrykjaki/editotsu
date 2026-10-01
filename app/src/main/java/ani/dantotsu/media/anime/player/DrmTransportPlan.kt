@@ -53,9 +53,26 @@ object DrmTransportPlan {
             lower.endsWith(".vtt") || lower.endsWith(".webvtt") -> MimeTypes.TEXT_VTT
             lower.endsWith(".srt") -> MimeTypes.APPLICATION_SUBRIP
             lower.endsWith(".ass") || lower.endsWith(".ssa") -> MimeTypes.TEXT_SSA
+            // Materialized TTML cache files (.ttml) keep native TTML parsing.
+            // Bare .xml stays on the VTT default: content-unknown XML is not
+            // provably TTML, and manager-materialized TTML always carries
+            // the .ttml extension (deliberate, not accidental).
+            lower.endsWith(".ttml") -> MimeTypes.APPLICATION_TTML
             else -> MimeTypes.TEXT_VTT
         }
     }
+
+    /**
+     * HOLD6: authoritative parser knowledge wins. SubtitleType.UNKNOWN (or
+     * absent) yields null so URL/file inference still applies.
+     */
+    fun subtitleMimeForType(type: ani.dantotsu.parsers.SubtitleType?): String? =
+        when (type) {
+            ani.dantotsu.parsers.SubtitleType.VTT -> MimeTypes.TEXT_VTT
+            ani.dantotsu.parsers.SubtitleType.ASS -> MimeTypes.TEXT_SSA
+            ani.dantotsu.parsers.SubtitleType.SRT -> MimeTypes.APPLICATION_SUBRIP
+            else -> null
+        }
 
     /** Side-audio entry that survives planning (headers preserved per track). */
     data class SideAudio(
@@ -134,8 +151,9 @@ object DrmTransportPlan {
             val url = sub.url.trim()
             if (url.isEmpty()) return@mapNotNull null
             SubAttachment(
+                // HOLD6: explicit parser MIME wins; otherwise URL inference.
                 url = url,
-                mime = subtitleMimeFor(url),
+                mime = sub.mimeType?.takeIf { it.isNotBlank() } ?: subtitleMimeFor(url),
                 headers = sub.headers.toMap(),
                 language = sub.language,
                 title = sub.title,
