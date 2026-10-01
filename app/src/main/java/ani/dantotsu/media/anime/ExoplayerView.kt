@@ -1014,14 +1014,30 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             .coerceIn(0, speeds.size - 1)
         val currentSpeed = speeds[savedSpeedIndex]
 
+        val drmDecision = ani.dantotsu.media.anime.player.DrmBackendPolicy.decideBackend(video?.drm) { uuid ->
+            runCatching { android.media.MediaDrm.isCryptoSchemeSupported(uuid) }.getOrDefault(false)
+        }
+        if (drmDecision is ani.dantotsu.media.anime.player.DrmBackendPolicy.BackendDecision.Unsupported) {
+            // HOLD3 D4 fail-closed: an explicitly DRM-identified stream with
+            // an unsupported/malformed configuration is NOT clear content —
+            // never attempt MPV. Explicit error → toast + source picker.
+            onPlayerError(
+                PlaybackError(
+                    category = ErrorCategory.SOURCE,
+                    message = "DRM unavailable: ${drmDecision.reason}",
+                    fatal = true,
+                    retryable = false
+                )
+            )
+            return
+        }
         val engine = playerManager.initPlayer(
             savedPosition,
             currentSpeed,
             object : PlaybackListener {},
             // MAX MERGE M4B DRM: DRM-tagged streams route to the narrow
             // Media3 DRM backend; everything else stays on MPV.
-            preferDrmBackend = ani.dantotsu.media.anime.player.DrmBackendPolicy.selectBackend(video?.drm) ==
-                ani.dantotsu.media.anime.player.DrmBackendPolicy.Backend.MEDIA3_DRM
+            preferDrmBackend = drmDecision is ani.dantotsu.media.anime.player.DrmBackendPolicy.BackendDecision.DrmReady
         )
         val active = playbackSession.bind(selEp ?: episode.number, engine)
         engine.addListener(playbackSession.listener(active, { selectedEpisodeKey() }, this))

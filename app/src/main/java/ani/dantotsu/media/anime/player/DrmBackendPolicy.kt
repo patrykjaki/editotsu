@@ -11,8 +11,6 @@ import java.util.UUID
  */
 object DrmBackendPolicy {
 
-    enum class Backend { MPV, MEDIA3_DRM }
-
     enum class Scheme(val uuid: UUID) {
         WIDEVINE(UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed")),
         PLAYREADY(UUID.fromString("9a04f079-9840-4286-ab92-e65be0885f95")),
@@ -28,17 +26,41 @@ object DrmBackendPolicy {
     }
 
     /**
-     * Backend selection:
-     * - drm == null → MPV
-     * - unknown scheme or blank license URL → MPV (malformed stays clear)
-     * - otherwise → Media3 DRM backend
+     * Backend selection (HOLD3 D4, fail-closed):
+     * - drm == null → [ClearMpv] (correct: no DRM signal at all)
+     * - unknown scheme or blank license URL → [Unsupported] (an explicitly
+     *   DRM-identified stream is NOT clear content; sending it to MPV would
+     *   only produce a confusing playback failure)
+     * - scheme known but absent on this device → [Unsupported]
+     * - otherwise → [DrmReady]
+     *
+     * @param isSchemeSupportedOnDevice device CDM capability probe
+     * (android MediaDrm on device; injected in tests).
      */
-    fun selectBackend(drm: DrmInfo?): Backend {
-        if (drm == null) return Backend.MPV
-        if (mapScheme(drm.scheme) == null) return Backend.MPV
-        if (drm.licenseUrl.isBlank()) return Backend.MPV
-        return Backend.MEDIA3_DRM
+    sealed interface BackendDecision {
+        data object ClearMpv : BackendDecision
+        data object DrmReady : BackendDecision
+        data class Unsupported(val reason: String) : BackendDecision
     }
+
+    fun decideBackend(
+        drm: DrmInfo?,
+        isSchemeSupportedOnDevice: (UUID) -> Boolean = { false },
+    ): BackendDecision {
+        if (drm == null) return BackendDecision.ClearMpv
+        val scheme = mapScheme(drm.scheme)
+            ?: return BackendDecision.Unsupported("unknown DRM scheme '${drm.scheme}'")
+        if (drm.licenseUrl.isBlank()) {
+            return BackendDecision.Unsupported("missing license URL for ${scheme.name}")
+        }
+        if (!runCatching { isSchemeSupportedOnDevice(scheme.uuid) }.getOrDefault(false)) {
+            return BackendDecision.Unsupported("${scheme.name} not supported on this device")
+        }
+        return BackendDecision.DrmReady
+    }
+
+    /** Reverse lookup for scheme-aware license handling; null when unknown. */
+    fun schemeForUuid(uuid: UUID): Scheme? = Scheme.entries.firstOrNull { it.uuid == uuid }
 
     /** Validated license request carried into the DRM session configuration. */
     data class LicenseRequest(val url: String, val headers: Map<String, String>)
@@ -51,18 +73,19 @@ object DrmBackendPolicy {
     }
 
     /**
-     * License-response pre-normalization without JSON (pure JVM bytes):
-     * a Widevine SignedMessage protobuf starts with 0x08 and passes through;
-     * anything else is a base64 candidate that must decode to a 0x08-led
-     * payload to be accepted, otherwise the raw bytes pass through for the
-     * Android layer's JSON-envelope handling.
+     * License-response pre-normalization without JSON (pure JVM bytes),
+     * Widevine only. A SignedMessage protobuf starts with 0x08 and passes
+     * through; anything else is a base64 candidate accepted only when it
+     * decodes to a 0x08-led payload, otherwise raw bytes pass through for
+     * the Android layer's JSON-envelope handling. Non-Widevine schemes must
+     * use [normalizeLicenseForScheme] so their bodies are never transformed.
      */
     sealed interface LicenseBytes {
         data class Passthrough(val raw: ByteArray) : LicenseBytes
         data class Decoded(val bytes: ByteArray) : LicenseBytes
     }
 
-    fun normalizeLicenseBytes(raw: ByteArray): LicenseBytes {
+    fun normalizeWidevineLicense(raw: ByteArray): LicenseBytes {
         if (raw.isEmpty() || raw[0] == 0x08.toByte()) {
             return LicenseBytes.Passthrough(raw)
         }
@@ -74,4 +97,28 @@ object DrmBackendPolicy {
         }
         return LicenseBytes.Passthrough(raw)
     }
+
+    /** Scheme gate: only Widevine bodies are normalized, the rest pass through. */
+    fun normalizeLicenseForScheme(raw: ByteArray, scheme: Scheme?): LicenseBytes =
+        if (scheme == Scheme.WIDEVINE) normalizeWidevineLicense(raw)
+        else LicenseBytes.Passthrough(raw)
+
+    /**
+     * JSON-envelope candidacy tolerant of leading ASCII whitespace and a
+     * UTF-8 BOM: only the first non-ws byte matters. Anything else is never
+     * JSON and must not reach a JSON parser.
+     */
+    fun isJsonEnvelopeCandidate(raw: ByteArray): Boolean {
+        var i = 0
+        if (raw.size >= 3 && raw[0] == 0xEF.toByte() && raw[1] == 0xBB.toByte() && raw[2] == 0xBF.toByte()) {
+            i = 3
+        }
+        while (i < raw.size && (raw[i] == 0x20.toByte() || raw[i] == 0x09.toByte() || raw[i] == 0x0A.toByte() || raw[i] == 0x0D.toByte())) {
+            i++
+        }
+        return i < raw.size && raw[i] == '{'.code.toByte()
+    }
+
+    /** Fixed envelope-failure message: raw license bodies never enter logs/errors. */
+    const val LICENSE_ENVELOPE_ERROR = "license server returned an error response"
 }

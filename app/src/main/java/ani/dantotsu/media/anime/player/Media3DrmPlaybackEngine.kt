@@ -67,9 +67,21 @@ class Media3DrmPlaybackEngine(
     private var audioGroups: List<Pair<Int, Int>> = emptyList()
     private var subtitleGroups: List<Pair<Int, Int>> = emptyList()
     private var cuesListener: ((List<androidx.media3.common.text.Cue>) -> Unit)? = null
+    private var styleApplier: ((SubtitleStyle) -> Unit)? = null
+    // HOLD3 D1: request-scoped transport. The player (and its factories)
+    // are rebuilt when the request headers change so source headers always
+    // reach manifest/segment/subtitle loads exactly as carried.
+    private var activeMediaHeaders: Map<String, String> = emptyMap()
+    private var activeSubtitleHeaders: Map<String, Map<String, String>> = emptyMap()
+    private var mediaSourceFactory: DefaultMediaSourceFactory? = null
 
     fun setCuesListener(listener: ((List<androidx.media3.common.text.Cue>) -> Unit)?) {
         cuesListener = listener
+    }
+
+    fun setStyleApplier(applier: ((SubtitleStyle) -> Unit)?) {
+        styleApplier = applier
+        applier?.invoke(style)
     }
 
     private val exoListener = object : Player.Listener {
@@ -281,15 +293,21 @@ class Media3DrmPlaybackEngine(
         mainHandler.post {
             val p = player ?: return@post
             val req = activeRequest ?: return@post
-            val config = MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(uri))
-                .setMimeType(guessSubtitleMime(uri))
-                .setLanguage(language)
-                .setLabel(title)
-                .apply { if (select) setSelectionFlags(C.SELECTION_FLAG_DEFAULT) }
-                .build()
+            // Same MIME inference as initial subtitles (HOLD3 D3); the
+            // request-scoped routing factory preserves header context.
+            val extra = ExternalSubtitle(
+                url = uri,
+                title = title,
+                language = language,
+                selected = select
+            )
+            val merged = req.copy(
+                externalSubtitles = req.externalSubtitles + extra
+            )
+            activeRequest = merged
             val position = p.currentPosition
             val autoplay = p.playWhenReady
-            p.setMediaItem(buildMediaItem(req, req.drm, (req.subtitleConfigs + config)))
+            p.setMediaSource(buildMediaSource(merged))
             p.prepare()
             p.seekTo(position)
             p.playWhenReady = autoplay
@@ -298,10 +316,33 @@ class Media3DrmPlaybackEngine(
 
     override fun applySubtitleStyle(style: SubtitleStyle) {
         this.style = style
+        styleApplier?.invoke(style)
     }
 
     override fun setResizeMode(mode: ResizeMode) {
-        // Aspect handling stays with the player view's SurfaceView layout.
+        // MPV-only aspects (stretch, fixed-ratio overrides) have no Media3
+        // equivalent and keep aspect on this backend; FIT/ZOOM map to the
+        // matching scaling modes. See matrix for the exact gap list.
+        mainHandler.post {
+            player?.videoScalingMode = when (mode) {
+                ResizeMode.FIT -> C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                ResizeMode.ZOOM -> C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+                else -> {
+                    Logger.log("Media3DrmPlaybackEngine: $mode has no scaling equivalent, keeping aspect")
+                    C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                }
+            }
+        }
+    }
+
+    override fun setSubtitleDelay(delayMs: Long) {
+        // Explicitly unsupported on this backend (no Media3 cue-offset API);
+        // logged + documented instead of silently accepted.
+        Logger.log("Media3DrmPlaybackEngine: subtitle delay unsupported, ignoring ${delayMs}ms")
+    }
+
+    override fun setAudioDelay(delayMs: Long) {
+        Logger.log("Media3DrmPlaybackEngine: audio delay unsupported, ignoring ${delayMs}ms")
     }
 
     override fun loadMedia(request: PlaybackRequest) {
@@ -310,9 +351,9 @@ class Media3DrmPlaybackEngine(
         generation += 1
         mainHandler.post {
             if (released) return@post
-            ensurePlayer()
+            ensurePlayer(request)
             val p = player ?: return@post
-            p.setMediaItem(buildMediaItem(request, request.drm, request.subtitleConfigs))
+            p.setMediaSource(buildMediaSource(request))
             p.prepare()
             p.seekTo(request.startPositionMs.coerceAtLeast(0L))
             state = PlaybackState.Buffering
@@ -333,13 +374,9 @@ class Media3DrmPlaybackEngine(
         released = true
         mainHandler.post {
             stopTicker()
-            try {
-                player?.removeListener(exoListener)
-                player?.release()
-            } catch (_: Exception) {
-            }
-            player = null
+            releasePlayerInternal()
             cuesListener = null
+            styleApplier = null
             listeners.clear()
         }
     }
@@ -352,24 +389,93 @@ class Media3DrmPlaybackEngine(
         listeners.remove(listener)
     }
 
-    private fun ensurePlayer() {
-        if (player != null) return
-        val licenseFactory = OkHttpDataSource.Factory(httpClient)
-        val mediaFactory = OkHttpDataSource.Factory(httpClient).apply {
-            setUserAgent("Editotsu/${android.os.Build.MODEL}")
+    private fun ensurePlayer(request: PlaybackRequest) {
+        // HOLD3 D1: the media factory is request-scoped. Extension headers
+        // (incl. User-Agent) reach every manifest/segment/subtitle load
+        // exactly as carried; nothing is overwritten with a synthetic UA.
+        // The license factory stays header-free so media Authorization/Cookie
+        // never leaks to an unrelated license host.
+        if (player != null && activeMediaHeaders == request.headers &&
+            activeSubtitleHeaders == subtitleHeaderMap(request)
+        ) {
+            return
         }
+        releasePlayerInternal()
+        activeMediaHeaders = request.headers.toMap()
+        activeSubtitleHeaders = subtitleHeaderMap(request)
+        val subHeaders = activeSubtitleHeaders
+        val mediaFactory = OkHttpDataSource.Factory(httpClient).apply {
+            setDefaultRequestProperties(DrmTransportPlan.ensureUserAgent(request.headers, defaultDrmUa()))
+        }
+        val routedFactory = HeaderRoutingDataSource.Factory(mediaFactory) { uri ->
+            subHeaders[uri] ?: emptyMap()
+        }
+        val licenseFactory = OkHttpDataSource.Factory(httpClient)
+        mediaSourceFactory = DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(routedFactory)
+            .setDrmSessionManagerProvider(WrappedDrmCallback.providerFor(licenseFactory))
         val exo = ExoPlayer.Builder(context)
             .setTrackSelector(trackSelector)
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(context)
-                    .setDataSourceFactory(mediaFactory)
-                    .setDrmSessionManagerProvider(WrappedDrmCallback.providerFor(licenseFactory))
-            )
+            .setMediaSourceFactory(mediaSourceFactory!!)
             .setLoadControl(DefaultLoadControl())
             .build()
         exo.addListener(exoListener)
         player = exo
         startTicker()
+    }
+
+    private fun subtitleHeaderMap(request: PlaybackRequest): Map<String, Map<String, String>> =
+        DrmTransportPlan.planSubtitleAttachments(request.externalSubtitles)
+            .associate { it.url to it.headers }
+            .filterValues { it.isNotEmpty() }
+
+    private fun defaultDrmUa(): String = "Editotsu/${android.os.Build.MODEL}"
+
+    private fun releasePlayerInternal() {
+        try {
+            player?.removeListener(exoListener)
+            player?.stop()
+            player?.release()
+        } catch (_: Exception) {
+        }
+        player = null
+    }
+
+    /**
+     * HOLD3 D2: primary DRM source merged with 0..N external-audio side
+     * sources (each with its own preserved header context). Skipped tracks
+     * never reach the merge; they were excluded by the plan, not dropped
+     * silently here.
+     */
+    private fun buildMediaSource(request: PlaybackRequest): androidx.media3.exoplayer.source.MergingMediaSource {
+        val factory = mediaSourceFactory
+            ?: throw IllegalStateException("player must be ensured before building sources")
+        val primary = factory.createMediaSource(buildMediaItem(request, request.drm, request.subtitleConfigs))
+        val plan = DrmTransportPlan.planAudioMerge(request.uri, request.externalAudioTracks)
+        if (!plan.hasSides) return androidx.media3.exoplayer.source.MergingMediaSource(primary)
+        val sides = plan.sides.map { side ->
+            // Side tracks usually share the source host: inherit the request
+            // UA only when the side carries none of its own; never overwrite.
+            val withFallback = if (side.headers.keys.any { it.equals("User-Agent", ignoreCase = true) }) {
+                side.headers
+            } else {
+                val reqUa = request.headers.entries.firstOrNull {
+                    it.key.equals("User-Agent", ignoreCase = true)
+                }
+                if (reqUa == null) side.headers else side.headers + (reqUa.key to reqUa.value)
+            }
+            val sideFactory = OkHttpDataSource.Factory(httpClient).apply {
+                setDefaultRequestProperties(DrmTransportPlan.ensureUserAgent(withFallback, defaultDrmUa()))
+            }
+            androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(sideFactory)
+                .createMediaSource(
+                    MediaItem.Builder()
+                        .setUri(side.url)
+                        .apply { side.mime?.let(::setMimeType) }
+                        .build()
+                )
+        }
+        return androidx.media3.exoplayer.source.MergingMediaSource(primary, *sides.toTypedArray())
     }
 
     private fun buildMediaItem(
@@ -385,16 +491,6 @@ class Media3DrmPlaybackEngine(
             buildDrmConfiguration(info)?.let(builder::setDrmConfiguration)
         }
         return builder.build()
-    }
-
-    private fun guessSubtitleMime(uri: String): String {
-        val lower = uri.substringBefore("?").lowercase()
-        return when {
-            lower.endsWith(".vtt") || lower.endsWith(".webvtt") -> MimeTypes.TEXT_VTT
-            lower.endsWith(".srt") -> MimeTypes.APPLICATION_SUBRIP
-            lower.endsWith(".ssa") || lower.endsWith(".ass") -> MimeTypes.TEXT_SSA
-            else -> MimeTypes.TEXT_VTT
-        }
     }
 
     private val ticker = object : Runnable {
@@ -452,9 +548,9 @@ internal fun buildDrmConfiguration(drm: ani.dantotsu.parsers.DrmInfo): MediaItem
 }
 
 private val PlaybackRequest.subtitleConfigs: List<MediaItem.SubtitleConfiguration>
-    get() = externalSubtitles.map { sub ->
+    get() = DrmTransportPlan.planSubtitleAttachments(externalSubtitles).map { sub ->
         MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(sub.url))
-            .setMimeType(MimeTypes.TEXT_VTT)
+            .setMimeType(sub.mime)
             .setLanguage(sub.language)
             .setLabel(sub.title)
             .apply { if (sub.selected) setSelectionFlags(C.SELECTION_FLAG_DEFAULT) }

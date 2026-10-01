@@ -37,23 +37,30 @@ class WrappedDrmCallback(private val delegate: HttpMediaDrmCallback) : MediaDrmC
         request: ExoMediaDrm.KeyRequest,
     ): ByteArray {
         val response = delegate.executeKeyRequest(uuid, request)
-        return when (val normalized = DrmBackendPolicy.normalizeLicenseBytes(response)) {
+        // HOLD3: scheme-aware normalization. Only Widevine bodies are
+        // unwrapped; PlayReady/ClearKey/unknown responses pass through
+        // untouched so their formats can never be mishandled here.
+        val scheme = DrmBackendPolicy.schemeForUuid(uuid)
+        return when (val normalized = DrmBackendPolicy.normalizeLicenseForScheme(response, scheme)) {
             is DrmBackendPolicy.LicenseBytes.Decoded -> normalized.bytes.also {
                 Logger.log("DRM: decoded base64 license (${response.size} -> ${it.size} bytes)")
             }
-            is DrmBackendPolicy.LicenseBytes.Passthrough -> unwrapJsonEnvelope(response)
+            is DrmBackendPolicy.LicenseBytes.Passthrough ->
+                if (scheme == DrmBackendPolicy.Scheme.WIDEVINE) unwrapJsonEnvelope(response)
+                else response
         }
     }
 
     private fun unwrapJsonEnvelope(raw: ByteArray): ByteArray {
-        if (raw.isEmpty() || raw[0] != '{'.code.toByte()) return raw
+        if (!DrmBackendPolicy.isJsonEnvelopeCandidate(raw)) return raw
         val text = String(raw, Charsets.UTF_8)
         val encoded = runCatching {
             val obj = JSONObject(text)
             obj.optString("license").ifEmpty { obj.optString("licenseMessage") }
         }.getOrNull()
         if (encoded.isNullOrEmpty()) {
-            throw IllegalStateException("license server returned an error: ${text.take(200)}")
+            // Never place raw license bodies in errors/logs.
+            throw IllegalStateException(DrmBackendPolicy.LICENSE_ENVELOPE_ERROR)
         }
         Logger.log("DRM: unwrapped JSON license envelope")
         return runCatching {

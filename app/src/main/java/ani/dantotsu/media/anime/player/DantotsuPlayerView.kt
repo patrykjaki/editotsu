@@ -91,13 +91,40 @@ class DantotsuPlayerView @JvmOverloads constructor(
             addView(overlay)
             drmSubtitleView = overlay
             engine.setCuesListener { cues -> post { overlay.setCues(cues) } }
+            engine.setStyleApplier { style -> post { applyDrmSubtitleStyle(overlay, style) } }
         }
+    }
+
+    /**
+     * HOLD3 parity: the shared [SubtitleStyle] reaches the DRM cue overlay
+     * (colors + fixed size, embedded styles stay on for the rest) instead of
+     * being silently stored.
+     */
+    private fun applyDrmSubtitleStyle(
+        overlay: androidx.media3.ui.SubtitleView,
+        style: SubtitleStyle,
+    ) {
+        overlay.setStyle(
+            androidx.media3.ui.CaptionStyleCompat(
+                style.textColor,
+                style.backgroundColor,
+                android.graphics.Color.TRANSPARENT,
+                androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                style.borderColor,
+                null
+            )
+        )
+        overlay.setFixedTextSize(
+            android.util.TypedValue.COMPLEX_UNIT_SP,
+            style.fontSizeSp.coerceIn(8f, 48f)
+        )
     }
 
     fun unbindEngine() {
         engine?.removeListener(this)
         engine?.setVideoSurface(null)
         (engine as? Media3DrmPlaybackEngine)?.setCuesListener(null)
+        (engine as? Media3DrmPlaybackEngine)?.setStyleApplier(null)
         drmSubtitleView?.let { removeView(it) }
         drmSubtitleView = null
         engine = null

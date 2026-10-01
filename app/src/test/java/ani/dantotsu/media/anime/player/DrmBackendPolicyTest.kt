@@ -15,16 +15,21 @@ class DrmBackendPolicyTest {
 
     private fun drm(scheme: String, url: String) = DrmInfo(scheme, url)
 
+    private fun decide(
+        drm: DrmInfo?,
+        supported: Boolean = true,
+    ) = DrmBackendPolicy.decideBackend(drm) { supported }
+
     @Test
     fun `clear video selects MPV backend`() {
-        assertEquals(DrmBackendPolicy.Backend.MPV, DrmBackendPolicy.selectBackend(null))
+        assertEquals(DrmBackendPolicy.BackendDecision.ClearMpv, decide(null))
     }
 
     @Test
     fun `widevine video selects DRM backend`() {
         assertEquals(
-            DrmBackendPolicy.Backend.MEDIA3_DRM,
-            DrmBackendPolicy.selectBackend(drm("widevine", "https://lic.example/wv"))
+            DrmBackendPolicy.BackendDecision.DrmReady,
+            decide(drm("widevine", "https://lic.example/wv"))
         )
     }
 
@@ -53,15 +58,41 @@ class DrmBackendPolicyTest {
     }
 
     @Test
-    fun `malformed or absent metadata stays clear path`() {
-        assertEquals(DrmBackendPolicy.Backend.MPV, DrmBackendPolicy.selectBackend(drm("", "https://lic.example/x")))
-        assertEquals(DrmBackendPolicy.Backend.MPV, DrmBackendPolicy.selectBackend(drm("rot13", "https://lic.example/x")))
-        assertEquals(DrmBackendPolicy.Backend.MPV, DrmBackendPolicy.selectBackend(drm("widevine", "")))
-        assertEquals(DrmBackendPolicy.Backend.MPV, DrmBackendPolicy.selectBackend(drm("widevine", "   ")))
+    fun `malformed or absent metadata fails closed, never MPV`() {
+        val bad = listOf(
+            drm("", "https://lic.example/x"),
+            drm("rot13", "https://lic.example/x"),
+            drm("widevine", ""),
+            drm("widevine", "   ")
+        )
+        for (d in bad) {
+            val decision = decide(d)
+            assertTrue(
+                "drm=$d",
+                decision is DrmBackendPolicy.BackendDecision.Unsupported
+            )
+        }
         assertNull(DrmBackendPolicy.mapScheme(null))
         assertNull(DrmBackendPolicy.mapScheme("  "))
         assertNull(DrmBackendPolicy.licenseRequest(drm("widevine", "")))
         assertNull(DrmBackendPolicy.licenseRequest(drm("nope", "https://lic.example/x")))
+    }
+
+    @Test
+    fun `unsupported decision carries an explicit reason`() {
+        val decision = decide(drm("rot13", "https://lic.example/x"))
+        assertTrue(decision is DrmBackendPolicy.BackendDecision.Unsupported)
+        assertTrue((decision as DrmBackendPolicy.BackendDecision.Unsupported).reason.isNotBlank())
+    }
+
+    @Test
+    fun `device without scheme support fails closed`() {
+        val decision = decide(drm("playready", "https://lic.example/pr"), supported = false)
+        assertTrue(decision is DrmBackendPolicy.BackendDecision.Unsupported)
+        assertEquals(
+            DrmBackendPolicy.BackendDecision.DrmReady,
+            decide(drm("playready", "https://lic.example/pr"), supported = true)
+        )
     }
 
     @Test
@@ -92,26 +123,77 @@ class DrmBackendPolicyTest {
     @Test
     fun `protobuf license passes through`() {
         val raw = byteArrayOf(0x08, 0x01, 0x02)
-        val out = DrmBackendPolicy.normalizeLicenseBytes(raw)
+        val out = DrmBackendPolicy.normalizeWidevineLicense(raw)
         assertTrue(out is DrmBackendPolicy.LicenseBytes.Passthrough)
         assertEquals(raw.toList(), (out as DrmBackendPolicy.LicenseBytes.Passthrough).raw.toList())
-        assertTrue(DrmBackendPolicy.normalizeLicenseBytes(byteArrayOf()) is DrmBackendPolicy.LicenseBytes.Passthrough)
+        assertTrue(DrmBackendPolicy.normalizeWidevineLicense(byteArrayOf()) is DrmBackendPolicy.LicenseBytes.Passthrough)
     }
 
     @Test
     fun `base64 license decodes`() {
         val protobuf = byteArrayOf(0x08, 0x10, 0x20, 0x30)
         val b64 = java.util.Base64.getEncoder().encodeToString(protobuf).toByteArray()
-        val out = DrmBackendPolicy.normalizeLicenseBytes(b64)
+        val out = DrmBackendPolicy.normalizeWidevineLicense(b64)
         assertTrue(out is DrmBackendPolicy.LicenseBytes.Decoded)
         assertEquals(protobuf.toList(), (out as DrmBackendPolicy.LicenseBytes.Decoded).bytes.toList())
     }
 
     @Test
     fun `non license bytes pass through for envelope handling`() {
-        val out = DrmBackendPolicy.normalizeLicenseBytes("{\"license\":\"oops\"}".toByteArray())
+        val out = DrmBackendPolicy.normalizeWidevineLicense("{\"license\":\"oops\"}".toByteArray())
         assertTrue(out is DrmBackendPolicy.LicenseBytes.Passthrough)
-        val garbage = DrmBackendPolicy.normalizeLicenseBytes("!!!not-base64!!!".toByteArray())
+        val garbage = DrmBackendPolicy.normalizeWidevineLicense("!!!not-base64!!!".toByteArray())
         assertTrue(garbage is DrmBackendPolicy.LicenseBytes.Passthrough)
+    }
+
+    @Test
+    fun `non-widevine bodies are never transformed`() {
+        val protobuf = byteArrayOf(0x08, 0x10, 0x20)
+        val b64 = java.util.Base64.getEncoder().encodeToString(protobuf).toByteArray()
+        val envelope = "{\"license\":\"oops\"}".toByteArray()
+        for (scheme in listOf(
+            DrmBackendPolicy.Scheme.PLAYREADY,
+            DrmBackendPolicy.Scheme.CLEARKEY,
+            null
+        )) {
+            for (body in listOf(protobuf, b64, envelope)) {
+                val out = DrmBackendPolicy.normalizeLicenseForScheme(body, scheme)
+                assertTrue(out is DrmBackendPolicy.LicenseBytes.Passthrough)
+                assertEquals(
+                    body.toList(),
+                    (out as DrmBackendPolicy.LicenseBytes.Passthrough).raw.toList()
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `widevine normalization still applies through the scheme gate`() {
+        val protobuf = byteArrayOf(0x08, 0x10, 0x20, 0x30)
+        val b64 = java.util.Base64.getEncoder().encodeToString(protobuf).toByteArray()
+        val out = DrmBackendPolicy.normalizeLicenseForScheme(
+            b64, DrmBackendPolicy.Scheme.WIDEVINE
+        )
+        assertTrue(out is DrmBackendPolicy.LicenseBytes.Decoded)
+    }
+
+    @Test
+    fun `envelope candidacy tolerates whitespace and BOM`() {
+        assertTrue(DrmBackendPolicy.isJsonEnvelopeCandidate("{\"a\":1}".toByteArray()))
+        assertTrue(DrmBackendPolicy.isJsonEnvelopeCandidate("  \n\t {\"a\":1}".toByteArray()))
+        val bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + "{\"a\":1}".toByteArray()
+        assertTrue(DrmBackendPolicy.isJsonEnvelopeCandidate(bom))
+        assertTrue(!DrmBackendPolicy.isJsonEnvelopeCandidate(byteArrayOf(0x08, 0x01)))
+        assertTrue(!DrmBackendPolicy.isJsonEnvelopeCandidate("oops".toByteArray()))
+        assertTrue(!DrmBackendPolicy.isJsonEnvelopeCandidate(byteArrayOf()))
+        assertTrue(!DrmBackendPolicy.isJsonEnvelopeCandidate("   ".toByteArray()))
+    }
+
+    @Test
+    fun `envelope failure message carries no body`() {
+        assertEquals(
+            "license server returned an error response",
+            DrmBackendPolicy.LICENSE_ENVELOPE_ERROR
+        )
     }
 }
