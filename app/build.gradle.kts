@@ -280,6 +280,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -328,6 +329,8 @@ dependencies {
     implementation(libs.bundles.glide)
     ksp(libs.glide.ksp)
 
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
+
     implementation(libs.bundles.media3)
     implementation(libs.mediarouter)
 
@@ -339,7 +342,13 @@ dependencies {
     implementation(libs.kenburns)
     implementation(libs.subsampling)
     implementation(libs.gesture)
-    implementation(libs.ebook)
+    // Readium Kotlin Toolkit (MAX MERGE M4A, upstream bb7563ad)
+    implementation(libs.readium.shared)
+    implementation(libs.readium.streamer)
+    implementation(libs.readium.navigator)
+    implementation(libs.readium.navigator.media.tts)
+    implementation(libs.readium.adapter.pdfium.document)
+    implementation(libs.readium.adapter.pdfium.navigator)
     implementation(libs.dialogs)
     implementation(libs.charts)
 
