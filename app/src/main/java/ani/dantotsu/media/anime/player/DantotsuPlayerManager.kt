@@ -76,7 +76,10 @@ class DantotsuPlayerManager(
                     headers = sub.file.headers,
                     // HOLD6: preserve authoritative parser MIME (Subtitle.type)
                     // so opaque URLs keep ASS/SRT instead of defaulting to VTT.
-                    mimeType = DrmTransportPlan.subtitleMimeForType(sub.type)
+                    mimeType = DrmTransportPlan.subtitleMimeForType(sub.type),
+                    // HOLD7: deterministic stable key for exact intent
+                    // matching (propagated to SubtitleConfiguration.id).
+                    id = resolvedUrl
                 )
             }
         } ?: emptyList()

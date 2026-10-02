@@ -136,6 +136,8 @@ object DrmTransportPlan {
         val selected: Boolean,
         /** file://, content://, or absolute-path subs ride the multi-scheme path. */
         val local: Boolean,
+        /** Stable intent key (resolved URI); propagated to config id. */
+        val id: String,
     )
 
     /** Local (non-HTTP) subtitle/file detection for the multi-scheme path. */
@@ -158,7 +160,8 @@ object DrmTransportPlan {
                 language = sub.language,
                 title = sub.title,
                 selected = sub.selected,
-                local = isLocalUri(url)
+                local = isLocalUri(url),
+                id = sub.id?.takeIf { it.isNotBlank() } ?: url
             )
         }
 

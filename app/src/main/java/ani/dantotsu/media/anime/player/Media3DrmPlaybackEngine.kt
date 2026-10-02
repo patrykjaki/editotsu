@@ -66,6 +66,10 @@ class Media3DrmPlaybackEngine(
     private var subtitleTracks: List<PlayerTrack> = emptyList()
     private var audioGroups: List<Pair<Int, Int>> = emptyList()
     private var subtitleGroups: List<Pair<Int, Int>> = emptyList()
+    // HOLD7: parallel external-id list for exact intent matching
+    // (Format.id propagated from SubtitleConfiguration.id).
+    private var subtitleExternalIds: List<String?> = emptyList()
+    private val subtitleIntent = DrmSubtitleIntentMachine()
     private var cuesListener: ((List<androidx.media3.common.text.Cue>) -> Unit)? = null
     private var styleApplier: ((SubtitleStyle) -> Unit)? = null
     // HOLD4 B1/B2: output-affecting commands arrive before ExoPlayer exists
@@ -187,7 +191,64 @@ class Media3DrmPlaybackEngine(
         subtitleTracks = subs
         audioGroups = audioIdx
         subtitleGroups = subIdx
+        subtitleExternalIds = tracks.groups.flatMap { group ->
+            if (group.type != C.TRACK_TYPE_TEXT) emptyList()
+            else (0 until group.length).map { group.getTrackFormat(it).id }
+        }
         listeners.forEach { it.onTracksChanged(audioTracks + subtitleTracks) }
+        evaluateSubtitleIntent()
+    }
+
+    /**
+     * HOLD7: single evaluation point mapping intent state to track-selector
+     * commands. Stale generations are ignored inside the machine.
+     */
+    private fun evaluateSubtitleIntent() {
+        val req = activeRequest ?: return
+        val refs = subtitleTracks.mapIndexed { index, track ->
+            DrmSubtitleIntentMachine.TrackRef(
+                id = track.id,
+                externalId = subtitleExternalIds.getOrNull(index),
+                language = track.language,
+                name = track.name,
+                default = track.default,
+                forced = track.forced
+            )
+        }
+        val autoId = resolveDrmAutoSubtitleId(refs, req.preferredSubLang)
+        val currentSelectedId = subtitleTracks.firstOrNull { it.selected }?.id
+        applySubtitleAction(
+            subtitleIntent.onTracksAvailable(generation, refs, autoId, currentSelectedId)
+        )
+    }
+
+    private fun applySubtitleAction(action: DrmSubtitleIntentMachine.Action) {
+        when (action) {
+            is DrmSubtitleIntentMachine.Action.NoOp -> Unit
+            is DrmSubtitleIntentMachine.Action.DisableText -> {
+                val params = trackSelector.parameters.buildUpon()
+                params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                trackSelector.parameters = params.build()
+            }
+            is DrmSubtitleIntentMachine.Action.EnableTextAuto -> {
+                val params = trackSelector.parameters.buildUpon()
+                params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                params.clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                trackSelector.parameters = params.build()
+            }
+            is DrmSubtitleIntentMachine.Action.SelectTrack -> {
+                val params = trackSelector.parameters.buildUpon()
+                params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                subtitleGroups.getOrNull(action.id)?.let { (groupIndex, trackIndex) ->
+                    player?.currentTracks?.groups?.getOrNull(groupIndex)?.let { group ->
+                        params.setOverrideForType(
+                            TrackSelectionOverride(group.mediaTrackGroup, trackIndex)
+                        )
+                    }
+                }
+                trackSelector.parameters = params.build()
+            }
+        }
     }
 
     override val positionMs: Long get() = player?.currentPosition ?: 0L
@@ -276,22 +337,9 @@ class Media3DrmPlaybackEngine(
     }
 
     override fun selectSubtitleTrack(id: Int?) {
-        mainHandler.post {
-            val params = trackSelector.parameters.buildUpon()
-            if (id == null) {
-                params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-            } else {
-                params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                subtitleGroups.getOrNull(id)?.let { (groupIndex, trackIndex) ->
-                    player?.currentTracks?.groups?.getOrNull(groupIndex)?.let { group ->
-                        params.setOverrideForType(
-                            TrackSelectionOverride(group.mediaTrackGroup, trackIndex)
-                        )
-                    }
-                }
-            }
-            trackSelector.parameters = params.build()
-        }
+        // HOLD7: explicit user intent routes through the machine (newest
+        // intent wins, Off disables); never touches the selector directly.
+        mainHandler.post { applySubtitleAction(subtitleIntent.onSelectTrack(id)) }
     }
 
     override fun addExternalSubtitle(
@@ -309,9 +357,30 @@ class Media3DrmPlaybackEngine(
             val req = activeRequest ?: return@post
             val merged = DrmTransportPlan.attachLiveSubtitle(
                 req,
-                ExternalSubtitle(url = uri, title = title, language = language, selected = select)
+                ExternalSubtitle(
+                    url = uri,
+                    title = title,
+                    language = language,
+                    selected = select,
+                    id = uri
+                )
             )
-            if (merged.externalSubtitles.size == req.externalSubtitles.size) return@post
+            if (merged.externalSubtitles.size == req.externalSubtitles.size) {
+                // Already attached: re-assert selection when explicitly
+                // requested instead of no-opping (HOLD7 case 6).
+                if (select && explicitUserAction) {
+                    val refs = subtitleTracks.mapIndexed { index, track ->
+                        DrmSubtitleIntentMachine.TrackRef(
+                            id = track.id,
+                            externalId = subtitleExternalIds.getOrNull(index),
+                            language = track.language,
+                            name = track.name
+                        )
+                    }
+                    applySubtitleAction(subtitleIntent.onLiveExternal(uri, select, explicitUserAction, refs))
+                }
+                return@post
+            }
             val position = player?.currentPosition ?: req.startPositionMs
             val autoplay = player?.playWhenReady ?: true
             ensurePlayer(merged)
@@ -321,6 +390,18 @@ class Media3DrmPlaybackEngine(
             p.prepare()
             p.seekTo(position.coerceAtLeast(0L))
             p.playWhenReady = autoplay
+            // HOLD7: drive intent for the newly attached subtitle against
+            // currently known tracks; not-yet-materialized explicit picks
+            // become pending and win on arrival.
+            val refs = subtitleTracks.mapIndexed { index, track ->
+                DrmSubtitleIntentMachine.TrackRef(
+                    id = track.id,
+                    externalId = subtitleExternalIds.getOrNull(index),
+                    language = track.language,
+                    name = track.name
+                )
+            }
+            applySubtitleAction(subtitleIntent.onLiveExternal(uri, select, explicitUserAction, refs))
         }
     }
 
@@ -365,6 +446,16 @@ class Media3DrmPlaybackEngine(
         activeRequest = request
         error = null
         generation += 1
+        // HOLD7: initialize intent from persisted preference. None starts
+        // Off (applied immediately, even pre-player, via the bare
+        // trackSelector); request-carried selected externals become pending
+        // adoption candidates that can never beat Off.
+        val initialAction = subtitleIntent.onLoad(
+            generation,
+            request.preferredSubLang,
+            request.externalSubtitles.filter { it.selected }.map { it.id ?: it.url }
+        )
+        applySubtitleAction(initialAction)
         mainHandler.post {
             if (released) return@post
             ensurePlayer(request)
@@ -503,6 +594,8 @@ class Media3DrmPlaybackEngine(
                 .setMimeType(sub.mime)
                 .setLanguage(sub.language)
                 .setLabel(sub.title)
+                // HOLD7: stable intent key for exact external matching.
+                .setId(sub.id)
                 .apply { if (sub.selected) setSelectionFlags(C.SELECTION_FLAG_DEFAULT) }
                 .build()
             androidx.media3.exoplayer.source.SingleSampleMediaSource.Factory(scopedFactory(subHeaders))

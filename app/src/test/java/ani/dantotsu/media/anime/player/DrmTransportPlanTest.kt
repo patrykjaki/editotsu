@@ -139,7 +139,8 @@ class DrmTransportPlanTest {
                     language = "en",
                     title = "English",
                     selected = true,
-                    local = false
+                    local = false,
+                    id = "https://different.example/en.srt"
                 )
             ),
             audioSides = emptyList(),
@@ -170,7 +171,8 @@ class DrmTransportPlanTest {
                     language = "en",
                     title = "English",
                     selected = false,
-                    local = false
+                    local = false,
+                    id = "https://media.example/en.srt"
                 )
             ),
             audioSides = emptyList(),
