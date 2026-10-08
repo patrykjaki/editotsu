@@ -29,9 +29,6 @@ class DrmSubtitleIntentHold12Test {
         id, externalId, lang, name, groupIndex = group, indexInGroup = index
     )
 
-    private fun pairs(
-        refs: List<DrmSubtitleIntentMachine.TrackRef>
-    ): List<Pair<Int, String>> = refs.map { it.id to it.stableKey() }
 
     @Test
     fun `unique follow on transitional list defers`() {
@@ -78,7 +75,7 @@ class DrmSubtitleIntentHold12Test {
             ref(0, null, "en", "English", group = 0, index = 0),
             ref(1, null, "en", "English", group = 0, index = 1)
         )
-        m.noteSourceRebuilt(pairs(before))
+        m.noteSourceRebuilt(before)
         val grown = before + ref(2, "https://x/fr.vtt", "fr", group = 1, index = 0)
         val action = m.onTracksAvailable(1L, grown, null, null, tracksAuthoritative = true)
         assertTrue(action is DrmSubtitleIntentMachine.Action.SelectTrack)
@@ -93,12 +90,10 @@ class DrmSubtitleIntentHold12Test {
         m.onLoad(1L, null, emptyList())
         m.onSelectTrack(1, ref(1, null, "en", "English", group = 0, index = 1))
         m.noteSourceRebuilt(
-            pairs(
-                listOf(
+            listOf(
                     ref(0, null, "en", "English", group = 0, index = 0),
                     ref(1, null, "en", "English", group = 0, index = 1)
                 )
-            )
         )
         // Identical strings, permuted occupants, authoritative: explicit
         // fallback, never a silent retarget to the other duplicate.

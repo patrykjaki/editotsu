@@ -28,9 +28,6 @@ class DrmSubtitleIntentHold11Test {
         id, externalId, lang, name, groupIndex = group, indexInGroup = index
     )
 
-    private fun pairs(
-        refs: List<DrmSubtitleIntentMachine.TrackRef>
-    ): List<Pair<Int, String>> = refs.map { it.id to it.stableKey() }
 
 
     @Test
@@ -45,7 +42,7 @@ class DrmSubtitleIntentHold11Test {
             ref(0, null, "en", "English", group = 0, index = 0),
             ref(1, null, "en", "English", group = 0, index = 1)
         )
-        m.noteSourceRebuilt(pairs(before))
+        m.noteSourceRebuilt(before)
         val grown = before + ref(2, "https://x/fr.vtt", "fr", group = 1, index = 0)
         val action = m.onTracksAvailable(1L, grown, null, null, tracksAuthoritative = true)
         assertTrue(action is DrmSubtitleIntentMachine.Action.SelectTrack)
@@ -62,12 +59,10 @@ class DrmSubtitleIntentHold11Test {
         m.onLoad(1L, null, emptyList())
         m.onSelectTrack(1, ref(1, null, "en", "English", group = 0, index = 1))
         m.noteSourceRebuilt(
-            pairs(
-                listOf(
+            listOf(
                     ref(0, null, "en", "English", group = 0, index = 0),
                     ref(1, null, "en", "English", group = 0, index = 1)
                 )
-            )
         )
         // Same key strings, permuted occupants: index 1 now holds A.
         val swapped = listOf(
@@ -86,12 +81,10 @@ class DrmSubtitleIntentHold11Test {
         m.onLoad(1L, null, emptyList())
         m.onSelectTrack(1, ref(1, null, "spa", "Full", group = 0, index = 1))
         m.noteSourceRebuilt(
-            pairs(
-                listOf(
+            listOf(
                     ref(0, null, "en", "English", group = 0, index = 0),
                     ref(1, null, "spa", "Full", group = 0, index = 1)
                 )
-            )
         )
         val reordered = listOf(
             ref(0, null, "spa", "Full", group = 0, index = 0),
@@ -124,12 +117,10 @@ class DrmSubtitleIntentHold11Test {
         m.onLoad(1L, null, emptyList())
         m.onSelectTrack(1, ref(1, null, "en", "English", group = 0, index = 1))
         m.noteSourceRebuilt(
-            pairs(
-                listOf(
+            listOf(
                     ref(0, null, "en", "English", group = 0, index = 0),
                     ref(1, null, "en", "English", group = 0, index = 1)
                 )
-            )
         )
         // User re-confirms on the current listing: fresh exact basis.
         val refs = listOf(

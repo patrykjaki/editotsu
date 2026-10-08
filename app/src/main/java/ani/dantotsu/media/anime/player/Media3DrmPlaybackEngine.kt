@@ -447,21 +447,22 @@ class Media3DrmPlaybackEngine(
             }
             val position = player?.currentPosition ?: req.startPositionMs
             val autoplay = player?.playWhenReady ?: true
-            // HOLD12-B: snapshot the pre-rebuild text enumeration for
-            // post-rebuild order verification (append-growth ⇒ benign
-            // attach). This observes enumerations, never predicts from
-            // request URLs.
+            // HOLD12-B/HOLD14-B: snapshot the pre-rebuild text enumeration
+            // as full track refs for post-rebuild order verification
+            // (append-growth ⇒ benign attach). Ambiguity is derived from
+            // the refs directly — never by reparsing key strings, so labels
+            // containing ':' or '|' cannot corrupt the computation.
             subtitleIntent.noteSourceRebuilt(
                 subtitleTracks.mapIndexed { index, track ->
                     val (groupIndex, trackIndex) = subtitleGroups.getOrNull(index) ?: (0 to 0)
-                    track.id to DrmSubtitleIntentMachine.TrackRef(
+                    DrmSubtitleIntentMachine.TrackRef(
                         id = track.id,
                         externalId = subtitleExternalIds.getOrNull(index),
                         language = track.language,
                         name = track.name,
                         groupIndex = groupIndex,
                         indexInGroup = trackIndex
-                    ).stableKey()
+                    )
                 }
             )
             ensurePlayer(merged)

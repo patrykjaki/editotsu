@@ -162,7 +162,13 @@ class DrmSubtitleIntentMachine {
                     // when Media3 already auto-selected something else; once
                     // applied, further callbacks are idempotent NoOps. Later
                     // explicit user selections leave Unset, so they still win.
+                    // CONVERGENCE: automatic selection applies only on settled
+                    // lists — a partial enumeration must defer even when it
+                    // contains a plausible auto target. Pending adoption
+                    // above needs no authority (presence is proof).
                     if (currentSelectedId == autoId) {
+                        Action.NoOp
+                    } else if (!tracksAuthoritative) {
                         Action.NoOp
                     } else if (preferExplicit || currentSelectedId == null) {
                         Action.SelectTrack(autoId)
@@ -211,7 +217,11 @@ class DrmSubtitleIntentMachine {
                 // cannot prove the absence of a permutation (identical
                 // duplicates swapping under identical key strings). Either
                 // void source blocks positional trust for ambiguous picks.
-                if (sameIndexKey && !(ambiguous && (unverified || boundaryAmbiguous))) {
+                // HOLD14-A: a formerly ambiguous selection stays guarded even
+                // when the current list looks unique — the boundary snapshot
+                // proved duplicates existed, and the survivor may be the
+                // sibling, not the selected track.
+                if (sameIndexKey && !boundaryAmbiguous && !(ambiguous && unverified)) {
                     reassert(current.id, currentSelectedId)
                 } else {
                     val unique = trackLangName?.let { wanted ->
@@ -256,36 +266,23 @@ class DrmSubtitleIntentMachine {
 
     /**
      * Engine-reported source boundary: snapshot of the pre-rebuild text
-     * enumeration as (id, stableKey) pairs, taken by the engine from its
-     * current track lists immediately before setMediaSource. The next
-     * evaluations verify append-growth against it (prefix-preserved
-     * superset ⇒ benign attach, trust restored); any other outcome keeps
-     * positional trust void for ambiguous selections. Replaces any prior
-     * pending snapshot.
+     * enumeration, taken by the engine from its current track lists
+     * immediately before setMediaSource. Stores (id, stableKey) pairs for
+     * append-growth verification and derives pre-boundary ambiguity
+     * directly from the tracks — never by reparsing key strings, so labels
+     * containing ':' or '|' cannot corrupt the computation. Replaces any
+     * prior pending snapshot.
      */
-    fun noteSourceRebuilt(previousPairs: List<Pair<Int, String>>) {
-        pendingVerification = previousPairs.toList()
-        // HOLD13-A: ambiguity is judged against the PRE-rebuild siblings,
-        // never the post-rebuild survivors. A selection ambiguous here
-        // cannot become "confidently unique" later merely because a
+    fun noteSourceRebuilt(previousRefs: List<TrackRef>) {
+        pendingVerification = previousRefs.map { it.id to it.stableKey() }
+        // HOLD13-A/HOLD14-A: ambiguity is judged against the PRE-rebuild
+        // siblings, never the post-rebuild survivors. A selection ambiguous
+        // here cannot become "confidently unique" later merely because a
         // sibling disappeared.
         boundaryAmbiguous = trackLangName?.let { wanted ->
-            previousPairs.count { langKeyOfStableKey(it.second) == wanted } > 1
+            previousRefs.count { it.langKey() == wanted } > 1
         } ?: false
     }
-
-    /**
-     * Recovers the order-insensitive language identity from a stored
-     * stable key without needing the original track: externals keep their
-     * URI, embedded keys carry `emb:<lang>|<name>` after the coordinates.
-     * Pure and unit-tested alongside the machine.
-     */
-    fun langKeyOfStableKey(stableKey: String): String =
-        if (stableKey.startsWith("emb:")) {
-            "emb:" + stableKey.removePrefix("emb:").split(':').last()
-        } else {
-            stableKey
-        }
 
     /**
      * Pure append-growth check (unit-tested): [current] is exactly

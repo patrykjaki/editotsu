@@ -27,9 +27,6 @@ class DrmSubtitleIntentHold13Test {
         id, externalId, lang, name, groupIndex = group, indexInGroup = index
     )
 
-    private fun pairs(
-        refs: List<DrmSubtitleIntentMachine.TrackRef>
-    ): List<Pair<Int, String>> = refs.map { it.id to it.stableKey() }
 
     @Test
     fun `dropped duplicate never resolves through survivor`() {
@@ -42,7 +39,7 @@ class DrmSubtitleIntentHold13Test {
             ref(1, null, "en", "English", group = 0, index = 1)
         )
         m.onSelectTrack(1, before[1])
-        m.noteSourceRebuilt(pairs(before))
+        m.noteSourceRebuilt(before)
         val after = listOf(
             ref(0, null, "en", "English", group = 0, index = 0),
             ref(1, "https://x/fr.vtt", "fr", group = 1, index = 0)
@@ -61,7 +58,7 @@ class DrmSubtitleIntentHold13Test {
             ref(1, null, "en", "English", group = 0, index = 1)
         )
         m.onSelectTrack(1, before[1])
-        m.noteSourceRebuilt(pairs(before))
+        m.noteSourceRebuilt(before)
         val after = listOf(
             ref(0, null, "en", "English", group = 0, index = 0),
             ref(1, "https://x/fr.vtt", "fr", group = 1, index = 0)
@@ -81,12 +78,10 @@ class DrmSubtitleIntentHold13Test {
         m.onLoad(1L, null, emptyList())
         m.onSelectTrack(1, ref(1, null, "en", "English", group = 0, index = 1))
         m.noteSourceRebuilt(
-            pairs(
-                listOf(
+            listOf(
                     ref(0, null, "en", "English", group = 0, index = 0),
                     ref(1, null, "en", "English", group = 0, index = 1)
                 )
-            )
         )
         val swappedGrown = listOf(
             ref(0, null, "en", "English", group = 0, index = 1),
@@ -116,16 +111,35 @@ class DrmSubtitleIntentHold13Test {
     }
 
     @Test
-    fun `stable key language recovery is explicit`() {
+    fun `punctuated labels never corrupt boundary ambiguity`() {
+        // HOLD14-B: ambiguity is derived from structured TrackRefs, never by
+        // reparsing key strings — labels containing ':' or '|' are exact.
+        // Two identical "English: Commentary" tracks, second selected.
         val m = DrmSubtitleIntentMachine()
-        assertEquals(
-            "emb:en|English",
-            m.langKeyOfStableKey("emb:g0:i1:en|English")
+        m.onLoad(1L, null, emptyList())
+        val before = listOf(
+            ref(0, null, "en", "English: Commentary", group = 0, index = 0),
+            ref(1, null, "en", "English: Commentary", group = 0, index = 1)
         )
-        assertEquals(
-            "https://x/a.vtt",
-            m.langKeyOfStableKey("https://x/a.vtt")
+        m.onSelectTrack(1, before[1])
+        m.noteSourceRebuilt(before)
+        // B disappears; A survives at id 0. Must NOT retarget to A even
+        // though the list now looks "unique" and authoritative.
+        val after = listOf(
+            ref(0, null, "en", "English: Commentary", group = 0, index = 0),
+            ref(1, null, "fr", "French", group = 0, index = 1)
         )
+        val action = m.onTracksAvailable(1L, after, null, null, tracksAuthoritative = true)
+        assertTrue(action is DrmSubtitleIntentMachine.Action.DisableText)
+        assertTrue(m.selection is SubtitleSelection.Off)
+        // Transitional variant defers with intent preserved.
+        val m2 = DrmSubtitleIntentMachine()
+        m2.onLoad(1L, null, emptyList())
+        m2.onSelectTrack(1, before[1])
+        m2.noteSourceRebuilt(before)
+        val deferred = m2.onTracksAvailable(1L, after, null, null, tracksAuthoritative = false)
+        assertTrue(deferred is DrmSubtitleIntentMachine.Action.NoOp)
+        assertTrue(m2.selection is SubtitleSelection.Track)
     }
 
     @Test
@@ -136,12 +150,10 @@ class DrmSubtitleIntentHold13Test {
         m.onLoad(1L, null, emptyList())
         m.onSelectTrack(1, ref(1, null, "spa", "Full", group = 0, index = 1))
         m.noteSourceRebuilt(
-            pairs(
-                listOf(
+            listOf(
                     ref(0, null, "en", "English", group = 0, index = 0),
                     ref(1, null, "spa", "Full", group = 0, index = 1)
                 )
-            )
         )
         val reordered = listOf(
             ref(0, null, "spa", "Full", group = 0, index = 0),
