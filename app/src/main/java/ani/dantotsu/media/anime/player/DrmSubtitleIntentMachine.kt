@@ -62,6 +62,12 @@ class DrmSubtitleIntentMachine {
     private var trackKey: String? = null
     /** Order-insensitive identity companion to [trackKey] (reorder follow). */
     private var trackLangName: String? = null
+    /**
+     * Ordered stable keys of the last evaluated enumeration (this
+     * generation). Compared per evaluation to detect genuine reorders;
+     * null/empty carries no information and never counts as a reorder.
+     */
+    private var lastSeenKeys: List<String>? = null
 
     /**
      * New load generation. preferredSubLang "None" starts Off (action
@@ -78,6 +84,8 @@ class DrmSubtitleIntentMachine {
         pendingExternalIds = LinkedHashSet()
         explicitPendingExternalId = null
         trackKey = null
+        trackLangName = null
+        lastSeenKeys = null
         return if (preferredSubLang != null && preferredSubLang.equals("None", ignoreCase = true)) {
             selection = SubtitleSelection.Off
             Action.DisableText
@@ -107,6 +115,13 @@ class DrmSubtitleIntentMachine {
         preferExplicit: Boolean = false,
     ): Action {
         if (generation != this.generation) return Action.NoOp
+        // HOLD9: layout-stability snapshot. An empty previous sighting
+        // carries no information (completion, not a reorder); two non-empty
+        // differing sightings mean a genuine reorder, voiding positional
+        // keys below. Updated on every evaluation of this generation.
+        val currentKeys = tracks.map { it.stableKey() }
+        val layoutStable = lastSeenKeys == null || lastSeenKeys!!.isEmpty() || lastSeenKeys == currentKeys
+        lastSeenKeys = currentKeys
         // A live-explicit external that just materialized beats everything
         // except a newer explicit Track selection.
         explicitPendingExternalId?.let { wanted ->
@@ -148,16 +163,38 @@ class DrmSubtitleIntentMachine {
                 }
             }
             is SubtitleSelection.Track -> {
-                val byKey = trackKey?.let { key ->
-                    tracks.firstOrNull { it.stableKey() == key }
-                }
+                if (!layoutStable) {
+                    // HOLD9: reordered since last sighting — positional keys
+                    // (numeric ids AND group/index keys) are void. Follow a
+                    // confidently unique language identity, or defer/fall
+                    // back explicitly. Never silently switch tracks.
+                    val unique = trackLangName?.let { wanted ->
+                        tracks.filter { it.langKey() == wanted }.singleOrNull()
+                    }
+                    if (unique != null) {
+                        selection = SubtitleSelection.Track(unique.id)
+                        trackKey = unique.stableKey()
+                        trackLangName = unique.langKey()
+                        reassert(unique.id, currentSelectedId)
+                    } else if (!tracksAuthoritative) {
+                        Action.NoOp
+                    } else {
+                        selection = SubtitleSelection.Off
+                        trackKey = null
+                        trackLangName = null
+                        Action.DisableText
+                    }
+                } else {
+                    val byKey = trackKey?.let { key ->
+                        tracks.firstOrNull { it.stableKey() == key }
+                    }
                 if (byKey != null) {
                     if (byKey.id != current.id) {
-                        // Rebuild reassigned numeric ids: follow the stable
-                        // identity, never the recycled number.
+                        // Stable layout: follow the exact identity, never a
+                        // recycled number.
                         selection = SubtitleSelection.Track(byKey.id)
                     }
-                    Action.SelectTrack(byKey.id)
+                    reassert(byKey.id, currentSelectedId)
                 } else if (trackKey != null) {
                     // HOLD9: no exact identity. A confidently unique
                     // language/name match may still follow a reorder; an
@@ -165,17 +202,11 @@ class DrmSubtitleIntentMachine {
                     val unique = trackLangName?.let { wanted ->
                         tracks.filter { it.langKey() == wanted }
                     }?.singleOrNull()
-                    if (unique != null && unique.id != current.id) {
+                    if (unique != null) {
                         selection = SubtitleSelection.Track(unique.id)
                         trackKey = unique.stableKey()
                         trackLangName = unique.langKey()
-                        Action.SelectTrack(unique.id)
-                    } else if (unique != null) {
-                        // Same index, refreshed identity (e.g. group moved
-                        // without renumbering): converge to the exact key.
-                        trackKey = unique.stableKey()
-                        trackLangName = unique.langKey()
-                        Action.SelectTrack(current.id)
+                        reassert(unique.id, currentSelectedId)
                     } else if (!tracksAuthoritative) {
                         Action.NoOp
                     } else {
@@ -186,7 +217,7 @@ class DrmSubtitleIntentMachine {
                     }
                 } else if (tracks.any { it.id == current.id }) {
                     // No stable identity known: legacy numeric path.
-                    Action.SelectTrack(current.id)
+                    reassert(current.id, currentSelectedId)
                 } else if (!tracksAuthoritative) {
                     // Incomplete enumeration mid-attach: defer, never
                     // downgrade the explicit choice on partial data.
@@ -197,9 +228,18 @@ class DrmSubtitleIntentMachine {
                     selection = SubtitleSelection.Off
                     Action.DisableText
                 }
+                }
             }
         }
     }
+
+    /**
+     * HOLD9 §5: reasserting an already-correct selection is a NoOp, never a
+     * selector write — identical override writes cannot feed an
+     * onTracksChanged feedback loop.
+     */
+    private fun reassert(id: Int, currentSelectedId: Int?): Action =
+        if (currentSelectedId == id) Action.NoOp else Action.SelectTrack(id)
 
     /**
      * Live external attachment. select=false or non-explicit calls only

@@ -72,6 +72,9 @@ class Media3DrmPlaybackEngine(
     private val subtitleIntent = DrmSubtitleIntentMachine()
     private var cuesListener: ((List<androidx.media3.common.text.Cue>) -> Unit)? = null
     private var styleApplier: ((SubtitleStyle) -> Unit)? = null
+    // HOLD10 §5: last applied subtitle action; identical consecutive writes
+    // are skipped. Reset on release (fresh selector state afterwards).
+    private var lastSubtitleAction: DrmSubtitleIntentMachine.Action? = null
     // HOLD4 B1/B2: output-affecting commands arrive before ExoPlayer exists
     // (bind time) and must survive creation + header rebuilds. The real
     // Surface stays here; everything replayable lives in [pendingOutput].
@@ -242,6 +245,12 @@ class Media3DrmPlaybackEngine(
     }
 
     private fun applySubtitleAction(action: DrmSubtitleIntentMachine.Action) {
+        // HOLD10 §5: never write an identical consecutive selector command.
+        // Identical override writes risk an onTracksChanged feedback loop;
+        // the machine already returns NoOp for steady states, and this guard
+        // covers repeats across evaluations (e.g. Off re-confirmations).
+        if (action != DrmSubtitleIntentMachine.Action.NoOp && action == lastSubtitleAction) return
+        if (action != DrmSubtitleIntentMachine.Action.NoOp) lastSubtitleAction = action
         when (action) {
             is DrmSubtitleIntentMachine.Action.NoOp -> Unit
             is DrmSubtitleIntentMachine.Action.DisableText -> {
@@ -530,6 +539,7 @@ class Media3DrmPlaybackEngine(
             pendingOutput.clearSurface()
             cuesListener = null
             styleApplier = null
+            lastSubtitleAction = null
             listeners.clear()
         }
     }
@@ -571,6 +581,9 @@ class Media3DrmPlaybackEngine(
             .build()
         exo.addListener(exoListener)
         player = exo
+        // Fresh selector state on the new player: forget applied actions so
+        // intent is re-asserted (idempotently) on the next evaluation.
+        lastSubtitleAction = null
         // HOLD4 B1/B2: replay everything bound before creation (surface,
         // speed, resize) so a header rebuild never loses output state.
         exo.setVideoSurface(boundSurface)

@@ -70,10 +70,11 @@ class DrmSubtitleIntentHold8Test {
         m.onLoad(1L, "spa", emptyList())
         val tracks = listOf(ref(0, null, "en"), ref(1, null, "spa"))
         m.onSelectTrack(0, tracks[0])
-        // Refresh with the saved preference still present: explicit Track(0) re-asserts.
+        // Refresh with the saved preference still present: explicit Track(0)
+        // stands, and since it is already correctly selected the evaluation
+        // is an idempotent NoOp (HOLD10 §5: no selector feedback loop).
         val action = m.onTracksAvailable(1L, tracks, autoId = 1, currentSelectedId = 0, preferExplicit = true)
-        assertTrue(action is DrmSubtitleIntentMachine.Action.SelectTrack)
-        assertEquals(0, (action as DrmSubtitleIntentMachine.Action.SelectTrack).id)
+        assertTrue(action is DrmSubtitleIntentMachine.Action.NoOp)
         assertTrue(m.selection is SubtitleSelection.Track)
         assertEquals(0, (m.selection as SubtitleSelection.Track).id)
     }
@@ -161,6 +162,22 @@ class DrmSubtitleIntentHold8Test {
         val action = m.onTracksAvailable(1L, tracks, autoId = 0, currentSelectedId = null, preferExplicit = true)
         assertTrue(action is DrmSubtitleIntentMachine.Action.NoOp)
         assertTrue(m.selection is SubtitleSelection.Off)
+    }
+
+    @Test
+    fun `repeated identical evaluations stay quiet`() {
+        // HOLD10 §5: steady states must not generate selector writes on
+        // every callback — the engine additionally skips identical
+        // consecutive actions, but the machine itself goes quiet.
+        val m = DrmSubtitleIntentMachine()
+        m.onLoad(1L, "spa", emptyList())
+        val tracks = listOf(ref(0, null, "en"), ref(1, null, "spa"))
+        m.onSelectTrack(0, tracks[0])
+        repeat(3) {
+            val action = m.onTracksAvailable(1L, tracks, autoId = 1, currentSelectedId = 0, preferExplicit = true)
+            assertTrue(action is DrmSubtitleIntentMachine.Action.NoOp)
+        }
+        assertTrue(m.selection is SubtitleSelection.Track)
     }
 
     @Test
