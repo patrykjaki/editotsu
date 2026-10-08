@@ -126,14 +126,28 @@ class DrmSubtitleIntentModelTest {
                     )
                 }
             }
-            // I2: SelectTrack ids are always grounded.
+            // I2: SelectTrack ids are always grounded. On Tracks/Live ops the
+            // id must be present in that step's refs (adoptions, follows and
+            // reasserts all resolve against the observed enumeration) —
+            // notably NOT justified by the selection id the machine itself
+            // just wrote. Fresh explicit Select taps carry their own
+            // provenance (the tap IS the intent) and are always allowed.
             val last = actions.last()
             if (last is DrmSubtitleIntentMachine.Action.SelectTrack) {
-                val known = lastRefs.map { it.id }.toSet() + when (val s = sel) {
-                    is SubtitleSelection.Track -> setOf(s.id)
-                    else -> emptySet()
+                if (op is Op.Select) {
+                    // Fresh explicit taps land exactly (the tap IS the
+                    // provenance) — never a different id.
+                    assertTrue(
+                        "Select(${op.id}) produced $last",
+                        op.id != null && machine.selection is SubtitleSelection.Track &&
+                            (machine.selection as SubtitleSelection.Track).id == op.id
+                    )
+                } else {
+                    assertTrue(
+                        "SelectTrack(${last.id}) ungrounded in refs after $op",
+                        lastRefs.any { it.id == last.id }
+                    )
                 }
-                assertTrue("SelectTrack(${last.id}) ungrounded after $op", last.id in known)
             }
         }
 

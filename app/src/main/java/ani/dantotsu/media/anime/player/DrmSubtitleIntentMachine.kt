@@ -274,14 +274,25 @@ class DrmSubtitleIntentMachine {
      * prior pending snapshot.
      */
     fun noteSourceRebuilt(previousRefs: List<TrackRef>) {
-        pendingVerification = previousRefs.map { it.id to it.stableKey() }
-        // HOLD13-A/HOLD14-A: ambiguity is judged against the PRE-rebuild
-        // siblings, never the post-rebuild survivors. A selection ambiguous
+        // HOLD15: first pending snapshot wins. A later note taken while an
+        // earlier boundary is still unverified (e.g. a second rebuild fired
+        // during a transitional partial enumeration) must NOT overwrite the
+        // trustworthy pre-boundary state with a partial listing — that
+        // erasure is exactly what let a retarget through.
+        if (pendingVerification == null) {
+            pendingVerification = previousRefs.map { it.id to it.stableKey() }
+        }
+        // HOLD13-A/HOLD14-A/HOLD15: ambiguity is judged against the
+        // PRE-rebuild siblings, never the post-rebuild survivors, and it
+        // only ever accumulates here — a partial later listing cannot
+        // unmark an ambiguity established earlier. A selection ambiguous
         // here cannot become "confidently unique" later merely because a
-        // sibling disappeared.
-        boundaryAmbiguous = trackLangName?.let { wanted ->
+        // sibling disappeared. Cleared only by verified growth with a
+        // pairwise-distinct prefix, explicit Off, fresh loads, and
+        // exact-identity adoptions.
+        boundaryAmbiguous = boundaryAmbiguous || (trackLangName?.let { wanted ->
             previousRefs.count { it.langKey() == wanted } > 1
-        } ?: false
+        } ?: false)
     }
 
     /**
