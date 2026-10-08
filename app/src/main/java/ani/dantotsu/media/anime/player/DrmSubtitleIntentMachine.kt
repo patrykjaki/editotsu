@@ -23,7 +23,14 @@ class DrmSubtitleIntentMachine {
         val name: String?,
         val default: Boolean = false,
         val forced: Boolean = false,
-    )
+    ) {
+        /**
+         * Stable identity across player rebuilds, which may reassign numeric
+         * [id]s. A numeric match must never silently select a different
+         * subtitle after a reorder.
+         */
+        fun stableKey(): String = externalId ?: "emb:${language}|${name}"
+    }
 
     sealed interface Action {
         data object NoOp : Action
@@ -38,6 +45,11 @@ class DrmSubtitleIntentMachine {
         private set
     private var pendingExternalIds: LinkedHashSet<String> = LinkedHashSet()
     private var explicitPendingExternalId: String? = null
+    /**
+     * Stable key of the current [SubtitleSelection.Track], used to survive
+     * numeric id reassignment across player rebuilds.
+     */
+    private var trackKey: String? = null
 
     /**
      * New load generation. preferredSubLang "None" starts Off (action
@@ -53,6 +65,7 @@ class DrmSubtitleIntentMachine {
         this.generation = generation
         pendingExternalIds = LinkedHashSet()
         explicitPendingExternalId = null
+        trackKey = null
         return if (preferredSubLang != null && preferredSubLang.equals("None", ignoreCase = true)) {
             selection = SubtitleSelection.Off
             Action.DisableText
@@ -67,6 +80,11 @@ class DrmSubtitleIntentMachine {
      * Track enumeration for [generation]. Stale generations are ignored so
      * late updates can never resurrect older intent. Returns the single
      * action bringing the player to the authoritative state.
+     *
+     * @param preferExplicit true when a persisted subtitle preference
+     * (language or `Embedded:` target) exists: it beats Media3's automatic
+     * choice. Without a saved preference, an existing Media3 selection is
+     * left alone.
      */
     fun onTracksAvailable(
         generation: Long,
@@ -74,6 +92,7 @@ class DrmSubtitleIntentMachine {
         autoId: Int?,
         currentSelectedId: Int?,
         tracksAuthoritative: Boolean = true,
+        preferExplicit: Boolean = false,
     ): Action {
         if (generation != this.generation) return Action.NoOp
         // A live-explicit external that just materialized beats everything
@@ -83,6 +102,7 @@ class DrmSubtitleIntentMachine {
             if (ref != null) {
                 explicitPendingExternalId = null
                 selection = SubtitleSelection.Track(ref.id)
+                trackKey = ref.stableKey()
                 return Action.SelectTrack(ref.id)
             }
         }
@@ -95,24 +115,46 @@ class DrmSubtitleIntentMachine {
                 if (pending != null) {
                     pendingExternalIds.remove(pending.externalId)
                     selection = SubtitleSelection.Track(pending.id)
+                    trackKey = pending.stableKey()
                     Action.SelectTrack(pending.id)
-                } else if (currentSelectedId == null && autoId != null &&
-                    tracks.any { it.id == autoId }
-                ) {
-                    Action.SelectTrack(autoId)
+                } else if (autoId != null && tracks.any { it.id == autoId }) {
+                    // HOLD8-A: an explicit saved preference is honored even
+                    // when Media3 already auto-selected something else; once
+                    // applied, further callbacks are idempotent NoOps. Later
+                    // explicit user selections leave Unset, so they still win.
+                    if (currentSelectedId == autoId) {
+                        Action.NoOp
+                    } else if (preferExplicit || currentSelectedId == null) {
+                        Action.SelectTrack(autoId)
+                    } else {
+                        Action.NoOp
+                    }
                 } else {
                     Action.NoOp
                 }
             }
             is SubtitleSelection.Track -> {
-                if (tracks.any { it.id == current.id }) {
+                val byKey = trackKey?.let { key ->
+                    tracks.firstOrNull { it.stableKey() == key }
+                }
+                if (byKey != null && byKey.id != current.id) {
+                    // Rebuild reassigned numeric ids: follow the stable
+                    // identity, never the recycled number.
+                    selection = SubtitleSelection.Track(byKey.id)
+                    trackKey = byKey.stableKey()
+                    Action.SelectTrack(byKey.id)
+                } else if (byKey != null || (trackKey == null && tracks.any { it.id == current.id })) {
                     Action.SelectTrack(current.id)
                 } else if (!tracksAuthoritative) {
                     // Incomplete enumeration mid-attach: defer, never
                     // downgrade the explicit choice on partial data.
                     Action.NoOp
                 } else {
+                    // Authoritative list without the intended track (and no
+                    // numeric fallback when a stable key is known): the
+                    // documented MPV-consistent fallback is Off.
                     selection = SubtitleSelection.Off
+                    trackKey = null
                     Action.DisableText
                 }
             }
@@ -138,6 +180,7 @@ class DrmSubtitleIntentMachine {
         return if (ref != null) {
             explicitPendingExternalId = null
             selection = SubtitleSelection.Track(ref.id)
+            trackKey = ref.stableKey()
             Action.SelectTrack(ref.id)
         } else {
             explicitPendingExternalId = externalId
@@ -146,13 +189,15 @@ class DrmSubtitleIntentMachine {
     }
 
     /** Explicit user track selection (engine selectSubtitleTrack). Newest intent wins. */
-    fun onSelectTrack(id: Int?): Action {
+    fun onSelectTrack(id: Int?, key: String? = null): Action {
         explicitPendingExternalId = null
         return if (id == null) {
             selection = SubtitleSelection.Off
+            trackKey = null
             Action.DisableText
         } else {
             selection = SubtitleSelection.Track(id)
+            trackKey = key
             Action.SelectTrack(id)
         }
     }
@@ -162,8 +207,12 @@ class DrmSubtitleIntentMachine {
  * Narrow automatic subtitle resolution for Unset (pure, unit-tested):
  * persisted `Embedded:<id|lang>` restores by id then language; a language
  * preference matches language/name; a blank preference prefers English;
- * then default non-forced, then first track. This is initial-intent parity,
- * not the full MPV scoring model (signs/songs weighting stays MPV-only).
+ * then default non-forced, then first track.
+ *
+ * HOLD8-A: an explicit preference that matches nothing resolves to null —
+ * never a fabricated unrelated id. Only the blank-preference path falls
+ * back to default/first. This is initial-intent parity, not the full MPV
+ * scoring model (signs/songs weighting stays MPV-only).
  */
 fun resolveDrmAutoSubtitleId(
     tracks: List<DrmSubtitleIntentMachine.TrackRef>,
@@ -187,13 +236,13 @@ fun resolveDrmAutoSubtitleId(
             it.language?.equals(lang, ignoreCase = true) == true ||
                 it.name?.contains(lang, ignoreCase = true) == true
         }?.let { return it.id }
-    } else {
-        tracks.firstOrNull {
-            it.language?.equals("en", ignoreCase = true) == true ||
-                it.language?.equals("eng", ignoreCase = true) == true ||
-                it.name?.contains("english", ignoreCase = true) == true
-        }?.let { return it.id }
+        return null
     }
+    tracks.firstOrNull {
+        it.language?.equals("en", ignoreCase = true) == true ||
+            it.language?.equals("eng", ignoreCase = true) == true ||
+            it.name?.contains("english", ignoreCase = true) == true
+    }?.let { return it.id }
     tracks.firstOrNull { it.default && !it.forced }?.let { return it.id }
     return tracks.firstOrNull()?.id
 }

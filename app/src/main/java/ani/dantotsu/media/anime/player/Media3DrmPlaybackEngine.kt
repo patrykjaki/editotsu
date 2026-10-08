@@ -217,8 +217,19 @@ class Media3DrmPlaybackEngine(
         }
         val autoId = resolveDrmAutoSubtitleId(refs, req.preferredSubLang)
         val currentSelectedId = subtitleTracks.firstOrNull { it.selected }?.id
+        // HOLD8-B: only a text-bearing enumeration is authoritative for
+        // subtitle decisions. Transient video/audio-only lists (prepare,
+        // rebuild, single attach) defer instead of downgrading intent.
+        // HOLD8-A: a saved preference beats Media3's automatic choice.
         applySubtitleAction(
-            subtitleIntent.onTracksAvailable(generation, refs, autoId, currentSelectedId)
+            subtitleIntent.onTracksAvailable(
+                generation,
+                refs,
+                autoId,
+                currentSelectedId,
+                tracksAuthoritative = refs.isNotEmpty(),
+                preferExplicit = !req.preferredSubLang.isNullOrBlank()
+            )
         )
     }
 
@@ -339,7 +350,21 @@ class Media3DrmPlaybackEngine(
     override fun selectSubtitleTrack(id: Int?) {
         // HOLD7: explicit user intent routes through the machine (newest
         // intent wins, Off disables); never touches the selector directly.
-        mainHandler.post { applySubtitleAction(subtitleIntent.onSelectTrack(id)) }
+        // HOLD8-B: carry the stable key so a rebuild that reassigns numeric
+        // ids cannot silently select a different subtitle.
+        mainHandler.post {
+            val key = if (id == null) {
+                null
+            } else {
+                val index = subtitleTracks.indexOfFirst { it.id == id }
+                if (index < 0) null
+                else {
+                    subtitleExternalIds.getOrNull(index)
+                        ?: "emb:${subtitleTracks[index].language}|${subtitleTracks[index].name}"
+                }
+            }
+            applySubtitleAction(subtitleIntent.onSelectTrack(id, key))
+        }
     }
 
     override fun addExternalSubtitle(
