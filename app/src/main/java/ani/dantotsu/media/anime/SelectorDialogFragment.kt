@@ -159,6 +159,10 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
     @SuppressLint("SetTextI18n")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         var loaded = false
+        // MAX MERGE M7A: manual torrent/magnet entry anchored to the
+        // current episode. Resolution happens at tap time; the sheet
+        // itself gates on torrent availability with the standard toast.
+        binding.selectorManualTorrent.setOnClickListener { openManualTorrentSheet() }
         model.getMedia().observe(viewLifecycleOwner) { m ->
             media = m
             if (media != null && !loaded) {
@@ -648,6 +652,23 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         ActivityResultContracts.StartActivityForResult()
     ) { result: ActivityResult ->
         Logger.log(result.data.toString())
+    }
+
+    /**
+     * MAX MERGE M7A: opens manual torrent/magnet entry anchored to the
+     * current episode. No identity is guessed: without a resolved
+     * (media, episode) the action no-ops with a toast.
+     */
+    private fun openManualTorrentSheet() {
+        val targetMedia = media
+        val targetEp = episode
+            ?: targetMedia?.anime?.episodes?.getEpisode(targetMedia.anime?.selectedEpisode)
+        if (targetMedia == null || targetEp == null) {
+            snackString(getString(R.string.no_video_selected))
+            return
+        }
+        ani.dantotsu.torrent.ManualTorrentBottomSheet.newInstance(targetMedia, targetEp)
+            .show(parentFragmentManager, "manualTorrentEntry")
     }
 
     private fun exportMagnetIntent(episode: Episode, video: Video): Intent {

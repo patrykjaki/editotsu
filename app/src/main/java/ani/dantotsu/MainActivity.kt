@@ -33,6 +33,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import ani.dantotsu.torrent.TorrentServerManager
+import ani.dantotsu.torrent.ManualTorrentInbox
+import ani.dantotsu.torrent.ManualTorrentIntentDispatch
+import ani.dantotsu.torrent.ManualTorrentPayload
 import ani.dantotsu.addons.torrent.TorrentServerService
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.AnilistHomeViewModel
@@ -453,6 +456,43 @@ class MainActivity : AppCompatActivity() {
      * a second tap while alive is routed instead of dropped.
      * @return true when a detail/feed/notification activity was launched.
      */
+    /**
+     * MAX MERGE M7A: stages an inbound manual torrent into the memory-only
+     * [ManualTorrentInbox]. Magnet URIs are offered directly; `.torrent`
+     * documents are copied to private cache on IO first so no content-URI
+     * grant lifetime is relied upon. Never logs URI contents.
+     */
+    private fun receiveManualTorrent(intent: Intent, uri: Uri, payload: ManualTorrentPayload) {
+        when (payload) {
+            is ManualTorrentPayload.Magnet -> {
+                ManualTorrentInbox.offer(payload)
+                toast(R.string.manual_torrent_received_toast)
+            }
+            is ManualTorrentPayload.StagedFile -> {
+                if (uri.scheme == "file") {
+                    if (java.io.File(uri.path ?: "").exists()) {
+                        ManualTorrentInbox.offer(ManualTorrentPayload.StagedFile(uri.path!!))
+                        toast(R.string.manual_torrent_received_toast)
+                    } else {
+                        toast(R.string.manual_torrent_receive_failed)
+                    }
+                    return
+                }
+                scope.launch(Dispatchers.IO) {
+                    val staged = ManualTorrentInbox.stageContentUri(applicationContext, uri)
+                    withContext(Dispatchers.Main) {
+                        if (staged != null) {
+                            ManualTorrentInbox.offer(ManualTorrentPayload.StagedFile(staged))
+                            toast(R.string.manual_torrent_received_toast)
+                        } else {
+                            toast(R.string.manual_torrent_receive_failed)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private fun handleIncomingExtras(targetIntent: Intent): Boolean {
         val route = IncomingRoute(
             fragmentToLoad = targetIntent.extras?.getString("FRAGMENT_TO_LOAD"),
@@ -526,6 +566,18 @@ class MainActivity : AppCompatActivity() {
         try {
             if (uri == null) {
                 throw Exception("Uri is null")
+            }
+            // MAX MERGE M7A: manual torrent/magnet entry. Allowlist only
+            // (magnet: scheme, or content/file + application/x-bittorrent);
+            // everything else falls through to the existing branches below.
+            // Filters deliberately omit BROWSABLE so normal links are never
+            // hijacked. Receipts are memory-only + TTL-bound; attaching to
+            // an anime happens later by explicit user action.
+            ManualTorrentIntentDispatch.classify(
+                intent.action, uri.scheme, intent.type, uri.toString()
+            )?.let { payload ->
+                receiveManualTorrent(intent, uri, payload)
+                return
             }
             // Custom-scheme media/user links route through the UrlMedia router;
             // repo imports fall through to the alias branch below.

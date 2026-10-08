@@ -105,6 +105,24 @@
             tools:itemCount="4"
             tools:listitem="@layout/item_stream" />
 
+        <!-- MAX MERGE M7A: manual torrent/magnet entry, anchored to the
+             current episode. The sheet gates on torrent availability. -->
+        <Button
+            android:id="@+id/selectorManualTorrent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start"
+            android:layout_marginStart="16dp"
+            android:layout_marginBottom="8dp"
+            android:fontFamily="@font/poppins_bold"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="8dp"
+            android:text="@string/selector_manual_torrent"
+            android:textColor="?attr/colorPrimary"
+            android:textSize="14sp"
+            app:cornerRadius="16dp" />
+
         <ProgressBar
             android:id="@+id/selectorProgressBar"
             style="?android:attr/progressBarStyle"

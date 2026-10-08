@@ -461,6 +461,20 @@
                 <data android:scheme="editotsu"/>
                 <data android:scheme="dantotsu"/>
             </intent-filter>
+            <!-- MAX MERGE M7A: manual torrent/magnet entry. No BROWSABLE:
+                 magnets and torrent files only, never browser links. -->
+            <intent-filter android:label="@string/add_magnet_to_editotsu">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="magnet" />
+            </intent-filter>
+            <intent-filter android:label="@string/open_torrent_in_editotsu">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/x-bittorrent" />
+            </intent-filter>
         </activity>
         <activity
             android:name="eu.kanade.tachiyomi.extension.util.ExtensionInstallActivity"
