@@ -206,20 +206,28 @@ class Media3DrmPlaybackEngine(
     private fun evaluateSubtitleIntent() {
         val req = activeRequest ?: return
         val refs = subtitleTracks.mapIndexed { index, track ->
+            val (groupIndex, trackIndex) = subtitleGroups.getOrNull(index) ?: (0 to 0)
             DrmSubtitleIntentMachine.TrackRef(
                 id = track.id,
                 externalId = subtitleExternalIds.getOrNull(index),
                 language = track.language,
                 name = track.name,
                 default = track.default,
-                forced = track.forced
+                forced = track.forced,
+                groupIndex = groupIndex,
+                indexInGroup = trackIndex
             )
         }
         val autoId = resolveDrmAutoSubtitleId(refs, req.preferredSubLang)
         val currentSelectedId = subtitleTracks.firstOrNull { it.selected }?.id
-        // HOLD8-B: only a text-bearing enumeration is authoritative for
-        // subtitle decisions. Transient video/audio-only lists (prepare,
-        // rebuild, single attach) defer instead of downgrading intent.
+        // HOLD9: authority is computed, never assumed. Only a settled
+        // (READY), text-bearing enumeration with every attached external
+        // present may mutate explicit intent; prepare/rebuild/attach
+        // transients defer. Pending adoption needs no authority (presence
+        // is proof) and is handled inside the machine.
+        val attachedIds = req.externalSubtitles.map { it.id ?: it.url }.toSet()
+        val settled = player?.playbackState == androidx.media3.common.Player.STATE_READY
+        val authoritative = settled && computeTracksAuthoritative(refs, attachedIds)
         // HOLD8-A: a saved preference beats Media3's automatic choice.
         applySubtitleAction(
             subtitleIntent.onTracksAvailable(
@@ -227,7 +235,7 @@ class Media3DrmPlaybackEngine(
                 refs,
                 autoId,
                 currentSelectedId,
-                tracksAuthoritative = refs.isNotEmpty(),
+                tracksAuthoritative = authoritative,
                 preferExplicit = !req.preferredSubLang.isNullOrBlank()
             )
         )
@@ -350,20 +358,31 @@ class Media3DrmPlaybackEngine(
     override fun selectSubtitleTrack(id: Int?) {
         // HOLD7: explicit user intent routes through the machine (newest
         // intent wins, Off disables); never touches the selector directly.
-        // HOLD8-B: carry the stable key so a rebuild that reassigns numeric
-        // ids cannot silently select a different subtitle.
+        // HOLD9: carry the full reference so rebuilds follow stable identity
+        // instead of recycled numeric ids.
         mainHandler.post {
-            val key = if (id == null) {
+            val ref = if (id == null) {
                 null
             } else {
                 val index = subtitleTracks.indexOfFirst { it.id == id }
-                if (index < 0) null
-                else {
-                    subtitleExternalIds.getOrNull(index)
-                        ?: "emb:${subtitleTracks[index].language}|${subtitleTracks[index].name}"
+                if (index < 0) {
+                    null
+                } else {
+                    val (groupIndex, trackIndex) = subtitleGroups.getOrNull(index) ?: (0 to 0)
+                    val track = subtitleTracks[index]
+                    DrmSubtitleIntentMachine.TrackRef(
+                        id = track.id,
+                        externalId = subtitleExternalIds.getOrNull(index),
+                        language = track.language,
+                        name = track.name,
+                        default = track.default,
+                        forced = track.forced,
+                        groupIndex = groupIndex,
+                        indexInGroup = trackIndex
+                    )
                 }
             }
-            applySubtitleAction(subtitleIntent.onSelectTrack(id, key))
+            applySubtitleAction(subtitleIntent.onSelectTrack(id, ref))
         }
     }
 

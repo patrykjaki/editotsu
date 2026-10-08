@@ -69,7 +69,7 @@ class DrmSubtitleIntentHold8Test {
         val m = DrmSubtitleIntentMachine()
         m.onLoad(1L, "spa", emptyList())
         val tracks = listOf(ref(0, null, "en"), ref(1, null, "spa"))
-        m.onSelectTrack(0, tracks[0].stableKey())
+        m.onSelectTrack(0, tracks[0])
         // Refresh with the saved preference still present: explicit Track(0) re-asserts.
         val action = m.onTracksAvailable(1L, tracks, autoId = 1, currentSelectedId = 0, preferExplicit = true)
         assertTrue(action is DrmSubtitleIntentMachine.Action.SelectTrack)
@@ -82,7 +82,7 @@ class DrmSubtitleIntentHold8Test {
     fun `explicit track survives transient empty list`() {
         val m = DrmSubtitleIntentMachine()
         m.onLoad(1L, null, emptyList())
-        m.onSelectTrack(1, "emb:spa|x")
+        m.onSelectTrack(1, DrmSubtitleIntentMachine.TrackRef(1, null, "spa", "x"))
         val action = m.onTracksAvailable(
             1L, emptyList(), autoId = null, currentSelectedId = null,
             tracksAuthoritative = false
@@ -95,7 +95,7 @@ class DrmSubtitleIntentHold8Test {
     fun `transient empty then same track restores`() {
         val m = DrmSubtitleIntentMachine()
         m.onLoad(1L, null, emptyList())
-        m.onSelectTrack(1, "emb:spa|x")
+        m.onSelectTrack(1, DrmSubtitleIntentMachine.TrackRef(1, null, "spa", "x"))
         m.onTracksAvailable(1L, emptyList(), autoId = null, currentSelectedId = null, tracksAuthoritative = false)
         val tracks = listOf(ref(0, null, "en", "y"), ref(1, null, "spa", "x"))
         val action = m.onTracksAvailable(1L, tracks, autoId = null, currentSelectedId = null)
@@ -107,7 +107,7 @@ class DrmSubtitleIntentHold8Test {
     fun `final authoritative missing track falls back explicitly`() {
         val m = DrmSubtitleIntentMachine()
         m.onLoad(1L, null, emptyList())
-        m.onSelectTrack(1, "emb:spa|x")
+        m.onSelectTrack(1, DrmSubtitleIntentMachine.TrackRef(1, null, "spa", "x"))
         // Authoritative text-bearing list without the intended track:
         // documented MPV-consistent fallback is Off, never an unrelated id.
         val tracks = listOf(ref(0, null, "en"), ref(2, null, "fr"))
@@ -143,7 +143,7 @@ class DrmSubtitleIntentHold8Test {
         val m = DrmSubtitleIntentMachine()
         m.onLoad(1L, null, emptyList())
         // User selects the Spanish track while enumeration is [en(0), spa(1)].
-        m.onSelectTrack(1, "emb:spa|x")
+        m.onSelectTrack(1, DrmSubtitleIntentMachine.TrackRef(1, null, "spa", "x"))
         // Rebuild reassigns numeric ids: [spa(0), en(1)]. The recycled
         // number 1 (now English) must NOT be silently selected.
         val reordered = listOf(ref(0, null, "spa", "x"), ref(1, null, "en", "y"))

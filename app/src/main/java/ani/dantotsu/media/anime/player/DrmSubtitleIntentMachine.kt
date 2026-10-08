@@ -23,13 +23,23 @@ class DrmSubtitleIntentMachine {
         val name: String?,
         val default: Boolean = false,
         val forced: Boolean = false,
+        val groupIndex: Int = 0,
+        val indexInGroup: Int = 0,
     ) {
         /**
-         * Stable identity across player rebuilds, which may reassign numeric
-         * [id]s. A numeric match must never silently select a different
-         * subtitle after a reorder.
+         * Discriminating identity: the resolved URI for externals (stable
+         * across rebuilds), otherwise group + intra-group position +
+         * language/name. Two distinct embedded tracks never share one, so
+         * `firstOrNull` cannot retarget across them.
          */
-        fun stableKey(): String = externalId ?: "emb:${language}|${name}"
+        fun stableKey(): String = externalId ?: "emb:g$groupIndex:i$indexInGroup:${language}|${name}"
+
+        /**
+         * Order-insensitive fallback identity: URI for externals, otherwise
+         * language/name only. Used solely to follow a confidently unique
+         * track across an index reorder; ambiguous matches never resolve.
+         */
+        fun langKey(): String = externalId ?: "emb:${language}|${name}"
     }
 
     sealed interface Action {
@@ -50,6 +60,8 @@ class DrmSubtitleIntentMachine {
      * numeric id reassignment across player rebuilds.
      */
     private var trackKey: String? = null
+    /** Order-insensitive identity companion to [trackKey] (reorder follow). */
+    private var trackLangName: String? = null
 
     /**
      * New load generation. preferredSubLang "None" starts Off (action
@@ -103,6 +115,7 @@ class DrmSubtitleIntentMachine {
                 explicitPendingExternalId = null
                 selection = SubtitleSelection.Track(ref.id)
                 trackKey = ref.stableKey()
+                trackLangName = ref.langKey()
                 return Action.SelectTrack(ref.id)
             }
         }
@@ -116,6 +129,7 @@ class DrmSubtitleIntentMachine {
                     pendingExternalIds.remove(pending.externalId)
                     selection = SubtitleSelection.Track(pending.id)
                     trackKey = pending.stableKey()
+                    trackLangName = pending.langKey()
                     Action.SelectTrack(pending.id)
                 } else if (autoId != null && tracks.any { it.id == autoId }) {
                     // HOLD8-A: an explicit saved preference is honored even
@@ -137,24 +151,50 @@ class DrmSubtitleIntentMachine {
                 val byKey = trackKey?.let { key ->
                     tracks.firstOrNull { it.stableKey() == key }
                 }
-                if (byKey != null && byKey.id != current.id) {
-                    // Rebuild reassigned numeric ids: follow the stable
-                    // identity, never the recycled number.
-                    selection = SubtitleSelection.Track(byKey.id)
-                    trackKey = byKey.stableKey()
+                if (byKey != null) {
+                    if (byKey.id != current.id) {
+                        // Rebuild reassigned numeric ids: follow the stable
+                        // identity, never the recycled number.
+                        selection = SubtitleSelection.Track(byKey.id)
+                    }
                     Action.SelectTrack(byKey.id)
-                } else if (byKey != null || (trackKey == null && tracks.any { it.id == current.id })) {
+                } else if (trackKey != null) {
+                    // HOLD9: no exact identity. A confidently unique
+                    // language/name match may still follow a reorder; an
+                    // ambiguous or absent match never silently switches.
+                    val unique = trackLangName?.let { wanted ->
+                        tracks.filter { it.langKey() == wanted }
+                    }?.singleOrNull()
+                    if (unique != null && unique.id != current.id) {
+                        selection = SubtitleSelection.Track(unique.id)
+                        trackKey = unique.stableKey()
+                        trackLangName = unique.langKey()
+                        Action.SelectTrack(unique.id)
+                    } else if (unique != null) {
+                        // Same index, refreshed identity (e.g. group moved
+                        // without renumbering): converge to the exact key.
+                        trackKey = unique.stableKey()
+                        trackLangName = unique.langKey()
+                        Action.SelectTrack(current.id)
+                    } else if (!tracksAuthoritative) {
+                        Action.NoOp
+                    } else {
+                        selection = SubtitleSelection.Off
+                        trackKey = null
+                        trackLangName = null
+                        Action.DisableText
+                    }
+                } else if (tracks.any { it.id == current.id }) {
+                    // No stable identity known: legacy numeric path.
                     Action.SelectTrack(current.id)
                 } else if (!tracksAuthoritative) {
                     // Incomplete enumeration mid-attach: defer, never
                     // downgrade the explicit choice on partial data.
                     Action.NoOp
                 } else {
-                    // Authoritative list without the intended track (and no
-                    // numeric fallback when a stable key is known): the
+                    // Authoritative list without the intended track: the
                     // documented MPV-consistent fallback is Off.
                     selection = SubtitleSelection.Off
-                    trackKey = null
                     Action.DisableText
                 }
             }
@@ -181,6 +221,7 @@ class DrmSubtitleIntentMachine {
             explicitPendingExternalId = null
             selection = SubtitleSelection.Track(ref.id)
             trackKey = ref.stableKey()
+            trackLangName = ref.langKey()
             Action.SelectTrack(ref.id)
         } else {
             explicitPendingExternalId = externalId
@@ -188,18 +229,43 @@ class DrmSubtitleIntentMachine {
         }
     }
 
-    /** Explicit user track selection (engine selectSubtitleTrack). Newest intent wins. */
-    fun onSelectTrack(id: Int?, key: String? = null): Action {
+    /**
+     * Explicit user track selection (engine selectSubtitleTrack). Newest
+     * intent wins. The engine passes the selected [TrackRef] when known so
+     * rebuilds follow stable identity; a null ref keeps numeric behavior.
+     */
+    fun onSelectTrack(id: Int?, ref: TrackRef? = null): Action {
         explicitPendingExternalId = null
         return if (id == null) {
             selection = SubtitleSelection.Off
             trackKey = null
+            trackLangName = null
             Action.DisableText
         } else {
             selection = SubtitleSelection.Track(id)
-            trackKey = key
+            trackKey = ref?.stableKey()
+            trackLangName = ref?.langKey()
             Action.SelectTrack(id)
         }
+    }
+}
+
+/**
+ * HOLD9: adapter authority determination. The engine feeds every
+ * [onTracksAvailable] evaluation with this (never a bare `isNotEmpty`),
+ * and host tests drive this function directly: an enumeration is
+ * authoritative for subtitle decisions only when it bears text tracks
+ * AND every attached external URI is present. Anything else is a
+ * transitional/partial list (prepare, merge, rebuild, single attach)
+ * and must defer rather than mutate explicit intent.
+ */
+fun computeTracksAuthoritative(
+    textRefs: List<DrmSubtitleIntentMachine.TrackRef>,
+    attachedExternalIds: Set<String>,
+): Boolean {
+    if (textRefs.isEmpty()) return false
+    return attachedExternalIds.all { wanted ->
+        textRefs.any { it.externalId == wanted }
     }
 }
 
