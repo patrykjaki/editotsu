@@ -436,11 +436,19 @@ class Media3DrmPlaybackEngine(
             }
             val position = player?.currentPosition ?: req.startPositionMs
             val autoplay = player?.playWhenReady ?: true
+            // HOLD11: the merge is append-only by construction (see
+            // isAppendOnlySubAttach), so existing indices provably survive
+            // this rebuild — positional trust is maintained, not voided.
+            subtitleIntent.noteSourceRebuilt(
+                orderPreserved = DrmTransportPlan.isAppendOnlySubAttach(
+                    req.externalSubtitles,
+                    merged.externalSubtitles
+                )
+            )
             ensurePlayer(merged)
             activeRequest = merged
             val p = player ?: return@post
-            p.setMediaSource(buildMediaSource(merged))
-            p.prepare()
+            attachRebuiltSource(p, buildMediaSource(merged))
             p.seekTo(position.coerceAtLeast(0L))
             p.playWhenReady = autoplay
             // HOLD7: drive intent for the newly attached subtitle against
@@ -513,8 +521,7 @@ class Media3DrmPlaybackEngine(
             if (released) return@post
             ensurePlayer(request)
             val p = player ?: return@post
-            p.setMediaSource(buildMediaSource(request))
-            p.prepare()
+            attachRebuiltSource(p, buildMediaSource(request))
             p.seekTo(request.startPositionMs.coerceAtLeast(0L))
             state = PlaybackState.Buffering
             listeners.forEach { it.onPlaybackStateChanged(state) }
@@ -594,6 +601,26 @@ class Media3DrmPlaybackEngine(
     }
 
     private fun defaultDrmUa(): String = "Editotsu/${android.os.Build.MODEL}"
+
+    /**
+     * HOLD11: every source (re)build goes through here. It notifies the
+     * intent machine of the rebuild boundary (voiding positional trust for
+     * ambiguous selections), clears possibly-stale text overrides (they
+     * reference dead groups and could otherwise misfire post-swap), and
+     * prepares. Evaluations re-apply live intent on the next enumeration;
+     * the write guard is reset so re-application is never suppressed.
+     */
+    private fun attachRebuiltSource(
+        player: ExoPlayer,
+        source: androidx.media3.exoplayer.source.MergingMediaSource,
+    ) {
+        val params = trackSelector.parameters.buildUpon()
+        params.clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        trackSelector.parameters = params.build()
+        lastSubtitleAction = null
+        player.setMediaSource(source)
+        player.prepare()
+    }
 
     private fun releasePlayerInternal() {
         try {

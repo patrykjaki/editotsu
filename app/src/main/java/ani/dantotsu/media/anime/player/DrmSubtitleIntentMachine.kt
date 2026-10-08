@@ -63,11 +63,15 @@ class DrmSubtitleIntentMachine {
     /** Order-insensitive identity companion to [trackKey] (reorder follow). */
     private var trackLangName: String? = null
     /**
-     * Ordered stable keys of the last evaluated enumeration (this
-     * generation). Compared per evaluation to detect genuine reorders;
-     * null/empty carries no information and never counts as a reorder.
+     * Set by the engine on a NON-order-preserving source rebuild. While set,
+     * positional trust is void for ambiguous selections: identical duplicate
+     * keys are indistinguishable across a permutation, so the machine defers
+     * (or falls back explicitly) instead of retargeting. Cleared by an
+     * order-preserving rebuild and by every fresh explicit intent, load, or
+     * exact-identity adoption. Append-only live attaches preserve order by
+     * construction (see [isAppendOnlySubAttach]) and never set it.
      */
-    private var lastSeenKeys: List<String>? = null
+    private var positionalVoid: Boolean = false
 
     /**
      * New load generation. preferredSubLang "None" starts Off (action
@@ -85,7 +89,7 @@ class DrmSubtitleIntentMachine {
         explicitPendingExternalId = null
         trackKey = null
         trackLangName = null
-        lastSeenKeys = null
+        positionalVoid = false
         return if (preferredSubLang != null && preferredSubLang.equals("None", ignoreCase = true)) {
             selection = SubtitleSelection.Off
             Action.DisableText
@@ -115,13 +119,6 @@ class DrmSubtitleIntentMachine {
         preferExplicit: Boolean = false,
     ): Action {
         if (generation != this.generation) return Action.NoOp
-        // HOLD9: layout-stability snapshot. An empty previous sighting
-        // carries no information (completion, not a reorder); two non-empty
-        // differing sightings mean a genuine reorder, voiding positional
-        // keys below. Updated on every evaluation of this generation.
-        val currentKeys = tracks.map { it.stableKey() }
-        val layoutStable = lastSeenKeys == null || lastSeenKeys!!.isEmpty() || lastSeenKeys == currentKeys
-        lastSeenKeys = currentKeys
         // A live-explicit external that just materialized beats everything
         // except a newer explicit Track selection.
         explicitPendingExternalId?.let { wanted ->
@@ -131,6 +128,7 @@ class DrmSubtitleIntentMachine {
                 selection = SubtitleSelection.Track(ref.id)
                 trackKey = ref.stableKey()
                 trackLangName = ref.langKey()
+                positionalVoid = false
                 return Action.SelectTrack(ref.id)
             }
         }
@@ -145,6 +143,7 @@ class DrmSubtitleIntentMachine {
                     selection = SubtitleSelection.Track(pending.id)
                     trackKey = pending.stableKey()
                     trackLangName = pending.langKey()
+                    positionalVoid = false
                     Action.SelectTrack(pending.id)
                 } else if (autoId != null && tracks.any { it.id == autoId }) {
                     // HOLD8-A: an explicit saved preference is honored even
@@ -163,19 +162,38 @@ class DrmSubtitleIntentMachine {
                 }
             }
             is SubtitleSelection.Track -> {
-                if (!layoutStable) {
-                    // HOLD9: reordered since last sighting — positional keys
-                    // (numeric ids AND group/index keys) are void. Follow a
-                    // confidently unique language identity, or defer/fall
-                    // back explicitly. Never silently switch tracks.
+                // HOLD11: the selected index still holding the identical key
+                // proves no observable change to the selected track — benign
+                // additions elsewhere (or same-order rebuilds) keep it, even
+                // when siblings share its language identity.
+                val sameIndexKey = trackKey?.let { key ->
+                    tracks.getOrNull(current.id)?.stableKey() == key
+                } ?: false
+                // Ambiguity is evaluated against the CURRENT enumeration: a
+                // non-preserving source boundary voids positional trust for
+                // ambiguous selections (identical duplicates are
+                // indistinguishable across a permutation).
+                val ambiguous = trackLangName?.let { wanted ->
+                    tracks.count { it.langKey() == wanted } > 1
+                } ?: false
+                val voided = positionalVoid
+                if (sameIndexKey && !(ambiguous && voided)) {
+                    reassert(current.id, currentSelectedId)
+                } else {
                     val unique = trackLangName?.let { wanted ->
                         tracks.filter { it.langKey() == wanted }.singleOrNull()
                     }
                     if (unique != null) {
+                        // Confident order-independent identity: follow it.
                         selection = SubtitleSelection.Track(unique.id)
                         trackKey = unique.stableKey()
                         trackLangName = unique.langKey()
                         reassert(unique.id, currentSelectedId)
+                    } else if (trackKey == null && trackLangName == null &&
+                        tracks.any { it.id == current.id }
+                    ) {
+                        // No stable identity known: legacy numeric path.
+                        reassert(current.id, currentSelectedId)
                     } else if (!tracksAuthoritative) {
                         Action.NoOp
                     } else {
@@ -184,53 +202,20 @@ class DrmSubtitleIntentMachine {
                         trackLangName = null
                         Action.DisableText
                     }
-                } else {
-                    val byKey = trackKey?.let { key ->
-                        tracks.firstOrNull { it.stableKey() == key }
-                    }
-                if (byKey != null) {
-                    if (byKey.id != current.id) {
-                        // Stable layout: follow the exact identity, never a
-                        // recycled number.
-                        selection = SubtitleSelection.Track(byKey.id)
-                    }
-                    reassert(byKey.id, currentSelectedId)
-                } else if (trackKey != null) {
-                    // HOLD9: no exact identity. A confidently unique
-                    // language/name match may still follow a reorder; an
-                    // ambiguous or absent match never silently switches.
-                    val unique = trackLangName?.let { wanted ->
-                        tracks.filter { it.langKey() == wanted }
-                    }?.singleOrNull()
-                    if (unique != null) {
-                        selection = SubtitleSelection.Track(unique.id)
-                        trackKey = unique.stableKey()
-                        trackLangName = unique.langKey()
-                        reassert(unique.id, currentSelectedId)
-                    } else if (!tracksAuthoritative) {
-                        Action.NoOp
-                    } else {
-                        selection = SubtitleSelection.Off
-                        trackKey = null
-                        trackLangName = null
-                        Action.DisableText
-                    }
-                } else if (tracks.any { it.id == current.id }) {
-                    // No stable identity known: legacy numeric path.
-                    reassert(current.id, currentSelectedId)
-                } else if (!tracksAuthoritative) {
-                    // Incomplete enumeration mid-attach: defer, never
-                    // downgrade the explicit choice on partial data.
-                    Action.NoOp
-                } else {
-                    // Authoritative list without the intended track: the
-                    // documented MPV-consistent fallback is Off.
-                    selection = SubtitleSelection.Off
-                    Action.DisableText
-                }
                 }
             }
         }
+    }
+
+    /**
+     * Engine-reported source boundary. [orderPreserved] must be true only
+     * when the rebuild provably preserves existing track indices
+     * (append-only live attach: the engine merges the new single last).
+     * A non-preserving rebuild voids positional trust for ambiguous
+     * selections until a fresh explicit intent, load, or exact adoption.
+     */
+    fun noteSourceRebuilt(orderPreserved: Boolean) {
+        if (!orderPreserved) positionalVoid = true
     }
 
     /**
@@ -262,6 +247,7 @@ class DrmSubtitleIntentMachine {
             selection = SubtitleSelection.Track(ref.id)
             trackKey = ref.stableKey()
             trackLangName = ref.langKey()
+            positionalVoid = false
             Action.SelectTrack(ref.id)
         } else {
             explicitPendingExternalId = externalId
@@ -276,6 +262,7 @@ class DrmSubtitleIntentMachine {
      */
     fun onSelectTrack(id: Int?, ref: TrackRef? = null): Action {
         explicitPendingExternalId = null
+        positionalVoid = false
         return if (id == null) {
             selection = SubtitleSelection.Off
             trackKey = null
