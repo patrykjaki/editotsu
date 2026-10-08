@@ -28,6 +28,11 @@ class DrmSubtitleIntentHold11Test {
         id, externalId, lang, name, groupIndex = group, indexInGroup = index
     )
 
+    private fun pairs(
+        refs: List<DrmSubtitleIntentMachine.TrackRef>
+    ): List<Pair<Int, String>> = refs.map { it.id to it.stableKey() }
+
+
     @Test
     fun `ambiguous duplicates survive benign append rebuild`() {
         // Blocker A: two identical en/English embedded tracks, second
@@ -36,12 +41,12 @@ class DrmSubtitleIntentHold11Test {
         val m = DrmSubtitleIntentMachine()
         m.onLoad(1L, null, emptyList())
         m.onSelectTrack(1, ref(1, null, "en", "English", group = 0, index = 1))
-        m.noteSourceRebuilt(orderPreserved = true)
-        val grown = listOf(
+        val before = listOf(
             ref(0, null, "en", "English", group = 0, index = 0),
-            ref(1, null, "en", "English", group = 0, index = 1),
-            ref(2, "https://x/fr.vtt", "fr", group = 1, index = 0)
+            ref(1, null, "en", "English", group = 0, index = 1)
         )
+        m.noteSourceRebuilt(pairs(before))
+        val grown = before + ref(2, "https://x/fr.vtt", "fr", group = 1, index = 0)
         val action = m.onTracksAvailable(1L, grown, null, null, tracksAuthoritative = true)
         assertTrue(action is DrmSubtitleIntentMachine.Action.SelectTrack)
         assertEquals(1, (action as DrmSubtitleIntentMachine.Action.SelectTrack).id)
@@ -56,7 +61,14 @@ class DrmSubtitleIntentHold11Test {
         val m = DrmSubtitleIntentMachine()
         m.onLoad(1L, null, emptyList())
         m.onSelectTrack(1, ref(1, null, "en", "English", group = 0, index = 1))
-        m.noteSourceRebuilt(orderPreserved = false)
+        m.noteSourceRebuilt(
+            pairs(
+                listOf(
+                    ref(0, null, "en", "English", group = 0, index = 0),
+                    ref(1, null, "en", "English", group = 0, index = 1)
+                )
+            )
+        )
         // Same key strings, permuted occupants: index 1 now holds A.
         val swapped = listOf(
             ref(0, null, "en", "English", group = 0, index = 1),
@@ -73,7 +85,14 @@ class DrmSubtitleIntentHold11Test {
         val m = DrmSubtitleIntentMachine()
         m.onLoad(1L, null, emptyList())
         m.onSelectTrack(1, ref(1, null, "spa", "Full", group = 0, index = 1))
-        m.noteSourceRebuilt(orderPreserved = false)
+        m.noteSourceRebuilt(
+            pairs(
+                listOf(
+                    ref(0, null, "en", "English", group = 0, index = 0),
+                    ref(1, null, "spa", "Full", group = 0, index = 1)
+                )
+            )
+        )
         val reordered = listOf(
             ref(0, null, "spa", "Full", group = 0, index = 0),
             ref(1, null, "en", "English", group = 0, index = 1)
@@ -104,7 +123,14 @@ class DrmSubtitleIntentHold11Test {
         val m = DrmSubtitleIntentMachine()
         m.onLoad(1L, null, emptyList())
         m.onSelectTrack(1, ref(1, null, "en", "English", group = 0, index = 1))
-        m.noteSourceRebuilt(orderPreserved = false)
+        m.noteSourceRebuilt(
+            pairs(
+                listOf(
+                    ref(0, null, "en", "English", group = 0, index = 0),
+                    ref(1, null, "en", "English", group = 0, index = 1)
+                )
+            )
+        )
         // User re-confirms on the current listing: fresh exact basis.
         val refs = listOf(
             ref(0, null, "en", "English", group = 0, index = 0),
@@ -117,15 +143,19 @@ class DrmSubtitleIntentHold11Test {
     }
 
     @Test
-    fun `append-only attach predicate`() {
-        val a = ExternalSubtitle(url = "https://x/a.srt")
-        val b = ExternalSubtitle(url = "https://x/b.srt")
-        val c = ExternalSubtitle(url = "https://x/c.srt")
-        assertTrue(DrmTransportPlan.isAppendOnlySubAttach(listOf(a), listOf(a, b)))
-        assertTrue(DrmTransportPlan.isAppendOnlySubAttach(emptyList(), listOf(a)))
-        assertFalse(DrmTransportPlan.isAppendOnlySubAttach(listOf(a), listOf(a)))
-        assertFalse(DrmTransportPlan.isAppendOnlySubAttach(listOf(a), listOf(b, a)))
-        assertFalse(DrmTransportPlan.isAppendOnlySubAttach(listOf(a, b), listOf(a)))
-        assertFalse(DrmTransportPlan.isAppendOnlySubAttach(listOf(a), listOf(a, b, c)))
+    fun `append-growth verification matrix`() {
+        val m = DrmSubtitleIntentMachine()
+        val k = { id: Int, s: String -> id to s }
+        // Strict prefix-preserved superset only.
+        assertTrue(m.isAppendGrowth(listOf(k(0, "a")), listOf(k(0, "a"), k(1, "b"))))
+        assertTrue(m.isAppendGrowth(emptyList(), listOf(k(0, "a"))))
+        assertFalse(m.isAppendGrowth(listOf(k(0, "a")), listOf(k(0, "a"))))
+        assertFalse(m.isAppendGrowth(listOf(k(0, "a")), listOf(k(1, "b"), k(0, "a"))))
+        assertFalse(m.isAppendGrowth(listOf(k(0, "a"), k(1, "b")), listOf(k(0, "a"))))
+        assertTrue(m.isAppendGrowth(listOf(k(0, "a")), listOf(k(0, "a"), k(1, "b"), k(2, "c"))))
+        // Same-size permutation of identical keys is NOT growth.
+        assertFalse(m.isAppendGrowth(listOf(k(0, "x"), k(1, "x")), listOf(k(0, "x"), k(1, "x"))))
+        // Renumbered identical keys are NOT growth.
+        assertFalse(m.isAppendGrowth(listOf(k(0, "x"), k(1, "x")), listOf(k(0, "x"))))
     }
 }

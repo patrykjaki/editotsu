@@ -63,15 +63,15 @@ class DrmSubtitleIntentMachine {
     /** Order-insensitive identity companion to [trackKey] (reorder follow). */
     private var trackLangName: String? = null
     /**
-     * Set by the engine on a NON-order-preserving source rebuild. While set,
-     * positional trust is void for ambiguous selections: identical duplicate
-     * keys are indistinguishable across a permutation, so the machine defers
-     * (or falls back explicitly) instead of retargeting. Cleared by an
-     * order-preserving rebuild and by every fresh explicit intent, load, or
-     * exact-identity adoption. Append-only live attaches preserve order by
-     * construction (see [isAppendOnlySubAttach]) and never set it.
+     * Pre-rebuild (id, stableKey) snapshot from the engine, set on every
+     * source rebuild that carries live intent. The next evaluations verify
+     * append-growth against it (prefix-preserved superset ⇒ benign attach,
+     * trust restored); anything else keeps positional trust void for
+     * ambiguous selections. Observes enumerations, never predicts from
+     * request URLs. Cleared on verified growth, explicit Off, fresh loads,
+     * and exact-identity adoptions.
      */
-    private var positionalVoid: Boolean = false
+    private var pendingVerification: List<Pair<Int, String>>? = null
 
     /**
      * New load generation. preferredSubLang "None" starts Off (action
@@ -89,7 +89,7 @@ class DrmSubtitleIntentMachine {
         explicitPendingExternalId = null
         trackKey = null
         trackLangName = null
-        positionalVoid = false
+        pendingVerification = null
         return if (preferredSubLang != null && preferredSubLang.equals("None", ignoreCase = true)) {
             selection = SubtitleSelection.Off
             Action.DisableText
@@ -128,7 +128,7 @@ class DrmSubtitleIntentMachine {
                 selection = SubtitleSelection.Track(ref.id)
                 trackKey = ref.stableKey()
                 trackLangName = ref.langKey()
-                positionalVoid = false
+                pendingVerification = null
                 return Action.SelectTrack(ref.id)
             }
         }
@@ -143,7 +143,7 @@ class DrmSubtitleIntentMachine {
                     selection = SubtitleSelection.Track(pending.id)
                     trackKey = pending.stableKey()
                     trackLangName = pending.langKey()
-                    positionalVoid = false
+                    pendingVerification = null
                     Action.SelectTrack(pending.id)
                 } else if (autoId != null && tracks.any { it.id == autoId }) {
                     // HOLD8-A: an explicit saved preference is honored even
@@ -162,6 +162,16 @@ class DrmSubtitleIntentMachine {
                 }
             }
             is SubtitleSelection.Track -> {
+                // HOLD12-B: verify post-rebuild order when the engine left a
+                // snapshot. Append-growth (prefix-preserved superset) proves
+                // the rebuild kept existing indices; anything else leaves
+                // positional trust void for ambiguous selections below.
+                pendingVerification?.let { prev ->
+                    val cur = tracks.map { it.id to it.stableKey() }
+                    if (isAppendGrowth(prev, cur)) {
+                        pendingVerification = null
+                    }
+                }
                 // HOLD11: the selected index still holding the identical key
                 // proves no observable change to the selected track — benign
                 // additions elsewhere (or same-order rebuilds) keep it, even
@@ -170,29 +180,35 @@ class DrmSubtitleIntentMachine {
                     tracks.getOrNull(current.id)?.stableKey() == key
                 } ?: false
                 // Ambiguity is evaluated against the CURRENT enumeration: a
-                // non-preserving source boundary voids positional trust for
+                // non-verified source boundary voids positional trust for
                 // ambiguous selections (identical duplicates are
                 // indistinguishable across a permutation).
                 val ambiguous = trackLangName?.let { wanted ->
                     tracks.count { it.langKey() == wanted } > 1
                 } ?: false
-                val voided = positionalVoid
-                if (sameIndexKey && !(ambiguous && voided)) {
+                val unverified = pendingVerification != null
+                if (sameIndexKey && !(ambiguous && unverified)) {
                     reassert(current.id, currentSelectedId)
                 } else {
                     val unique = trackLangName?.let { wanted ->
                         tracks.filter { it.langKey() == wanted }.singleOrNull()
                     }
-                    if (unique != null) {
-                        // Confident order-independent identity: follow it.
+                    if (unique != null && tracksAuthoritative) {
+                        // Confident order-independent identity on a settled
+                        // list: follow it. (HOLD12-A: transitional partial
+                        // lists must defer instead — a duplicate still
+                        // unparsed looks falsely "unique".)
                         selection = SubtitleSelection.Track(unique.id)
                         trackKey = unique.stableKey()
                         trackLangName = unique.langKey()
+                        pendingVerification = null
                         reassert(unique.id, currentSelectedId)
                     } else if (trackKey == null && trackLangName == null &&
-                        tracks.any { it.id == current.id }
+                        tracks.any { it.id == current.id } && tracksAuthoritative
                     ) {
-                        // No stable identity known: legacy numeric path.
+                        // No stable identity known: legacy numeric path,
+                        // settled lists only (numeric ids are meaningless
+                        // mid-enumeration).
                         reassert(current.id, currentSelectedId)
                     } else if (!tracksAuthoritative) {
                         Action.NoOp
@@ -200,6 +216,7 @@ class DrmSubtitleIntentMachine {
                         selection = SubtitleSelection.Off
                         trackKey = null
                         trackLangName = null
+                        pendingVerification = null
                         Action.DisableText
                     }
                 }
@@ -208,15 +225,30 @@ class DrmSubtitleIntentMachine {
     }
 
     /**
-     * Engine-reported source boundary. [orderPreserved] must be true only
-     * when the rebuild provably preserves existing track indices
-     * (append-only live attach: the engine merges the new single last).
-     * A non-preserving rebuild voids positional trust for ambiguous
-     * selections until a fresh explicit intent, load, or exact adoption.
+     * Engine-reported source boundary: snapshot of the pre-rebuild text
+     * enumeration as (id, stableKey) pairs, taken by the engine from its
+     * current track lists immediately before setMediaSource. The next
+     * evaluations verify append-growth against it (prefix-preserved
+     * superset ⇒ benign attach, trust restored); any other outcome keeps
+     * positional trust void for ambiguous selections. Replaces any prior
+     * pending snapshot.
      */
-    fun noteSourceRebuilt(orderPreserved: Boolean) {
-        if (!orderPreserved) positionalVoid = true
+    fun noteSourceRebuilt(previousPairs: List<Pair<Int, String>>) {
+        pendingVerification = previousPairs.toList()
     }
+
+    /**
+     * Pure append-growth check (unit-tested): [current] is exactly
+     * [previous] plus appended entries, so pre-existing indices provably
+     * survived this rebuild. Removal, reorder, or same-size permutation of
+     * identical keys is NOT growth.
+     */
+    fun isAppendGrowth(
+        previous: List<Pair<Int, String>>,
+        current: List<Pair<Int, String>>,
+    ): Boolean =
+        current.size > previous.size &&
+            current.subList(0, previous.size) == previous
 
     /**
      * HOLD9 §5: reasserting an already-correct selection is a NoOp, never a
@@ -225,6 +257,8 @@ class DrmSubtitleIntentMachine {
      */
     private fun reassert(id: Int, currentSelectedId: Int?): Action =
         if (currentSelectedId == id) Action.NoOp else Action.SelectTrack(id)
+
+
 
     /**
      * Live external attachment. select=false or non-explicit calls only
@@ -247,7 +281,7 @@ class DrmSubtitleIntentMachine {
             selection = SubtitleSelection.Track(ref.id)
             trackKey = ref.stableKey()
             trackLangName = ref.langKey()
-            positionalVoid = false
+            pendingVerification = null
             Action.SelectTrack(ref.id)
         } else {
             explicitPendingExternalId = externalId
@@ -262,7 +296,7 @@ class DrmSubtitleIntentMachine {
      */
     fun onSelectTrack(id: Int?, ref: TrackRef? = null): Action {
         explicitPendingExternalId = null
-        positionalVoid = false
+        pendingVerification = null
         return if (id == null) {
             selection = SubtitleSelection.Off
             trackKey = null
@@ -275,8 +309,8 @@ class DrmSubtitleIntentMachine {
             Action.SelectTrack(id)
         }
     }
-}
 
+}
 /**
  * HOLD9: adapter authority determination. The engine feeds every
  * [onTracksAvailable] evaluation with this (never a bare `isNotEmpty`),
@@ -338,4 +372,41 @@ fun resolveDrmAutoSubtitleId(
     }?.let { return it.id }
     tracks.firstOrNull { it.default && !it.forced }?.let { return it.id }
     return tracks.firstOrNull()?.id
+}
+
+/**
+ * Observed subtitle-selector state, read by the engine from the live
+ * player and track selector at apply time.
+ */
+data class ObservedSubtitleSelectorState(
+    val textDisabled: Boolean,
+    val selectedSubtitleId: Int?,
+)
+
+/**
+ * HOLD12-C: idempotence depends on actual applied/observed selector state,
+ * not only the last requested action. A repeated action is skipped only
+ * when the player already reflects its end state; any drift (e.g. another
+ * track selected since) permits reapplication. [textOverrideActive] is
+ * write-tracked by the engine (set on SelectTrack writes, cleared on
+ * DisableText/EnableTextAuto writes, source rebuilds and release) because
+ * ExoPlayer silently drops overrides for dead groups, making bare
+ * observation unreliable exactly when it matters.
+ */
+fun shouldSkipSubtitleWrite(
+    lastApplied: DrmSubtitleIntentMachine.Action?,
+    next: DrmSubtitleIntentMachine.Action,
+    observed: ObservedSubtitleSelectorState,
+    textOverrideActive: Boolean,
+): Boolean {
+    if (next is DrmSubtitleIntentMachine.Action.NoOp) return true
+    if (lastApplied != next) return false
+    return when (next) {
+        is DrmSubtitleIntentMachine.Action.DisableText -> observed.textDisabled
+        is DrmSubtitleIntentMachine.Action.SelectTrack ->
+            !observed.textDisabled && observed.selectedSubtitleId == next.id
+        is DrmSubtitleIntentMachine.Action.EnableTextAuto ->
+            !observed.textDisabled && !textOverrideActive
+        else -> false
+    }
 }

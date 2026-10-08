@@ -284,25 +284,6 @@ object DrmTransportPlan {
         request.copy(externalSubtitles = withLiveSubtitle(request.externalSubtitles, sub))
 
     /**
-     * HOLD11: append-only attach predicate — the adapter boundary the engine
-     * derives its rebuild order claim from. True only when [merged] is
-     * exactly [previous] plus one appended URL: merge construction then
-     * provably preserves every existing track index (new single goes last),
-     * so positional trust survives the rebuild. Anything else (reorder,
-     * removal, prepend) is NOT order-preserving. Host-tested; the engine
-     * passes the result to `noteSourceRebuilt(orderPreserved)`.
-     */
-    fun isAppendOnlySubAttach(
-        previous: List<ExternalSubtitle>,
-        merged: List<ExternalSubtitle>,
-    ): Boolean {
-        if (merged.size != previous.size + 1) return false
-        val prevUrls = previous.map { it.url.trim() }
-        val mergedUrls = merged.map { it.url.trim() }
-        return mergedUrls.dropLast(1) == prevUrls
-    }
-
-    /**
      * HOLD5 B4: authoritative primary MIME. An explicit caller MIME always
      * wins; otherwise VideoType decides (MPV behavior untouched — only the
      * DRM engine reads request.mimeType).

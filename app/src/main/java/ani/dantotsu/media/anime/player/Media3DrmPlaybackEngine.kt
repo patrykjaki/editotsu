@@ -72,9 +72,13 @@ class Media3DrmPlaybackEngine(
     private val subtitleIntent = DrmSubtitleIntentMachine()
     private var cuesListener: ((List<androidx.media3.common.text.Cue>) -> Unit)? = null
     private var styleApplier: ((SubtitleStyle) -> Unit)? = null
-    // HOLD10 §5: last applied subtitle action; identical consecutive writes
-    // are skipped. Reset on release (fresh selector state afterwards).
+    // HOLD10 §5 + HOLD12-C: last applied subtitle action plus whether a
+    // text override is currently live. Both reset on release, player
+    // recreation, and source rebuilds (stale overrides reference dead
+    // groups); identical consecutive writes are then skipped only when the
+    // live selector already reflects the requested end state.
     private var lastSubtitleAction: DrmSubtitleIntentMachine.Action? = null
+    private var textOverrideActive: Boolean = false
     // HOLD4 B1/B2: output-affecting commands arrive before ExoPlayer exists
     // (bind time) and must survive creation + header rebuilds. The real
     // Surface stays here; everything replayable lives in [pendingOutput].
@@ -245,24 +249,30 @@ class Media3DrmPlaybackEngine(
     }
 
     private fun applySubtitleAction(action: DrmSubtitleIntentMachine.Action) {
-        // HOLD10 §5: never write an identical consecutive selector command.
-        // Identical override writes risk an onTracksChanged feedback loop;
-        // the machine already returns NoOp for steady states, and this guard
-        // covers repeats across evaluations (e.g. Off re-confirmations).
-        if (action != DrmSubtitleIntentMachine.Action.NoOp && action == lastSubtitleAction) return
-        if (action != DrmSubtitleIntentMachine.Action.NoOp) lastSubtitleAction = action
+        if (action is DrmSubtitleIntentMachine.Action.NoOp) return
+        // HOLD12-C: skip only when the live selector already reflects the
+        // requested end state; any drift permits reapplication.
+        val params = trackSelector.parameters
+        val observed = ObservedSubtitleSelectorState(
+            textDisabled = C.TRACK_TYPE_TEXT in params.disabledTrackTypes,
+            selectedSubtitleId = subtitleTracks.firstOrNull { it.selected }?.id
+        )
+        if (shouldSkipSubtitleWrite(lastSubtitleAction, action, observed, textOverrideActive)) return
+        lastSubtitleAction = action
         when (action) {
             is DrmSubtitleIntentMachine.Action.NoOp -> Unit
             is DrmSubtitleIntentMachine.Action.DisableText -> {
                 val params = trackSelector.parameters.buildUpon()
                 params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                 trackSelector.parameters = params.build()
+                textOverrideActive = false
             }
             is DrmSubtitleIntentMachine.Action.EnableTextAuto -> {
                 val params = trackSelector.parameters.buildUpon()
                 params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                 params.clearOverridesOfType(C.TRACK_TYPE_TEXT)
                 trackSelector.parameters = params.build()
+                textOverrideActive = false
             }
             is DrmSubtitleIntentMachine.Action.SelectTrack -> {
                 val params = trackSelector.parameters.buildUpon()
@@ -275,6 +285,7 @@ class Media3DrmPlaybackEngine(
                     }
                 }
                 trackSelector.parameters = params.build()
+                textOverrideActive = true
             }
         }
     }
@@ -436,14 +447,22 @@ class Media3DrmPlaybackEngine(
             }
             val position = player?.currentPosition ?: req.startPositionMs
             val autoplay = player?.playWhenReady ?: true
-            // HOLD11: the merge is append-only by construction (see
-            // isAppendOnlySubAttach), so existing indices provably survive
-            // this rebuild — positional trust is maintained, not voided.
+            // HOLD12-B: snapshot the pre-rebuild text enumeration for
+            // post-rebuild order verification (append-growth ⇒ benign
+            // attach). This observes enumerations, never predicts from
+            // request URLs.
             subtitleIntent.noteSourceRebuilt(
-                orderPreserved = DrmTransportPlan.isAppendOnlySubAttach(
-                    req.externalSubtitles,
-                    merged.externalSubtitles
-                )
+                subtitleTracks.mapIndexed { index, track ->
+                    val (groupIndex, trackIndex) = subtitleGroups.getOrNull(index) ?: (0 to 0)
+                    track.id to DrmSubtitleIntentMachine.TrackRef(
+                        id = track.id,
+                        externalId = subtitleExternalIds.getOrNull(index),
+                        language = track.language,
+                        name = track.name,
+                        groupIndex = groupIndex,
+                        indexInGroup = trackIndex
+                    ).stableKey()
+                }
             )
             ensurePlayer(merged)
             activeRequest = merged
@@ -547,6 +566,7 @@ class Media3DrmPlaybackEngine(
             cuesListener = null
             styleApplier = null
             lastSubtitleAction = null
+            textOverrideActive = false
             listeners.clear()
         }
     }
@@ -591,6 +611,7 @@ class Media3DrmPlaybackEngine(
         // Fresh selector state on the new player: forget applied actions so
         // intent is re-asserted (idempotently) on the next evaluation.
         lastSubtitleAction = null
+            textOverrideActive = false
         // HOLD4 B1/B2: replay everything bound before creation (surface,
         // speed, resize) so a header rebuild never loses output state.
         exo.setVideoSurface(boundSurface)
@@ -618,6 +639,7 @@ class Media3DrmPlaybackEngine(
         params.clearOverridesOfType(C.TRACK_TYPE_TEXT)
         trackSelector.parameters = params.build()
         lastSubtitleAction = null
+            textOverrideActive = false
         player.setMediaSource(source)
         player.prepare()
     }
