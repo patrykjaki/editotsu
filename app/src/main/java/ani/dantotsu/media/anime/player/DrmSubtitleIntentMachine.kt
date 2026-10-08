@@ -72,6 +72,15 @@ class DrmSubtitleIntentMachine {
      * and exact-identity adoptions.
      */
     private var pendingVerification: List<Pair<Int, String>>? = null
+    /**
+     * HOLD13-A: whether the current selection was ambiguous (shared its
+     * language identity with a sibling) in the pre-rebuild snapshot. A
+     * formerly ambiguous selection can never become "confidently unique"
+     * merely because a sibling disappeared — that survivor proves nothing
+     * about the selected track. Computed at note time; cleared together
+     * with [pendingVerification].
+     */
+    private var boundaryAmbiguous: Boolean = false
 
     /**
      * New load generation. preferredSubLang "None" starts Off (action
@@ -90,6 +99,7 @@ class DrmSubtitleIntentMachine {
         trackKey = null
         trackLangName = null
         pendingVerification = null
+        boundaryAmbiguous = false
         return if (preferredSubLang != null && preferredSubLang.equals("None", ignoreCase = true)) {
             selection = SubtitleSelection.Off
             Action.DisableText
@@ -129,6 +139,7 @@ class DrmSubtitleIntentMachine {
                 trackKey = ref.stableKey()
                 trackLangName = ref.langKey()
                 pendingVerification = null
+                boundaryAmbiguous = false
                 return Action.SelectTrack(ref.id)
             }
         }
@@ -144,6 +155,7 @@ class DrmSubtitleIntentMachine {
                     trackKey = pending.stableKey()
                     trackLangName = pending.langKey()
                     pendingVerification = null
+                    boundaryAmbiguous = false
                     Action.SelectTrack(pending.id)
                 } else if (autoId != null && tracks.any { it.id == autoId }) {
                     // HOLD8-A: an explicit saved preference is honored even
@@ -170,6 +182,14 @@ class DrmSubtitleIntentMachine {
                     val cur = tracks.map { it.id to it.stableKey() }
                     if (isAppendGrowth(prev, cur)) {
                         pendingVerification = null
+                        // Growth proves indices survived — but only a
+                        // pairwise-distinct prefix proves no permutation is
+                        // hiding inside it (identical duplicates could have
+                        // swapped under identical key strings). Ambiguous
+                        // pre-images keep the boundary guard.
+                        if (prev.map { it.second }.distinct().size == prev.size) {
+                            boundaryAmbiguous = false
+                        }
                     }
                 }
                 // HOLD11: the selected index still holding the identical key
@@ -187,21 +207,30 @@ class DrmSubtitleIntentMachine {
                     tracks.count { it.langKey() == wanted } > 1
                 } ?: false
                 val unverified = pendingVerification != null
-                if (sameIndexKey && !(ambiguous && unverified)) {
+                // HOLD13: boundaryAmbiguous persists across growth that
+                // cannot prove the absence of a permutation (identical
+                // duplicates swapping under identical key strings). Either
+                // void source blocks positional trust for ambiguous picks.
+                if (sameIndexKey && !(ambiguous && (unverified || boundaryAmbiguous))) {
                     reassert(current.id, currentSelectedId)
                 } else {
                     val unique = trackLangName?.let { wanted ->
                         tracks.filter { it.langKey() == wanted }.singleOrNull()
                     }
-                    if (unique != null && tracksAuthoritative) {
+                    if (unique != null && tracksAuthoritative && !boundaryAmbiguous) {
                         // Confident order-independent identity on a settled
-                        // list: follow it. (HOLD12-A: transitional partial
-                        // lists must defer instead — a duplicate still
-                        // unparsed looks falsely "unique".)
+                        // list, for a selection unambiguous since the
+                        // boundary: follow it. (HOLD12-A: transitional
+                        // partial lists must defer instead — a duplicate
+                        // still unparsed looks falsely "unique". HOLD13-A:
+                        // formerly ambiguous selections never resolve here —
+                        // a surviving sibling proves nothing about the
+                        // selected track.)
                         selection = SubtitleSelection.Track(unique.id)
                         trackKey = unique.stableKey()
                         trackLangName = unique.langKey()
                         pendingVerification = null
+                        boundaryAmbiguous = false
                         reassert(unique.id, currentSelectedId)
                     } else if (trackKey == null && trackLangName == null &&
                         tracks.any { it.id == current.id } && tracksAuthoritative
@@ -217,6 +246,7 @@ class DrmSubtitleIntentMachine {
                         trackKey = null
                         trackLangName = null
                         pendingVerification = null
+                        boundaryAmbiguous = false
                         Action.DisableText
                     }
                 }
@@ -235,19 +265,41 @@ class DrmSubtitleIntentMachine {
      */
     fun noteSourceRebuilt(previousPairs: List<Pair<Int, String>>) {
         pendingVerification = previousPairs.toList()
+        // HOLD13-A: ambiguity is judged against the PRE-rebuild siblings,
+        // never the post-rebuild survivors. A selection ambiguous here
+        // cannot become "confidently unique" later merely because a
+        // sibling disappeared.
+        boundaryAmbiguous = trackLangName?.let { wanted ->
+            previousPairs.count { langKeyOfStableKey(it.second) == wanted } > 1
+        } ?: false
     }
+
+    /**
+     * Recovers the order-insensitive language identity from a stored
+     * stable key without needing the original track: externals keep their
+     * URI, embedded keys carry `emb:<lang>|<name>` after the coordinates.
+     * Pure and unit-tested alongside the machine.
+     */
+    fun langKeyOfStableKey(stableKey: String): String =
+        if (stableKey.startsWith("emb:")) {
+            "emb:" + stableKey.removePrefix("emb:").split(':').last()
+        } else {
+            stableKey
+        }
 
     /**
      * Pure append-growth check (unit-tested): [current] is exactly
      * [previous] plus appended entries, so pre-existing indices provably
-     * survived this rebuild. Removal, reorder, or same-size permutation of
-     * identical keys is NOT growth.
+     * survived this rebuild. An empty previous snapshot proves nothing
+     * (HOLD13 acceptance 4) and never counts as growth. Removal, reorder,
+     * or same-size permutation of identical keys is NOT growth.
      */
     fun isAppendGrowth(
         previous: List<Pair<Int, String>>,
         current: List<Pair<Int, String>>,
     ): Boolean =
-        current.size > previous.size &&
+        previous.isNotEmpty() &&
+            current.size > previous.size &&
             current.subList(0, previous.size) == previous
 
     /**
@@ -282,6 +334,7 @@ class DrmSubtitleIntentMachine {
             trackKey = ref.stableKey()
             trackLangName = ref.langKey()
             pendingVerification = null
+            boundaryAmbiguous = false
             Action.SelectTrack(ref.id)
         } else {
             explicitPendingExternalId = externalId
@@ -297,6 +350,7 @@ class DrmSubtitleIntentMachine {
     fun onSelectTrack(id: Int?, ref: TrackRef? = null): Action {
         explicitPendingExternalId = null
         pendingVerification = null
+        boundaryAmbiguous = false
         return if (id == null) {
             selection = SubtitleSelection.Off
             trackKey = null

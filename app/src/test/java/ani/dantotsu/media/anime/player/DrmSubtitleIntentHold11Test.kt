@@ -146,9 +146,11 @@ class DrmSubtitleIntentHold11Test {
     fun `append-growth verification matrix`() {
         val m = DrmSubtitleIntentMachine()
         val k = { id: Int, s: String -> id to s }
-        // Strict prefix-preserved superset only.
+        // Strict prefix-preserved superset only; an empty previous
+        // snapshot proves nothing (HOLD13 acceptance 4) and never counts
+        // as growth.
         assertTrue(m.isAppendGrowth(listOf(k(0, "a")), listOf(k(0, "a"), k(1, "b"))))
-        assertTrue(m.isAppendGrowth(emptyList(), listOf(k(0, "a"))))
+        assertFalse(m.isAppendGrowth(emptyList(), listOf(k(0, "a"))))
         assertFalse(m.isAppendGrowth(listOf(k(0, "a")), listOf(k(0, "a"))))
         assertFalse(m.isAppendGrowth(listOf(k(0, "a")), listOf(k(1, "b"), k(0, "a"))))
         assertFalse(m.isAppendGrowth(listOf(k(0, "a"), k(1, "b")), listOf(k(0, "a"))))
