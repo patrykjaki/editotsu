@@ -283,17 +283,13 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                             Logger.log("ManualTorrentBottomSheet: pending replaced during resolve")
                         }
                     }
-                    if (payload is ManualTorrentPayload.StagedFile) {
-                        val prev = stagedTempPath
-                        stagedTempPath = payload.locator
-                        // A new resolution supersedes the previous staged
-                        // file: retire it now (idempotent delete), so only
-                        // the current resolution's copy is ever cleaned later.
-                        if (prev != null && prev != stagedTempPath) {
-                            runCatching { File(prev).delete() }
-                        }
-                    } else {
-                        stagedTempPath = null
+                    // HOLD2-B: a successful re-resolve retires whatever staged
+                    // file the previous resolution owned — including
+                    // magnet-after-file (current null → previous deleted).
+                    // Same-path re-resolve keeps the file.
+                    val currentStaged = (payload as? ManualTorrentPayload.StagedFile)?.locator
+                    stagedTempPath = retireSupersededStaged(stagedTempPath, currentStaged) {
+                        runCatching { File(it).delete() }
                     }
                     ownedTempPath = null
                     resolvedTorrent = torrent

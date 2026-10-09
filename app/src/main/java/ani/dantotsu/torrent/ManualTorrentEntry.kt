@@ -276,6 +276,9 @@ class PendingManualTorrent(
 
     @Synchronized
     fun clear() {
+        // HOLD2: clearing must also invalidate in-flight stages, or a late
+        // stage completion would resurrect an entry after clear.
+        stagingGeneration += 1
         payload?.let { onDrop(it) }
         payload = null
     }
@@ -332,4 +335,53 @@ fun attachManualVideo(
     episode.selectedExtractor = serverName
     episode.selectedVideo = 0
     return video
+}
+
+/** Outcome of one staged-copy publication attempt. */
+enum class StagedPublishResult {
+    /** Copy is now owned by the holder. Caller must NOT delete it. */
+    PUBLISHED,
+    /** Token stale: [PendingManualTorrent.offerStaged] disposed the copy. */
+    STALE_CLEANED,
+    /** Nothing was staged (failure upstream); nothing to publish. */
+    NOTHING_STAGED,
+}
+
+/**
+ * Publishes one completed stage copy into the holder (HOLD2-A/C).
+ * Returns [StagedPublishResult.PUBLISHED] only when the token is current;
+ * a stale token's copy is disposed by [offerStaged]. The caller pairs this
+ * with a `finally` that deletes [staged] unless the result is PUBLISHED —
+ * that covers coroutine cancellation between copy completion and Main
+ * publication without swallowing `CancellationException`.
+ */
+fun publishStagedReceipt(
+    token: Long,
+    staged: String?,
+    offerStaged: (Long, ManualTorrentPayload.StagedFile) -> Boolean,
+): StagedPublishResult {
+    if (staged == null) return StagedPublishResult.NOTHING_STAGED
+    return if (offerStaged(token, ManualTorrentPayload.StagedFile(staged))) {
+        StagedPublishResult.PUBLISHED
+    } else {
+        StagedPublishResult.STALE_CLEANED
+    }
+}
+
+/**
+ * Retires a superseded staged temp on successful re-resolve (HOLD2-B).
+ * Returns [current] (the new owner pointer, possibly null when the new
+ * resolution stages nothing, e.g. magnet-after-file); deletes [previous]
+ * exactly when it differs from [current]. Same-path re-resolve keeps the
+ * file; borrowed originals never reach here (see `ReceivedFile`).
+ */
+fun retireSupersededStaged(
+    previous: String?,
+    current: String?,
+    deleteFile: (String) -> Unit,
+): String? {
+    if (previous != null && previous != current) {
+        deleteFile(previous)
+    }
+    return current
 }

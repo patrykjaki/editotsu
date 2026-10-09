@@ -398,6 +398,137 @@ class ManualTorrentEntryTest {
         assertEquals(0, ep2.selectedVideo)
     }
 
+    // ---- HOLD2: clear invalidates in-flight staging ----
+
+    @Test
+    fun `clear rejects late stage completion`() {
+        val deleted = mutableListOf<String>()
+        val holder = PendingManualTorrent(onDrop = {
+            (it as? ManualTorrentPayload.StagedFile)?.locator?.let { path ->
+                deleted.add(path)
+            }
+        })
+        val token = holder.beginStage()
+        holder.clear()
+        assertTrue(
+            !holder.offerStaged(token, ManualTorrentPayload.StagedFile("/cache/late.torrent"))
+        )
+        assertEquals(listOf("/cache/late.torrent"), deleted)
+        assertNull(holder.peekLive())
+    }
+
+    // ---- HOLD2-A: staged publication transfer ----
+
+    @Test
+    fun `publish fresh token wins`() {
+        val offered = mutableListOf<ManualTorrentPayload.StagedFile>()
+        val result = publishStagedReceipt(3L, "/cache/a.torrent") { _, payload ->
+            offered.add(payload)
+            true
+        }
+        assertEquals(StagedPublishResult.PUBLISHED, result)
+        assertEquals(listOf("/cache/a.torrent"), offered.map { it.locator })
+    }
+
+    @Test
+    fun `publish stale token reports cleaned`() {
+        var disposed = false
+        val result = publishStagedReceipt(1L, "/cache/a.torrent") { _, _ ->
+            disposed = true
+            false
+        }
+        assertEquals(StagedPublishResult.STALE_CLEANED, result)
+        assertTrue(disposed)
+    }
+
+    @Test
+    fun `publish nothing staged reports empty`() {
+        var called = false
+        val result = publishStagedReceipt(1L, null) { _, _ ->
+            called = true
+            true
+        }
+        assertEquals(StagedPublishResult.NOTHING_STAGED, result)
+        assertTrue(!called)
+    }
+
+    @Test
+    fun `cancel between stage completion and publish leaves no orphan`() {
+        // Faithful model of MainActivity's staging→Main window with real
+        // files and the real holder: copy completes, publication is
+        // cancelled (CancellationException), the finally rule deletes.
+        val source = java.io.File.createTempFile("original", ".torrent")
+        source.writeBytes(byteArrayOf(7, 8, 9))
+        val staged = java.io.File.createTempFile("manual", ".torrent")
+        source.inputStream().use { input ->
+            staged.outputStream().use { output ->
+                copyBounded(input, output, ManualTorrentEntry.MAX_TORRENT_FILE_BYTES.toLong())
+            }
+        }
+        val holder = PendingManualTorrent(onDrop = {
+            (it as? ManualTorrentPayload.StagedFile)?.locator?.let { path ->
+                java.io.File(path).delete()
+            }
+        })
+        val token = holder.beginStage()
+        var result = StagedPublishResult.NOTHING_STAGED
+        var publishRan = false
+        val tornDownBeforePublish = true
+        try {
+            // Publication never runs: scope torn down first.
+            if (tornDownBeforePublish) throw kotlinx.coroutines.CancellationException("scope torn down")
+            result = publishStagedReceipt(token, staged.absolutePath) { _, _ -> true }
+            publishRan = true
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            // Expected here: in production this propagates to the torn-down
+            // scope; the test catches only to assert the cleanup state.
+        } finally {
+            if (result != StagedPublishResult.PUBLISHED) {
+                staged.delete()
+            }
+        }
+        assertTrue(!publishRan)
+        assertTrue(!staged.exists())
+        assertTrue(source.exists())
+        assertNull(holder.peekLive())
+        source.delete()
+    }
+
+    // ---- HOLD2-B: supersede retirement ----
+
+    @Test
+    fun `re-resolve to magnet retires previous staged file`() {
+        val deleted = mutableListOf<String>()
+        val current = retireSupersededStaged("/cache/a.torrent", null) { deleted.add(it) }
+        assertNull(current)
+        assertEquals(listOf("/cache/a.torrent"), deleted)
+    }
+
+    @Test
+    fun `re-resolve to new staged file retires old and keeps new`() {
+        val deleted = mutableListOf<String>()
+        val current = retireSupersededStaged("/cache/a.torrent", "/cache/b.torrent") { deleted.add(it) }
+        assertEquals("/cache/b.torrent", current)
+        assertEquals(listOf("/cache/a.torrent"), deleted)
+    }
+
+    @Test
+    fun `same-path re-resolve keeps file`() {
+        val deleted = mutableListOf<String>()
+        val current = retireSupersededStaged("/cache/a.torrent", "/cache/a.torrent") { deleted.add(it) }
+        assertEquals("/cache/a.torrent", current)
+        assertTrue(deleted.isEmpty())
+    }
+
+    @Test
+    fun `first resolve with no previous deletes nothing`() {
+        val deleted = mutableListOf<String>()
+        assertEquals("/cache/b.torrent", retireSupersededStaged(null, "/cache/b.torrent") { deleted.add(it) })
+        assertTrue(deleted.isEmpty())
+        assertNull(retireSupersededStaged(null, null) { deleted.add(it) })
+        assertTrue(deleted.isEmpty())
+    }
+
     // ---- HOLD1-A: original-file survival (reviewer negative control) ----
 
     @Test

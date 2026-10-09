@@ -37,7 +37,9 @@ import ani.dantotsu.torrent.ManualTorrentInbox
 import ani.dantotsu.torrent.ManualTorrentEntry
 import ani.dantotsu.torrent.ManualTorrentIntentDispatch
 import ani.dantotsu.torrent.ManualTorrentPayload
+import ani.dantotsu.torrent.StagedPublishResult
 import ani.dantotsu.torrent.copyBounded
+import ani.dantotsu.torrent.publishStagedReceipt
 import ani.dantotsu.addons.torrent.TorrentServerService
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.AnilistHomeViewModel
@@ -477,22 +479,33 @@ class MainActivity : AppCompatActivity() {
             is ManualTorrentPayload.ReceivedFile -> {
                 val token = ManualTorrentInbox.beginStage()
                 scope.launch(Dispatchers.IO) {
+                    // HOLD2-A: single ownership transfer across the
+                    // staging→Main window. If published, the inbox owns the
+                    // copy; if stale, offerStaged disposes it; if this job is
+                    // canceled before publication, the finally deletes it.
+                    // CancellationException propagates (never swallowed).
                     val staged = if (uri.scheme == "file") {
                         stageFileUri(applicationContext, uri)
                     } else {
                         ManualTorrentInbox.stageContentUri(applicationContext, uri)
                     }
-                    withContext(Dispatchers.Main) {
-                        if (staged != null &&
-                            ManualTorrentInbox.offerStaged(token, ManualTorrentPayload.StagedFile(staged))
-                        ) {
-                            toast(R.string.manual_torrent_received_toast)
-                        } else {
-                            // Stale token: offerStaged already deleted the
-                            // copy. Null stage: nothing was created.
-                            if (staged == null) {
+                    var result = StagedPublishResult.NOTHING_STAGED
+                    try {
+                        withContext(Dispatchers.Main) {
+                            result = publishStagedReceipt(token, staged) { t, payload ->
+                                ManualTorrentInbox.offerStaged(t, payload)
+                            }
+                            if (result == StagedPublishResult.PUBLISHED) {
+                                toast(R.string.manual_torrent_received_toast)
+                            } else if (result == StagedPublishResult.NOTHING_STAGED) {
                                 toast(R.string.manual_torrent_receive_failed)
                             }
+                            // STALE_CLEANED stays silent: a newer receipt is
+                            // live, and a failure toast would misattribute it.
+                        }
+                    } finally {
+                        if (result != StagedPublishResult.PUBLISHED) {
+                            staged?.let { runCatching { java.io.File(it).delete() } }
                         }
                     }
                 }
