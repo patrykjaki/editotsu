@@ -109,9 +109,16 @@ sealed interface ManualTorrentPayload {
     data class Magnet(val uri: String) : ManualTorrentPayload
 
     /**
-     * Private-cache staged `.torrent` file. [locator] is the source
-     * content/file URI string as received, or the private-cache absolute
-     * path after staging via [ManualTorrentInbox.stageContentUri].
+     * Borrowed third-party URI string (`content:`/`file:`) exactly as
+     * received. NEVER owned: must be staged into private cache before use,
+     * and MUST NEVER be passed to file deletion. The holder rejects it
+     * structurally ([PendingManualTorrent.offer] throws).
+     */
+    data class ReceivedFile(val uriString: String) : ManualTorrentPayload
+
+    /**
+     * App-owned private-cache `.torrent` copy (absolute path) produced by
+     * bounded staging. The ONLY payload type the cleanup paths may delete.
      */
     data class StagedFile(val locator: String) : ManualTorrentPayload
 }
@@ -135,9 +142,11 @@ object ManualTorrentIntentDispatch {
             return if (MagnetValidation.isMagnetLink(uri)) ManualTorrentPayload.Magnet(uri) else null
         }
         // Torrent files only: content/file scheme + exact torrent MIME.
-        // Generic octet-stream is deliberately rejected (too broad).
+        // Generic octet-stream is deliberately rejected (too broad). The
+        // result is BORROWED ([ManualTorrentPayload.ReceivedFile]) — staging
+        // into an app-owned copy happens before any offer or resolve.
         if ((scheme == "content" || scheme == "file") && mimeType == ManualTorrentEntry.TORRENT_MIME) {
-            return ManualTorrentPayload.StagedFile(dataString)
+            return ManualTorrentPayload.ReceivedFile(dataString)
         }
         return null
     }
@@ -187,8 +196,53 @@ class PendingManualTorrent(
     private var payload: ManualTorrentPayload? = null
     private var offeredAt = 0L
 
+    /**
+     * Async staging generation. File receipts call this at receipt START;
+     * slow completions offer via [offerStaged], which only wins when no
+     * newer receipt (magnet offer or newer stage) has since arrived.
+     */
+    private var stagingGeneration = 0L
+
+    /**
+     * Offers a receipt. Only [ManualTorrentPayload.Magnet] and
+     * [ManualTorrentPayload.StagedFile] are accepted — a borrowed
+     * [ManualTorrentPayload.ReceivedFile] throws, so an original
+     * third-party file can never enter cleanup-owning state. Offering
+     * also invalidates older in-flight stages (see [offerStaged]).
+     */
     @Synchronized
     fun offer(incoming: ManualTorrentPayload): Long {
+        require(incoming !is ManualTorrentPayload.ReceivedFile) {
+            "borrowed file URI must be staged into private cache before offer"
+        }
+        stagingGeneration += 1
+        return offerLocked(incoming)
+    }
+
+    /** Claims a staging token for one async file-stage task. */
+    @Synchronized
+    fun beginStage(): Long {
+        stagingGeneration += 1
+        return stagingGeneration
+    }
+
+    /**
+     * Completes one async stage. Returns true and offers only when [token]
+     * is still the latest staging generation; a stale completion is
+     * disposed via [onDrop] (deleting its app-owned copy) and returns
+     * false, so a newer receipt is never overwritten by obsolete work.
+     */
+    @Synchronized
+    fun offerStaged(token: Long, staged: ManualTorrentPayload.StagedFile): Boolean {
+        if (token != stagingGeneration) {
+            onDrop(staged)
+            return false
+        }
+        offerLocked(staged)
+        return true
+    }
+
+    private fun offerLocked(incoming: ManualTorrentPayload): Long {
         payload?.let { onDrop(it) }
         generation += 1
         payload = incoming
@@ -225,4 +279,57 @@ class PendingManualTorrent(
         payload?.let { onDrop(it) }
         payload = null
     }
+}
+
+/**
+ * Bounded stream copy core used by `.torrent` staging. Pure JVM seam:
+ * copies at most [capBytes] (+1 probe byte to detect overflow).
+ *
+ * @return bytes copied, or null when the input exceeds the cap. Partial
+ * output on over-cap/throw is the CALLER's to delete (see
+ * [ManualTorrentInbox.stageContentUri]).
+ * @throws java.io.IOException on mid-stream read/write failure.
+ */
+fun copyBounded(
+    input: java.io.InputStream,
+    output: java.io.OutputStream,
+    capBytes: Long,
+): Long? {
+    val buf = ByteArray(64 * 1024)
+    var total = 0L
+    while (true) {
+        val read = input.read(buf)
+        if (read <= 0) break
+        total += read
+        if (total > capBytes) return null
+        output.write(buf, 0, read)
+    }
+    return total
+}
+
+/**
+ * Attaches a manually entered torrent file to an episode exactly the way
+ * the player consumes it (`ExoplayerView`: extractor by
+ * `selectedExtractor`, video by `selectedVideo`, URL from the video).
+ *
+ * Replaces any same-named manual extractor, selects the single video, and
+ * returns the player-consumed [ani.dantotsu.parsers.Video]. Pure seam over
+ * the real model classes — the JVM matrix asserts selected index → link →
+ * consumed video, and that unrelated episodes are untouched.
+ */
+fun attachManualVideo(
+    episode: ani.dantotsu.media.anime.Episode,
+    serverName: String,
+    rawUrl: String,
+    link: String,
+): ani.dantotsu.parsers.Video {
+    val list = episode.extractors ?: mutableListOf<ani.dantotsu.parsers.VideoExtractor>()
+        .also { episode.extractors = it }
+    list.removeAll { it.server.name == serverName }
+    val video = ani.dantotsu.parsers.Video(null, ani.dantotsu.parsers.VideoType.CONTAINER, rawUrl)
+    video.file.url = link
+    list.add(ManualTorrentExtractor(serverName, listOf(video)))
+    episode.selectedExtractor = serverName
+    episode.selectedVideo = 0
+    return video
 }

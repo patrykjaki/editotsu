@@ -34,8 +34,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import ani.dantotsu.torrent.TorrentServerManager
 import ani.dantotsu.torrent.ManualTorrentInbox
+import ani.dantotsu.torrent.ManualTorrentEntry
 import ani.dantotsu.torrent.ManualTorrentIntentDispatch
 import ani.dantotsu.torrent.ManualTorrentPayload
+import ani.dantotsu.torrent.copyBounded
 import ani.dantotsu.addons.torrent.TorrentServerService
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.AnilistHomeViewModel
@@ -457,39 +459,85 @@ class MainActivity : AppCompatActivity() {
      * @return true when a detail/feed/notification activity was launched.
      */
     /**
-     * MAX MERGE M7A: stages an inbound manual torrent into the memory-only
-     * [ManualTorrentInbox]. Magnet URIs are offered directly; `.torrent`
-     * documents are copied to private cache on IO first so no content-URI
-     * grant lifetime is relied upon. Never logs URI contents.
+     * MAX MERGE M7A correction 1 (HOLD1-A/C): stages inbound manual
+     * torrents with receipt-start ordering. Magnet URIs are offered
+     * synchronously (which also invalidates older in-flight file stages).
+     * `content:`/`file:` documents are BOTH copied into bounded private
+     * cache on IO first — a borrowed third-party `file://` path is never
+     * offered and can never enter cleanup-owning state — then published
+     * via [ManualTorrentInbox.offerStaged] with the receipt token, so a
+     * slow stage cannot overwrite a newer receipt. Never logs URI contents.
      */
-    private fun receiveManualTorrent(intent: Intent, uri: Uri, payload: ManualTorrentPayload) {
+    private fun receiveManualTorrent(uri: Uri, payload: ManualTorrentPayload) {
         when (payload) {
             is ManualTorrentPayload.Magnet -> {
                 ManualTorrentInbox.offer(payload)
                 toast(R.string.manual_torrent_received_toast)
             }
-            is ManualTorrentPayload.StagedFile -> {
-                if (uri.scheme == "file") {
-                    if (java.io.File(uri.path ?: "").exists()) {
-                        ManualTorrentInbox.offer(ManualTorrentPayload.StagedFile(uri.path!!))
-                        toast(R.string.manual_torrent_received_toast)
-                    } else {
-                        toast(R.string.manual_torrent_receive_failed)
-                    }
-                    return
-                }
+            is ManualTorrentPayload.ReceivedFile -> {
+                val token = ManualTorrentInbox.beginStage()
                 scope.launch(Dispatchers.IO) {
-                    val staged = ManualTorrentInbox.stageContentUri(applicationContext, uri)
+                    val staged = if (uri.scheme == "file") {
+                        stageFileUri(applicationContext, uri)
+                    } else {
+                        ManualTorrentInbox.stageContentUri(applicationContext, uri)
+                    }
                     withContext(Dispatchers.Main) {
-                        if (staged != null) {
-                            ManualTorrentInbox.offer(ManualTorrentPayload.StagedFile(staged))
+                        if (staged != null &&
+                            ManualTorrentInbox.offerStaged(token, ManualTorrentPayload.StagedFile(staged))
+                        ) {
                             toast(R.string.manual_torrent_received_toast)
                         } else {
-                            toast(R.string.manual_torrent_receive_failed)
+                            // Stale token: offerStaged already deleted the
+                            // copy. Null stage: nothing was created.
+                            if (staged == null) {
+                                toast(R.string.manual_torrent_receive_failed)
+                            }
                         }
                     }
                 }
             }
+            is ManualTorrentPayload.StagedFile -> {
+                // classify() never produces this; defensive reject keeps
+                // provenance explicit if dispatch ever changes.
+                toast(R.string.manual_torrent_receive_failed)
+            }
+        }
+    }
+
+    /**
+     * MAX MERGE M7A correction 1 (HOLD1-A): copies a `file://` document
+     * into the same bounded private cache as content URIs. Returns the
+     * staged path or null. The original file is never modified or deleted.
+     */
+    private fun stageFileUri(context: android.content.Context, uri: Uri): String? {
+        var owned: java.io.File? = null
+        try {
+            val source = java.io.File(uri.path ?: return null)
+            if (!source.isFile || !source.canRead()) return null
+            val tmp = java.io.File.createTempFile("manual_", ".torrent", context.cacheDir)
+            owned = tmp
+            source.inputStream().use { input ->
+                tmp.outputStream().use { output ->
+                    val total = copyBounded(
+                        input, output, ManualTorrentEntry.MAX_TORRENT_FILE_BYTES.toLong()
+                    ) ?: run {
+                        runCatching { tmp.delete() }
+                        owned = null
+                        return null
+                    }
+                    if (total == 0L) {
+                        runCatching { tmp.delete() }
+                        owned = null
+                        return null
+                    }
+                }
+            }
+            owned = null
+            return tmp.absolutePath
+        } catch (_: Exception) {
+            owned?.let { runCatching { it.delete() } }
+            return null
         }
     }
 
@@ -576,7 +624,7 @@ class MainActivity : AppCompatActivity() {
             ManualTorrentIntentDispatch.classify(
                 intent.action, uri.scheme, intent.type, uri.toString()
             )?.let { payload ->
-                receiveManualTorrent(intent, uri, payload)
+                receiveManualTorrent(uri, payload)
                 return
             }
             // Custom-scheme media/user links route through the UrlMedia router;

@@ -92,19 +92,20 @@ class ManualTorrentEntryTest {
     }
 
     @Test
-    fun `VIEW content x-bittorrent allowed`() {
+    fun `VIEW content x-bittorrent yields borrowed receipt`() {
         val payload = ManualTorrentIntentDispatch.classify(
             view, "content", "application/x-bittorrent", "content://prov/x.torrent"
         )
-        assertTrue(payload is ManualTorrentPayload.StagedFile)
+        assertTrue(payload is ManualTorrentPayload.ReceivedFile)
+        assertEquals("content://prov/x.torrent", (payload as ManualTorrentPayload.ReceivedFile).uriString)
     }
 
     @Test
-    fun `VIEW file x-bittorrent allowed`() {
+    fun `VIEW file x-bittorrent yields borrowed receipt`() {
         val payload = ManualTorrentIntentDispatch.classify(
             view, "file", "application/x-bittorrent", "file:///sdcard/x.torrent"
         )
-        assertTrue(payload is ManualTorrentPayload.StagedFile)
+        assertTrue(payload is ManualTorrentPayload.ReceivedFile)
     }
 
     @Test
@@ -258,5 +259,178 @@ class ManualTorrentEntryTest {
     fun `constants sane`() {
         assertEquals(10 * 1024 * 1024, ManualTorrentEntry.MAX_TORRENT_FILE_BYTES)
         assertEquals(15 * 60 * 1000L, ManualTorrentEntry.PENDING_TTL_MS)
+    }
+
+    // ---- HOLD1-A: borrowed files can never enter cleanup ownership ----
+
+    @Test
+    fun `offering borrowed receipt throws`() {
+        val holder = PendingManualTorrent()
+        try {
+            holder.offer(ManualTorrentPayload.ReceivedFile("file:///sdcard/x.torrent"))
+            assertTrue("ReceivedFile offer must throw", false)
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("staged"))
+        }
+        assertNull(holder.peekLive())
+    }
+
+    // ---- HOLD1-C: receipt-start ordering ----
+
+    @Test
+    fun `slow file stage cannot overwrite newer magnet`() {
+        val dropped = mutableListOf<ManualTorrentPayload>()
+        val holder = PendingManualTorrent(onDrop = { dropped.add(it) })
+        val fileToken = holder.beginStage()
+        val magnet = ManualTorrentPayload.Magnet("magnet:?xt=urn:btih:${"E".repeat(40)}")
+        holder.offer(magnet)
+        val lateFile = ManualTorrentPayload.StagedFile("/cache/manual_1.torrent")
+        assertTrue(!holder.offerStaged(fileToken, lateFile))
+        // Newer magnet kept; obsolete staged copy disposed exactly once.
+        assertEquals(magnet, holder.peekLive())
+        assertEquals(listOf(lateFile), dropped)
+    }
+
+    @Test
+    fun `current stage token wins`() {
+        val holder = PendingManualTorrent()
+        val stale = holder.beginStage()
+        val current = holder.beginStage()
+        val payload = ManualTorrentPayload.StagedFile("/cache/manual_2.torrent")
+        assertTrue(!holder.offerStaged(stale, payload))
+        assertTrue(holder.offerStaged(current, payload))
+        assertEquals(payload, holder.peekLive())
+    }
+
+    @Test
+    fun `magnet offer invalidates in-flight file stage`() {
+        val dropped = mutableListOf<ManualTorrentPayload>()
+        val holder = PendingManualTorrent(onDrop = { dropped.add(it) })
+        val fileToken = holder.beginStage()
+        holder.offer(ManualTorrentPayload.Magnet("magnet:?xt=urn:btih:${"F".repeat(40)}"))
+        // The in-flight stage completes late: disposed, offer kept.
+        assertTrue(!holder.offerStaged(fileToken, ManualTorrentPayload.StagedFile("/cache/late.torrent")))
+        assertTrue(holder.peekLive() is ManualTorrentPayload.Magnet)
+    }
+
+    // ---- HOLD1-C: bounded copy core ----
+
+    @Test
+    fun `copyBounded copies exact bytes`() {
+        val data = ByteArray(300_000) { (it % 251).toByte() }
+        val out = java.io.ByteArrayOutputStream()
+        assertEquals(300_000L, copyBounded(java.io.ByteArrayInputStream(data), out, 1_000_000L))
+        assertTrue(data.contentEquals(out.toByteArray()))
+    }
+
+    @Test
+    fun `copyBounded rejects over-cap input`() {
+        val out = java.io.ByteArrayOutputStream()
+        assertNull(copyBounded(java.io.ByteArrayInputStream(ByteArray(11)), out, 10L))
+    }
+
+    @Test
+    fun `copyBounded accepts exactly cap-sized input`() {
+        val out = java.io.ByteArrayOutputStream()
+        assertEquals(10L, copyBounded(java.io.ByteArrayInputStream(ByteArray(10)), out, 10L))
+    }
+
+    @Test
+    fun `copyBounded propagates midstream failure`() {
+        val failing = object : java.io.InputStream() {
+            override fun read(): Int = throw java.io.IOException("boom")
+        }
+        try {
+            copyBounded(failing, java.io.ByteArrayOutputStream(), 10L)
+            assertTrue("midstream failure must throw", false)
+        } catch (e: java.io.IOException) {
+            assertEquals("boom", e.message)
+        }
+    }
+
+    @Test
+    fun `copyBounded empty input yields zero`() {
+        val out = java.io.ByteArrayOutputStream()
+        assertEquals(0L, copyBounded(java.io.ByteArrayInputStream(ByteArray(0)), out, 10L))
+    }
+
+    // ---- HOLD1-B: attach seam — selected index to player-consumed video ----
+
+    private fun testEpisode(): ani.dantotsu.media.anime.Episode =
+        ani.dantotsu.media.anime.Episode(number = "12")
+
+    @Test
+    fun `attach exposes chosen link as player-consumed video`() {
+        val ep = testEpisode()
+        val consumed = attachManualVideo(ep, "Manual torrent", "magnet:?xt=urn:btih:x", "http://127.0.0.1:8090/stream?hash=H&index=2")
+        assertEquals("Manual torrent", ep.selectedExtractor)
+        assertEquals(0, ep.selectedVideo)
+        // Exactly what ExoplayerView reads:
+        val ext = ep.extractors!!.find { it.server.name == ep.selectedExtractor }!!
+        val video = ext.videos.getOrNull(ep.selectedVideo)!!
+        assertTrue(video === consumed)
+        assertEquals("http://127.0.0.1:8090/stream?hash=H&index=2", video.file.url)
+    }
+
+    @Test
+    fun `attach replaces same-named extractor without touching others`() {
+        val ep = testEpisode()
+        attachManualVideo(ep, "Manual torrent", "magnet:?xt=urn:btih:a", "http://127.0.0.1/link1")
+        val other = ani.dantotsu.parsers.Video(null, ani.dantotsu.parsers.VideoType.CONTAINER, "https://cdn/x.mp4")
+        val otherExtractor = object : ani.dantotsu.parsers.VideoExtractor() {
+            override val server = ani.dantotsu.parsers.VideoServer("CDN", "")
+            override suspend fun extract() = ani.dantotsu.parsers.VideoContainer(listOf(other))
+        }.also { it.videos = listOf(other) }
+        ep.extractors!!.add(otherExtractor)
+        attachManualVideo(ep, "Manual torrent", "magnet:?xt=urn:btih:b", "http://127.0.0.1/link2")
+        assertEquals(2, ep.extractors!!.size)
+        assertEquals("http://127.0.0.1/link2", ep.extractors!!.find { it.server.name == "Manual torrent" }!!.videos[0].file.url)
+        assertEquals("https://cdn/x.mp4", ep.extractors!!.find { it.server.name == "CDN" }!!.videos[0].file.url)
+    }
+
+    @Test
+    fun `attach leaves unrelated episodes untouched`() {
+        val ep1 = testEpisode()
+        val ep2 = ani.dantotsu.media.anime.Episode(number = "13")
+        attachManualVideo(ep1, "Manual torrent", "magnet:?xt=urn:btih:x", "http://127.0.0.1/link")
+        assertNull(ep2.extractors)
+        assertNull(ep2.selectedExtractor)
+        assertEquals(0, ep2.selectedVideo)
+    }
+
+    // ---- HOLD1-A: original-file survival (reviewer negative control) ----
+
+    @Test
+    fun `original borrowed file survives every holder outcome`() {
+        val original = java.io.File.createTempFile("original", ".torrent")
+        original.writeBytes(byteArrayOf(1, 2, 3))
+        val dropped = mutableListOf<ManualTorrentPayload>()
+        val holder = PendingManualTorrent(onDrop = {
+            // Production-equivalent: only app-owned staged copies deleted.
+            (it as? ManualTorrentPayload.StagedFile)?.locator?.let { path ->
+                java.io.File(path).delete()
+            }
+        })
+        // 1. Offering the borrowed path itself is rejected outright.
+        try {
+            holder.offer(ManualTorrentPayload.ReceivedFile(original.absolutePath))
+            assertTrue("borrowed offer must throw", false)
+        } catch (_: IllegalArgumentException) {
+        }
+        assertTrue(original.exists())
+        // 2. Staged-copy lifecycle never touches the original.
+        val staged = java.io.File.createTempFile("manual", ".torrent")
+        holder.offer(ManualTorrentPayload.StagedFile(staged.absolutePath))
+        holder.clear()
+        assertTrue(!staged.exists())
+        assertTrue(original.exists())
+        assertEquals(listOf(3), listOf(original.readBytes().size))
+        // 3. Replace + expiry paths.
+        val staged2 = java.io.File.createTempFile("manual", ".torrent")
+        holder.offer(ManualTorrentPayload.StagedFile(staged2.absolutePath))
+        holder.offer(ManualTorrentPayload.Magnet("magnet:?xt=urn:btih:${"E".repeat(40)}"))
+        assertTrue(!staged2.exists())
+        assertTrue(original.exists())
+        original.delete()
     }
 }

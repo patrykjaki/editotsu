@@ -27,6 +27,21 @@ object ManualTorrentInbox {
 
     fun offer(payload: ManualTorrentPayload): Long = holder.offer(payload)
 
+    /**
+     * Claims a staging token for one async file-stage task. The completed
+     * copy must be published via [offerStaged], never [offer], so a slow
+     * stage cannot overwrite a newer receipt.
+     */
+    fun beginStage(): Long = holder.beginStage()
+
+    /**
+     * Publishes one staged copy iff [token] is still current; a stale
+     * completion's file is deleted and `false` returned. Only
+     * [ManualTorrentPayload.StagedFile] is accepted.
+     */
+    fun offerStaged(token: Long, staged: ManualTorrentPayload.StagedFile): Boolean =
+        holder.offerStaged(token, staged)
+
     fun peekLive(): ManualTorrentPayload? = holder.peekLive()
 
     fun consume(generation: Long): ManualTorrentPayload? = holder.consume(generation)
@@ -38,39 +53,44 @@ object ManualTorrentInbox {
     /**
      * Copies a content-URI `.torrent` document into private cache, bounded
      * by [ManualTorrentEntry.MAX_TORRENT_FILE_BYTES]. Returns the absolute
-     * staged path, or null when the document is missing, oversized, or
-     * unreadable. Call off the main thread. Never logs URI contents.
+     * staged path, or null when the document is missing, empty, oversized,
+     * or unreadable. Call off the main thread. Never logs URI contents.
+     * Every failure path deletes the partial temp (exactly-once ownership:
+     * on success the caller owns the path).
      */
     fun stageContentUri(context: Context, uri: Uri): String? {
-        return try {
+        var owned: File? = null
+        try {
             val resolver = context.contentResolver
-            val out = File.createTempFile("manual_", ".torrent", context.cacheDir)
-            var total = 0L
+            val tmp = File.createTempFile("manual_", ".torrent", context.cacheDir)
+            owned = tmp
             resolver.openInputStream(uri)?.use { input ->
-                out.outputStream().use { output ->
-                    val buf = ByteArray(64 * 1024)
-                    while (true) {
-                        val read = input.read(buf)
-                        if (read <= 0) break
-                        total += read
-                        if (total > ManualTorrentEntry.MAX_TORRENT_FILE_BYTES) {
-                            runCatching { out.delete() }
-                            return null
-                        }
-                        output.write(buf, 0, read)
+                tmp.outputStream().use { output ->
+                    val total = copyBounded(
+                        input, output, ManualTorrentEntry.MAX_TORRENT_FILE_BYTES.toLong()
+                    ) ?: run {
+                        // Over-cap: delete partial and report unusable.
+                        runCatching { tmp.delete() }
+                        owned = null
+                        return null
+                    }
+                    if (total == 0L) {
+                        runCatching { tmp.delete() }
+                        owned = null
+                        return null
                     }
                 }
             } ?: run {
-                runCatching { out.delete() }
+                runCatching { tmp.delete() }
+                owned = null
                 return null
             }
-            if (total == 0L) {
-                runCatching { out.delete() }
-                return null
-            }
-            out.absolutePath
+            owned = null // ownership transfers to the caller on success
+            return tmp.absolutePath
         } catch (_: Exception) {
-            null
+            // Mid-stream I/O failure: no temp may survive here.
+            owned?.let { runCatching { it.delete() } }
+            return null
         }
     }
 

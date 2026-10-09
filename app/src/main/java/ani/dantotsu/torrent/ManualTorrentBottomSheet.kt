@@ -10,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -19,6 +20,7 @@ import ani.dantotsu.databinding.BottomSheetManualTorrentBinding
 import ani.dantotsu.databinding.ItemManualTorrentFileBinding
 import ani.dantotsu.download.video.Helper
 import ani.dantotsu.media.Media
+import ani.dantotsu.media.MediaDetailsViewModel
 import ani.dantotsu.media.anime.AnimeWatchFragment
 import ani.dantotsu.media.anime.Episode
 import ani.dantotsu.media.anime.ExoplayerView
@@ -58,6 +60,8 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
 
     private var _binding: BottomSheetManualTorrentBinding? = null
     private val binding get() = _binding!!
+
+    private val model: MediaDetailsViewModel by activityViewModels()
 
     private var media: Media? = null
     private var episode: Episode? = null
@@ -175,19 +179,29 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
         showResolving()
         resolveJob?.cancel()
         resolveJob = lifecycleScope.launch(Dispatchers.IO) {
-            val staged = ManualTorrentInbox.stageContentUri(ctx, uri)
-            withContext(Dispatchers.Main) {
-                if (cancelled) {
-                    staged?.let { runCatching { File(it).delete() } }
-                    return@withContext
+            // HOLD1-C: exactly-once ownership of the staged copy. If this
+            // task is cancelled (dismiss) before Main delivery takes over,
+            // the finally block deletes the orphan; delivery sets
+            // [ownedTempPath] first so the normal lifecycle owns it.
+            var staged: String? = null
+            try {
+                staged = ManualTorrentInbox.stageContentUri(ctx, uri)
+                withContext(Dispatchers.Main) {
+                    if (cancelled) return@withContext
+                    if (staged == null) {
+                        showInput(getString(R.string.manual_torrent_file_too_large))
+                        return@withContext
+                    }
+                    ownedTempPath?.let { runCatching { File(it).delete() } }
+                    ownedTempPath = staged
+                    staged = null // ownership transferred to the sheet lifecycle
+                    resolvePayload(
+                        ManualTorrentPayload.StagedFile(ownedTempPath ?: return@withContext),
+                        pendingGeneration = null
+                    )
                 }
-                if (staged == null) {
-                    showInput(getString(R.string.manual_torrent_file_too_large))
-                    return@withContext
-                }
-                ownedTempPath?.let { runCatching { File(it).delete() } }
-                ownedTempPath = staged
-                resolvePayload(ManualTorrentPayload.StagedFile(staged), pendingGeneration = null)
+            } finally {
+                staged?.let { runCatching { File(it).delete() } }
             }
         }
     }
@@ -221,25 +235,27 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                 }
                 val url = when (payload) {
                     is ManualTorrentPayload.Magnet -> payload.uri
-                    is ManualTorrentPayload.StagedFile -> {
-                        val file = File(payload.locator)
-                        if (file.exists()) {
-                            payload.locator
-                        } else {
-                            // Defensive: an unstaged URI that bypassed the inbox
-                            // (normally staged at receipt). Never trust grant lifetime.
-                            val staged = try {
-                                ManualTorrentInbox.stageContentUri(
-                                    requireContext().applicationContext, Uri.parse(payload.locator)
-                                )
-                            } catch (_: Exception) {
-                                null
-                            }
-                            if (staged == null) throw IllegalStateException("unreadable torrent file")
-                            ownedTempPath?.let { runCatching { File(it).delete() } }
-                            ownedTempPath = staged
-                            staged
+                    is ManualTorrentPayload.ReceivedFile -> {
+                        // Defensive: receipts are staged before offer, so a
+                        // borrowed URI here means a dispatch change. Stage it
+                        // like a picked document — never resolve in place.
+                        val staged = try {
+                            ManualTorrentInbox.stageContentUri(
+                                requireContext().applicationContext, Uri.parse(payload.uriString)
+                            )
+                        } catch (_: Exception) {
+                            null
                         }
+                        if (staged == null) throw IllegalStateException("unreadable torrent file")
+                        ownedTempPath?.let { runCatching { File(it).delete() } }
+                        ownedTempPath = staged
+                        staged
+                    }
+                    is ManualTorrentPayload.StagedFile -> {
+                        if (!File(payload.locator).isFile) {
+                            throw IllegalStateException("staged torrent file missing")
+                        }
+                        payload.locator
                     }
                 }
                 val title = "${targetMedia.mainName()} Ep. ${targetEp.number}"
@@ -255,14 +271,29 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                 }
                 withContext(Dispatchers.Main) {
                     if (cancelled) return@withContext
-                    // Resolution fulfilled the pending offer: consume it. Staged
-                    // temps are deleted after handoff (the session holds
-                    // everything in memory by then) or on dismiss.
+                    // HOLD1-D: a pending offer replaced mid-resolve must not
+                    // be silently adopted. A null consume means the user is
+                    // looking at files from their explicit earlier choice
+                    // while a NEWER receipt stays pending (row reappears via
+                    // refreshPendingRow) — nothing is lost, nothing is
+                    // misattributed.
                     if (pendingGeneration != null) {
-                        ManualTorrentInbox.consume(pendingGeneration)
+                        val adopted = ManualTorrentInbox.consume(pendingGeneration)
+                        if (adopted == null) {
+                            Logger.log("ManualTorrentBottomSheet: pending replaced during resolve")
+                        }
                     }
                     if (payload is ManualTorrentPayload.StagedFile) {
+                        val prev = stagedTempPath
                         stagedTempPath = payload.locator
+                        // A new resolution supersedes the previous staged
+                        // file: retire it now (idempotent delete), so only
+                        // the current resolution's copy is ever cleaned later.
+                        if (prev != null && prev != stagedTempPath) {
+                            runCatching { File(prev).delete() }
+                        }
+                    } else {
+                        stagedTempPath = null
                     }
                     ownedTempPath = null
                     resolvedTorrent = torrent
@@ -275,7 +306,9 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                     showFiles()
                 }
             } catch (e: Exception) {
-                Logger.log("ManualTorrentBottomSheet: resolve failed: ${e.message}")
+                // Fixed string only: engine messages can carry raw magnet /
+                // file details (HOLD1-D), which must never reach logs.
+                Logger.log("ManualTorrentBottomSheet: resolve failed")
                 withContext(Dispatchers.Main) {
                     if (!cancelled) showInput(getString(R.string.manual_torrent_resolve_failed))
                 }
@@ -295,21 +328,23 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
         val entry = selectedEntry()
         val torrent = resolvedTorrent
         if (targetMedia == null || targetEp == null || url == null || entry == null || torrent == null) return
-        // Mirror the selector fast path: background prebuffer warmup plus an
-        // immediate localhost-link rewrite, then launch the player. The
-        // player adopts the prebuffer lease via the localhost URI (existing
-        // DantotsuPlayerManager contract). No re-resolve from the staged
-        // temp file, so temp cleanup below is race-free.
+        // HOLD1-B: the player consumes episode.extractors[selectedExtractor]
+        // [selectedVideo] (ExoplayerView), so the chosen file is ATTACHED to
+        // the episode via the pure attachManualVideo seam (JVM-asserted) and
+        // published through the model exactly like the selector fast path.
+        // Warmup mirrors the selector (fire-and-forget prebuffer); no
+        // re-resolve from the staged temp, so temp cleanup stays race-free.
         showHandoff()
         handoffJob?.cancel()
+        val serverName = getString(R.string.manual_torrent_server_name)
         handoffJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val manager = Injekt.get<TorrentServerManager>()
                 if (!manager.isAvailable()) throw IllegalStateException("torrent unavailable")
                 manager.prebufferTorrent(url, entry.index, targetMedia.mainName())
                 val hash = torrent.hash ?: throw IllegalStateException("missing info-hash")
-                val video = Video(null, VideoType.CONTAINER, url)
-                video.file.url = manager.getLink(hash, entry.index)
+                val link = manager.getLink(hash, entry.index)
+                attachManualVideo(targetEp, serverName, url, link)
                 deleteOwnedTemp()
                 withContext(Dispatchers.Main) {
                     if (cancelled) return@withContext
@@ -318,6 +353,7 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                         showFiles()
                         return@withContext
                     }
+                    model.setEpisode(targetEp, "manual torrent play")
                     Intent(act, ExoplayerView::class.java).apply {
                         ExoplayerView.media = targetMedia
                         ExoplayerView.initialized = true
@@ -326,7 +362,7 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                     dismissAllowingStateLoss()
                 }
             } catch (e: Exception) {
-                Logger.log("ManualTorrentBottomSheet: play handoff failed: ${e.message}")
+                Logger.log("ManualTorrentBottomSheet: play handoff failed")
                 withContext(Dispatchers.Main) {
                     if (!cancelled) {
                         snackString(getString(R.string.manual_torrent_resolve_failed))
@@ -391,7 +427,8 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                     dismissAllowingStateLoss()
                 }
             } catch (e: Exception) {
-                Logger.log("ManualTorrentBottomSheet: download handoff failed: ${e.message}")
+                // Fixed string only (HOLD1-D): no provider/engine detail.
+                Logger.log("ManualTorrentBottomSheet: download handoff failed")
                 withContext(Dispatchers.Main) {
                     if (!cancelled) {
                         snackString(getString(R.string.manual_torrent_resolve_failed))
@@ -405,9 +442,11 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
     // ---- UI states ----
 
     private fun refreshPendingRow() {
+        // HOLD1-D: visible whenever a live receipt exists, even with
+        // resolved files showing — a newer offer must never be hidden.
         val live = _binding?.let { ManualTorrentInbox.peekLive() }
         binding.manualTorrentPendingRow.visibility =
-            if (live != null && resolvedTorrent == null) View.VISIBLE else View.GONE
+            if (live != null) View.VISIBLE else View.GONE
     }
 
     private fun showInput(message: String?) {
