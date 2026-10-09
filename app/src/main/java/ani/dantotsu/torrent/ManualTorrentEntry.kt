@@ -368,20 +368,32 @@ fun publishStagedReceipt(
     }
 }
 
+/** Resolved ownership after one successful resolution transition. */
+data class OwnershipTransition(
+    /** Pointer the sheet must retain (null when the new resolution stages nothing). */
+    val retained: String?,
+    /** Previously owned temps to delete exactly once each. */
+    val deleted: List<String>,
+)
+
 /**
- * Retires a superseded staged temp on successful re-resolve (HOLD2-B).
- * Returns [current] (the new owner pointer, possibly null when the new
- * resolution stages nothing, e.g. magnet-after-file); deletes [previous]
- * exactly when it differs from [current]. Same-path re-resolve keeps the
- * file; borrowed originals never reach here (see `ReceivedFile`).
+ * Settles temp ownership on EVERY successful resolution (HOLD3): the new
+ * resolution supersedes both the previously resolved staged file AND any
+ * still-owned retry file from a failed attempt ([ownedTempPath]). Same-path
+ * transfer deletes nothing; a failed new resolution never reaches here, so
+ * the previous resolved file and retry file stay intact. Deletion happens
+ * only after the new `addTorrent` returned, never while it reads.
  */
-fun retireSupersededStaged(
-    previous: String?,
+fun settleOwnership(
+    staged: String?,
+    owned: String?,
     current: String?,
-    deleteFile: (String) -> Unit,
-): String? {
-    if (previous != null && previous != current) {
-        deleteFile(previous)
+): OwnershipTransition {
+    val deleted = mutableListOf<String>()
+    listOf(staged, owned).forEach { prev ->
+        if (prev != null && prev != current && prev !in deleted) {
+            deleted.add(prev)
+        }
     }
-    return current
+    return OwnershipTransition(current, deleted)
 }

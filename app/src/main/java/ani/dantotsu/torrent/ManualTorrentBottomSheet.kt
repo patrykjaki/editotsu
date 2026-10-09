@@ -283,14 +283,16 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                             Logger.log("ManualTorrentBottomSheet: pending replaced during resolve")
                         }
                     }
-                    // HOLD2-B: a successful re-resolve retires whatever staged
-                    // file the previous resolution owned — including
-                    // magnet-after-file (current null → previous deleted).
-                    // Same-path re-resolve keeps the file.
+                    // HOLD3: every successful resolution settles ownership over
+                    // BOTH previously owned temps — the last resolved staged
+                    // file and any still-owned retry file from a failed
+                    // attempt. Same-path transfer deletes nothing; a failed
+                    // new resolution never reaches here, so still-needed
+                    // files are never discarded prematurely.
                     val currentStaged = (payload as? ManualTorrentPayload.StagedFile)?.locator
-                    stagedTempPath = retireSupersededStaged(stagedTempPath, currentStaged) {
-                        runCatching { File(it).delete() }
-                    }
+                    val settled = settleOwnership(stagedTempPath, ownedTempPath, currentStaged)
+                    settled.deleted.forEach { runCatching { File(it).delete() } }
+                    stagedTempPath = settled.retained
                     ownedTempPath = null
                     resolvedTorrent = torrent
                     resolvedRawUrl = url

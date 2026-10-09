@@ -494,39 +494,104 @@ class ManualTorrentEntryTest {
         source.delete()
     }
 
-    // ---- HOLD2-B: supersede retirement ----
+    // ---- HOLD2-B/HOLD3: ownership settlement (real temp files) ----
 
-    @Test
-    fun `re-resolve to magnet retires previous staged file`() {
-        val deleted = mutableListOf<String>()
-        val current = retireSupersededStaged("/cache/a.torrent", null) { deleted.add(it) }
-        assertNull(current)
-        assertEquals(listOf("/cache/a.torrent"), deleted)
+    private fun realTemp(prefix: String): java.io.File {
+        val f = java.io.File.createTempFile(prefix, ".torrent")
+        f.writeBytes(byteArrayOf(1, 2, 3))
+        return f
     }
 
     @Test
-    fun `re-resolve to new staged file retires old and keeps new`() {
-        val deleted = mutableListOf<String>()
-        val current = retireSupersededStaged("/cache/a.torrent", "/cache/b.torrent") { deleted.add(it) }
-        assertEquals("/cache/b.torrent", current)
-        assertEquals(listOf("/cache/a.torrent"), deleted)
+    fun `failed-A retry file retired by magnet-B success`() {
+        // HOLD3 reproducer shape: pick staged A, addTorrent(A) fails
+        // (ownedTempPath=A retained for retry), magnet B succeeds.
+        val fileA = realTemp("stagedA")
+        val settled = settleOwnership(
+            staged = null, owned = fileA.absolutePath, current = null
+        )
+        assertNull(settled.retained)
+        assertEquals(listOf(fileA.absolutePath), settled.deleted)
+        settled.deleted.forEach { java.io.File(it).delete() }
+        assertTrue(!fileA.exists())
     }
 
     @Test
-    fun `same-path re-resolve keeps file`() {
-        val deleted = mutableListOf<String>()
-        val current = retireSupersededStaged("/cache/a.torrent", "/cache/a.torrent") { deleted.add(it) }
-        assertEquals("/cache/a.torrent", current)
-        assertTrue(deleted.isEmpty())
+    fun `failed-A retry file retired by staged-B success, B retained`() {
+        val fileA = realTemp("stagedA")
+        val fileB = realTemp("stagedB")
+        val settled = settleOwnership(
+            staged = null, owned = fileA.absolutePath, current = fileB.absolutePath
+        )
+        assertEquals(fileB.absolutePath, settled.retained)
+        assertEquals(listOf(fileA.absolutePath), settled.deleted)
+        settled.deleted.forEach { java.io.File(it).delete() }
+        assertTrue(!fileA.exists())
+        assertTrue(fileB.exists())
+        fileB.delete()
     }
 
     @Test
-    fun `first resolve with no previous deletes nothing`() {
-        val deleted = mutableListOf<String>()
-        assertEquals("/cache/b.torrent", retireSupersededStaged(null, "/cache/b.torrent") { deleted.add(it) })
-        assertTrue(deleted.isEmpty())
-        assertNull(retireSupersededStaged(null, null) { deleted.add(it) })
-        assertTrue(deleted.isEmpty())
+    fun `resolved-A plus failed-A retry both retired by magnet success`() {
+        val resolvedA = realTemp("resolvedA")
+        val retryA = realTemp("retryA")
+        val settled = settleOwnership(
+            staged = resolvedA.absolutePath, owned = retryA.absolutePath, current = null
+        )
+        assertNull(settled.retained)
+        assertEquals(
+            listOf(resolvedA.absolutePath, retryA.absolutePath),
+            settled.deleted
+        )
+        settled.deleted.forEach { java.io.File(it).delete() }
+        assertTrue(!resolvedA.exists())
+        assertTrue(!retryA.exists())
+    }
+
+    @Test
+    fun `same-path retry transfers without deleting`() {
+        val fileA = realTemp("stagedA")
+        val settled = settleOwnership(
+            staged = null, owned = fileA.absolutePath, current = fileA.absolutePath
+        )
+        assertEquals(fileA.absolutePath, settled.retained)
+        assertTrue(settled.deleted.isEmpty())
+        assertTrue(fileA.exists())
+        fileA.delete()
+    }
+
+    @Test
+    fun `same staged path re-resolve keeps file`() {
+        val fileA = realTemp("stagedA")
+        val settled = settleOwnership(
+            staged = fileA.absolutePath, owned = null, current = fileA.absolutePath
+        )
+        assertEquals(fileA.absolutePath, settled.retained)
+        assertTrue(settled.deleted.isEmpty())
+        assertTrue(fileA.exists())
+        fileA.delete()
+    }
+
+    @Test
+    fun `shared pointer deleted exactly once`() {
+        val fileA = realTemp("stagedA")
+        val settled = settleOwnership(
+            staged = fileA.absolutePath, owned = fileA.absolutePath, current = null
+        )
+        assertNull(settled.retained)
+        assertEquals(listOf(fileA.absolutePath), settled.deleted)
+        settled.deleted.forEach { java.io.File(it).delete() }
+        assertTrue(!fileA.exists())
+    }
+
+    @Test
+    fun `no previous ownership deletes nothing`() {
+        val settled = settleOwnership(staged = null, owned = null, current = null)
+        assertNull(settled.retained)
+        assertTrue(settled.deleted.isEmpty())
+        val settled2 = settleOwnership(staged = null, owned = null, current = "/cache/b.torrent")
+        assertEquals("/cache/b.torrent", settled2.retained)
+        assertTrue(settled2.deleted.isEmpty())
     }
 
     // ---- HOLD1-A: original-file survival (reviewer negative control) ----
