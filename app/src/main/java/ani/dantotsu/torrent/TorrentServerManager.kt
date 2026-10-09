@@ -205,6 +205,44 @@ data class PrebufferProgress(
     val stateDescription: String = ""
 )
 
+/**
+ * MAX MERGE M7B (tracker merge, upstream 28cbfba3 comparison): default
+ * announce targets applied to magnet enrichment and session handles.
+ * Upstream's 10 trackers are a strict subset; the two it carries that the
+ * local list lacked (`internetwarriors`, `openbts`) are merged in.
+ * Top-level (not function-local) so the JVM matrix pins the exact set:
+ * 27 entries, no duplicates, all valid `.../announce` URLs.
+ */
+val TORRENT_DEFAULT_TRACKERS = listOf(
+    "http://nyaa.tracker.wf:7777/announce",
+    "udp://open.stealth.si:80/announce",
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://tracker.torrent.eu.org:451/announce",
+    "udp://tracker.openbittorrent.com:6969/announce",
+    "udp://explodie.org:6969/announce",
+    "udp://uploads.gamehub.live:6969/announce",
+    "http://tracker.openbittorrent.com:80/announce",
+    "udp://opentracker.i2p.rocks:6969/announce",
+    "udp://tracker.moeking.me:6969/announce",
+    "udp://p4p.arenabg.com:1337/announce",
+    "https://tracker.tamersunion.org:443/announce",
+    "udp://tracker.dler.org:6969/announce",
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.coppersurfer.tk:6969/announce",
+    "udp://tracker.leechers-paradise.org:6969/announce",
+    "udp://movies.zsw.ca:6969/announce",
+    "udp://tracker.cyberia.is:6969/announce",
+    "udp://retracker.lanta-net.ru:2710/announce",
+    "udp://tracker.theoks.net:6969/announce",
+    "udp://tracker-udp.gbitt.info:80/announce",
+    "http://tracker.renfed.com:80/announce",
+    "udp://ttk2.n1ed.com:6969/announce",
+    "udp://tracker.altrosky.nl:6969/announce",
+    "udp://tracker.bittor.pw:1337/announce",
+    "udp://tracker.internetwarriors.net:1337/announce",
+    "udp://tracker.openbts.com:6969/announce"
+)
+
 class TorrentServerManager(private val context: Context) {
     private val sessionManager by lazy { SessionManager() }
     private var httpServer: TorrentHttpServer? = null
@@ -452,33 +490,6 @@ class TorrentServerManager(private val context: Context) {
         var claimCommitted = false
         var handle: TorrentHandle? = null
 
-        val defaultTrackers = listOf(
-            "http://nyaa.tracker.wf:7777/announce",
-            "udp://open.stealth.si:80/announce",
-            "udp://tracker.opentrackr.org:1337/announce",
-            "udp://tracker.torrent.eu.org:451/announce",
-            "udp://tracker.openbittorrent.com:6969/announce",
-            "udp://explodie.org:6969/announce",
-            "udp://uploads.gamehub.live:6969/announce",
-            "http://tracker.openbittorrent.com:80/announce",
-            "udp://opentracker.i2p.rocks:6969/announce",
-            "udp://tracker.moeking.me:6969/announce",
-            "udp://p4p.arenabg.com:1337/announce",
-            "https://tracker.tamersunion.org:443/announce",
-            "udp://tracker.dler.org:6969/announce",
-            "udp://open.demonii.com:1337/announce",
-            "udp://tracker.coppersurfer.tk:6969/announce",
-            "udp://tracker.leechers-paradise.org:6969/announce",
-            "udp://movies.zsw.ca:6969/announce",
-            "udp://tracker.cyberia.is:6969/announce",
-            "udp://retracker.lanta-net.ru:2710/announce",
-            "udp://tracker.theoks.net:6969/announce",
-            "udp://tracker-udp.gbitt.info:80/announce",
-            "http://tracker.renfed.com:80/announce",
-            "udp://ttk2.n1ed.com:6969/announce",
-            "udp://tracker.altrosky.nl:6969/announce",
-            "udp://tracker.bittor.pw:1337/announce"
-        )
 
         try {
             // ---- Phase 1 (no lifecycle lock): resolve info-hash / fetch metadata ----
@@ -523,13 +534,13 @@ class TorrentServerManager(private val context: Context) {
                 } else {
                     handle = sessionManager.find(sha1)
                     if (handle == null) {
-                        val enrichedUrl = buildEnrichedMagnetUri(url, defaultTrackers)
+                        val enrichedUrl = buildEnrichedMagnetUri(url, TORRENT_DEFAULT_TRACKERS)
                         sessionManager.download(enrichedUrl, saveDir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
                         handle = sessionManager.find(sha1)
                     }
 
                     handle?.let { initial ->
-                        defaultTrackers.forEach { trk ->
+                        TORRENT_DEFAULT_TRACKERS.forEach { trk ->
                             try { initial.addTracker(AnnounceEntry(trk)) } catch (_: Exception) {}
                         }
                         try { initial.forceReannounce() } catch (_: Exception) {}
@@ -568,7 +579,7 @@ class TorrentServerManager(private val context: Context) {
                 }
 
                 liveHandle.resume()
-                defaultTrackers.forEach { trk ->
+                TORRENT_DEFAULT_TRACKERS.forEach { trk ->
                     try { liveHandle.addTracker(AnnounceEntry(trk)) } catch (_: Exception) {}
                 }
                 try { liveHandle.forceReannounce() } catch (_: Exception) {}
