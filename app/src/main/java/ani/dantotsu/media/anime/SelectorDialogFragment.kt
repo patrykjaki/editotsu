@@ -56,6 +56,8 @@ import ani.dantotsu.parsers.Subtitle
 import ani.dantotsu.parsers.Video
 import ani.dantotsu.parsers.VideoExtractor
 import ani.dantotsu.parsers.VideoType
+import ani.dantotsu.parsers.hasExplicitServer
+import ani.dantotsu.parsers.preferredPlayableFallback
 import ani.dantotsu.media.anime.selector.SourceMetaIcon
 import ani.dantotsu.media.anime.selector.SourcePillKind
 import ani.dantotsu.media.anime.selector.SourceRowPill
@@ -553,22 +555,21 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             }
 
                             fun load() {
-                                // FINAL-PORT C4 (upstream 6f77ea20/e0229965):
-                                // remembered-server miss falls back to an
-                                // extension-preferred extractor, then to the
-                                // first valid one; the chosen video index is
-                                // clamped into range. Local persistence policy
-                                // is preserved: SelectedKeyStore writes stay
-                                // inside the makeDefault branch (upstream
-                                // saves unconditionally — deliberately not
-                                // ported), while the in-memory selected server
-                                // always follows the actual match.
+                                // FINAL-PORT C4 correction (HOLD1-A): the
+                                // fallback chain below runs only after the
+                                // guard above attempted the explicit named
+                                // load. Preferred biases safe fallback only.
+                                // Persistence still follows the local
+                                // makeDefault policy, and never anchors a
+                                // fallback choice: on fallback the runtime
+                                // follows the match but stored defaults keep
+                                // pointing at the explicit selection.
                                 val matchedExtractor =
                                     if (model.watchSources!!.isDownloadedSource(media!!.selected!!.sourceIndex)) {
                                         ep.extractors?.firstOrNull()
                                     } else {
                                         ep.extractors?.find { it.server.name == selected }
-                                            ?: ep.extractors?.find { it.isPreferred }
+                                            ?: preferredPlayableFallback(ep.extractors)
                                             ?: ep.extractors?.firstOrNull()
                                     }
 
@@ -580,7 +581,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                     val chosenVideo = if (media!!.selected!!.video in 0 until size) media!!.selected!!.video else 0
                                     media!!.anime!!.episodes?.getEpisode(currentKey)?.selectedVideo = chosenVideo
                                     media!!.selected!!.server = matchedExtractor.server.name
-                                    if (makeDefault) {
+                                    if (makeDefault && matchedExtractor.server.name == selected) {
                                         val provider = StableCandidateBuilder.providerOf(matchedExtractor.server)
                                         val exact = StableCandidateBuilder.exactKey(provider, matchedExtractor.server)
                                         SelectedKeyStore.save(media!!.id, exact)
@@ -589,11 +590,14 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                 } else failToList()
                             }
 
-                            val hasMatchingExtractor = ep.extractors?.any {
-                                it.server.name == selected || it.isPreferred
-                            } == true
+                            // FINAL-PORT C4 correction (HOLD1-A): a cached
+                            // preferred extractor must not mask a missing
+                            // explicit selection — the named single-server
+                            // load is attempted first; fallback happens in
+                            // load() only afterwards.
+                            val hasExplicit = hasExplicitServer(ep.extractors, selected)
 
-                            if (!hasMatchingExtractor) {
+                            if (!hasExplicit && selected != null) {
                                 scope.launch{
                                     val success = withContext(Dispatchers.IO){
                                         loadEpisodeSingleServer(ep.number, selected!!)

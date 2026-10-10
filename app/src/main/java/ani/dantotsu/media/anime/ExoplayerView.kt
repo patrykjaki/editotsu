@@ -89,6 +89,7 @@ import ani.dantotsu.parsers.Subtitle
 import ani.dantotsu.parsers.Video
 import ani.dantotsu.parsers.VideoExtractor
 import ani.dantotsu.parsers.VideoType
+import ani.dantotsu.parsers.preferredPlayableFallback
 import ani.dantotsu.settings.PlayerSettingsActivity
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
@@ -869,14 +870,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         val stoppedVideo = video
         lifecycleScope.launch(Dispatchers.IO) { stoppedExtractor?.onVideoStopped(stoppedVideo) }
 
+        // FINAL-PORT C4 correction (HOLD1-B): explicit selection first;
+        // preferred wins only among playable extractors, then the first
+        // playable nonpreferred choice. An empty preferred extractor can
+        // never shadow playable video (or abort playback).
         val ext = episode.extractors?.find { it.server.name == episode.selectedExtractor }
-            // FINAL-PORT C4 (upstream e0229965): extension-preferred
-            // extractor is the middle fallback — explicit selection first,
-            // safe first-nonempty last. M7A manual extractor (never
-            // preferred) keeps prior behavior.
-            ?: episode.extractors?.firstOrNull { it.isPreferred }
-            ?: episode.extractors?.firstOrNull() ?: return
-            ?: episode.extractors?.firstOrNull() ?: return
+            ?: preferredPlayableFallback(episode.extractors) ?: return
         extractor = ext
         video = ext.videos.getOrNull(episode.selectedVideo) ?: ext.videos.firstOrNull() ?: return
 
@@ -1546,8 +1545,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                         ?: nextEpisode.extractors?.firstOrNull { it.isPreferred && it.videos.isNotEmpty() }
                 } else {
                     model.loadEpisodeVideos(nextEpisode, sourceIndex, false)
-                    nextEpisode.extractors?.firstOrNull { it.isPreferred && it.videos.isNotEmpty() }
-                        ?: nextEpisode.extractors?.firstOrNull { it.videos.isNotEmpty() }
+                    preferredPlayableFallback(nextEpisode.extractors)
                 } ?: return@launch
 
                 val sourceName = model.watchSources?.get(sourceIndex)?.name

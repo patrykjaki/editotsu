@@ -41,6 +41,7 @@ import ani.dantotsu.parsers.OfflineAnimeParser
 import ani.dantotsu.parsers.OfflineMangaParser
 import ani.dantotsu.parsers.ShowResponse
 import ani.dantotsu.parsers.VideoExtractor
+import ani.dantotsu.parsers.hasExplicitServer
 import ani.dantotsu.parsers.WatchSources
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
@@ -924,7 +925,10 @@ class MediaDetailsViewModel : ViewModel() {
         val server = selectedServerName ?: selected.server ?: return false
         val link = ep.link ?: return false
 
-        if (ep.extractors?.find{ it.server.name == server || it.isPreferred } == null) {
+        // FINAL-PORT C4 correction (HOLD1-A): only the explicit named
+        // server satisfies this gate. A preferred-but-unselected entry
+        // must not skip the named load below.
+        if (!hasExplicitServer(ep.extractors, server)) {
             Log.d("AnimeDownloader", "Loading Video Server for episode: ${ep.number}, selected server: $server")
             if(ep.extractors == null){
                 ep.extractors = mutableListOf(watchSources?.get(selected.sourceIndex)?.let {

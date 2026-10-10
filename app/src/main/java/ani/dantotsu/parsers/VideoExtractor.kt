@@ -253,6 +253,31 @@ enum class VideoType {
     CONTAINER, M3U8, DASH
 }
 
+/**
+ * FINAL-PORT C4 correction (HOLD1-A): explicit-selection gate. True only
+ * when a non-null remembered/selected server name is present in the
+ * enumerated list. A preferred-but-unselected extractor NEVER satisfies
+ * this — otherwise a cached B would mask a still-fetchable explicit A and
+ * skip its named load.
+ */
+fun hasExplicitServer(
+    extractors: List<VideoExtractor>?,
+    selectedName: String?,
+): Boolean = selectedName != null && extractors?.any { it.server.name == selectedName } == true
+
+/**
+ * FINAL-PORT C4 correction (HOLD1-B): safe-fallback resolution among
+ * non-explicit candidates. Preferred candidates win ONLY among playable
+ * (nonempty-video) choices; then the first playable nonpreferred choice;
+ * null when nothing is playable. Callers always consult the explicit
+ * name hit first and never pass its result through here.
+ */
+fun preferredPlayableFallback(
+    extractors: List<VideoExtractor>?,
+): VideoExtractor? =
+    extractors?.firstOrNull { it.isPreferred && it.videos.isNotEmpty() }
+        ?: extractors?.firstOrNull { it.videos.isNotEmpty() }
+
 enum class SubtitleType {
     VTT, ASS, SRT, UNKNOWN
 }
