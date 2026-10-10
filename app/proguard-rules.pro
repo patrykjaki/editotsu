@@ -72,6 +72,14 @@
 # Firebase
 #############################################
 
+# MAX MERGE FINAL-PORT C6 (upstream 00f0cb32): keep NanoHTTPD — used by
+# CastProxyServer and the tachiyomi HttpServer model, and bundled by anime
+# extensions / local proxy servers that R8 cannot trace statically.
+-keep class fi.iki.elonen.** { *; }
+-dontwarn fi.iki.elonen.**
+-keep class org.nanohttpd.** { *; }
+-dontwarn org.nanohttpd.**
+
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
 

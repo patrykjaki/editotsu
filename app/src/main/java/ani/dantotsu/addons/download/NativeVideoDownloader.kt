@@ -595,7 +595,11 @@ class NativeVideoDownloader(private val context: Context) : DownloadAddonApiV2 {
             for ((index, audio) in audioUrls.withIndex()) {
                 command.append("-metadata:s:a:${index + 1} language=\"${audio.second}\" ")
             }
-            command.append("\"$downloadPath\" ")
+            // FINAL-PORT C3 (upstream f1731534): `-y` overwrites the
+            // app-owned output path without an interactive prompt (which
+            // would hang/crash headless ffmpeg). The path is always the
+            // task's own download target, never a borrowed/user file.
+            command.append("-y \"$downloadPath\" ")
 
             val ffmpegSessionId = AtomicLong(-1L)
             val exec = FFmpegKit.executeAsync(command.toString(),

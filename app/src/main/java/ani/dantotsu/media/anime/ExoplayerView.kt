@@ -870,6 +870,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         lifecycleScope.launch(Dispatchers.IO) { stoppedExtractor?.onVideoStopped(stoppedVideo) }
 
         val ext = episode.extractors?.find { it.server.name == episode.selectedExtractor }
+            // FINAL-PORT C4 (upstream e0229965): extension-preferred
+            // extractor is the middle fallback — explicit selection first,
+            // safe first-nonempty last. M7A manual extractor (never
+            // preferred) keeps prior behavior.
+            ?: episode.extractors?.firstOrNull { it.isPreferred }
+            ?: episode.extractors?.firstOrNull() ?: return
             ?: episode.extractors?.firstOrNull() ?: return
         extractor = ext
         video = ext.videos.getOrNull(episode.selectedVideo) ?: ext.videos.firstOrNull() ?: return
@@ -1537,9 +1543,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
                 val extractorToUse = if (success) {
                     nextEpisode.extractors?.find { it.server.name == serverName }
+                        ?: nextEpisode.extractors?.firstOrNull { it.isPreferred && it.videos.isNotEmpty() }
                 } else {
                     model.loadEpisodeVideos(nextEpisode, sourceIndex, false)
-                    nextEpisode.extractors?.firstOrNull { it.videos.isNotEmpty() }
+                    nextEpisode.extractors?.firstOrNull { it.isPreferred && it.videos.isNotEmpty() }
+                        ?: nextEpisode.extractors?.firstOrNull { it.videos.isNotEmpty() }
                 } ?: return@launch
 
                 val sourceName = model.watchSources?.get(sourceIndex)?.name

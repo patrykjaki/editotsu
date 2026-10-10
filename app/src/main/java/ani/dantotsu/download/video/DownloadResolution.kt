@@ -15,6 +15,10 @@ fun findBestVideoForDownload(
     preferredResolutions: List<String>,
 ): Video? {
     if (videos.isEmpty()) return null
+    // FINAL-PORT C4 (upstream 6f77ea20): an extension-flagged preferred
+    // stream wins auto-resolution before resolution preferences. Flags
+    // default false, so untagged catalogs behave exactly as before.
+    videos.firstOrNull { it.preferred }?.let { return it }
     if (preferredResolutions.isEmpty()) {
         return videos.maxByOrNull { it.quality ?: 0 } ?: videos.first()
     }

@@ -20,6 +20,14 @@ abstract class VideoExtractor : Serializable {
     var mpvFileOptions: String = ""
 
     /**
+     * FINAL-PORT C4 (upstream 6f77ea20): true when the extension flagged
+     * this extractor (server video) or any contained video as preferred.
+     * Pure getter — no serialized state, defaults false everywhere.
+     * **/
+    val isPreferred: Boolean
+        get() = server.video?.preferred == true || videos.any { it.preferred }
+
+    /**
      * Extracts videos & subtitles from the `embed`
      *
      * returns a container containing both videos & subtitles (optional)
@@ -68,6 +76,12 @@ data class VideoServer(
     val video: eu.kanade.tachiyomi.animesource.model.Video? = null,
     val offline: Boolean = false
 ) : Serializable {
+    /**
+     * FINAL-PORT C4 (upstream 6f77ea20): extension-preferred server flag.
+     * **/
+    val isPreferred: Boolean
+        get() = video?.preferred == true
+
     constructor(name: String, embedUrl: String, extraData: Map<String, String>? = null)
             : this(name, FileUrl(embedUrl), extraData)
 
@@ -147,6 +161,13 @@ data class Video(
      * configuration — fail closed, never clear/MPV.
      * **/
     val drmParseError: String? = null,
+
+    /**
+     * FINAL-PORT C4 (upstream 6f77ea20): extension-preferred stream flag.
+     * Defaults false so existing behavior is preserved until extensions
+     * set it; selection fallbacks prefer flagged streams explicitly.
+     * **/
+    val preferred: Boolean = false,
 ) : Serializable {
 
     constructor(

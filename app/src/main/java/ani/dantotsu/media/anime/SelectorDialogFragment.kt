@@ -553,30 +553,47 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             }
 
                             fun load() {
-                                val size =
+                                // FINAL-PORT C4 (upstream 6f77ea20/e0229965):
+                                // remembered-server miss falls back to an
+                                // extension-preferred extractor, then to the
+                                // first valid one; the chosen video index is
+                                // clamped into range. Local persistence policy
+                                // is preserved: SelectedKeyStore writes stay
+                                // inside the makeDefault branch (upstream
+                                // saves unconditionally — deliberately not
+                                // ported), while the in-memory selected server
+                                // always follows the actual match.
+                                val matchedExtractor =
                                     if (model.watchSources!!.isDownloadedSource(media!!.selected!!.sourceIndex)) {
-                                        ep.extractors?.firstOrNull()?.videos?.size
+                                        ep.extractors?.firstOrNull()
                                     } else {
-                                        ep.extractors?.find { it.server.name == selected }?.videos?.size
+                                        ep.extractors?.find { it.server.name == selected }
+                                            ?: ep.extractors?.find { it.isPreferred }
+                                            ?: ep.extractors?.firstOrNull()
                                     }
 
-                                if (size != null && size >= media!!.selected!!.video) {
+                                val size = matchedExtractor?.videos?.size
+
+                                if (matchedExtractor != null && size != null && size > 0) {
                                     val currentKey = media!!.anime!!.selectedEpisode ?: actualKey
-                                    media!!.anime!!.episodes?.getEpisode(currentKey)?.selectedExtractor = selected
-                                    media!!.anime!!.episodes?.getEpisode(currentKey)?.selectedVideo = media!!.selected!!.video
+                                    media!!.anime!!.episodes?.getEpisode(currentKey)?.selectedExtractor = matchedExtractor.server.name
+                                    val chosenVideo = if (media!!.selected!!.video in 0 until size) media!!.selected!!.video else 0
+                                    media!!.anime!!.episodes?.getEpisode(currentKey)?.selectedVideo = chosenVideo
+                                    media!!.selected!!.server = matchedExtractor.server.name
                                     if (makeDefault) {
-                                        val chosen = ep.extractors?.find { it.server.name == selected }
-                                        if (chosen != null) {
-                                            val provider = StableCandidateBuilder.providerOf(chosen.server)
-                                            val exact = StableCandidateBuilder.exactKey(provider, chosen.server)
-                                            SelectedKeyStore.save(media!!.id, exact)
-                                        }
+                                        val provider = StableCandidateBuilder.providerOf(matchedExtractor.server)
+                                        val exact = StableCandidateBuilder.exactKey(provider, matchedExtractor.server)
+                                        SelectedKeyStore.save(media!!.id, exact)
                                     }
                                     startExoplayer(media!!)
                                 } else failToList()
                             }
 
-                            if (ep.extractors?.filter { it.server.name == selected } == null) {
+                            val hasMatchingExtractor = ep.extractors?.any {
+                                it.server.name == selected || it.isPreferred
+                            } == true
+
+                            if (!hasMatchingExtractor) {
                                 scope.launch{
                                     val success = withContext(Dispatchers.IO){
                                         loadEpisodeSingleServer(ep.number, selected!!)
@@ -822,15 +839,24 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                     links[existingIndex] = videoExtractor
                     notifyItemChanged(existingIndex)
                 } else {
-                    links.add(videoExtractor)
-                    notifyItemInserted(links.size - 1)
+                    // FINAL-PORT C4 (upstream 6f77ea20): preferred servers
+                    // list first; stable otherwise.
+                    if (videoExtractor.isPreferred) {
+                        links.add(0, videoExtractor)
+                        notifyItemInserted(0)
+                    } else {
+                        links.add(videoExtractor)
+                        notifyItemInserted(links.size - 1)
+                    }
                 }
             }
         }
 
         fun addAll(extractors: List<VideoExtractor>?) {
-            links.addAll(extractors ?: return)
-            notifyItemRangeInserted(0, extractors.size)
+            if (extractors == null) return
+            val sorted = extractors.sortedByDescending { it.isPreferred }
+            links.addAll(sorted)
+            notifyItemRangeInserted(0, sorted.size)
         }
 
         fun performClick(position: Int) {

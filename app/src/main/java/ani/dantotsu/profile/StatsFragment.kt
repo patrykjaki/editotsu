@@ -83,9 +83,13 @@ class StatsFragment :
 
         binding.compare.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
-                activity.lifecycleScope.launch {
+                // FINAL-PORT C1 (upstream 22b3fc10): fragment scope (not
+                // activity scope) so back-navigation cancels the load, plus
+                // a view-alive guard so dead-view touches cannot crash.
+                lifecycleScope.launch {
                     if (Anilist.userid != null) {
                         withContext(Dispatchers.Main) {
+                            view ?: return@withContext
                             binding.statisticProgressBar.visibility = View.VISIBLE
                             binding.statisticList.visibility = View.GONE
                         }
@@ -94,6 +98,7 @@ class StatsFragment :
                         if (userStats != null) {
                             stats.add(userStats)
                             withContext(Dispatchers.Main) {
+                                view ?: return@withContext
                                 loadStats(type == MediaType.ANIME)
                                 binding.statisticProgressBar.visibility = View.GONE
                                 binding.statisticList.visibility = View.VISIBLE

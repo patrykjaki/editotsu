@@ -65,4 +65,39 @@ class DownloadResolutionTest {
         val b = video(720, "https://b.test/v.mp4")
         assertEquals(a, findBestVideoForDownload(listOf(a, b), listOf("720p")))
     }
+
+    // FINAL-PORT C4 (upstream 6f77ea20): extension-preferred stream wins
+    // auto-resolution ahead of resolution preferences; untagged catalogs
+    // behave exactly as before (all rows above use preferred=false).
+
+    private fun flaggedVideo(quality: Int?, url: String = "https://cdn.test/v.mp4") =
+        Video(quality, VideoType.CONTAINER, FileUrl(url), preferred = true)
+
+    @Test
+    fun `preferred stream wins over resolution preferences`() {
+        val videos = listOf(video(1080), flaggedVideo(480))
+        assertEquals(480, findBestVideoForDownload(videos, listOf("1080p"))?.quality)
+    }
+
+    @Test
+    fun `preferred stream wins empty-preference max fallback`() {
+        val videos = listOf(video(1080), flaggedVideo(720), video(2160))
+        assertEquals(720, findBestVideoForDownload(videos, emptyList())?.quality)
+    }
+
+    @Test
+    fun `first preferred wins among several`() {
+        val a = flaggedVideo(480, "https://a.test/v.mp4")
+        val b = flaggedVideo(720, "https://b.test/v.mp4")
+        assertEquals(a, findBestVideoForDownload(listOf(video(1080), a, b), listOf("1080p")))
+    }
+
+    @Test
+    fun `preferred flag survives changing bitrate labels across episodes`() {
+        // Same-flagged stream selected regardless of quality ordering.
+        val low = flaggedVideo(480, "https://cdn.test/ep2.mp4")
+        val high = video(1080, "https://cdn.test/ep2-hi.mp4")
+        assertEquals(low, findBestVideoForDownload(listOf(high, low), listOf("1080p")))
+        assertEquals(low, findBestVideoForDownload(listOf(low, high), listOf("720p")))
+    }
 }

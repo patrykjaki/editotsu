@@ -509,15 +509,19 @@ class MediaAdaptor(
             itemView.setSafeOnClickListener {
                 val pos = bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setSafeOnClickListener
-                val media = mediaList?.getOrNull(pos)
+                val currentAdapter = bindingAdapter as? MediaAdaptor ?: this@MediaAdaptor
+                val media = currentAdapter.mediaList?.getOrNull(pos)
                 if (media == null || media.id < 0) return@setSafeOnClickListener
-                clicked(
+                currentAdapter.clicked(
                     pos,
                     binding.itemCompactImage,
                     resizeBitmap(getBitmapFromImageView(binding.itemCompactImage), 100)
                 )
             }
-            itemView.setOnLongClickListener { longClicked(bindingAdapterPosition) }
+            itemView.setOnLongClickListener {
+                val currentAdapter = bindingAdapter as? MediaAdaptor ?: this@MediaAdaptor
+                currentAdapter.longClicked(bindingAdapterPosition)
+            }
         }
     }
 
@@ -527,15 +531,19 @@ class MediaAdaptor(
             itemView.setSafeOnClickListener {
                 val pos = bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setSafeOnClickListener
-                val media = mediaList?.getOrNull(pos)
+                val currentAdapter = bindingAdapter as? MediaAdaptor ?: this@MediaAdaptor
+                val media = currentAdapter.mediaList?.getOrNull(pos)
                 if (media == null || media.id < 0) return@setSafeOnClickListener
-                clicked(
+                currentAdapter.clicked(
                     pos,
                     binding.itemCompactImage,
                     resizeBitmap(getBitmapFromImageView(binding.itemCompactImage), 100)
                 )
             }
-            itemView.setOnLongClickListener { longClicked(bindingAdapterPosition) }
+            itemView.setOnLongClickListener {
+                val currentAdapter = bindingAdapter as? MediaAdaptor ?: this@MediaAdaptor
+                currentAdapter.longClicked(bindingAdapterPosition)
+            }
         }
     }
 
@@ -546,16 +554,20 @@ class MediaAdaptor(
             binding.itemCompactImage.setSafeOnClickListener {
                 val pos = bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setSafeOnClickListener
-                val media = mediaList?.getOrNull(pos)
+                val currentAdapter = bindingAdapter as? MediaAdaptor ?: this@MediaAdaptor
+                val media = currentAdapter.mediaList?.getOrNull(pos)
                 if (media == null || media.id < 0) return@setSafeOnClickListener
-                clicked(
+                currentAdapter.clicked(
                     pos,
                     binding.itemCompactImage,
                     resizeBitmap(getBitmapFromImageView(binding.itemCompactImage), 100)
                 )
             }
             itemView.setOnTouchListener { _, _ -> true }
-            binding.itemCompactImage.setOnLongClickListener { longClicked(bindingAdapterPosition) }
+            binding.itemCompactImage.setOnLongClickListener {
+                val currentAdapter = bindingAdapter as? MediaAdaptor ?: this@MediaAdaptor
+                currentAdapter.longClicked(bindingAdapterPosition)
+            }
         }
     }
 
@@ -566,9 +578,10 @@ class MediaAdaptor(
             binding.itemCompactImage.setSafeOnClickListener {
                 val pos = bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setSafeOnClickListener
-                val media = mediaList?.getOrNull(pos)
+                val currentAdapter = bindingAdapter as? MediaAdaptor ?: this@MediaAdaptor
+                val media = currentAdapter.mediaList?.getOrNull(pos)
                 if (media == null || media.id < 0) return@setSafeOnClickListener
-                clicked(
+                currentAdapter.clicked(
                     pos,
                     binding.itemCompactImage,
                     resizeBitmap(getBitmapFromImageView(binding.itemCompactImage), 100)
@@ -577,16 +590,20 @@ class MediaAdaptor(
             binding.itemCompactTitleContainer.setSafeOnClickListener {
                 val pos = bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setSafeOnClickListener
-                val media = mediaList?.getOrNull(pos)
+                val currentAdapter = bindingAdapter as? MediaAdaptor ?: this@MediaAdaptor
+                val media = currentAdapter.mediaList?.getOrNull(pos)
                 if (media == null || media.id < 0) return@setSafeOnClickListener
-                clicked(
+                currentAdapter.clicked(
                     pos,
                     binding.itemCompactImage,
                     resizeBitmap(getBitmapFromImageView(binding.itemCompactImage), 100)
                 )
             }
             itemView.setOnTouchListener { _, _ -> true }
-            binding.itemCompactImage.setOnLongClickListener { longClicked(bindingAdapterPosition) }
+            binding.itemCompactImage.setOnLongClickListener {
+                val currentAdapter = bindingAdapter as? MediaAdaptor ?: this@MediaAdaptor
+                currentAdapter.longClicked(bindingAdapterPosition)
+            }
         }
     }
 

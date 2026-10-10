@@ -709,6 +709,45 @@ class DynamicMangaParser(extension: MangaExtension.Installed) : MangaParser() {
     }
 }
 
+/**
+ * FINAL-PORT C3 (upstream f1731534): proxied/nested format resolution over
+ * an already-unparseable-by-path URL and its raw query string. Pure seam
+ * (JVM-tested): explicit `type` parameter wins, `url`/`file` fallback
+ * second, `.m3u8` marker last so unrelated media is never classified HLS
+ * on a stray token. Returns null when nothing matches.
+ */
+internal fun resolveProxiedFormat(
+    videoUrl: String,
+    query: String,
+    classify: (String) -> VideoType?,
+): VideoType? {
+    val queryPairs: List<Pair<String, String>> = query.split("&").mapNotNull {
+        val idx = it.indexOf("=")
+        if (idx != -1) {
+            val key = runCatching { URLDecoder.decode(it.substring(0, idx), "UTF-8") }.getOrNull() ?: ""
+            val value = runCatching { URLDecoder.decode(it.substring(idx + 1), "UTF-8") }.getOrNull() ?: ""
+            Pair(key, value)
+        } else null
+    }
+
+    val typeParam = queryPairs.find { it.first.equals("type", ignoreCase = true) }?.second ?: ""
+    if (typeParam.isNotBlank()) {
+        classify(typeParam)?.let { return it }
+    }
+
+    val targetParam = queryPairs.find { it.first == "url" || it.first == "file" }?.second ?: ""
+    if (targetParam.isNotBlank()) {
+        classify(targetParam)?.let { return it }
+    }
+
+    if (videoUrl.contains(".m3u8", ignoreCase = true) ||
+        queryPairs.any { it.second.contains(".m3u8", ignoreCase = true) }
+    ) {
+        return VideoType.M3U8
+    }
+    return null
+}
+
 class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtractor() {
     override val server: VideoServer
         get() = videoServer
@@ -753,19 +792,7 @@ class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtrac
             format = getVideoType(path)
 
             if (format == null && query != null) {
-                val queryPairs: List<Pair<String, String>> = query.split("&").mapNotNull {
-                    val idx = it.indexOf("=")
-                    if (idx != -1) {
-                        val key = runCatching { URLDecoder.decode(it.substring(0, idx), "UTF-8") }.getOrNull() ?: ""
-                        val value = runCatching { URLDecoder.decode(it.substring(idx + 1), "UTF-8") }.getOrNull() ?: ""
-                        Pair(key, value)
-                    } else null
-                }
-
-                val targetParam = queryPairs.find { it.first == "url" || it.first == "file" }?.second ?: ""
-                if (targetParam.isNotBlank()) {
-                    format = getVideoType(targetParam)
-                }
+                format = resolveProxiedFormat(videoUrl, query, ::getVideoType)
             }
 
             // If the format is still undetermined, log an error
@@ -795,7 +822,8 @@ class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtrac
             FileUrl(videoUrl, headersMap),
             null,
             drm = (drmResult as? DrmParseResult.Valid)?.info,
-            drmParseError = (drmResult as? DrmParseResult.Invalid)?.reason
+            drmParseError = (drmResult as? DrmParseResult.Invalid)?.reason,
+            preferred = aniVideo.preferred
         )
     }
 
