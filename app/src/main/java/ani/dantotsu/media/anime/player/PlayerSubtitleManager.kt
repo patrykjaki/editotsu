@@ -12,6 +12,8 @@ import ani.dantotsu.connections.subtitles.SubSourceSubtitles
 import ani.dantotsu.connections.subtitles.WyzieSub
 import ani.dantotsu.defaultHeaders
 import ani.dantotsu.media.Media
+import ani.dantotsu.media.anime.EpisodeSubtitleStore
+import ani.dantotsu.media.anime.ExoplayerView
 import ani.dantotsu.media.MediaDetailsViewModel
 import ani.dantotsu.parsers.Subtitle
 import ani.dantotsu.parsers.SubtitleType
@@ -353,6 +355,40 @@ class PlayerSubtitleManager(
         }
     }
 
+    /**
+     * LANE-B P1 (#72, upstream 36d57c56): clears the live online-subtitle
+     * state and, when an explicit disable/switch names an episode, its
+     * persisted [EpisodeSubtitleStore] record. Never called on episode
+     * change or playback — persistence is per-episode memory.
+     */
+    fun clearOnlineSubtitle(mediaId: Int? = null, clearPersistedForEp: String? = null) {
+        currentActiveSubFile = null
+        currentActiveSubRawContent = null
+        activeSubtitleDisplayName = null
+        activeSubtitleId = null
+        pendingTrackId = null
+        pendingSubtitleLabel = null
+        serverSubJob?.cancel()
+        if (mediaId != null) {
+            val savedLang: String? = PrefManager.getNullableCustomVal("subLang_$mediaId", null, String::class.java)
+            if (savedLang?.startsWith("Online:") == true) {
+                PrefManager.setCustomVal("subLang_$mediaId", null)
+            }
+            if (clearPersistedForEp != null) {
+                EpisodeSubtitleStore.clearSavedSubtitle(activity, mediaId, clearPersistedForEp)
+            }
+        }
+        try {
+            activity.cacheDir.listFiles()?.forEach { file ->
+                if (file.name.startsWith("online_subtitle_") || file.name.startsWith("local_sub_") || file.name.startsWith("shifted_") || file.name.startsWith("server_sub_")) {
+                    file.delete()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("PlayerSubtitleManager", "clearOnlineSubtitle error: ${e.message}")
+        }
+    }
+
     fun applyOnlineSubtitleUrl(url: String, id: String, lang: String, displayName: String = lang, provider: String = "Online") {
         // Beta03: an online selection is a newer intent; invalidate any
         // in-flight server download (CP3-B02).
@@ -400,6 +436,27 @@ class PlayerSubtitleManager(
                     val subtitleFile = File(activity.cacheDir, "online_subtitle_${id.hashCode()}.$extension")
                     subtitleFile.writeText(cleanedContent)
 
+                    // LANE-B P1 (#72, upstream 36d57c56): persist this
+                    // explicitly chosen online subtitle per episode (with an
+                    // app-private file copy). Runs on the IO thread; the
+                    // store owns all failure handling.
+                    runCatching { model.getEpisode().value?.number }.getOrNull()?.let { epNum ->
+                        runCatching {
+                            EpisodeSubtitleStore.saveSubtitle(
+                                context = activity,
+                                mediaId = ExoplayerView.media.id,
+                                episodeNumber = epNum,
+                                sub = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                                    id = id,
+                                    displayName = displayName,
+                                    provider = provider,
+                                    language = lang
+                                ),
+                                sourceFile = subtitleFile
+                            )
+                        }
+                    }
+
                     withContext(Dispatchers.Main) {
                         applySubtitleFromFile(subtitleFile, lang, detectedFormat, displayName, id, provider)
                     }
@@ -444,6 +501,25 @@ class PlayerSubtitleManager(
                 val cacheFile = File(activity.cacheDir, "online_subtitle_${sub.id.hashCode()}.$ext")
                 cacheFile.writeText(cleaned)
                 val display = sub.releaseName.ifBlank { sub.lang }
+                // LANE-B P1 (#72): persist like every other online selection
+                // (SubSource bypasses applyOnlineSubtitleUrl with its own
+                // download, so it records directly here).
+                runCatching { model.getEpisode().value?.number }.getOrNull()?.let { epNum ->
+                    runCatching {
+                        EpisodeSubtitleStore.saveSubtitle(
+                            context = activity,
+                            mediaId = ExoplayerView.media.id,
+                            episodeNumber = epNum,
+                            sub = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                                id = sub.id,
+                                displayName = display,
+                                provider = "SubSource",
+                                language = sub.lang
+                            ),
+                            sourceFile = cacheFile
+                        )
+                    }
+                }
                 withContext(Dispatchers.Main) {
                     applySubtitleFromFile(cacheFile, sub.lang, detectedFormat, display, sub.id, "SubSource")
                 }

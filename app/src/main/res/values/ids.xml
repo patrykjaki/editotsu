@@ -3,4 +3,7 @@
     <!-- MAX MERGE M3: tag guards for the device-font overlay walk. -->
     <item name="tag_system_font_applied" type="id" />
     <item name="tag_system_font_listener" type="id" />
+    <!-- LANE-B P1 (#41c): one-shot guard for the Recommended rail
+         auto-pagination scroll listener. -->
+    <item name="recommended_rail_pagination" type="id" />
 </resources>

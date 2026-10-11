@@ -297,6 +297,23 @@ class HomeFragment : Fragment() {
                 LinearLayoutManager.HORIZONTAL,
                 false
             )
+            // LANE-B P1 (#41c): Recommended rail auto-pagination. The
+            // backend (loadMoreRecommendations, self-guarded) existed
+            // unwired; reaching the rail end now pages it. Attached once.
+            if (string == getString(R.string.recommended) &&
+                recyclerView.getTag(R.id.recommended_rail_pagination) == null
+            ) {
+                recyclerView.setTag(R.id.recommended_rail_pagination, true)
+                recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                    override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                        if (!rv.canScrollHorizontally(1)) {
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                model.loadMoreRecommendations()
+                            }
+                        }
+                    }
+                })
+            }
 
             mode.observe(viewLifecycleOwner) {
                 if (it != null) {

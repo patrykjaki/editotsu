@@ -674,7 +674,17 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 if (epKey != selectedEpisodeKey()) return@observe
                 val savedPosition = savedEpisodePosition(epKey)
                 val startPosition = playbackSession.resumePosition(epKey, savedPosition)
-                saveActivePosition()
+                // LANE-B P1 (#4 changingServer): across an engine swap the
+                // old trackers must not keep polling a released engine, and
+                // the pre-release save must not re-fire mid-switch (the
+                // explicit sourceClick save already captured it). Trackers
+                // restart below after initPlayer.
+                if (changingServer) {
+                    if (this::progressManager.isInitialized) progressManager.stopTracking()
+                    if (this::aniSkipManager.isInitialized) aniSkipManager.stopTracking()
+                } else {
+                    saveActivePosition()
+                }
                 releasePlayer()
                 playbackPosition = startPosition
                 episode = ep
