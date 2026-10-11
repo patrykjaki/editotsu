@@ -16,6 +16,18 @@ interface SearchResults<T> {
     var hasNextPage: Boolean
 }
 
+/**
+ * LANE-A P0 (sort_by OOB): resolves a sort key to its display label with a
+ * mismatch-proof fallback. A label-array/config skew (or unknown key) yields
+ * the raw key instead of throwing — the array and `Anilist.sortBy` are now
+ * parity-matched (9/9), this is defense in depth. Pure seam, JVM-tested.
+ */
+fun sortChipLabel(labels: List<String>, sortBy: List<String>, key: String): String {
+    val idx = sortBy.indexOf(key)
+    if (idx < 0) return key
+    return labels.getOrNull(idx) ?: key
+}
+
 data class AniMangaSearchResults(
     val type: String,
     var isAdult: Boolean,
@@ -42,13 +54,18 @@ data class AniMangaSearchResults(
         val list = mutableListOf<SearchChip>()
         sort?.let {
             val c = currContext()!!
+            // LANE-A P0 (sort_by OOB): never index the label array blindly;
+            // a config mismatch falls back to the raw sort key instead of
+            // crashing. Array and sort list are now parity-matched (9/9).
+            val sortLabel = sortChipLabel(
+                c.resources.getStringArray(R.array.sort_by).toList(),
+                Anilist.sortBy,
+                it
+            )
             list.add(
                 SearchChip(
                     "SORT",
-                    c.getString(
-                        R.string.filter_sort,
-                        c.resources.getStringArray(R.array.sort_by)[Anilist.sortBy.indexOf(it)]
-                    )
+                    c.getString(R.string.filter_sort, sortLabel)
                 )
             )
         }

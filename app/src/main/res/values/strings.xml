@@ -585,6 +585,8 @@
         <item>A-Z</item>
         <item>Z-A</item>
         <item>Pure pain</item>
+        <item>Favourites</item>
+        <item>Recently Updated</item>
     </string-array>
     <string name="main_role">MAIN</string>
     <string name="supporting_role">SUPPORTING</string>
