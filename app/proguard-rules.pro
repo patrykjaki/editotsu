@@ -176,3 +176,10 @@
 -dontwarn com.google.mlkit.vision.**
 -keep class com.google.android.gms.internal.mlkit_vision_text** { *; }
 -dontwarn com.google.android.gms.internal.mlkit_vision_text**
+# CF-001: ML Kit common runtime is wired through Firebase component
+# discovery (reflection), which R8 cannot trace: without these keeps the
+# stripped ExecutorSelector/thread-pool runtime crashes MlKitInitProvider
+# at startup on every minified build. Narrowly scoped to the common
+# runtime + registrar; no new dontwarn (missing classes must stay loud).
+-keep class com.google.mlkit.common.sdkinternal.** { *; }
+-keep class com.google.mlkit.common.internal.CommonComponentRegistrar { *; }
