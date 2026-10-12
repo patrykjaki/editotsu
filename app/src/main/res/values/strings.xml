@@ -1386,7 +1386,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
 
     <!-- MAX MERGE M7A: manual torrent/magnet entry -->
     <string name="manual_torrent_title">Add torrent manually</string>
-    <string name="manual_torrent_magnet_hint">magnet:?xt=urn:btih:…</string>
+    <string name="manual_torrent_magnet_hint">magnet:?xt=urn:btih:… or .torrent URL</string>
     <string name="manual_torrent_paste">Paste</string>
     <string name="manual_torrent_add">Add</string>
     <string name="manual_torrent_pick_file">Pick .torrent file</string>
@@ -1395,9 +1395,9 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="manual_torrent_play">Play</string>
     <string name="manual_torrent_download">Download</string>
     <string name="manual_torrent_selected">Selected</string>
-    <string name="manual_torrent_invalid_magnet">Not a valid magnet link</string>
+    <string name="manual_torrent_invalid_input">Not a valid magnet link or .torrent URL</string>
     <string name="manual_torrent_invalid_file">That file is not a .torrent</string>
-    <string name="manual_torrent_clipboard_empty">Clipboard has no magnet link</string>
+    <string name="manual_torrent_clipboard_empty">Clipboard has no magnet link or .torrent URL</string>
     <string name="manual_torrent_file_too_large">Torrent file is too large or unreadable</string>
     <string name="manual_torrent_resolve_failed">Couldn\'t read that torrent</string>
     <string name="manual_torrent_no_files">No files found in that torrent</string>

@@ -629,4 +629,60 @@ class ManualTorrentEntryTest {
         assertTrue(original.exists())
         original.delete()
     }
+
+    // ---- G6: http(s) .torrent-URL input ----
+
+    @Test
+    fun `http torrent urls accepted`() {
+        assertTrue(HttpTorrentUrl.isHttpTorrentUrl("http://example.com/x.torrent"))
+        assertTrue(HttpTorrentUrl.isHttpTorrentUrl("https://example.com/x.TORRENT"))
+        assertTrue(HttpTorrentUrl.isHttpTorrentUrl("  HTTPS://example.com/a.torrent?x=1  "))
+        assertTrue(HttpTorrentUrl.isHttpTorrentUrl("http://example.com/dir/file.torrent#frag"))
+    }
+
+    @Test
+    fun `non-torrent urls rejected`() {
+        assertTrue(!HttpTorrentUrl.isHttpTorrentUrl(null))
+        assertTrue(!HttpTorrentUrl.isHttpTorrentUrl(""))
+        assertTrue(!HttpTorrentUrl.isHttpTorrentUrl("   "))
+        assertTrue(!HttpTorrentUrl.isHttpTorrentUrl("magnet:?xt=urn:btih:${"A".repeat(40)}"))
+        assertTrue(!HttpTorrentUrl.isHttpTorrentUrl("ftp://example.com/x.torrent"))
+        assertTrue(!HttpTorrentUrl.isHttpTorrentUrl("file:///x.torrent"))
+        assertTrue(!HttpTorrentUrl.isHttpTorrentUrl("content://x/x.torrent"))
+        assertTrue(!HttpTorrentUrl.isHttpTorrentUrl("https://example.com/watch?v=1"))
+        assertTrue(!HttpTorrentUrl.isHttpTorrentUrl("https://example.com/torrent-page"))
+        assertTrue(!HttpTorrentUrl.isHttpTorrentUrl("javascript:alert(1)"))
+    }
+
+    @Test
+    fun `typed input classifies magnet http and garbage`() {
+        val magnet = "magnet:?xt=urn:btih:${"B".repeat(40)}"
+        val asMagnet = ManualTorrentInput.classify("  $magnet  ")
+        assertTrue(asMagnet is ManualTorrentPayload.Magnet)
+        assertEquals(magnet, (asMagnet as ManualTorrentPayload.Magnet).uri)
+        val http = "https://example.com/x.torrent"
+        val asHttp = ManualTorrentInput.classify(http)
+        assertTrue(asHttp is ManualTorrentPayload.HttpUrl)
+        assertEquals(http, (asHttp as ManualTorrentPayload.HttpUrl).url)
+        assertNull(ManualTorrentInput.classify(null))
+        assertNull(ManualTorrentInput.classify("   "))
+        assertNull(ManualTorrentInput.classify("https://example.com/watch"))
+        assertNull(ManualTorrentInput.classify("not a link"))
+    }
+
+    @Test
+    fun `http view intents still rejected — no link hijack`() {
+        assertNull(
+            ManualTorrentIntentDispatch.classify(
+                "android.intent.action.VIEW", "https",
+                null, "https://example.com/x.torrent"
+            )
+        )
+        assertNull(
+            ManualTorrentIntentDispatch.classify(
+                "android.intent.action.VIEW", "http",
+                "application/x-bittorrent", "http://example.com/x.torrent"
+            )
+        )
+    }
 }

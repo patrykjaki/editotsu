@@ -132,11 +132,12 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
         binding.manualTorrentPaste.setOnClickListener { pasteMagnet() }
         binding.manualTorrentAdd.setOnClickListener {
             val text = binding.manualTorrentMagnetInput.text?.toString().orEmpty()
-            if (!MagnetValidation.isMagnetLink(text)) {
-                snackString(getString(R.string.manual_torrent_invalid_magnet))
+            val payload = ManualTorrentInput.classify(text)
+            if (payload == null) {
+                snackString(getString(R.string.manual_torrent_invalid_input))
                 return@setOnClickListener
             }
-            resolvePayload(ManualTorrentPayload.Magnet(text.trim()), pendingGeneration = null)
+            resolvePayload(payload, pendingGeneration = null)
         }
         binding.manualTorrentPickFile.setOnClickListener {
             pickFile.launch(arrayOf(ManualTorrentEntry.TORRENT_MIME, "application/octet-stream"))
@@ -161,7 +162,7 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
         val clipboard =
             requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         val text = clipboard?.primaryClip?.getItemAt(0)?.coerceToText(requireContext())?.toString()
-        if (MagnetValidation.isMagnetLink(text)) {
+        if (ManualTorrentInput.classify(text) != null) {
             binding.manualTorrentMagnetInput.setText(text!!.trim())
         } else {
             snackString(getString(R.string.manual_torrent_clipboard_empty))
@@ -235,6 +236,9 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                 }
                 val url = when (payload) {
                     is ManualTorrentPayload.Magnet -> payload.uri
+                    // G6: http(s) `.torrent` URL — the engine fetches it
+                    // inside addTorrent; the sheet stages and owns nothing.
+                    is ManualTorrentPayload.HttpUrl -> payload.url
                     is ManualTorrentPayload.ReceivedFile -> {
                         // Defensive: receipts are staged before offer, so a
                         // borrowed URI here means a dispatch change. Stage it

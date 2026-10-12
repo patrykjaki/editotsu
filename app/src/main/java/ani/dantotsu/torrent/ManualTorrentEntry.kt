@@ -12,11 +12,16 @@ package ani.dantotsu.torrent
  * - [MagnetValidation]: strict magnet pre-gate. The engine's own
  *   `TorrentServerManager.parseMagnetHash` remains the runtime authority;
  *   this gate only rejects obvious non-magnets before any engine call.
+ * - [HttpTorrentUrl]: strict http(s) `.torrent`-URL pre-gate (G6, upstream
+ *   `05d5da4b` clipboard rule). The engine's `addTorrent` already fetches
+ *   http(s) URLs itself — the sheet only widens its typed/paste input to
+ *   pass them through. VIEW-intent dispatch still rejects http(s) (below),
+ *   so Editotsu never hijacks browser links.
  * - [ManualTorrentIntentDispatch]: allowlist for incoming VIEW intents —
  *   `magnet:` scheme or (`content:`/`file:` + `application/x-bittorrent`).
- *   Everything else (http(s), SEND, generic octet-stream, null data) is
- *   rejected so Editotsu never hijacks unrelated links. Manifest filters
- *   deliberately omit BROWSABLE for the same reason.
+ *   Everything else (http(s) links, SEND, generic octet-stream, null data)
+ *   is rejected so Editotsu never hijacks unrelated links. Manifest
+ *   filters deliberately omit BROWSABLE for the same reason.
  * - [PendingManualTorrent]: memory-only holder for a torrent received via
  *   system intent while the user has no anime context open. Never
  *   persisted, TTL-bound, generation-guarded; linking to a concrete
@@ -109,6 +114,13 @@ sealed interface ManualTorrentPayload {
     data class Magnet(val uri: String) : ManualTorrentPayload
 
     /**
+     * Raw http(s) `.torrent`-file URL text (validated by [HttpTorrentUrl],
+     * G6). Passed straight to the engine's `addTorrent`, which fetches it
+     * itself — the sheet stages nothing and owns nothing for this type.
+     */
+    data class HttpUrl(val url: String) : ManualTorrentPayload
+
+    /**
      * Borrowed third-party URI string (`content:`/`file:`) exactly as
      * received. NEVER owned: must be staged into private cache before use,
      * and MUST NEVER be passed to file deletion. The holder rejects it
@@ -121,6 +133,46 @@ sealed interface ManualTorrentPayload {
      * bounded staging. The ONLY payload type the cleanup paths may delete.
      */
     data class StagedFile(val locator: String) : ManualTorrentPayload
+}
+
+/**
+ * Strict http(s) `.torrent`-URL pre-gate (G6): mirrors the upstream
+ * `05d5da4b` clipboard rule — http(s) scheme AND a `.torrent` marker —
+ * so the typed/paste input accepts exactly what the engine's `addTorrent`
+ * can already fetch. Anything else (ftp, bare http pages, magnet text) is
+ * left to its own gate. Pure, JVM-tested.
+ */
+object HttpTorrentUrl {
+
+    fun isHttpTorrentUrl(raw: String?): Boolean {
+        if (raw.isNullOrBlank()) return false
+        val trimmed = raw.trim()
+        if (!(trimmed.startsWith("http://", ignoreCase = true) ||
+                trimmed.startsWith("https://", ignoreCase = true))
+        ) return false
+        return trimmed.contains(".torrent", ignoreCase = true)
+    }
+}
+
+/**
+ * Typed-input classifier for the sheet's text field (G6): magnet text →
+ * [ManualTorrentPayload.Magnet], http(s) `.torrent` URL →
+ * [ManualTorrentPayload.HttpUrl], anything else → null (caller shows the
+ * invalid-input error). Pure, JVM-tested.
+ */
+object ManualTorrentInput {
+
+    fun classify(text: String?): ManualTorrentPayload? {
+        if (text.isNullOrBlank()) return null
+        val trimmed = text.trim()
+        if (MagnetValidation.isMagnetLink(trimmed)) {
+            return ManualTorrentPayload.Magnet(trimmed)
+        }
+        if (HttpTorrentUrl.isHttpTorrentUrl(trimmed)) {
+            return ManualTorrentPayload.HttpUrl(trimmed)
+        }
+        return null
+    }
 }
 
 /**

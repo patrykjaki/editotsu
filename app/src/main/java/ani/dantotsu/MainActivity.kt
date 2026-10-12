@@ -515,6 +515,12 @@ class MainActivity : AppCompatActivity() {
                 // provenance explicit if dispatch ever changes.
                 toast(R.string.manual_torrent_receive_failed)
             }
+            is ManualTorrentPayload.HttpUrl -> {
+                // classify() never produces this (VIEW intents reject
+                // http(s) — no link hijack); typed input resolves it in the
+                // sheet, never here. Defensive reject like StagedFile.
+                toast(R.string.manual_torrent_receive_failed)
+            }
         }
     }
 
