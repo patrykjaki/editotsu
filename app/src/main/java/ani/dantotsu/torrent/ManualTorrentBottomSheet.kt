@@ -447,7 +447,9 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                 manager.prebufferTorrent(url, entry.index, series)
                 val hash = torrent.hash ?: throw IllegalStateException("missing info-hash")
                 val link = manager.getLink(hash, entry.index)
-                val unlinked = buildUnlinkedPlayback(series, entry.displayName)
+                // HOLD1: the synthetic identity derives from this torrent's
+                // hash, so its resume/subtitle/source state is its own.
+                val unlinked = buildUnlinkedPlayback(series, entry.displayName, torrent.hash)
                 attachManualVideo(unlinked.episode, serverName, url, link)
                 deleteOwnedTemp()
                 withContext(Dispatchers.Main) {
@@ -569,12 +571,19 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
             try {
                 val manager = Injekt.get<TorrentServerManager>()
                 if (!manager.isAvailable()) throw IllegalStateException("torrent unavailable")
-                manager.activeTorrentHash?.let { active ->
-                    if (!active.equals(torrent.hash, ignoreCase = true)) {
-                        manager.removeTorrent(active)
-                    }
-                }
-                manager.activeTorrentHash = torrent.hash
+                // HOLD1 (option A): deliberately NO adopt/remove block here
+                // (anchored keeps its approved one). Removing the active
+                // handle would invalidate a torrent another flow is still
+                // using — e.g. starting download B while A's service reads
+                // its relay. Handles coexist in the session (per-hash
+                // lifecycle locks); relay links multiplex by hash; tasks and
+                // cancellation key on strings. Session/cache ownership
+                // (quota eviction, exit pause over all known hashes) applies
+                // exactly as it does to every other non-replacing path.
+                // The prebuffer lease below mirrors the anchored call: the
+                // lease only owns deadline-registry priority entries with a
+                // 30s TTL (not a data pin), so closing it before the service
+                // starts changes nothing about relay availability.
                 val result = manager.prebufferWithResult(torrent.hash!!, entry.index)
                 result.lease?.close()
                 val video = Video(null, VideoType.CONTAINER, url)

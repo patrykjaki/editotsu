@@ -851,27 +851,56 @@ fun emptyMedia() = Media(
 /**
  * Reserved identity for unlinked (anchor-free) torrent playback (M7A G2).
  * Negative by codebase convention (`MediaAdaptor`/`CarouselLogoResolver`
- * treat `id < 0` as "not a real catalog entry"); this exact value is the
- * explicit unlinked-origin marker — never an AniList/MAL id, never
- * persisted as a catalog entry. See [isUnlinkedPlayback].
+ * treat `id < 0` as "not a real catalog entry").
+ *
+ * HOLD1: one id per torrent, not one for all — every per-episode state
+ * namespace in the player (resume position `${id}_${key}`, max duration
+ * `${id}_${ep}_max`, legacy `subLang_${id}`, the per-episode subtitle
+ * store, `Selected-${id}`) keys on the media id, so a single shared id
+ * lets torrent B inherit torrent A's playback state. Deriving the id from
+ * the torrent info-hash ([unlinkedMediaIdForTorrent]) keeps unrelated
+ * torrents isolated while the same torrent reopens stably (A → B → A
+ * restores A's own position). [UNLINKED_TORRENT_MEDIA_ID] is the fallback
+ * when no hash is known, and the ceiling of the reserved range.
  */
 const val UNLINKED_TORRENT_MEDIA_ID = -777001
 
+/** Floor of the reserved unlinked-identity range (see above). */
+const val UNLINKED_TORRENT_ID_MIN = -1_777_001
+
+/** True for any id inside the reserved unlinked range. */
+internal fun isUnlinkedId(id: Int): Boolean =
+    id in UNLINKED_TORRENT_ID_MIN..UNLINKED_TORRENT_MEDIA_ID
+
 /**
- * Explicit unlinked-origin check (M7A G2): true only for the reserved
- * synthetic identity. Guards actual progress/history/continue-watching
+ * Derives the reserved synthetic id for one torrent (M7A G2 HOLD1):
+ * deterministic per info-hash (same torrent → same id across sessions),
+ * distinct across torrents, always inside the reserved range. Case and
+ * surrounding whitespace are normalized before hashing; unknown hashes
+ * fall back to [UNLINKED_TORRENT_MEDIA_ID]. `String.hashCode` is specified
+ * stable across processes. Pure, JVM-tested.
+ */
+internal fun unlinkedMediaIdForTorrent(infoHash: String?): Int {
+    if (infoHash.isNullOrBlank()) return UNLINKED_TORRENT_MEDIA_ID
+    val slot = (infoHash.trim().uppercase().hashCode().toLong() and 0xFFFFFFFFL) % 1_000_001L
+    return (UNLINKED_TORRENT_MEDIA_ID - slot).toInt()
+}
+
+/**
+ * Explicit unlinked-origin check (M7A G2): true only for reserved
+ * synthetic identities. Guards actual progress/history/continue-watching
  * write boundaries ([updateProgress], player progress/widget/subscription
  * paths, continue-list recording) — never just UI.
  */
-fun Media?.isUnlinkedPlayback(): Boolean = this?.id == UNLINKED_TORRENT_MEDIA_ID
+fun Media?.isUnlinkedPlayback(): Boolean = this != null && isUnlinkedId(this.id)
 
 /**
  * Pure continue-list recording (M7A G2): real ids move to the end (existing
- * most-recent semantics, no dupes); the reserved synthetic id leaves the
- * list untouched so unlinked playback never pollutes continue-watching.
+ * most-recent semantics, no dupes); reserved synthetic ids leave the list
+ * untouched so unlinked playback never pollutes continue-watching.
  */
 internal fun continueListWith(current: List<Int>, mediaId: Int): List<Int> {
-    if (mediaId == UNLINKED_TORRENT_MEDIA_ID) return current
+    if (isUnlinkedId(mediaId)) return current
     return (current.filterNot { it == mediaId } + mediaId)
 }
 

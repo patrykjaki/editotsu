@@ -5,8 +5,12 @@ import ani.dantotsu.connections.updateProgress
 import ani.dantotsu.download.anime.AnimeDownloaderService
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.UNLINKED_TORRENT_MEDIA_ID
+import ani.dantotsu.media.UNLINKED_TORRENT_ID_MIN
 import ani.dantotsu.media.continueListWith
 import ani.dantotsu.media.isUnlinkedPlayback
+import ani.dantotsu.media.unlinkedMediaIdForTorrent
+import ani.dantotsu.media.anime.resumePositionKey
+import ani.dantotsu.media.anime.subtitlePrefKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -175,5 +179,70 @@ class UnlinkedTorrentPlaybackTest {
             "Big Buck Bunny 4K/bbb.4k.mkv",
             AnimeDownloaderService.AnimeDownloadTask.getTaskName("Big Buck Bunny 4K", "bbb.4k.mkv")
         )
+    }
+
+    // ---- HOLD1: per-torrent identity ----
+
+    @Test
+    fun `derived ids are distinct stable and in range`() {
+        val idA = unlinkedMediaIdForTorrent("A".repeat(40))
+        val idB = unlinkedMediaIdForTorrent("B".repeat(40))
+        assertTrue(idA != idB)
+        assertEquals(idA, unlinkedMediaIdForTorrent("A".repeat(40)))
+        // Case/whitespace normalized to the same torrent.
+        assertEquals(idA, unlinkedMediaIdForTorrent("  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "))
+        listOf(idA, idB).forEach { id ->
+            assertTrue(id <= UNLINKED_TORRENT_MEDIA_ID)
+            assertTrue(id >= UNLINKED_TORRENT_ID_MIN)
+            assertTrue(buildUnlinkedPlayback("T", "f.mkv", "A".repeat(40)).media.isUnlinkedPlayback())
+        }
+        // Unknown hashes fall back to the range ceiling.
+        assertEquals(UNLINKED_TORRENT_MEDIA_ID, unlinkedMediaIdForTorrent(null))
+        assertEquals(UNLINKED_TORRENT_MEDIA_ID, unlinkedMediaIdForTorrent("   "))
+        assertTrue(buildUnlinkedPlayback("T", "f.mkv").media.isUnlinkedPlayback())
+    }
+
+    @Test
+    fun `factory carries the derived identity`() {
+        val hash = "C".repeat(40)
+        val built = buildUnlinkedPlayback("Some Torrent", "ep.mkv", hash)
+        assertEquals(unlinkedMediaIdForTorrent(hash), built.media.id)
+        assertEquals("Some Torrent", built.media.userPreferredName)
+        assertEquals("ep.mkv", built.episode.title)
+    }
+
+    @Test
+    fun `a-b-a resume state stays isolated`() {
+        val idA = unlinkedMediaIdForTorrent("A".repeat(40))
+        val idB = unlinkedMediaIdForTorrent("B".repeat(40))
+        // Same shape the player reads/writes: resume position, max
+        // duration, legacy subtitle lang, per-episode subtitle record.
+        val prefs = mutableMapOf<String, Long>()
+        prefs[resumePositionKey(idA, UNLINKED_EPISODE_KEY)] = 100L
+        prefs[resumePositionKey(idB, UNLINKED_EPISODE_KEY)] = 250L
+        // B opens: reads its own position, never A's.
+        assertEquals(250L, prefs[resumePositionKey(idB, UNLINKED_EPISODE_KEY)])
+        // Back to A: A's position intact.
+        assertEquals(100L, prefs[resumePositionKey(idA, UNLINKED_EPISODE_KEY)])
+        // Same torrent reopens stably under the same key.
+        assertEquals(
+            resumePositionKey(idA, UNLINKED_EPISODE_KEY),
+            resumePositionKey(unlinkedMediaIdForTorrent("A".repeat(40)), UNLINKED_EPISODE_KEY)
+        )
+        // Subtitle namespaces split with the identity.
+        assertTrue(subtitlePrefKey(idA, "1") != subtitlePrefKey(idB, "1"))
+    }
+
+    @Test
+    fun `real media resume keys are byte-identical to before`() {
+        // The helper must not reshape existing keys for real media.
+        assertEquals("123_12", resumePositionKey(123, "12"))
+        assertEquals("977001_1", resumePositionKey(977001, "1"))
+    }
+
+    @Test
+    fun `derived identities never pollute continue-watching`() {
+        val idA = unlinkedMediaIdForTorrent("A".repeat(40))
+        assertEquals(listOf(5), continueListWith(listOf(5), idA))
     }
 }

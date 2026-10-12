@@ -120,6 +120,15 @@ import java.util.TimerTask
 import kotlin.math.max
 import kotlin.math.min
 
+/**
+ * Resume-position prefs key (M7A G2 HOLD1): namespaced by media id, so
+ * per-torrent synthetic identities isolate playback state — torrent B can
+ * never restore torrent A's position, while real media keeps its exact
+ * existing keys (behavior unchanged). Pure, JVM-tested (A → B → A).
+ */
+internal fun resumePositionKey(mediaId: Int, episodeKey: String): String =
+    "${mediaId}_$episodeKey"
+
 @UnstableApi
 @SuppressLint("ClickableViewAccessibility")
 class ExoplayerView : AppCompatActivity(), PlaybackListener {
@@ -833,15 +842,15 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     private fun savedEpisodePosition(key: String): Long {
         val alias = EpisodeResumeKeys.compatibleAlias(key, episodes.keys)
-        val fallback = if (alias != null && alias != key) PrefManager.getCustomVal("${media.id}_$alias", 0L) else 0L
-        return PrefManager.getCustomVal("${media.id}_$key", fallback)
+        val fallback = if (alias != null && alias != key) PrefManager.getCustomVal(resumePositionKey(media.id, alias), 0L) else 0L
+        return PrefManager.getCustomVal(resumePositionKey(media.id, key), fallback)
     }
 
     private fun saveActivePosition() {
         playbackSession.savePosition { key, position ->
-            PrefManager.setCustomVal("${media.id}_$key", position)
+            PrefManager.setCustomVal(resumePositionKey(media.id, key), position)
             val alias = EpisodeResumeKeys.compatibleAlias(key, episodes.keys)
-            if (alias != null && alias != key) PrefManager.setCustomVal("${media.id}_$alias", position)
+            if (alias != null && alias != key) PrefManager.setCustomVal(resumePositionKey(media.id, alias), position)
         }
     }
 

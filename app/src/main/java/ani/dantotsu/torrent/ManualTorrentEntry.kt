@@ -1,9 +1,9 @@
 package ani.dantotsu.torrent
 
 import ani.dantotsu.media.Media
-import ani.dantotsu.media.UNLINKED_TORRENT_MEDIA_ID
 import ani.dantotsu.media.anime.Anime
 import ani.dantotsu.media.anime.Episode
+import ani.dantotsu.media.unlinkedMediaIdForTorrent
 
 /**
  * MAX MERGE M7A: backend-agnostic manual torrent/magnet entry — pure intent,
@@ -470,6 +470,10 @@ const val UNLINKED_TITLE_FALLBACK = "Unlinked torrent"
  * - Episode label: the selected file's real filename.
  * - Artwork: absent by construction (null cover/banner — views no-op).
  * - Seasons/episode counts: never fabricated (`totalEpisodes` stays null).
++ * - Identity: [unlinkedMediaIdForTorrent] derives the reserved media id
++ *   from the torrent info-hash (HOLD1) — unrelated torrents never share
++ *   resume/subtitle/source state, while reopening the same torrent
++ *   restores its own.
  * - Progress/history/source safety comes from the reserved id plus the
  *   write-boundary guards ([isUnlinkedPlayback]), not from these fields.
  *
@@ -482,12 +486,16 @@ data class UnlinkedTorrentPlayback(
     val episodeKey: String,
 )
 
-fun buildUnlinkedPlayback(torrentName: String, fileName: String): UnlinkedTorrentPlayback {
+fun buildUnlinkedPlayback(
+    torrentName: String,
+    fileName: String,
+    infoHash: String? = null,
+): UnlinkedTorrentPlayback {
     val series = torrentName.trim().ifEmpty { fileName.trim() }.ifEmpty { UNLINKED_TITLE_FALLBACK }
     val file = fileName.trim().ifEmpty { "File $UNLINKED_EPISODE_KEY" }
     val episode = Episode(number = UNLINKED_EPISODE_KEY, title = file)
     val media = Media(
-        id = UNLINKED_TORRENT_MEDIA_ID,
+        id = unlinkedMediaIdForTorrent(infoHash),
         name = series,
         nameRomaji = series,
         userPreferredName = series,
