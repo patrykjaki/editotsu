@@ -49,6 +49,8 @@ object EpisodeSubtitleStore {
      * INSIDE the commit lock, immediately before any filesystem or
      * preference write — so a superseding Off/newer selection cannot slip
      * between check and commit. Returns false (nothing written) when stale.
+     * HOLD4: success is genuine — staging or preference failure returns
+     * false instead of reporting success on a swallowed exception.
      * Safe replacement + owned-file cleanup rules from [saveSubtitle] apply.
      */
     fun saveSubtitleIfCurrent(
@@ -64,7 +66,34 @@ object EpisodeSubtitleStore {
                 false
             } else {
                 saveLocked(filesDir, mediaId, episodeNumber, sub, sourceFile)
-                true
+            }
+        }
+    }
+
+    /**
+     * Test seam (HOLD4): the same serialized commit as [saveSubtitleIfCurrent]
+     * with injectable prefs. Production wires the real [PrefManager]; JVM
+     * tests wire a fake map so staging, record commit, preservation and
+     * cleanup run for real without Android.
+     */
+    internal fun saveSubtitleIfCurrentWithPrefs(
+        filesDir: File,
+        mediaId: Int,
+        episodeNumber: String,
+        sub: SavedEpisodeSubtitle,
+        sourceFile: File? = null,
+        isCurrent: () -> Boolean,
+        readPrevious: () -> SavedEpisodeSubtitle?,
+        writeJson: (String) -> Unit,
+    ): Boolean {
+        return withSubtitleStoreCommit {
+            if (!isCurrent()) {
+                false
+            } else {
+                commitSubtitleRecord(
+                    filesDir, mediaId, episodeNumber, sub, sourceFile,
+                    readPrevious, writeJson
+                )
             }
         }
     }
@@ -75,31 +104,148 @@ object EpisodeSubtitleStore {
         episodeNumber: String,
         sub: SavedEpisodeSubtitle,
         sourceFile: File?,
-    ) {
+    ): Boolean {
+        val key = getPrefKey(mediaId, episodeNumber)
+        return commitSubtitleRecord(
+            filesDir, mediaId, episodeNumber, sub, sourceFile,
+            readPrevious = { runCatching { getSavedSubtitle(mediaId, episodeNumber) }.getOrNull() },
+            writeJson = { jsonStr -> PrefManager.setCustomVal(key, jsonStr) }
+        )
+    }
+
+    /**
+     * Atomic commit core (HOLD4): replacement bytes are staged to a `.tmp`
+     * file and moved into place only after a complete copy — the live file
+     * is never overwritten mid-write. The previous record/file survives any
+     * staging or preference failure; partials and orphans are removed;
+     * same-path rewrites hold a `.bak` until the preference lands.
+     * Returns true only when file staging AND the preference write both
+     * succeed.
+     */
+    internal fun commitSubtitleRecord(
+        filesDir: File,
+        mediaId: Int,
+        episodeNumber: String,
+        sub: SavedEpisodeSubtitle,
+        sourceFile: File?,
+        readPrevious: () -> SavedEpisodeSubtitle?,
+        writeJson: (String) -> Unit,
+    ): Boolean {
+        var previousPath: String? = null
+        var stagedDest: File? = null
+        var destFile: File? = null
+        var backupFile: File? = null
         try {
+            previousPath = try {
+                readPrevious()?.filePath
+            } catch (_: Exception) {
+                return false
+            }
             var persistentPath = sub.filePath
-            if (sourceFile != null && sourceFile.exists()) {
-                val savedSubsDir = File(filesDir, SAVED_SUBS_DIR).apply { mkdirs() }
+            if (sourceFile != null) {
+                // Missing source (evicted cache, directory, ...) fails
+                // before touching disk or prefs — previous preserved.
+                if (!sourceFile.isFile) return false
+                val savedSubsDir = File(filesDir, SAVED_SUBS_DIR)
+                // mkdirs is best-effort; isDirectory is the verdict (covers
+                // filesDir-is-a-file and unwritable destinations).
+                runCatching { savedSubsDir.mkdirs() }
+                if (!savedSubsDir.isDirectory) return false
                 val ext = sourceFile.extension.ifBlank { "srt" }
-                val destFile = File(savedSubsDir, stagedSubtitleFileName(mediaId, episodeNumber, sub.id, ext))
-                sourceFile.copyTo(destFile, overwrite = true)
+                destFile =
+                    File(savedSubsDir, stagedSubtitleFileName(mediaId, episodeNumber, sub.id, ext))
+                val tmpFile = File(savedSubsDir, destFile.name + ".tmp")
+                try {
+                    // Same-path rewrite: back up live bytes before the move
+                    // so a later preference failure can restore them.
+                    if (destFile.isFile && destFile.absolutePath == previousPath) {
+                        val bak = File(savedSubsDir, destFile.name + ".bak")
+                        destFile.copyTo(bak, overwrite = true)
+                        backupFile = bak
+                    }
+                    sourceFile.copyTo(tmpFile, overwrite = true)
+                    try {
+                        java.nio.file.Files.move(
+                            tmpFile.toPath(),
+                            destFile.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                            java.nio.file.StandardCopyOption.ATOMIC_MOVE
+                        )
+                    } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                        java.nio.file.Files.move(
+                            tmpFile.toPath(),
+                            destFile.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                        )
+                    }
+                    runCatching { if (tmpFile.exists()) tmpFile.delete() }
+                } catch (_: Exception) {
+                    runCatching { tmpFile.delete() }
+                    // Staging failed: the live file is untouched — drop any
+                    // backup copy and keep the previous record.
+                    runCatching { backupFile?.takeIf { it.exists() }?.delete() }
+                    backupFile = null
+                    return false
+                }
+                stagedDest = destFile
                 persistentPath = destFile.absolutePath
             }
             // HOLD1 item 3: replacement cleanup — retire whatever this save
             // supersedes, but only canonical owned files (validated below).
-            val superseded = staleOwnedFile(
-                getSavedSubtitle(mediaId, episodeNumber)?.filePath, persistentPath
-            )
+            val superseded = staleOwnedFile(previousPath, persistentPath)
             val record = sub.copy(filePath = persistentPath)
-            val jsonStr = json.encodeToString(record)
-            PrefManager.setCustomVal(getPrefKey(mediaId, episodeNumber), jsonStr)
+            val jsonStr = try {
+                json.encodeToString(record)
+            } catch (_: Exception) {
+                if (stagedDest != null && stagedDest.absolutePath != previousPath) {
+                    runCatching { stagedDest.delete() }
+                }
+                restoreStagedBackup(destFile, backupFile)
+                return false
+            }
+            try {
+                writeJson(jsonStr)
+            } catch (_: Exception) {
+                // Preference failed: drop the staged orphan (different path)
+                // or restore the backup (same path). Previous wins.
+                if (stagedDest != null && stagedDest.absolutePath != previousPath) {
+                    runCatching { stagedDest.delete() }
+                }
+                restoreStagedBackup(destFile, backupFile)
+                return false
+            }
             if (superseded != null) {
                 val ownedDir = File(filesDir, SAVED_SUBS_DIR)
                 if (isOwnedSubtitleFile(ownedDir, superseded)) {
                     runCatching { File(superseded).delete() }
                 }
             }
+            runCatching { backupFile?.takeIf { it.exists() }?.delete() }
+            return true
         } catch (_: Exception) {
+            // Defensive: never delete a file that could be the live previous.
+            if (stagedDest != null && stagedDest.absolutePath != previousPath) {
+                runCatching { stagedDest.delete() }
+            }
+            restoreStagedBackup(destFile, backupFile)
+            return false
+        }
+    }
+
+    private fun restoreStagedBackup(destFile: File?, backupFile: File?) {
+        if (destFile == null || backupFile == null) return
+        try {
+            if (!backupFile.isFile) return
+            java.nio.file.Files.move(
+                backupFile.toPath(),
+                destFile.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+            )
+        } catch (_: Exception) {
+            runCatching {
+                backupFile.copyTo(destFile, overwrite = true)
+                backupFile.delete()
+            }
         }
     }
 

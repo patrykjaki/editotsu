@@ -367,4 +367,319 @@ class EpisodeSubtitleStoreTest {
             shouldAttachCompletedFetch(req, gate.current, 1, "12", 1, "12")
         )
     }
+
+    // ---- HOLD4: persistence failure handling ----
+
+    private fun newTempDir(prefix: String): File =
+        Files.createTempDirectory(prefix).toFile()
+
+    private fun writeTextFile(parent: File, name: String, content: String): File {
+        parent.mkdirs()
+        return File(parent, name).apply { writeText(content) }
+    }
+
+    private fun encodeRecord(record: EpisodeSubtitleStore.SavedEpisodeSubtitle): String =
+        kotlinx.serialization.json.Json.encodeToString(
+            EpisodeSubtitleStore.SavedEpisodeSubtitle.serializer(), record
+        )
+
+    private fun dirNames(dir: File): Set<String> =
+        dir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
+
+    @Test
+    fun `unwritable destination reports failure without pref write`() {
+        // filesDir is a plain file, not a directory: staging cannot succeed.
+        // Failure lands before any preference write.
+        val filesDir = File.createTempFile("store-unwritable", ".bin")
+        try {
+            val srcDir = newTempDir("store-src")
+            try {
+                val source = writeTextFile(srcDir, "cap.srt", "1\n00:00:01 --> 00:00:02\nHi\n")
+                val sub = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                    id = "wyzie-1", displayName = "English",
+                    provider = "Wyzie", language = "en"
+                )
+                var prefWrites = 0
+                assertEquals(
+                    false,
+                    EpisodeSubtitleStore.saveSubtitleIfCurrentWithPrefs(
+                        filesDir = filesDir,
+                        mediaId = 1,
+                        episodeNumber = "12",
+                        sub = sub,
+                        sourceFile = source,
+                        isCurrent = { true },
+                        readPrevious = { null },
+                        writeJson = { prefWrites += 1 }
+                    )
+                )
+                assertEquals(0, prefWrites)
+                // Production entry propagates the same failure (it fails
+                // before prefs, so this stays JVM-safe without Android).
+                assertEquals(
+                    false,
+                    EpisodeSubtitleStore.saveSubtitleIfCurrent(
+                        filesDir = filesDir,
+                        mediaId = 1,
+                        episodeNumber = "12",
+                        sub = sub,
+                        sourceFile = source,
+                        isCurrent = { true }
+                    )
+                )
+            } finally {
+                srcDir.deleteRecursively()
+            }
+        } finally {
+            filesDir.delete()
+        }
+    }
+
+    @Test
+    fun `missing source reports failure and preserves previous`() {
+        val filesDir = newTempDir("store-missing")
+        try {
+            val key = subtitlePrefKey(1, "12")
+            val prevFile = writeTextFile(
+                File(filesDir, SAVED_SUBS_DIR),
+                stagedSubtitleFileName(1, "12", "old-1", "srt"), "OLD\n"
+            )
+            val prev = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                id = "old-1", displayName = "Old",
+                provider = "Wyzie", language = "en", filePath = prevFile.absolutePath
+            )
+            val prefs = mutableMapOf(key to encodeRecord(prev))
+            val missing = File(filesDir, "gone.srt") // never created
+            val sub = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                id = "wyzie-9", displayName = "English",
+                provider = "Wyzie", language = "en"
+            )
+            var writes = 0
+            assertEquals(
+                false,
+                EpisodeSubtitleStore.saveSubtitleIfCurrentWithPrefs(
+                    filesDir = filesDir,
+                    mediaId = 1,
+                    episodeNumber = "12",
+                    sub = sub,
+                    sourceFile = missing,
+                    isCurrent = { true },
+                    readPrevious = { prefs[key]?.let { decodeSavedSubtitle(it) } },
+                    writeJson = { writes += 1; prefs[key] = it }
+                )
+            )
+            assertEquals(0, writes)
+            assertEquals(prevFile.absolutePath, decodeSavedSubtitle(prefs[key]!!)?.filePath)
+            assertEquals("OLD\n", prevFile.readText())
+            assertEquals(setOf(prevFile.name), dirNames(File(filesDir, SAVED_SUBS_DIR)))
+            // Production entry likewise refuses before prefs.
+            assertEquals(
+                false,
+                EpisodeSubtitleStore.saveSubtitleIfCurrent(
+                    filesDir = filesDir,
+                    mediaId = 1,
+                    episodeNumber = "12",
+                    sub = sub,
+                    sourceFile = missing,
+                    isCurrent = { true }
+                )
+            )
+        } finally {
+            filesDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `pref-write failure preserves previous record and file and removes staged orphan`() {
+        val filesDir = newTempDir("store-preffail")
+        try {
+            val key = subtitlePrefKey(1, "12")
+            val prevFile = writeTextFile(
+                File(filesDir, SAVED_SUBS_DIR),
+                stagedSubtitleFileName(1, "12", "old-1", "srt"), "OLD\n"
+            )
+            val prev = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                id = "old-1", displayName = "Old",
+                provider = "Wyzie", language = "en", filePath = prevFile.absolutePath
+            )
+            val prefs = mutableMapOf(key to encodeRecord(prev))
+            val srcDir = newTempDir("store-preffail-src")
+            try {
+                val source = writeTextFile(srcDir, "new.srt", "NEW\n")
+                assertEquals(
+                    false,
+                    EpisodeSubtitleStore.saveSubtitleIfCurrentWithPrefs(
+                        filesDir = filesDir,
+                        mediaId = 1,
+                        episodeNumber = "12",
+                        sub = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                            id = "wyzie-2", displayName = "English",
+                            provider = "Wyzie", language = "en"
+                        ),
+                        sourceFile = source,
+                        isCurrent = { true },
+                        readPrevious = { prefs[key]?.let { decodeSavedSubtitle(it) } },
+                        writeJson = { throw java.io.IOException("injected pref failure") }
+                    )
+                )
+                // Previous record + bytes survive; the staged orphan is gone.
+                assertEquals(prevFile.absolutePath, decodeSavedSubtitle(prefs[key]!!)?.filePath)
+                assertEquals("OLD\n", prevFile.readText())
+                assertEquals(setOf(prevFile.name), dirNames(File(filesDir, SAVED_SUBS_DIR)))
+            } finally {
+                srcDir.deleteRecursively()
+            }
+        } finally {
+            filesDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `successful replacement commits new record and removes previous file`() {
+        val filesDir = newTempDir("store-success")
+        try {
+            val key = subtitlePrefKey(1, "12")
+            val prevFile = writeTextFile(
+                File(filesDir, SAVED_SUBS_DIR),
+                stagedSubtitleFileName(1, "12", "old-1", "srt"), "OLD\n"
+            )
+            val prev = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                id = "old-1", displayName = "Old",
+                provider = "Wyzie", language = "en", filePath = prevFile.absolutePath
+            )
+            val prefs = mutableMapOf(key to encodeRecord(prev))
+            val srcDir = newTempDir("store-success-src")
+            try {
+                val source = writeTextFile(srcDir, "new.srt", "NEW\n")
+                assertEquals(
+                    true,
+                    EpisodeSubtitleStore.saveSubtitleIfCurrentWithPrefs(
+                        filesDir = filesDir,
+                        mediaId = 1,
+                        episodeNumber = "12",
+                        sub = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                            id = "wyzie-2", displayName = "English",
+                            provider = "Wyzie", language = "en"
+                        ),
+                        sourceFile = source,
+                        isCurrent = { true },
+                        readPrevious = { prefs[key]?.let { decodeSavedSubtitle(it) } },
+                        writeJson = { prefs[key] = it }
+                    )
+                )
+                val committed = decodeSavedSubtitle(prefs[key]!!)!!
+                assertTrue(committed.filePath != prevFile.absolutePath)
+                assertEquals("NEW\n", File(committed.filePath!!).readText())
+                assertTrue(!prevFile.exists())
+                val names = dirNames(File(filesDir, SAVED_SUBS_DIR))
+                assertEquals(1, names.size)
+                assertTrue(names.none { it.endsWith(".tmp") || it.endsWith(".bak") })
+            } finally {
+                srcDir.deleteRecursively()
+            }
+        } finally {
+            filesDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `same-path pref failure restores previous bytes then success rewrites`() {
+        val filesDir = newTempDir("store-samepath")
+        try {
+            val key = subtitlePrefKey(1, "12")
+            val destName = stagedSubtitleFileName(1, "12", "wyzie-1", "srt")
+            val destFile = writeTextFile(File(filesDir, SAVED_SUBS_DIR), destName, "OLD\n")
+            val prev = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                id = "wyzie-1", displayName = "English",
+                provider = "Wyzie", language = "en", filePath = destFile.absolutePath
+            )
+            val prefs = mutableMapOf(key to encodeRecord(prev))
+            val sub = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                id = "wyzie-1", displayName = "English",
+                provider = "Wyzie", language = "en"
+            )
+            val srcDir = newTempDir("store-samepath-src")
+            try {
+                val source = writeTextFile(srcDir, "new.srt", "NEW\n")
+                // Phase 1: pref fails — previous bytes + record survive.
+                assertEquals(
+                    false,
+                    EpisodeSubtitleStore.saveSubtitleIfCurrentWithPrefs(
+                        filesDir = filesDir,
+                        mediaId = 1,
+                        episodeNumber = "12",
+                        sub = sub,
+                        sourceFile = source,
+                        isCurrent = { true },
+                        readPrevious = { prefs[key]?.let { decodeSavedSubtitle(it) } },
+                        writeJson = { throw java.io.IOException("injected pref failure") }
+                    )
+                )
+                assertEquals(destFile.absolutePath, decodeSavedSubtitle(prefs[key]!!)?.filePath)
+                assertEquals("OLD\n", destFile.readText())
+                assertTrue(dirNames(File(filesDir, SAVED_SUBS_DIR)).none {
+                    it.endsWith(".tmp") || it.endsWith(".bak")
+                })
+                // Phase 2: pref succeeds — bytes rewrite, same path kept.
+                assertEquals(
+                    true,
+                    EpisodeSubtitleStore.saveSubtitleIfCurrentWithPrefs(
+                        filesDir = filesDir,
+                        mediaId = 1,
+                        episodeNumber = "12",
+                        sub = sub,
+                        sourceFile = source,
+                        isCurrent = { true },
+                        readPrevious = { prefs[key]?.let { decodeSavedSubtitle(it) } },
+                        writeJson = { prefs[key] = it }
+                    )
+                )
+                assertEquals(destFile.absolutePath, decodeSavedSubtitle(prefs[key]!!)?.filePath)
+                assertEquals("NEW\n", destFile.readText())
+                assertTrue(dirNames(File(filesDir, SAVED_SUBS_DIR)).none {
+                    it.endsWith(".tmp") || it.endsWith(".bak")
+                })
+            } finally {
+                srcDir.deleteRecursively()
+            }
+        } finally {
+            filesDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `stale generation refuses before any filesystem or pref I-O even with source present`() {
+        val filesDir = newTempDir("store-stale-src")
+        try {
+            val srcDir = newTempDir("store-stale-srcfiles")
+            try {
+                val source = writeTextFile(srcDir, "cap.srt", "NEW\n")
+                var reads = 0
+                var writes = 0
+                assertEquals(
+                    false,
+                    EpisodeSubtitleStore.saveSubtitleIfCurrentWithPrefs(
+                        filesDir = filesDir,
+                        mediaId = 1,
+                        episodeNumber = "12",
+                        sub = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                            id = "wyzie-1", displayName = "English",
+                            provider = "Wyzie", language = "en"
+                        ),
+                        sourceFile = source,
+                        isCurrent = { false },
+                        readPrevious = { reads += 1; null },
+                        writeJson = { writes += 1 }
+                    )
+                )
+                assertEquals(0, reads)
+                assertEquals(0, writes)
+                assertTrue(!File(filesDir, SAVED_SUBS_DIR).exists())
+            } finally {
+                srcDir.deleteRecursively()
+            }
+        } finally {
+            filesDir.deleteRecursively()
+        }
+    }
 }
