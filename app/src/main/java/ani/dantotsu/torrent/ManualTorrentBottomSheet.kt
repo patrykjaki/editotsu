@@ -447,9 +447,12 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                 manager.prebufferTorrent(url, entry.index, series)
                 val hash = torrent.hash ?: throw IllegalStateException("missing info-hash")
                 val link = manager.getLink(hash, entry.index)
-                // HOLD1: the synthetic identity derives from this torrent's
-                // hash, so its resume/subtitle/source state is its own.
-                val unlinked = buildUnlinkedPlayback(series, entry.displayName, torrent.hash)
+                // HOLD1/HOLD2: the synthetic identity derives from this
+                // torrent's hash AND the selected file index, so its
+                // resume/subtitle/source state is its own.
+                val unlinked = buildUnlinkedPlayback(
+                    series, entry.displayName, torrent.hash, entry.index
+                )
                 attachManualVideo(unlinked.episode, serverName, url, link)
                 deleteOwnedTemp()
                 withContext(Dispatchers.Main) {
@@ -596,10 +599,16 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                         showFiles()
                         return@withContext
                     }
+                    // HOLD2: the task episode string carries the 1-based file
+                    // key, so same-name files in different torrent folders
+                    // cannot collapse into one queue task (which would read
+                    // as a silent dedup). The player label keeps the pure
+                    // filename; both stay human-readable.
+                    val taskEpisode = "${entry.index.coerceAtLeast(0) + 1} - ${entry.displayName}"
                     Helper.startAnimeDownloadService(
                         act,
                         series,
-                        entry.displayName,
+                        taskEpisode,
                         video,
                         mutableListOf(),
                         mutableListOf(),

@@ -5,8 +5,8 @@ import ani.dantotsu.connections.updateProgress
 import ani.dantotsu.download.anime.AnimeDownloaderService
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.UNLINKED_TORRENT_MEDIA_ID
-import ani.dantotsu.media.UNLINKED_TORRENT_ID_MIN
 import ani.dantotsu.media.continueListWith
+import ani.dantotsu.media.isUnlinkedId
 import ani.dantotsu.media.isUnlinkedPlayback
 import ani.dantotsu.media.unlinkedMediaIdForTorrent
 import ani.dantotsu.media.anime.resumePositionKey
@@ -181,10 +181,20 @@ class UnlinkedTorrentPlaybackTest {
         )
     }
 
-    // ---- HOLD1: per-torrent identity ----
+    // ---- HOLD1/HOLD2: per-torrent identity over the full negative range ----
 
     @Test
-    fun `derived ids are distinct stable and in range`() {
+    fun `unlinked predicate is the full negative range`() {
+        assertTrue(isUnlinkedId(-1))
+        assertTrue(isUnlinkedId(UNLINKED_TORRENT_MEDIA_ID))
+        assertTrue(isUnlinkedId(Int.MIN_VALUE + 1))
+        assertTrue(!isUnlinkedId(0))
+        assertTrue(!isUnlinkedId(1))
+        assertTrue(!isUnlinkedId(Int.MAX_VALUE))
+    }
+
+    @Test
+    fun `derived ids are distinct stable negative and nonzero`() {
         val idA = unlinkedMediaIdForTorrent("A".repeat(40))
         val idB = unlinkedMediaIdForTorrent("B".repeat(40))
         assertTrue(idA != idB)
@@ -192,11 +202,12 @@ class UnlinkedTorrentPlaybackTest {
         // Case/whitespace normalized to the same torrent.
         assertEquals(idA, unlinkedMediaIdForTorrent("  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "))
         listOf(idA, idB).forEach { id ->
-            assertTrue(id <= UNLINKED_TORRENT_MEDIA_ID)
-            assertTrue(id >= UNLINKED_TORRENT_ID_MIN)
-            assertTrue(buildUnlinkedPlayback("T", "f.mkv", "A".repeat(40)).media.isUnlinkedPlayback())
+            assertTrue(id < 0)
+            assertTrue(id != 0)
+            assertTrue(isUnlinkedId(id))
         }
-        // Unknown hashes fall back to the range ceiling.
+        assertTrue(buildUnlinkedPlayback("T", "f.mkv", "A".repeat(40)).media.isUnlinkedPlayback())
+        // Unknown hashes fall back to the known constant.
         assertEquals(UNLINKED_TORRENT_MEDIA_ID, unlinkedMediaIdForTorrent(null))
         assertEquals(UNLINKED_TORRENT_MEDIA_ID, unlinkedMediaIdForTorrent("   "))
         assertTrue(buildUnlinkedPlayback("T", "f.mkv").media.isUnlinkedPlayback())
@@ -244,5 +255,58 @@ class UnlinkedTorrentPlaybackTest {
     fun `derived identities never pollute continue-watching`() {
         val idA = unlinkedMediaIdForTorrent("A".repeat(40))
         assertEquals(listOf(5), continueListWith(listOf(5), idA))
+    }
+
+    // ---- HOLD2: per-file keys within one torrent ----
+
+    @Test
+    fun `episode keys derive from the selected file index`() {
+        val hash = "D".repeat(40)
+        val first = buildUnlinkedPlayback("Pack", "s01e01.mkv", hash, 0)
+        val second = buildUnlinkedPlayback("Pack", "s01e02.mkv", hash, 7)
+        // 1-based: the first file keeps the default key "1".
+        assertEquals("1", first.episodeKey)
+        assertEquals("1", first.episode.number)
+        assertEquals("8", second.episodeKey)
+        assertEquals("8", second.episode.number)
+        // Same torrent → same media id; different files → different keys.
+        assertEquals(first.media.id, second.media.id)
+        assertTrue(first.episodeKey != second.episodeKey)
+        assertEquals(setOf("1"), first.media.anime?.episodes?.keys)
+        assertEquals("1", first.media.anime?.selectedEpisode)
+        assertEquals(setOf("8"), second.media.anime?.episodes?.keys)
+        // Negative/contiguous indices coerce sanely.
+        assertEquals("1", buildUnlinkedPlayback("P", "f.mkv", hash, -4).episodeKey)
+    }
+
+    @Test
+    fun `same-torrent different-file state stays isolated`() {
+        val hash = "E".repeat(40)
+        val id = unlinkedMediaIdForTorrent(hash)
+        val file0 = buildUnlinkedPlayback("Pack", "a.mkv", hash, 0)
+        val file3 = buildUnlinkedPlayback("Pack", "b.mkv", hash, 3)
+        val prefs = mutableMapOf<String, Long>()
+        prefs[resumePositionKey(id, file0.episodeKey)] = 100L
+        prefs[resumePositionKey(id, file3.episodeKey)] = 400L
+        // File 3 opens: reads its own position, never file 0's.
+        assertEquals(400L, prefs[resumePositionKey(id, file3.episodeKey)])
+        // Back to file 0: intact.
+        assertEquals(100L, prefs[resumePositionKey(id, file0.episodeKey)])
+        // Subtitle namespaces split with the file key too.
+        assertTrue(
+            subtitlePrefKey(id, file0.episodeKey) != subtitlePrefKey(id, file3.episodeKey)
+        )
+    }
+
+    @Test
+    fun `unlinked download task names stay unique per file`() {
+        // Same display name in different folders must not collapse tasks.
+        val first = "1 - episode01.mkv"
+        val second = "4 - episode01.mkv"
+        assertTrue(first != second)
+        assertEquals(
+            "Pack/$first",
+            AnimeDownloaderService.AnimeDownloadTask.getTaskName("Pack", first)
+        )
     }
 }

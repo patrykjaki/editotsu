@@ -455,7 +455,7 @@ fun settleOwnership(
     return OwnershipTransition(current, deleted)
 }
 
-/** Single-episode key used by every unlinked synthetic entry (G2). */
+/** Default episode key: the first file of an unlinked synthetic entry (G2). */
 const val UNLINKED_EPISODE_KEY = "1"
 
 /** Fallback title when the input yields no human-readable name (G2). */
@@ -470,10 +470,12 @@ const val UNLINKED_TITLE_FALLBACK = "Unlinked torrent"
  * - Episode label: the selected file's real filename.
  * - Artwork: absent by construction (null cover/banner — views no-op).
  * - Seasons/episode counts: never fabricated (`totalEpisodes` stays null).
-+ * - Identity: [unlinkedMediaIdForTorrent] derives the reserved media id
-+ *   from the torrent info-hash (HOLD1) — unrelated torrents never share
-+ *   resume/subtitle/source state, while reopening the same torrent
-+ *   restores its own.
+ * - Identity: [unlinkedMediaIdForTorrent] derives the reserved media id
+ *   from the torrent info-hash (HOLD1) — unrelated torrents never share
+ *   resume/subtitle/source state, while reopening the same torrent
+ *   restores its own. Within one torrent, the episode key derives from
+ *   the selected file index (HOLD2: 1-based, so the first file keeps key
+ *   `"1"`), so different files never share position/subtitle state either.
  * - Progress/history/source safety comes from the reserved id plus the
  *   write-boundary guards ([isUnlinkedPlayback]), not from these fields.
  *
@@ -490,20 +492,22 @@ fun buildUnlinkedPlayback(
     torrentName: String,
     fileName: String,
     infoHash: String? = null,
+    fileIndex: Int = 0,
 ): UnlinkedTorrentPlayback {
     val series = torrentName.trim().ifEmpty { fileName.trim() }.ifEmpty { UNLINKED_TITLE_FALLBACK }
     val file = fileName.trim().ifEmpty { "File $UNLINKED_EPISODE_KEY" }
-    val episode = Episode(number = UNLINKED_EPISODE_KEY, title = file)
+    val key = (fileIndex.coerceAtLeast(0) + 1).toString()
+    val episode = Episode(number = key, title = file)
     val media = Media(
         id = unlinkedMediaIdForTorrent(infoHash),
         name = series,
         nameRomaji = series,
         userPreferredName = series,
         isAdult = false,
-        anime = Anime(episodes = mutableMapOf(UNLINKED_EPISODE_KEY to episode)),
+        anime = Anime(episodes = mutableMapOf(key to episode)),
     )
-    media.anime?.selectedEpisode = UNLINKED_EPISODE_KEY
-    return UnlinkedTorrentPlayback(media, episode, UNLINKED_EPISODE_KEY)
+    media.anime?.selectedEpisode = key
+    return UnlinkedTorrentPlayback(media, episode, key)
 }
 
 /**

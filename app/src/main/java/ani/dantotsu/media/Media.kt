@@ -849,41 +849,49 @@ fun emptyMedia() = Media(
 )
 
 /**
- * Reserved identity for unlinked (anchor-free) torrent playback (M7A G2).
- * Negative by codebase convention (`MediaAdaptor`/`CarouselLogoResolver`
- * treat `id < 0` as "not a real catalog entry").
+ * Reserved identity for unlinked (anchor-free) torrent playback (M7A G2):
+ * the full negative Int range. Negative by codebase convention
+ * (`MediaAdaptor`/`CarouselLogoResolver` treat `id < 0` as "not a real
+ * catalog entry"), and verified by audit: no producer anywhere assigns a
+ * negative media id (AniList/MAL ids are positive, `emptyMedia` is 0).
  *
- * HOLD1: one id per torrent, not one for all — every per-episode state
- * namespace in the player (resume position `${id}_${key}`, max duration
- * `${id}_${ep}_max`, legacy `subLang_${id}`, the per-episode subtitle
- * store, `Selected-${id}`) keys on the media id, so a single shared id
- * lets torrent B inherit torrent A's playback state. Deriving the id from
- * the torrent info-hash ([unlinkedMediaIdForTorrent]) keeps unrelated
- * torrents isolated while the same torrent reopens stably (A → B → A
- * restores A's own position). [UNLINKED_TORRENT_MEDIA_ID] is the fallback
- * when no hash is known, and the ceiling of the reserved range.
+ * HOLD1/HOLD2: one id per torrent AND one episode key per file — every
+ * per-episode state namespace in the player (resume position
+ * `${id}_${key}`, max duration `${id}_${ep}_max`, legacy `subLang_${id}`,
+ * the per-episode subtitle store, `Selected-${id}`) keys on (media id,
+ * episode key), so sharing either lets state leak across playbacks.
+ * Deriving the id from the torrent info-hash ([unlinkedMediaIdForTorrent])
+ * keeps unrelated torrents isolated while the same torrent reopens stably
+ * (A → B → A restores A's own position). [UNLINKED_TORRENT_MEDIA_ID] is
+ * the fallback when no hash is known.
  */
 const val UNLINKED_TORRENT_MEDIA_ID = -777001
 
-/** Floor of the reserved unlinked-identity range (see above). */
-const val UNLINKED_TORRENT_ID_MIN = -1_777_001
-
-/** True for any id inside the reserved unlinked range. */
-internal fun isUnlinkedId(id: Int): Boolean =
-    id in UNLINKED_TORRENT_ID_MIN..UNLINKED_TORRENT_MEDIA_ID
+/** True for any reserved unlinked identity (the full negative range). */
+internal fun isUnlinkedId(id: Int): Boolean = id < 0
 
 /**
- * Derives the reserved synthetic id for one torrent (M7A G2 HOLD1):
- * deterministic per info-hash (same torrent → same id across sessions),
- * distinct across torrents, always inside the reserved range. Case and
- * surrounding whitespace are normalized before hashing; unknown hashes
- * fall back to [UNLINKED_TORRENT_MEDIA_ID]. `String.hashCode` is specified
- * stable across processes. Pure, JVM-tested.
+ * Derives the reserved synthetic id for one torrent (M7A G2 HOLD1/HOLD2):
+ * the first 4 bytes of the SHA-256 of the normalized info-hash, forced
+ * negative (zero maps to the fallback). Deterministic per torrent and
+ * stable across sessions/processes (`MessageDigest` + specified digest,
+ * no `hashCode` modulo games) over the full 2^32 space — id collisions
+ * are not a practical state-sharing class. Unknown hashes fall back to
+ * [UNLINKED_TORRENT_MEDIA_ID]. Pure, JVM-tested.
  */
 internal fun unlinkedMediaIdForTorrent(infoHash: String?): Int {
     if (infoHash.isNullOrBlank()) return UNLINKED_TORRENT_MEDIA_ID
-    val slot = (infoHash.trim().uppercase().hashCode().toLong() and 0xFFFFFFFFL) % 1_000_001L
-    return (UNLINKED_TORRENT_MEDIA_ID - slot).toInt()
+    return try {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(infoHash.trim().uppercase().toByteArray(Charsets.UTF_8))
+        val raw = ((digest[0].toInt() and 0xFF) shl 24) or
+            ((digest[1].toInt() and 0xFF) shl 16) or
+            ((digest[2].toInt() and 0xFF) shl 8) or
+            (digest[3].toInt() and 0xFF)
+        if (raw == 0 || raw == Int.MIN_VALUE) UNLINKED_TORRENT_MEDIA_ID else -kotlin.math.abs(raw)
+    } catch (_: Exception) {
+        UNLINKED_TORRENT_MEDIA_ID
+    }
 }
 
 /**
