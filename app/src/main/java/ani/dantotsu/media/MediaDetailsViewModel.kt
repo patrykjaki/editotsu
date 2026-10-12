@@ -639,6 +639,9 @@ class MediaDetailsViewModel : ViewModel() {
 
     fun setMedia(m: Media) {
         media.postValue(m)
+        // M7A G2: synthetic entries skip the catalog ID lookup — a bogus
+        // network call with a reserved id, with nothing to resolve.
+        if (m.isUnlinkedPlayback()) return
 
         viewModelScope.launch(Dispatchers.IO) {
             try {

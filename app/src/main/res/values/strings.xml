@@ -1283,6 +1283,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <!-- Torrent Settings -->
     <string name="torrent_settings">Torrent Settings</string>
     <string name="torrent_settings_desc">Configure built-in torrent engine settings</string>
+    <string name="play_magnet_or_torrent">Play Torrent/Magnet</string>
+    <string name="play_magnet_or_torrent_desc">Open a magnet link, .torrent URL or file without an anime</string>
     <string name="torrent_encryption">Strict Encryption</string>
     <string name="torrent_encryption_desc">Force encryption for all outgoing/incoming peer connections</string>
     <string name="torrent_wifi_only">WiFi Only</string>

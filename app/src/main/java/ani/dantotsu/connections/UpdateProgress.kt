@@ -6,7 +6,9 @@ import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.mal.MAL
 import ani.dantotsu.currContext
 import ani.dantotsu.media.Media
+import ani.dantotsu.media.MediaType
 import ani.dantotsu.media.emptyMedia
+import ani.dantotsu.media.isUnlinkedPlayback
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.toast
@@ -16,11 +18,13 @@ import kotlinx.coroutines.launch
 import ani.dantotsu.download.DownloadsManager
 import ani.dantotsu.download.DownloadedType
 import ani.dantotsu.download.findValidName
-import ani.dantotsu.media.MediaType
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 fun updateProgress(media: Media, number: String) {
+    // M7A G2: unlinked synthetic entries never sync — first line, before any
+    // prefs/network touch, so this holds for every caller even logged in.
+    if (media.isUnlinkedPlayback()) return
     val incognito: Boolean = PrefManager.getVal(PrefName.Incognito)
     val rescueMode: Boolean = PrefManager.getVal(PrefName.RescueMode)
 
@@ -132,6 +136,30 @@ fun updateProgress(media: Media, number: String) {
     } else {
         toast("Sneaky sneaky :3")
     }
+}
+
+/**
+ * Pure progress-sync decision (M7A G2): mirrors the exact gate in
+ * `PlayerProgressManager.updateAniProgress` so the matrix can simulate a
+ * logged-in user on plain JVM. Unlinked synthetic entries never sync —
+ * checked first, independent of login/completion state.
+ */
+fun shouldSyncProgress(
+    media: Media,
+    incognito: Boolean,
+    loggedIn: Boolean,
+    episodeEnd: Boolean,
+    episode0: Boolean,
+    saveProgress: Boolean,
+    updateForH: Boolean,
+): Boolean {
+    if (media.isUnlinkedPlayback()) return false
+    if (incognito) return false
+    if (!episodeEnd && !episode0) return false
+    if (!loggedIn) return false
+    if (!saveProgress) return false
+    if (media.isAdult && !updateForH) return false
+    return true
 }
 
 /** Sync all pending progress updates (cached during rescue mode) to AniList. */

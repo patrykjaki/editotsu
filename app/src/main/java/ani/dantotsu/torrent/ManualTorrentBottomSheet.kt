@@ -51,8 +51,16 @@ import java.io.File
  * new engine path, no new ownership: queue/purge/remembered-URL contracts
  * are exactly the ones extension-provided torrents already use.
  *
- * Nothing here guesses anime identity: without an anchored episode the
- * sheet refuses to open (caller toast). Pending receipts are memory-only
+ * Anchored mode (episode chosen by the caller, e.g. the episode selector)
+ * attaches to that episode. Unanchored mode (M7A G2, no-arg [newInstance],
+ * e.g. from Torrent Settings) builds an explicitly synthetic entry
+ * ([buildUnlinkedPlayback], reserved [UNLINKED_TORRENT_MEDIA_ID]) whose
+ * write boundaries refuse all progress/history/continue-watching sync.
+ * The shared details ViewModel is never touched in unanchored mode.
+ *
+ * Nothing here guesses anime identity: anchored callers supply the
+ * episode explicitly; unanchored callers get a synthetic entry that can
+ * never sync, persist, or link. Pending receipts are memory-only
  * and TTL-bound ([ManualTorrentInbox]); linking happens only here, by
  * explicit tap.
  */
@@ -74,6 +82,16 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
     private var selectedPosition = -1
     private var resolvedTorrent: Torrent? = null
     private var resolvedRawUrl: String? = null
+
+    /**
+     * Human-readable title backing the current resolution (G2): the engine
+     * torrent name when present, else the input-derived fallback captured
+     * at resolve time. Unanchored Play/Download build their labels from this.
+     */
+    private var resolvedTitle: String? = null
+
+    /** True when the caller anchored an explicit (anime, episode). */
+    private fun isAnchored(): Boolean = media != null && episode != null
 
     /** Sheet-picked temp `.torrent`, deleted after resolve or on dismiss. */
     private var ownedTempPath: String? = null
@@ -112,14 +130,13 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        val targetMedia = media
         val targetEp = episode
-        if (targetMedia == null || targetEp == null) {
-            dismissAllowingStateLoss()
-            return
-        }
         binding.manualTorrentTitle.text =
-            getString(R.string.manual_torrent_title) + " • Ep. ${targetEp.number}"
+            if (targetEp != null) {
+                getString(R.string.manual_torrent_title) + " • Ep. ${targetEp.number}"
+            } else {
+                getString(R.string.manual_torrent_title)
+            }
 
         binding.manualTorrentFileList.layoutManager = LinearLayoutManager(requireContext())
         fileAdapter = FileAdapter { position ->
@@ -137,7 +154,11 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                 snackString(getString(R.string.manual_torrent_invalid_input))
                 return@setOnClickListener
             }
-            resolvePayload(payload, pendingGeneration = null)
+            resolvePayload(
+                payload,
+                pendingGeneration = null,
+                inputTitle = describeInputTitle(payload)
+            )
         }
         binding.manualTorrentPickFile.setOnClickListener {
             pickFile.launch(arrayOf(ManualTorrentEntry.TORRENT_MIME, "application/octet-stream"))
@@ -196,9 +217,12 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                     ownedTempPath?.let { runCatching { File(it).delete() } }
                     ownedTempPath = staged
                     staged = null // ownership transferred to the sheet lifecycle
+                    val stagedPayload =
+                        ManualTorrentPayload.StagedFile(ownedTempPath ?: return@withContext)
                     resolvePayload(
-                        ManualTorrentPayload.StagedFile(ownedTempPath ?: return@withContext),
-                        pendingGeneration = null
+                        stagedPayload,
+                        pendingGeneration = null,
+                        inputTitle = describeInputTitle(stagedPayload, name)
                     )
                 }
             } finally {
@@ -214,14 +238,22 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
             refreshPendingRow()
             return
         }
-        resolvePayload(payload, pendingGeneration = generation)
+        resolvePayload(
+            payload,
+            pendingGeneration = generation,
+            inputTitle = describeInputTitle(payload)
+        )
     }
 
     // ---- resolve ----
 
-    private fun resolvePayload(payload: ManualTorrentPayload, pendingGeneration: Long?) {
-        val targetMedia = media ?: return
-        val targetEp = episode ?: return
+    private fun resolvePayload(
+        payload: ManualTorrentPayload,
+        pendingGeneration: Long?,
+        inputTitle: String,
+    ) {
+        val targetMedia = media
+        val targetEp = episode
         showResolving()
         resolveJob?.cancel()
         resolveJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -262,7 +294,11 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                         payload.locator
                     }
                 }
-                val title = "${targetMedia.mainName()} Ep. ${targetEp.number}"
+                val title = if (targetMedia != null && targetEp != null) {
+                    "${targetMedia.mainName()} Ep. ${targetEp.number}"
+                } else {
+                    inputTitle
+                }
                 val torrent = manager.addTorrent(url, title, "", "", false)
                 val entries = (torrent.file_stats ?: emptyList()).mapIndexed { idx, stat ->
                     ManualTorrentFileEntry(stat.id ?: idx, stat.path, stat.length)
@@ -300,6 +336,7 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                     ownedTempPath = null
                     resolvedTorrent = torrent
                     resolvedRawUrl = url
+                    resolvedTitle = torrent.name?.takeIf { it.isNotBlank() } ?: title
                     files = entries
                     selectedPosition = entries
                         .indexOfFirst { it == pickDefaultManualFile(entries) }
@@ -324,12 +361,23 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
         files.getOrNull(selectedPosition)
 
     private fun handOffPlay() {
-        val targetMedia = media
-        val targetEp = episode
         val url = resolvedRawUrl
         val entry = selectedEntry()
         val torrent = resolvedTorrent
-        if (targetMedia == null || targetEp == null || url == null || entry == null || torrent == null) return
+        if (url == null || entry == null || torrent == null) return
+        val anchoredMedia = media
+        val anchoredEp = episode
+        // G2: anchored mode keeps the exact approved path (attach to the
+        // caller's episode, publish through the shared model). Unanchored
+        // mode builds a synthetic entry that can never sync or persist —
+        // and never touches the shared details model. A partial anchor is
+        // treated as unanchored: never misattribute to a half-known anime.
+        if (!isAnchored()) {
+            handOffPlayUnlinked(url, entry, torrent)
+            return
+        }
+        val targetMedia = anchoredMedia ?: return
+        val targetEp = anchoredEp ?: return
         // HOLD1-B: the player consumes episode.extractors[selectedExtractor]
         // [selectedVideo] (ExoplayerView), so the chosen file is ATTACHED to
         // the episode via the pure attachManualVideo seam (JVM-asserted) and
@@ -375,13 +423,74 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
         }
     }
 
+    /**
+     * G2 unlinked Play: resolve → synthetic entry → existing player.
+     * Mirrors the anchored handoff (prebuffer, relay link, owned-temp
+     * deletion, then player) except the episode is synthetic and the
+     * shared details model is never written — the player boots purely
+     * from its static [ExoplayerView.media], whose init path resolves the
+     * initial episode from `anime.episodes` itself.
+     */
+    private fun handOffPlayUnlinked(
+        url: String,
+        entry: ManualTorrentFileEntry,
+        torrent: Torrent,
+    ) {
+        val series = resolvedTitle ?: UNLINKED_TITLE_FALLBACK
+        showHandoff()
+        handoffJob?.cancel()
+        val serverName = getString(R.string.manual_torrent_server_name)
+        handoffJob = lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val manager = Injekt.get<TorrentServerManager>()
+                if (!manager.isAvailable()) throw IllegalStateException("torrent unavailable")
+                manager.prebufferTorrent(url, entry.index, series)
+                val hash = torrent.hash ?: throw IllegalStateException("missing info-hash")
+                val link = manager.getLink(hash, entry.index)
+                val unlinked = buildUnlinkedPlayback(series, entry.displayName)
+                attachManualVideo(unlinked.episode, serverName, url, link)
+                deleteOwnedTemp()
+                withContext(Dispatchers.Main) {
+                    if (cancelled) return@withContext
+                    val act = activity ?: currActivity()
+                    if (act == null || act.isFinishing || act.isDestroyed) {
+                        showFiles()
+                        return@withContext
+                    }
+                    Intent(act, ExoplayerView::class.java).apply {
+                        ExoplayerView.media = unlinked.media
+                        ExoplayerView.initialized = true
+                        act.startActivity(this)
+                    }
+                    dismissAllowingStateLoss()
+                }
+            } catch (e: Exception) {
+                Logger.log("ManualTorrentBottomSheet: unlinked play handoff failed")
+                withContext(Dispatchers.Main) {
+                    if (!cancelled) {
+                        snackString(getString(R.string.manual_torrent_resolve_failed))
+                        showFiles()
+                    }
+                }
+            }
+        }
+    }
+
     private fun handOffDownload() {
-        val targetMedia = media
-        val targetEp = episode
         val url = resolvedRawUrl
         val entry = selectedEntry()
         val torrent = resolvedTorrent
-        if (targetMedia == null || targetEp == null || url == null || entry == null || torrent == null) return
+        if (url == null || entry == null || torrent == null) return
+        // G2: same anchored/unanchored split as Play. Unanchored downloads
+        // run the identical service pipeline under synthetic string keys —
+        // no catalog writes exist on that path (verified in audit) — but
+        // skip the watch-fragment broadcast, whose receivers key on real ids.
+        if (!isAnchored()) {
+            handOffDownloadUnlinked(url, entry, torrent)
+            return
+        }
+        val targetMedia = media ?: return
+        val targetEp = episode ?: return
         showHandoff()
         handoffJob?.cancel()
         handoffJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -431,6 +540,67 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
             } catch (e: Exception) {
                 // Fixed string only (HOLD1-D): no provider/engine detail.
                 Logger.log("ManualTorrentBottomSheet: download handoff failed")
+                withContext(Dispatchers.Main) {
+                    if (!cancelled) {
+                        snackString(getString(R.string.manual_torrent_resolve_failed))
+                        showFiles()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * G2 unlinked Download: the identical service pipeline under synthetic
+     * string keys (series title + filename). The service is string-keyed
+     * with no catalog writes on this path (audit-verified), so the only
+     * deliberate difference from anchored mode is the skipped
+     * watch-fragment broadcast.
+     */
+    private fun handOffDownloadUnlinked(
+        url: String,
+        entry: ManualTorrentFileEntry,
+        torrent: Torrent,
+    ) {
+        val series = resolvedTitle ?: UNLINKED_TITLE_FALLBACK
+        showHandoff()
+        handoffJob?.cancel()
+        handoffJob = lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val manager = Injekt.get<TorrentServerManager>()
+                if (!manager.isAvailable()) throw IllegalStateException("torrent unavailable")
+                manager.activeTorrentHash?.let { active ->
+                    if (!active.equals(torrent.hash, ignoreCase = true)) {
+                        manager.removeTorrent(active)
+                    }
+                }
+                manager.activeTorrentHash = torrent.hash
+                val result = manager.prebufferWithResult(torrent.hash!!, entry.index)
+                result.lease?.close()
+                val video = Video(null, VideoType.CONTAINER, url)
+                video.file.url = manager.getLink(torrent, entry.index)
+                deleteOwnedTemp()
+                withContext(Dispatchers.Main) {
+                    if (cancelled) return@withContext
+                    val act = activity ?: currActivity()
+                    if (act == null) {
+                        showFiles()
+                        return@withContext
+                    }
+                    Helper.startAnimeDownloadService(
+                        act,
+                        series,
+                        entry.displayName,
+                        video,
+                        mutableListOf(),
+                        mutableListOf(),
+                        null,
+                        null
+                    )
+                    dismissAllowingStateLoss()
+                }
+            } catch (e: Exception) {
+                Logger.log("ManualTorrentBottomSheet: unlinked download handoff failed")
                 withContext(Dispatchers.Main) {
                     if (!cancelled) {
                         snackString(getString(R.string.manual_torrent_resolve_failed))
@@ -573,6 +743,15 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                 this.media = media
                 this.episode = episode
             }
+        }
+
+        /**
+         * G2 unanchored entry (e.g. Torrent Settings): no anime anchor.
+         * Play builds a synthetic entry ([buildUnlinkedPlayback]); nothing
+         * here can sync, persist, or link to a catalog anime.
+         */
+        fun newInstance(): ManualTorrentBottomSheet {
+            return ManualTorrentBottomSheet()
         }
     }
 }

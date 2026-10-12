@@ -1,5 +1,10 @@
 package ani.dantotsu.torrent
 
+import ani.dantotsu.media.Media
+import ani.dantotsu.media.UNLINKED_TORRENT_MEDIA_ID
+import ani.dantotsu.media.anime.Anime
+import ani.dantotsu.media.anime.Episode
+
 /**
  * MAX MERGE M7A: backend-agnostic manual torrent/magnet entry — pure intent,
  * validation, linking and pending-receipt logic.
@@ -448,4 +453,81 @@ fun settleOwnership(
         }
     }
     return OwnershipTransition(current, deleted)
+}
+
+/** Single-episode key used by every unlinked synthetic entry (G2). */
+const val UNLINKED_EPISODE_KEY = "1"
+
+/** Fallback title when the input yields no human-readable name (G2). */
+const val UNLINKED_TITLE_FALLBACK = "Unlinked torrent"
+
+/**
+ * Unlinked synthetic playback entry (M7A G2): a [Media]/[Episode] pair
+ * built purely from torrent metadata — no catalog object, no seasons, no
+ * artwork, no ids beyond the reserved [UNLINKED_TORRENT_MEDIA_ID].
+ *
+ * - Title (player header + download task): the resolved torrent name.
+ * - Episode label: the selected file's real filename.
+ * - Artwork: absent by construction (null cover/banner — views no-op).
+ * - Seasons/episode counts: never fabricated (`totalEpisodes` stays null).
+ * - Progress/history/source safety comes from the reserved id plus the
+ *   write-boundary guards ([isUnlinkedPlayback]), not from these fields.
+ *
+ * Pure and JVM-tested. Attachment of the resolved stream still goes
+ * through the existing [attachManualVideo] seam.
+ */
+data class UnlinkedTorrentPlayback(
+    val media: Media,
+    val episode: Episode,
+    val episodeKey: String,
+)
+
+fun buildUnlinkedPlayback(torrentName: String, fileName: String): UnlinkedTorrentPlayback {
+    val series = torrentName.trim().ifEmpty { fileName.trim() }.ifEmpty { UNLINKED_TITLE_FALLBACK }
+    val file = fileName.trim().ifEmpty { "File $UNLINKED_EPISODE_KEY" }
+    val episode = Episode(number = UNLINKED_EPISODE_KEY, title = file)
+    val media = Media(
+        id = UNLINKED_TORRENT_MEDIA_ID,
+        name = series,
+        nameRomaji = series,
+        userPreferredName = series,
+        isAdult = false,
+        anime = Anime(episodes = mutableMapOf(UNLINKED_EPISODE_KEY to episode)),
+    )
+    media.anime?.selectedEpisode = UNLINKED_EPISODE_KEY
+    return UnlinkedTorrentPlayback(media, episode, UNLINKED_EPISODE_KEY)
+}
+
+/**
+ * Human-readable fallback title for a resolve request before engine
+ * metadata arrives (G2): magnet → short info-hash, http(s) → host plus
+ * path tail, staged/picked file → the picked display name, anything else →
+ * [UNLINKED_TITLE_FALLBACK]. The engine-provided torrent name always wins
+ * after resolve. Pure, JVM-tested.
+ */
+fun describeInputTitle(payload: ManualTorrentPayload, pickedName: String? = null): String {
+    return when (payload) {
+        is ManualTorrentPayload.Magnet -> {
+            val hash = MagnetValidation.normalizeInfoHashOrNull(payload.uri)
+            if (hash != null) "Magnet ${hash.take(8)}" else UNLINKED_TITLE_FALLBACK
+        }
+        is ManualTorrentPayload.HttpUrl -> {
+            try {
+                val uri = java.net.URI(payload.url)
+                val host = uri.host?.trim().orEmpty()
+                val tail = uri.path?.trim()?.substringAfterLast("/")?.trim().orEmpty()
+                listOf(host, tail).filter { it.isNotEmpty() }.joinToString(" / ")
+                    .ifEmpty { UNLINKED_TITLE_FALLBACK }
+            } catch (_: Exception) {
+                UNLINKED_TITLE_FALLBACK
+            }
+        }
+        is ManualTorrentPayload.StagedFile -> {
+            pickedName?.trim()?.ifEmpty { null }
+                ?: java.io.File(payload.locator).name.ifBlank { UNLINKED_TITLE_FALLBACK }
+        }
+        is ManualTorrentPayload.ReceivedFile ->
+            payload.uriString.trim().substringAfterLast("/").substringAfterLast("\\")
+                .ifBlank { UNLINKED_TITLE_FALLBACK }
+    }
 }

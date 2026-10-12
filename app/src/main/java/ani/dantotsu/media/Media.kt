@@ -848,6 +848,33 @@ fun emptyMedia() = Media(
     format = "",
 )
 
+/**
+ * Reserved identity for unlinked (anchor-free) torrent playback (M7A G2).
+ * Negative by codebase convention (`MediaAdaptor`/`CarouselLogoResolver`
+ * treat `id < 0` as "not a real catalog entry"); this exact value is the
+ * explicit unlinked-origin marker — never an AniList/MAL id, never
+ * persisted as a catalog entry. See [isUnlinkedPlayback].
+ */
+const val UNLINKED_TORRENT_MEDIA_ID = -777001
+
+/**
+ * Explicit unlinked-origin check (M7A G2): true only for the reserved
+ * synthetic identity. Guards actual progress/history/continue-watching
+ * write boundaries ([updateProgress], player progress/widget/subscription
+ * paths, continue-list recording) — never just UI.
+ */
+fun Media?.isUnlinkedPlayback(): Boolean = this?.id == UNLINKED_TORRENT_MEDIA_ID
+
+/**
+ * Pure continue-list recording (M7A G2): real ids move to the end (existing
+ * most-recent semantics, no dupes); the reserved synthetic id leaves the
+ * list untouched so unlinked playback never pollutes continue-watching.
+ */
+internal fun continueListWith(current: List<Int>, mediaId: Int): List<Int> {
+    if (mediaId == UNLINKED_TORRENT_MEDIA_ID) return current
+    return (current.filterNot { it == mediaId } + mediaId)
+}
+
 object MediaSingleton {
     var media: Media? = null
     var bitmap: Bitmap? = null

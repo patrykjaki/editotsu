@@ -37,6 +37,20 @@ class TorrentSettingsActivity : AppCompatActivity() {
 
             torrentSettingsBack.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
+            // M7A G1: opens the functional unanchored entry — never a dead
+            // button (holds only if the sheet opens anchor-free, which G2
+            // provides via no-arg newInstance).
+            val playTorrentItem = Settings(
+                type = 1,
+                name = getString(R.string.play_magnet_or_torrent),
+                desc = getString(R.string.play_magnet_or_torrent_desc),
+                icon = R.drawable.ic_round_play_arrow_24,
+                onClick = {
+                    ani.dantotsu.torrent.ManualTorrentBottomSheet.newInstance()
+                        .show(supportFragmentManager, "ManualTorrentBottomSheet")
+                }
+            )
+
             val encryptionItem = Settings(
                 type = 2,
                 name = getString(R.string.torrent_encryption),
@@ -155,6 +169,7 @@ class TorrentSettingsActivity : AppCompatActivity() {
             val highlightKey = intent.getStringExtra(ani.dantotsu.settings.search.SettingsSearchAdapter.EXTRA_HIGHLIGHT_KEY)
             settingsRecyclerView.adapter = SettingsAdapter(
                 arrayListOf(
+                    playTorrentItem,
                     encryptionItem,
                     wifiOnlyItem,
                     downloadSpeedItem,

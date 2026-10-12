@@ -61,6 +61,8 @@ import ani.dantotsu.media.EpisodeMapper
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.MediaDetailsViewModel
 import ani.dantotsu.media.MediaNameAdapter
+import ani.dantotsu.media.continueListWith
+import ani.dantotsu.media.isUnlinkedPlayback
 import ani.dantotsu.media.anime.player.CastScreenView
 import ani.dantotsu.media.anime.player.DantotsuPlayerManager
 import ani.dantotsu.media.anime.player.DantotsuPlayerView
@@ -791,6 +793,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
 
         if (!incognito && showProgressDialog && Anilist.userid != null &&
+            !media.isUnlinkedPlayback() &&
             (if (media.isAdult) PrefManager.getVal(PrefName.UpdateForHPlayer) else true)
         ) {
             customAlertDialog().apply {
@@ -869,12 +872,15 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         aniSkipManager.resetForNewEpisode()
         val selEp = media.anime?.selectedEpisode ?: episodeArr.firstOrNull() ?: return
         media.anime!!.selectedEpisode = selEp
-        PrefManager.setCustomVal("${media.id}_current_ep", selEp)
+        // M7A G2: unlinked playback records no resume anchor and never
+        // enters continue-watching — per-id prefs stay synthetic-free.
+        if (!media.isUnlinkedPlayback()) {
+            PrefManager.setCustomVal("${media.id}_current_ep", selEp)
 
-        val list = (PrefManager.getNullableCustomVal("continueAnimeList", listOf<Int>(), List::class.java) as List<Int>).toMutableList()
-        if (list.contains(media.id)) list.remove(media.id)
-        list.add(media.id)
-        PrefManager.setCustomVal("continueAnimeList", list)
+            val list = (PrefManager.getNullableCustomVal("continueAnimeList", listOf<Int>(), List::class.java) as List<Int>).toMutableList()
+            val updated = continueListWith(list, media.id)
+            PrefManager.setCustomVal("continueAnimeList", updated)
+        }
 
         val stoppedExtractor = extractor
         val stoppedVideo = video

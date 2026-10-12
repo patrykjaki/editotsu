@@ -10,6 +10,7 @@ import ani.dantotsu.connections.updateProgress
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.MediaDetailsViewModel
 import ani.dantotsu.media.anime.Episode
+import ani.dantotsu.media.isUnlinkedPlayback
 import ani.dantotsu.notifications.subscription.SubscriptionHelper
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
@@ -73,6 +74,8 @@ class PlayerProgressManager(
 
     fun updateWidgetState(isExiting: Boolean) {
         val m = media ?: return
+        // M7A G2: unlinked playback never touches continue-watching.
+        if (m.isUnlinkedPlayback()) return
         val currentEpTitle = episodeTitleArr.getOrNull(currentEpisodeIndex)
         ContinueWidget.updatePlaybackState(
             activity,
@@ -120,6 +123,10 @@ class PlayerProgressManager(
     fun updateAniProgress(forceComplete: Boolean = false) {
         val progress = getProgress() ?: return
         val m = media ?: return
+        // M7A G2: unlinked synthetic entries never sync, prompt, or
+        // subscribe — before any prefs/network touch. The choke-point
+        // `updateProgress` guard below is the second lock on the same door.
+        if (m.isUnlinkedPlayback()) return
         val incognito = PrefManager.getVal<Boolean>(PrefName.Incognito)
         val episodeEnd = progress.isComplete(PrefManager.getVal(PrefName.WatchPercentage), episodeLength, forceComplete)
         val episode0 = currentEpisodeIndex == 0 && PrefManager.getVal<Boolean>(PrefName.ChapterZeroPlayer)
