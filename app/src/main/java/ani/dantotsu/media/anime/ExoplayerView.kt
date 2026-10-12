@@ -897,9 +897,30 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             "Turkish", "Ukrainian", "Urdu", "Vietnamese"
         )
         val lang = subLanguages.getOrNull(PrefManager.getVal<Int>(PrefName.SubLanguage)) ?: "English"
-        val savedSubLang: String? = PrefManager.getNullableCustomVal("subLang_${media.id}", null, String::class.java)
-        subtitle = intent.getSerialized("subtitle")
-            ?: when {
+        var savedSubLang: String? = PrefManager.getNullableCustomVal("subLang_${media.id}", null, String::class.java)
+        if (savedSubLang?.startsWith("Online:") == true) {
+            // LANE-B P1 (#72): the per-episode store is now the source of
+            // truth for online choices; legacy keys migrate away.
+            PrefManager.setCustomVal("subLang_${media.id}", null)
+            savedSubLang = null
+        }
+        val intentSubtitle: ani.dantotsu.parsers.Subtitle? = intent.getSerialized("subtitle")
+        // LANE-B HOLD1 item 1 (upstream 36d57c56, guarded): restore the
+        // persisted per-episode online subtitle — but never over an
+        // explicit intent subtitle, Off, or embedded/local choice.
+        val mayRestoreSaved = intentSubtitle == null &&
+            savedSubLang != "None" &&
+            savedSubLang?.startsWith("[Local]") != true &&
+            savedSubLang?.startsWith("Embedded:") != true
+        val restoredOnline = if (mayRestoreSaved) {
+            subtitleManager.restoreSavedOnlineSubtitle(media.id, episode.number)
+        } else {
+            false
+        }
+        subtitle = intentSubtitle
+            ?: if (restoredOnline) {
+                null
+            } else when {
                 savedSubLang == null -> when (episode.selectedSubtitle) {
                     null, -1 -> ext.subtitles.find {
                         it.language.contains(lang, true) ||

@@ -405,12 +405,10 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
     private fun updateActiveSubtitleBadge() {
         val exoActivity = activity as? ExoplayerView
         val subManager = exoActivity?.subtitleManager
-        val activeOnlineName = if (subManager?.activeSubtitleId != null &&
+        val isOnlineActive = subManager?.activeSubtitleId != null &&
             subManager.activeSubtitleDisplayName?.contains("[Server]") != true &&
             subManager.activeSubtitleDisplayName?.startsWith("[Local]") != true
-        ) {
-            subManager.activeSubtitleDisplayName
-        } else null
+        val activeOnlineName = if (isOnlineActive) subManager?.activeSubtitleDisplayName else null
 
         val media = model.getMedia().value ?: return
         val savedEpSub = EpisodeSubtitleStore.getSavedSubtitle(media.id, episode.number)
@@ -859,7 +857,12 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                     itemBinding.subtitleTitle.text = getString(R.string.subtitles_off)
                     itemBinding.subtitleDetails.text = getString(R.string.subtitles_off_desc)
 
-                    val isSelected = activeOnlineId == null && savedEpSub == null && (savedLang == null || savedLang == "None")
+                    // HOLD1 item 4: Off highlights only with no online
+                    // presence and no legacy selection (previous
+                    // selectedSubtitle semantics preserved).
+                    val isSelected = resolveSubtitleSource(
+                        activeOnlineId, savedEpSub != null, savedLang, episode.selectedSubtitle
+                    ) == SubtitleSourceWin.OFF
                     if (isSelected) {
                         itemBinding.subtitleCardRoot.setCardBackgroundColor(highlightColor)
                         itemBinding.subtitleCardRoot.strokeColor = borderSelectedColor
