@@ -905,20 +905,20 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             savedSubLang = null
         }
         val intentSubtitle: ani.dantotsu.parsers.Subtitle? = intent.getSerialized("subtitle")
-        // LANE-B HOLD1 item 1 (upstream 36d57c56, guarded): restore the
-        // persisted per-episode online subtitle — but never over an
-        // explicit intent subtitle, Off, or embedded/local choice.
+        // LANE-B HOLD1 item 1 (upstream 36d57c56, guarded): a validated
+        // persisted record suppresses legacy selection here; the actual
+        // attach happens after the engine exists (HOLD2 blocker 1), so a
+        // restore is never reported without being attached-or-scheduled.
+        // Explicit intent subtitle, Off, or embedded/local choice disables
+        // restore entirely.
         val mayRestoreSaved = intentSubtitle == null &&
             savedSubLang != "None" &&
             savedSubLang?.startsWith("[Local]") != true &&
             savedSubLang?.startsWith("Embedded:") != true
-        val restoredOnline = if (mayRestoreSaved) {
-            subtitleManager.restoreSavedOnlineSubtitle(media.id, episode.number)
-        } else {
-            false
-        }
+        val pendingOnlineRestore = mayRestoreSaved &&
+            subtitleManager.peekSavedOnlineSubtitle(media.id, episode.number) != null
         subtitle = intentSubtitle
-            ?: if (restoredOnline) {
+            ?: if (pendingOnlineRestore) {
                 null
             } else when {
                 savedSubLang == null -> when (episode.selectedSubtitle) {
@@ -937,7 +937,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             }
 
         hasExtSubtitles = ext.subtitles.isNotEmpty()
-        if (subtitle == null && hasExtSubtitles && savedSubLang != "None" &&
+        if (subtitle == null && !pendingOnlineRestore && hasExtSubtitles && savedSubLang != "None" &&
             savedSubLang?.startsWith("Online:") != true &&
             savedSubLang?.startsWith("[Local]") != true &&
             savedSubLang?.startsWith("Embedded:") != true
@@ -1026,6 +1026,13 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
 
         buildMpvPlayer()
+        // HOLD2 blocker 1: attach the pending restore only now that the
+        // engine exists. Same Main-thread section as the peek — no
+        // suspension between, so no interleave; the URL fallback path
+        // captures a fresh generation inside applyOnlineSubtitleUrl.
+        if (pendingOnlineRestore) {
+            subtitleManager.restoreSavedOnlineSubtitle(media.id, episode.number)
+        }
         // MAX MERGE M3 (upstream e954d9f1): smart-download hook. Fires per
         // playback start; the trigger itself is duplicate-guarded, so
         // re-entry (server changes, episode moves) is harmless.

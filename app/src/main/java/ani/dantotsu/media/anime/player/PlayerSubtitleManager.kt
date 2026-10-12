@@ -386,21 +386,61 @@ class PlayerSubtitleManager(
     }
 
     /**
-     * Restores a persisted per-episode online subtitle (HOLD1 item 1,
-     * upstream 36d57c56): a usable staged file attaches directly; otherwise
-     * a recorded URL re-downloads through the normal gated path; anything
-     * else fails safe with false. Missing/corrupt/foreign files never
-     * throw and never attach. Callers gate on explicit Off/embedded/local
-     * and newer selections BEFORE invoking.
+     * Outcome of one restore attempt (HOLD2 blocker 1): callers must never
+     * treat a scheduled-or-skipped restore as an attached subtitle.
      */
-    fun restoreSavedOnlineSubtitle(mediaId: Int, episodeNumber: String): Boolean {
-        val saved = EpisodeSubtitleStore.getSavedSubtitle(mediaId, episodeNumber) ?: return false
+    enum class RestoreOutcome {
+        /** File validated and attached to the ready engine. */
+        ATTACHED,
+        /** No local file; re-download kicked off through the gated path. */
+        SCHEDULED,
+        /** No record, unusable record, or no engine — legacy path owns. */
+        SKIPPED,
+    }
+
+    /**
+     * Side-effect-free restore eligibility probe for episode start: returns
+     * the validated record when it is worth skipping legacy selection for
+     * (usable owned file, or a URL to re-download), else null.
+     */
+    fun peekSavedOnlineSubtitle(
+        mediaId: Int,
+        episodeNumber: String,
+    ): EpisodeSubtitleStore.SavedEpisodeSubtitle? {
+        val saved = EpisodeSubtitleStore.getSavedSubtitle(mediaId, episodeNumber) ?: return null
+        val path = saved.filePath
+        if (!path.isNullOrBlank()) {
+            val ownedDir = File(activity.filesDir, ani.dantotsu.media.anime.SAVED_SUBS_DIR)
+            val file = File(path)
+            if (ani.dantotsu.media.anime.isOwnedSubtitleFile(ownedDir, path) &&
+                file.exists() && file.length() > 0
+            ) {
+                return saved
+            }
+        }
+        return if (!saved.url.isNullOrBlank()) saved else null
+    }
+
+    /**
+     * Restores a persisted per-episode online subtitle (HOLD1 item 1,
+     * upstream 36d57c56; HOLD2 blocker 1: attach ONLY with a ready engine).
+     * Must be invoked after the playback engine exists — file attach with
+     * no engine returns SKIPPED instead of a false success. URL fallback
+     * re-downloads through the normal generation-gated path (SCHEDULED).
+     * Missing/corrupt/foreign files never throw and never attach. Callers
+     * gate on explicit Off/embedded/local and newer selections BEFORE
+     * invoking.
+     */
+    fun restoreSavedOnlineSubtitle(mediaId: Int, episodeNumber: String): RestoreOutcome {
+        val saved = EpisodeSubtitleStore.getSavedSubtitle(mediaId, episodeNumber)
+            ?: return RestoreOutcome.SKIPPED
         val path = saved.filePath
         if (!path.isNullOrBlank()) {
             val ownedDir = File(activity.filesDir, ani.dantotsu.media.anime.SAVED_SUBS_DIR)
             if (ani.dantotsu.media.anime.isOwnedSubtitleFile(ownedDir, path)) {
                 val file = File(path)
                 if (file.exists() && file.length() > 0) {
+                    if (getEngine() == null) return RestoreOutcome.SKIPPED
                     val format = when {
                         file.name.endsWith(".vtt", ignoreCase = true) -> "VTT"
                         file.name.endsWith(".ass", ignoreCase = true) ||
@@ -409,15 +449,15 @@ class PlayerSubtitleManager(
                         else -> "SRT"
                     }
                     applySubtitleFromFile(file, saved.language, format, saved.displayName, saved.id, saved.provider)
-                    return true
+                    return RestoreOutcome.ATTACHED
                 }
             }
         }
         if (!saved.url.isNullOrBlank()) {
             applyOnlineSubtitleUrl(saved.url, saved.id, saved.language, saved.displayName, saved.provider)
-            return true
+            return RestoreOutcome.SCHEDULED
         }
-        return false
+        return RestoreOutcome.SKIPPED
     }
 
     /**
@@ -508,11 +548,13 @@ class PlayerSubtitleManager(
                     val subtitleFile = File(activity.cacheDir, "online_subtitle_${id.hashCode()}.$extension")
                     subtitleFile.writeText(cleanedContent)
 
-                    // HOLD1 item 2: persist only under the captured identity;
-                    // a superseded request drops, a moved player persists
-                    // without attaching a stale file to the new episode.
+                    // HOLD1 item 2 + HOLD2 blocker 2: persist only under the
+                    // captured identity; re-check the gate immediately
+                    // before the commit so an Off landing mid-persist cannot
+                    // resurrect a cleared record.
                     val curMedia = runCatching { ExoplayerView.media.id }.getOrNull()
                     val curEp = model.getEpisode().value?.number
+                    if (!serverSubIntentGate.isCurrent(reqGen)) return@launch
                     when (ani.dantotsu.media.anime.shouldPersistCompletedRequest(
                         reqGen, serverSubIntentGate.current(), reqMedia, reqEp ?: "", curMedia, curEp
                     )) {
@@ -527,6 +569,18 @@ class PlayerSubtitleManager(
                     }
 
                     withContext(Dispatchers.Main) {
+                        // HOLD2 blocker 2: revalidate generation + identity
+                        // at the actual attach boundary — a selection made
+                        // after the IO decision still wins.
+                        val attachMedia = runCatching { ExoplayerView.media.id }.getOrNull()
+                        val attachEp = model.getEpisode().value?.number
+                        if (!ani.dantotsu.media.anime.shouldAttachCompletedFetch(
+                                reqGen, serverSubIntentGate.current(),
+                                reqMedia, reqEp ?: "", attachMedia, attachEp
+                            )
+                        ) {
+                            return@withContext
+                        }
                         applySubtitleFromFile(subtitleFile, lang, detectedFormat, displayName, id, provider)
                     }
                 }
@@ -577,6 +631,7 @@ class PlayerSubtitleManager(
                 val display = sub.releaseName.ifBlank { sub.lang }
                 val curMedia = runCatching { ExoplayerView.media.id }.getOrNull()
                 val curEp = model.getEpisode().value?.number
+                if (!serverSubIntentGate.isCurrent(reqGen)) return@launch
                 when (ani.dantotsu.media.anime.shouldPersistCompletedRequest(
                     reqGen, serverSubIntentGate.current(), reqMedia, reqEp ?: "", curMedia, curEp
                 )) {
@@ -590,6 +645,14 @@ class PlayerSubtitleManager(
                     }
                 }
                 withContext(Dispatchers.Main) {
+                    if (!ani.dantotsu.media.anime.shouldAttachCompletedFetch(
+                            reqGen, serverSubIntentGate.current(),
+                            reqMedia, reqEp ?: "", runCatching { ExoplayerView.media.id }.getOrNull(),
+                            model.getEpisode().value?.number
+                        )
+                    ) {
+                        return@withContext
+                    }
                     applySubtitleFromFile(cacheFile, sub.lang, detectedFormat, display, sub.id, "SubSource")
                 }
             } else {

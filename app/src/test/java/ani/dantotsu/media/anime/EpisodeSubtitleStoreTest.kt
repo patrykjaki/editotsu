@@ -195,4 +195,115 @@ class EpisodeSubtitleStoreTest {
             shouldPersistCompletedRequest(7L, 7L, 1, "12", null, null)
         )
     }
+
+    // ---- HOLD2 blocker 2: ordered interleavings (fake gate + episodes) ----
+
+    private class FakeGate(var current: Long = 0L) {
+        fun newRequest(): Long {
+            current += 1
+            return current
+        }
+
+        fun supersede() {
+            current += 1
+        }
+    }
+
+    @Test
+    fun `A download finishes then Off before Main dispatch`() {
+        val gate = FakeGate()
+        val req = gate.newRequest()
+        // IO completion: current, same episode → persist + proceed.
+        assertEquals(
+            PersistDecision.PERSIST_AND_ATTACH,
+            shouldPersistCompletedRequest(req, gate.current, 1, "12", 1, "12")
+        )
+        // Off lands before Main dispatch (supersede + record cleared).
+        gate.supersede()
+        // Main attach re-check: stale → denied. Final: newer Off wins.
+        assertEquals(
+            false,
+            shouldAttachCompletedFetch(req, gate.current, 1, "12", 1, "12")
+        )
+    }
+
+    @Test
+    fun `B download finishes then embedded selection before attach`() {
+        val gate = FakeGate()
+        val req = gate.newRequest()
+        assertEquals(
+            PersistDecision.PERSIST_AND_ATTACH,
+            shouldPersistCompletedRequest(req, gate.current, 1, "12", 1, "12")
+        )
+        gate.supersede() // embedded click supersedes like Off
+        assertEquals(
+            false,
+            shouldAttachCompletedFetch(req, gate.current, 1, "12", 1, "12")
+        )
+    }
+
+    @Test
+    fun `C download A then episode B then return to A`() {
+        val gate = FakeGate()
+        val req = gate.newRequest()
+        // Completion runs while B is showing: persist under A only.
+        assertEquals(
+            PersistDecision.PERSIST_ONLY,
+            shouldPersistCompletedRequest(req, gate.current, 1, "12", 1, "13")
+        )
+        // Back on A with no newer intent: attach allowed.
+        assertEquals(
+            true,
+            shouldAttachCompletedFetch(req, gate.current, 1, "12", 1, "12")
+        )
+        // Still on B: attach denied.
+        assertEquals(
+            false,
+            shouldAttachCompletedFetch(req, gate.current, 1, "12", 1, "13")
+        )
+    }
+
+    @Test
+    fun `D two online requests finish out of order`() {
+        val gate = FakeGate()
+        val first = gate.newRequest()
+        val second = gate.newRequest()
+        // Late first completion: dropped entirely, never persists.
+        assertEquals(
+            PersistDecision.DROP,
+            shouldPersistCompletedRequest(first, gate.current, 1, "12", 1, "12")
+        )
+        assertEquals(
+            false,
+            shouldAttachCompletedFetch(first, gate.current, 1, "12", 1, "12")
+        )
+        // Second (newest) proceeds.
+        assertEquals(
+            PersistDecision.PERSIST_AND_ATTACH,
+            shouldPersistCompletedRequest(second, gate.current, 1, "12", 1, "12")
+        )
+        assertEquals(
+            true,
+            shouldAttachCompletedFetch(second, gate.current, 1, "12", 1, "12")
+        )
+    }
+
+    @Test
+    fun `E Off while persistence is in progress skips the commit`() {
+        val gate = FakeGate()
+        val req = gate.newRequest()
+        // Fetch done; Off lands before the persist commit re-check.
+        gate.supersede()
+        // The commit boundary re-check (same predicate as the IO gate)
+        // now refuses: nothing is written, cleared record stays cleared.
+        assertEquals(
+            PersistDecision.DROP,
+            shouldPersistCompletedRequest(req, gate.current, 1, "12", 1, "12")
+        )
+        // Attach likewise denied.
+        assertEquals(
+            false,
+            shouldAttachCompletedFetch(req, gate.current, 1, "12", 1, "12")
+        )
+    }
 }

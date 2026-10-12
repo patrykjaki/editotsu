@@ -219,3 +219,23 @@ fun shouldPersistCompletedRequest(
         PersistDecision.PERSIST_ONLY
     }
 }
+
+/**
+ * Main-thread attach gate (HOLD2 blocker 2): revalidates generation AND
+ * episode identity at the actual attach boundary, after the IO decision.
+ * A selection that landed between fetch completion and Main dispatch
+ * (Off, embedded, newer online) drops the stale attach; an episode move
+ * drops it too (its record was already persisted under the right key).
+ */
+fun shouldAttachCompletedFetch(
+    requestedGeneration: Long,
+    gateCurrent: Long,
+    requestedMediaId: Int,
+    requestedEpisode: String,
+    currentMediaId: Int?,
+    currentEpisode: String?,
+): Boolean {
+    if (requestedGeneration != gateCurrent) return false
+    if (currentMediaId == null || currentEpisode == null) return false
+    return currentMediaId == requestedMediaId && currentEpisode == requestedEpisode
+}
