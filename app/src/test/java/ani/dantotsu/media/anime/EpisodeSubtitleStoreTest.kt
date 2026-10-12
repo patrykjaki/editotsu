@@ -5,6 +5,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.nio.file.Files
 
 /**
  * LANE-B P1 (#72 EpisodeSubtitleStore): pure seam matrix — key/filename
@@ -194,6 +195,66 @@ class EpisodeSubtitleStoreTest {
             PersistDecision.PERSIST_ONLY,
             shouldPersistCompletedRequest(7L, 7L, 1, "12", null, null)
         )
+    }
+
+    // ---- HOLD3: serialized commit ordering ----
+
+    @Test
+    fun `stale guard refuses commit before any Android I-O`() {
+        // The freshness re-check precedes every prefs/filesystem touch:
+        // with a stale generation this returns false using only a plain
+        // temp dir (no Context/SharedPreferences involved). Proves the
+        // check-then-commit order for scenarios 1, 2 and 5-refusal: an
+        // Off/newer selection landing mid-copy cannot resurrect a record.
+        val dir = Files.createTempDirectory("store-guard").toFile()
+        try {
+            var evaluations = 0
+            val committed = EpisodeSubtitleStore.saveSubtitleIfCurrent(
+                filesDir = dir,
+                mediaId = 1,
+                episodeNumber = "12",
+                sub = EpisodeSubtitleStore.SavedEpisodeSubtitle(
+                    id = "wyzie-1", displayName = "English",
+                    provider = "Wyzie", language = "en"
+                ),
+                sourceFile = null,
+                isCurrent = {
+                    evaluations += 1
+                    false
+                }
+            )
+            assertEquals(false, committed)
+            assertEquals(1, evaluations)
+            assertTrue(dir.resolve(SAVED_SUBS_DIR).exists().not())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `commit lock serializes concurrent commits and clears`() {
+        // The exact lock production commits and clears share: concurrent
+        // entrants never overlap (max observed concurrency == 1).
+        var inside = 0
+        var maxInside = 0
+        val gate = Object()
+        val threads = (1..16).map {
+            Thread {
+                withSubtitleStoreCommit {
+                    synchronized(gate) {
+                        inside += 1
+                        if (inside > maxInside) maxInside = inside
+                    }
+                    Thread.sleep(2)
+                    synchronized(gate) {
+                        inside -= 1
+                    }
+                }
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join(10_000) }
+        assertEquals(1, maxInside)
     }
 
     // ---- HOLD2 blocker 2: ordered interleavings (fake gate + episodes) ----

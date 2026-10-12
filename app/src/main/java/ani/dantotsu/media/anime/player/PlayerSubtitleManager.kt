@@ -356,9 +356,12 @@ class PlayerSubtitleManager(
     }
 
     /**
-     * Shared persistence for completed online fetches (HOLD1 item 2):
-     * records the choice under the CAPTURED episode identity with an
-     * app-private file copy. Runs on IO; the store owns failure handling.
+     * Shared persistence for completed online fetches (HOLD1 item 2,
+     * HOLD3 serialized commit): records the choice under the CAPTURED
+     * episode identity with an app-private file copy. The freshness
+     * re-check and the commit are one locked unit — a superseding Off or
+     * newer selection cannot slip between them. Returns false (nothing
+     * written) when stale. Runs on IO; the store owns failure handling.
      */
     private fun persistOnlineRecord(
         mediaId: Int,
@@ -368,10 +371,11 @@ class PlayerSubtitleManager(
         provider: String,
         lang: String,
         sourceFile: File,
-    ) {
-        runCatching {
-            EpisodeSubtitleStore.saveSubtitle(
-                context = activity,
+        isCurrent: () -> Boolean,
+    ): Boolean {
+        return runCatching {
+            EpisodeSubtitleStore.saveSubtitleIfCurrent(
+                filesDir = activity.filesDir,
                 mediaId = mediaId,
                 episodeNumber = episodeNumber,
                 sub = EpisodeSubtitleStore.SavedEpisodeSubtitle(
@@ -380,9 +384,10 @@ class PlayerSubtitleManager(
                     provider = provider,
                     language = lang
                 ),
-                sourceFile = sourceFile
+                sourceFile = sourceFile,
+                isCurrent = isCurrent
             )
-        }
+        }.getOrDefault(false)
     }
 
     /**
@@ -560,11 +565,14 @@ class PlayerSubtitleManager(
                     )) {
                         ani.dantotsu.media.anime.PersistDecision.DROP -> return@launch
                         ani.dantotsu.media.anime.PersistDecision.PERSIST_ONLY -> {
-                            persistOnlineRecord(reqMedia, reqEp ?: "", id, displayName, provider, lang, subtitleFile)
+                            persistOnlineRecord(reqMedia, reqEp ?: "", id, displayName, provider, lang, subtitleFile) { serverSubIntentGate.isCurrent(reqGen) }
                             return@launch
                         }
                         ani.dantotsu.media.anime.PersistDecision.PERSIST_AND_ATTACH -> {
-                            persistOnlineRecord(reqMedia, reqEp ?: "", id, displayName, provider, lang, subtitleFile)
+                            val committed = persistOnlineRecord(reqMedia, reqEp ?: "", id, displayName, provider, lang, subtitleFile) { serverSubIntentGate.isCurrent(reqGen) }
+                            // Superseded between IO decision and commit:
+                            // record refused, attach must not proceed.
+                            if (!committed) return@launch
                         }
                     }
 
@@ -637,11 +645,12 @@ class PlayerSubtitleManager(
                 )) {
                     ani.dantotsu.media.anime.PersistDecision.DROP -> return@launch
                     ani.dantotsu.media.anime.PersistDecision.PERSIST_ONLY -> {
-                        persistOnlineRecord(reqMedia, reqEp ?: "", sub.id, display, "SubSource", sub.lang, cacheFile)
+                        persistOnlineRecord(reqMedia, reqEp ?: "", sub.id, display, "SubSource", sub.lang, cacheFile) { serverSubIntentGate.isCurrent(reqGen) }
                         return@launch
                     }
                     ani.dantotsu.media.anime.PersistDecision.PERSIST_AND_ATTACH -> {
-                        persistOnlineRecord(reqMedia, reqEp ?: "", sub.id, display, "SubSource", sub.lang, cacheFile)
+                        val committed = persistOnlineRecord(reqMedia, reqEp ?: "", sub.id, display, "SubSource", sub.lang, cacheFile) { serverSubIntentGate.isCurrent(reqGen) }
+                        if (!committed) return@launch
                     }
                 }
                 withContext(Dispatchers.Main) {

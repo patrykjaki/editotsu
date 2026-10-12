@@ -39,10 +39,47 @@ object EpisodeSubtitleStore {
         sub: SavedEpisodeSubtitle,
         sourceFile: File? = null
     ) {
+        withSubtitleStoreCommit {
+            saveLocked(context.filesDir, mediaId, episodeNumber, sub, sourceFile)
+        }
+    }
+
+    /**
+     * Guarded commit (HOLD3): the freshness [isCurrent] re-check runs
+     * INSIDE the commit lock, immediately before any filesystem or
+     * preference write — so a superseding Off/newer selection cannot slip
+     * between check and commit. Returns false (nothing written) when stale.
+     * Safe replacement + owned-file cleanup rules from [saveSubtitle] apply.
+     */
+    fun saveSubtitleIfCurrent(
+        filesDir: File,
+        mediaId: Int,
+        episodeNumber: String,
+        sub: SavedEpisodeSubtitle,
+        sourceFile: File? = null,
+        isCurrent: () -> Boolean,
+    ): Boolean {
+        return withSubtitleStoreCommit {
+            if (!isCurrent()) {
+                false
+            } else {
+                saveLocked(filesDir, mediaId, episodeNumber, sub, sourceFile)
+                true
+            }
+        }
+    }
+
+    private fun saveLocked(
+        filesDir: File,
+        mediaId: Int,
+        episodeNumber: String,
+        sub: SavedEpisodeSubtitle,
+        sourceFile: File?,
+    ) {
         try {
             var persistentPath = sub.filePath
             if (sourceFile != null && sourceFile.exists()) {
-                val savedSubsDir = File(context.filesDir, SAVED_SUBS_DIR).apply { mkdirs() }
+                val savedSubsDir = File(filesDir, SAVED_SUBS_DIR).apply { mkdirs() }
                 val ext = sourceFile.extension.ifBlank { "srt" }
                 val destFile = File(savedSubsDir, stagedSubtitleFileName(mediaId, episodeNumber, sub.id, ext))
                 sourceFile.copyTo(destFile, overwrite = true)
@@ -57,7 +94,7 @@ object EpisodeSubtitleStore {
             val jsonStr = json.encodeToString(record)
             PrefManager.setCustomVal(getPrefKey(mediaId, episodeNumber), jsonStr)
             if (superseded != null) {
-                val ownedDir = File(context.filesDir, SAVED_SUBS_DIR)
+                val ownedDir = File(filesDir, SAVED_SUBS_DIR)
                 if (isOwnedSubtitleFile(ownedDir, superseded)) {
                     runCatching { File(superseded).delete() }
                 }
@@ -73,16 +110,18 @@ object EpisodeSubtitleStore {
     }
 
     fun clearSavedSubtitle(context: Context, mediaId: Int, episodeNumber: String) {
-        val saved = getSavedSubtitle(mediaId, episodeNumber)
-        // HOLD1 item 3: delete only canonical owned files; a tampered or
-        // foreign path drops its record without touching the filesystem.
-        val ownedDir = File(context.filesDir, SAVED_SUBS_DIR)
-        saved?.filePath?.let { path ->
-            if (isOwnedSubtitleFile(ownedDir, path)) {
-                runCatching { File(path).delete() }
+        withSubtitleStoreCommit {
+            val saved = getSavedSubtitle(mediaId, episodeNumber)
+            // HOLD1 item 3: delete only canonical owned files; a tampered or
+            // foreign path drops its record without touching the filesystem.
+            val ownedDir = File(context.filesDir, SAVED_SUBS_DIR)
+            saved?.filePath?.let { path ->
+                if (isOwnedSubtitleFile(ownedDir, path)) {
+                    runCatching { File(path).delete() }
+                }
             }
+            PrefManager.setCustomVal(getPrefKey(mediaId, episodeNumber), null)
         }
-        PrefManager.setCustomVal(getPrefKey(mediaId, episodeNumber), null)
     }
 }
 
@@ -144,6 +183,21 @@ fun resolveSubtitleSource(
 
 /** Canonical app-owned subtitle staging directory name. */
 const val SAVED_SUBS_DIR = "saved_online_subs"
+
+/**
+ * Commit lock serializing persistence commits against explicit clears
+ * (HOLD3): the freshness re-check AND the file-copy + preference write in
+ * [EpisodeSubtitleStore.saveSubtitleIfCurrent], and the read + delete +
+ * preference clear in [EpisodeSubtitleStore.clearSavedSubtitle], all run
+ * inside [withSubtitleStoreCommit]. An Off/newer selection landing
+ * mid-copy therefore cannot interleave between check and commit — either
+ * its clear runs first (commit re-check refuses) or the commit wins and
+ * the clear removes it after. No resurrection either way.
+ */
+internal val subtitleStoreCommitLock = Any()
+
+internal inline fun <T> withSubtitleStoreCommit(block: () -> T): T =
+    synchronized(subtitleStoreCommitLock) { block() }
 
 /** Allowed subtitle file extensions for staged copies. */
 private val STAGED_SUB_EXTS = setOf("srt", "vtt", "ass", "ssa", "ttml")
