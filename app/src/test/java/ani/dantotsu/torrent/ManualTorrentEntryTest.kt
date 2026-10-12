@@ -685,4 +685,79 @@ class ManualTorrentEntryTest {
             )
         )
     }
+
+    // ---- HOLD1: downstream engine verification ----
+
+    @Test
+    fun `engine fetch dispatch is case-insensitive on scheme`() {
+        assertTrue(isHttpFetchUrl("http://example.com/x.torrent"))
+        assertTrue(isHttpFetchUrl("https://example.com/x.torrent"))
+        assertTrue(isHttpFetchUrl("HTTP://example.com/x.torrent"))
+        assertTrue(isHttpFetchUrl("HTTPS://example.com/x.torrent"))
+        assertTrue(isHttpFetchUrl("Http://example.com/x.torrent"))
+        assertTrue(isHttpFetchUrl("hTTpS://example.com/x.torrent"))
+        // Path/query/fragment case is preserved by the predicate (it only
+        // compares the scheme): mixed-case URLs still dispatch.
+        assertTrue(isHttpFetchUrl("https://example.com/Dir/File.TORRENT?X=1#F"))
+        assertTrue(!isHttpFetchUrl("magnet:?xt=urn:btih:${"A".repeat(40)}"))
+        assertTrue(!isHttpFetchUrl("ftp://example.com/x.torrent"))
+        assertTrue(!isHttpFetchUrl("file:///x.torrent"))
+        assertTrue(!isHttpFetchUrl(""))
+    }
+
+    @Test
+    fun `entry gate acceptance implies engine fetch dispatch`() {
+        // Core HOLD1 regression: any URL the G6 gate accepts MUST reach the
+        // engine's HTTP fetch branch. The converse is intentionally false:
+        // the engine predicate is scheme-only (other callers pass bare http
+        // URLs; a non-torrent body then fails cleanly at parse with its temp
+        // deleted), while the entry gate additionally requires the .torrent
+        // marker to keep typed input strict.
+        val gateAccepted = listOf(
+            "http://example.com/x.torrent",
+            "https://example.com/x.torrent",
+            "HTTPS://example.com/x.torrent",
+            "HTTP://example.com/x.torrent",
+            "Http://example.com/Dir/F.Torrent?a=1#z"
+        )
+        gateAccepted.forEach { sample ->
+            assertTrue("gate rejects: $sample", HttpTorrentUrl.isHttpTorrentUrl(sample))
+            assertTrue("engine misses gate-accepted: $sample", isHttpFetchUrl(sample))
+        }
+        // Gate-strictness samples: rejected by the gate (no marker / wrong
+        // scheme) regardless of engine dispatch.
+        listOf(
+            "https://example.com/watch?v=1",
+            "https://example.com/torrent-page",
+            "magnet:?xt=urn:btih:${"A".repeat(40)}",
+            "ftp://example.com/x.torrent",
+            "file:///x.torrent",
+            "not a link"
+        ).forEach { sample ->
+            assertTrue("gate accepts: $sample", !HttpTorrentUrl.isHttpTorrentUrl(sample))
+        }
+    }
+
+    @Test
+    fun `http fetch bound refuses oversize bodies without materializing them`() {
+        // The fetch path reuses copyBounded with the shared staging cap:
+        // an over-cap stream is refused (null) after capped streaming —
+        // never loaded whole into memory. On-demand bytes, no big alloc.
+        val cap = ManualTorrentEntry.MAX_TORRENT_FILE_BYTES.toLong()
+        val big = object : java.io.InputStream() {
+            var remaining = cap + 1L
+            override fun read(): Int =
+                if (remaining-- > 0) 0 else -1
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                if (remaining <= 0) return -1
+                val n = minOf(len.toLong(), remaining).toInt()
+                java.util.Arrays.fill(b, off, off + n, 0.toByte())
+                remaining -= n
+                return n
+            }
+        }
+        assertNull(
+            copyBounded(big, java.io.ByteArrayOutputStream(), cap)
+        )
+    }
 }

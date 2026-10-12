@@ -23,7 +23,6 @@ data class StreamingPiecePlan(
     val opportunisticTail: Int?,
     val tailPieces: List<Int> = opportunisticTail?.let { listOf(it) } ?: emptyList()
 )
-
 fun computeStreamingPiecePlan(
     fileOffset: Long,
     fileSize: Long,
@@ -48,6 +47,17 @@ fun computeStreamingPiecePlan(
 
     return StreamingPiecePlan(boundedStartup, tail, tailCandidates)
 }
+
+/**
+ * HOLD1 (Lane C G6): engine-side HTTP fetch dispatch. Case-insensitive
+ * scheme match so every URL the entry gate accepts ([HttpTorrentUrl],
+ * likewise case-insensitive) reaches `addTorrent`'s download branch.
+ * Path, query and fragment are never touched here — only the scheme
+ * comparison ignores case. Pure, JVM-tested.
+ */
+internal fun isHttpFetchUrl(url: String): Boolean =
+    url.startsWith("http://", ignoreCase = true) ||
+        url.startsWith("https://", ignoreCase = true)
 
 interface TorrentDeadlineAdapter {
     val isValid: Boolean
@@ -497,11 +507,21 @@ class TorrentServerManager(private val context: Context) {
             var resolvedTorrentInfo: TorrentInfo? = null
             when {
                 url.startsWith("magnet:") -> resolvedHash = parseMagnetHash(url)
-                url.startsWith("http://") || url.startsWith("https://") -> {
+                // HOLD1: case-insensitive dispatch ([isHttpFetchUrl]) so
+                // every URL the G6 entry gate accepts reaches this branch.
+                isHttpFetchUrl(url) -> {
                     val fetched = downloadTorrentFile(url)
                     if (fetched != null) {
-                        resolvedTorrentInfo = TorrentInfo(fetched)
-                        resolvedHash = resolvedTorrentInfo.infoHash().toHex()
+                        try {
+                            resolvedTorrentInfo = TorrentInfo(fetched)
+                            resolvedHash = resolvedTorrentInfo.infoHash().toHex()
+                        } finally {
+                            // HOLD1: parsed metadata lives in memory from
+                            // here (libtorrent bdecodes at construction);
+                            // the transfer temp is removed on every path —
+                            // success, parse failure, or exception.
+                            runCatching { fetched.delete() }
+                        }
                     }
                 }
                 else -> {
@@ -1028,18 +1048,39 @@ class TorrentServerManager(private val context: Context) {
     }
 
     private fun downloadTorrentFile(url: String): File? {
+        // HOLD1: the transfer temp is owned by this function until return —
+        // [owned] tracks the not-yet-transferred file so every failure path
+        // (over-cap, mid-stream throw, unsuccessful status) deletes it.
+        var owned: File? = null
         try {
             val client = okhttp3.OkHttpClient()
             val request = okhttp3.Request.Builder().url(url).build()
             client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val bytes = response.body?.bytes() ?: return null
-                    val tempFile = File.createTempFile("temp", ".torrent", context.cacheDir)
-                    tempFile.writeBytes(bytes)
-                    return tempFile
+                if (!response.isSuccessful) return null
+                val body = response.body ?: return null
+                val tmp = File.createTempFile("http_", ".torrent", context.cacheDir)
+                owned = tmp
+                body.byteStream().use { input ->
+                    tmp.outputStream().use { output ->
+                        // HOLD1: bounded BEFORE memory — over-cap bodies are
+                        // refused without ever materializing the full
+                        // response (`body.bytes()` loaded it unbounded).
+                        // Same cap as M7A content-URI staging.
+                        copyBounded(
+                            input, output,
+                            ManualTorrentEntry.MAX_TORRENT_FILE_BYTES.toLong()
+                        ) ?: run {
+                            runCatching { tmp.delete() }
+                            owned = null
+                            return null
+                        }
+                    }
                 }
+                owned = null // ownership transfers to the caller with `tmp`
+                return tmp
             }
         } catch (e: Exception) {
+            runCatching { owned?.delete() }
             e.printStackTrace()
         }
         return null
