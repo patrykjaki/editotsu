@@ -14,6 +14,7 @@ import ani.dantotsu.defaultHeaders
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.anime.EpisodeSubtitleStore
 import ani.dantotsu.media.anime.ExoplayerView
+import ani.dantotsu.media.anime.legacySubLangKey
 import ani.dantotsu.media.MediaDetailsViewModel
 import ani.dantotsu.parsers.Subtitle
 import ani.dantotsu.parsers.SubtitleType
@@ -480,9 +481,9 @@ class PlayerSubtitleManager(
         pendingSubtitleLabel = null
         serverSubJob?.cancel()
         if (mediaId != null) {
-            val savedLang: String? = PrefManager.getNullableCustomVal("subLang_$mediaId", null, String::class.java)
+            val savedLang: String? = PrefManager.getNullableCustomVal(legacySubLangKey(mediaId, clearPersistedForEp), null, String::class.java)
             if (savedLang?.startsWith("Online:") == true) {
-                PrefManager.setCustomVal("subLang_$mediaId", null)
+                PrefManager.setCustomVal(legacySubLangKey(mediaId, clearPersistedForEp), null)
             }
             if (clearPersistedForEp != null) {
                 EpisodeSubtitleStore.clearSavedSubtitle(activity, mediaId, clearPersistedForEp)
@@ -769,7 +770,7 @@ class PlayerSubtitleManager(
                     url = uri.toString()
                 )
                 model.saveLocalSubtitle("$mediaId-$episodeId", newLocalSub)
-                PrefManager.setCustomVal("subLang_$mediaId", newLocalSub.language)
+                PrefManager.setCustomVal(legacySubLangKey(mediaId, episodeId), newLocalSub.language)
             }
 
             engine.addExternalSubtitle(cacheFile.absolutePath, label, "und", select = true, explicitUserAction = true)

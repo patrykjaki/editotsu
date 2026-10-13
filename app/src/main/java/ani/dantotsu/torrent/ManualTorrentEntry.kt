@@ -1,9 +1,9 @@
 package ani.dantotsu.torrent
 
 import ani.dantotsu.media.Media
+import ani.dantotsu.media.UNLINKED_TORRENT_MEDIA_ID
 import ani.dantotsu.media.anime.Anime
 import ani.dantotsu.media.anime.Episode
-import ani.dantotsu.media.unlinkedMediaIdForTorrent
 
 /**
  * MAX MERGE M7A: backend-agnostic manual torrent/magnet entry — pure intent,
@@ -491,15 +491,15 @@ data class UnlinkedTorrentPlayback(
 fun buildUnlinkedPlayback(
     torrentName: String,
     fileName: String,
-    infoHash: String? = null,
     fileIndex: Int = 0,
+    mediaId: Int = UNLINKED_TORRENT_MEDIA_ID,
 ): UnlinkedTorrentPlayback {
     val series = torrentName.trim().ifEmpty { fileName.trim() }.ifEmpty { UNLINKED_TITLE_FALLBACK }
     val file = fileName.trim().ifEmpty { "File $UNLINKED_EPISODE_KEY" }
     val key = (fileIndex.coerceAtLeast(0) + 1).toString()
     val episode = Episode(number = key, title = file)
     val media = Media(
-        id = unlinkedMediaIdForTorrent(infoHash),
+        id = mediaId,
         name = series,
         nameRomaji = series,
         userPreferredName = series,

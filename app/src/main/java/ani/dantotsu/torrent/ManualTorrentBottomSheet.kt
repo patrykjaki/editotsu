@@ -21,11 +21,14 @@ import ani.dantotsu.databinding.ItemManualTorrentFileBinding
 import ani.dantotsu.download.video.Helper
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.MediaDetailsViewModel
+import ani.dantotsu.media.UNLINKED_ID_MAP_PREF
 import ani.dantotsu.media.anime.AnimeWatchFragment
 import ani.dantotsu.media.anime.Episode
 import ani.dantotsu.media.anime.ExoplayerView
+import ani.dantotsu.media.claimUnlinkedMediaId
 import ani.dantotsu.parsers.Video
 import ani.dantotsu.parsers.VideoType
+import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.snackString
 import ani.dantotsu.toast
 import ani.dantotsu.util.Logger
@@ -447,11 +450,17 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                 manager.prebufferTorrent(url, entry.index, series)
                 val hash = torrent.hash ?: throw IllegalStateException("missing info-hash")
                 val link = manager.getLink(hash, entry.index)
-                // HOLD1/HOLD2: the synthetic identity derives from this
-                // torrent's hash AND the selected file index, so its
-                // resume/subtitle/source state is its own.
+                // HOLD1/HOLD2: claim the collision-checked stable identity
+                // for this torrent BEFORE building the entry (already on IO;
+                // prefs-backed registry), so its resume/subtitle/source
+                // state is its own even across hash truncations.
+                val mediaId = claimUnlinkedMediaId(
+                    torrent.hash,
+                    readEntries = { PrefManager.getCustomVal(UNLINKED_ID_MAP_PREF, emptySet<String>()) },
+                    writeEntries = { entries -> PrefManager.setCustomVal(UNLINKED_ID_MAP_PREF, entries) }
+                )
                 val unlinked = buildUnlinkedPlayback(
-                    series, entry.displayName, torrent.hash, entry.index
+                    series, entry.displayName, entry.index, mediaId
                 )
                 attachManualVideo(unlinked.episode, serverName, url, link)
                 deleteOwnedTemp()

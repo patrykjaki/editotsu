@@ -871,6 +871,66 @@ const val UNLINKED_TORRENT_MEDIA_ID = -777001
 internal fun isUnlinkedId(id: Int): Boolean = id < 0
 
 /**
+ * Prefs key (custom vals) for the persisted info-hash → synthetic-id
+ * registry (HOLD2). Stored as a string set of `HASH=id` entries via the
+ * existing `Set<String>` custom-val support (same shape as `removeList`).
+ */
+const val UNLINKED_ID_MAP_PREF = "unlinkedTorrentIds"
+
+private val unlinkedIdClaimLock = Any()
+
+/**
+ * Lenient parse of the registry: malformed entries and non-negative ids
+ * are dropped, so a tampered prefs value can never claim a real identity.
+ */
+internal fun parseUnlinkedIdEntries(entries: Set<String>): MutableMap<String, Int> {
+    val mapping = mutableMapOf<String, Int>()
+    entries.forEach { raw ->
+        val hash = raw.substringBeforeLast("=").trim().uppercase()
+        val id = raw.substringAfterLast("=", "").trim().toIntOrNull()
+        if (hash.isNotEmpty() && id != null && id < 0) mapping[hash] = id
+    }
+    return mapping
+}
+
+internal fun formatUnlinkedIdEntries(mapping: Map<String, Int>): Set<String> =
+    mapping.map { (hash, id) -> "$hash=$id" }.toSet()
+
+/**
+ * Claims the stable synthetic id for one torrent (M7A G2 HOLD2):
+ * explicit collision-checked assignment over [unlinkedMediaIdForTorrent]'s
+ * pure candidate. The first claim for a hash probes downward from the
+ * candidate until an id free of every registered torrent is found, then
+ * persists the registry; later claims for the same hash return the stored
+ * id, so reopening is stable across sessions. A failed persist still
+ * returns a usable id (best-effort); non-colliding torrents re-derive
+ * identically with or without the registry. Serialized on
+ * [unlinkedIdClaimLock] so concurrent handoffs cannot double-claim.
+ * Pure storage seam (`readEntries`/`writeEntries`) — JVM-tested with a
+ * fake map, wired to custom-val prefs in production.
+ */
+internal fun claimUnlinkedMediaId(
+    infoHash: String?,
+    readEntries: () -> Set<String>,
+    writeEntries: (Set<String>) -> Unit,
+): Int {
+    if (infoHash.isNullOrBlank()) return UNLINKED_TORRENT_MEDIA_ID
+    val norm = infoHash.trim().uppercase()
+    synchronized(unlinkedIdClaimLock) {
+        val owned = parseUnlinkedIdEntries(runCatching { readEntries() }.getOrDefault(emptySet()))
+        owned[norm]?.let { return it }
+        var candidate = unlinkedMediaIdForTorrent(norm)
+        val used = owned.values.toSet()
+        while (candidate in used || candidate >= 0) {
+            candidate = if (candidate == Int.MIN_VALUE) UNLINKED_TORRENT_MEDIA_ID else candidate - 1
+        }
+        owned[norm] = candidate
+        runCatching { writeEntries(formatUnlinkedIdEntries(owned)) }
+        return candidate
+    }
+}
+
+/**
  * Derives the reserved synthetic id for one torrent (M7A G2 HOLD1/HOLD2):
  * the first 4 bytes of the SHA-256 of the normalized info-hash, forced
  * negative (zero maps to the fallback). Deterministic per torrent and

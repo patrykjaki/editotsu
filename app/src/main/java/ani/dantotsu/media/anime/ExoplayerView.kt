@@ -912,11 +912,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             "Turkish", "Ukrainian", "Urdu", "Vietnamese"
         )
         val lang = subLanguages.getOrNull(PrefManager.getVal<Int>(PrefName.SubLanguage)) ?: "English"
-        var savedSubLang: String? = PrefManager.getNullableCustomVal("subLang_${media.id}", null, String::class.java)
+        var savedSubLang: String? = PrefManager.getNullableCustomVal(legacySubLangKey(media.id, episode.number), null, String::class.java)
         if (savedSubLang?.startsWith("Online:") == true) {
             // LANE-B P1 (#72): the per-episode store is now the source of
             // truth for online choices; legacy keys migrate away.
-            PrefManager.setCustomVal("subLang_${media.id}", null)
+            PrefManager.setCustomVal(legacySubLangKey(media.id, episode.number), null)
             savedSubLang = null
         }
         val intentSubtitle: ani.dantotsu.parsers.Subtitle? = intent.getSerialized("subtitle")
@@ -965,7 +965,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
         subtitleManager.initialSubtitleLabel = subtitle?.language ?: lang
         if (subtitle != null) {
-            PrefManager.setCustomVal("subLang_${media.id}", subtitle!!.language)
+            PrefManager.setCustomVal(legacySubLangKey(media.id, episode.number), subtitle!!.language)
             subtitleManager.setActiveServerSubtitle(subtitle)
         }
 
@@ -1108,7 +1108,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         videoInfo.text = video?.quality?.toString()?.takeIf { it.isNotBlank() && !it.equals("null", true) } ?: ""
 
         val episodeDisplayName = episodeTitleArr.getOrNull(currentEpisodeIndex) ?: episode.number
-        val savedSubLang = PrefManager.getNullableCustomVal("subLang_${media.id}", null, String::class.java)
+        val savedSubLang = PrefManager.getNullableCustomVal(legacySubLangKey(media.id, episode.number), null, String::class.java)
         val request = playerManager.buildPlaybackRequest(
             video = video!!,
             subtitles = extractor?.subtitles,

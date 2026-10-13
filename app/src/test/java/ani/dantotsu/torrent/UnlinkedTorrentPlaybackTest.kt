@@ -5,10 +5,14 @@ import ani.dantotsu.connections.updateProgress
 import ani.dantotsu.download.anime.AnimeDownloaderService
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.UNLINKED_TORRENT_MEDIA_ID
+import ani.dantotsu.media.claimUnlinkedMediaId
 import ani.dantotsu.media.continueListWith
+import ani.dantotsu.media.formatUnlinkedIdEntries
 import ani.dantotsu.media.isUnlinkedId
 import ani.dantotsu.media.isUnlinkedPlayback
+import ani.dantotsu.media.parseUnlinkedIdEntries
 import ani.dantotsu.media.unlinkedMediaIdForTorrent
+import ani.dantotsu.media.anime.legacySubLangKey
 import ani.dantotsu.media.anime.resumePositionKey
 import ani.dantotsu.media.anime.subtitlePrefKey
 import org.junit.Assert.assertEquals
@@ -206,7 +210,7 @@ class UnlinkedTorrentPlaybackTest {
             assertTrue(id != 0)
             assertTrue(isUnlinkedId(id))
         }
-        assertTrue(buildUnlinkedPlayback("T", "f.mkv", "A".repeat(40)).media.isUnlinkedPlayback())
+        assertTrue(buildUnlinkedPlayback("T", "f.mkv", 0, unlinkedMediaIdForTorrent("A".repeat(40))).media.isUnlinkedPlayback())
         // Unknown hashes fall back to the known constant.
         assertEquals(UNLINKED_TORRENT_MEDIA_ID, unlinkedMediaIdForTorrent(null))
         assertEquals(UNLINKED_TORRENT_MEDIA_ID, unlinkedMediaIdForTorrent("   "))
@@ -216,7 +220,7 @@ class UnlinkedTorrentPlaybackTest {
     @Test
     fun `factory carries the derived identity`() {
         val hash = "C".repeat(40)
-        val built = buildUnlinkedPlayback("Some Torrent", "ep.mkv", hash)
+        val built = buildUnlinkedPlayback("Some Torrent", "ep.mkv", 0, unlinkedMediaIdForTorrent(hash))
         assertEquals(unlinkedMediaIdForTorrent(hash), built.media.id)
         assertEquals("Some Torrent", built.media.userPreferredName)
         assertEquals("ep.mkv", built.episode.title)
@@ -262,8 +266,9 @@ class UnlinkedTorrentPlaybackTest {
     @Test
     fun `episode keys derive from the selected file index`() {
         val hash = "D".repeat(40)
-        val first = buildUnlinkedPlayback("Pack", "s01e01.mkv", hash, 0)
-        val second = buildUnlinkedPlayback("Pack", "s01e02.mkv", hash, 7)
+        val id = unlinkedMediaIdForTorrent(hash)
+        val first = buildUnlinkedPlayback("Pack", "s01e01.mkv", 0, id)
+        val second = buildUnlinkedPlayback("Pack", "s01e02.mkv", 7, id)
         // 1-based: the first file keeps the default key "1".
         assertEquals("1", first.episodeKey)
         assertEquals("1", first.episode.number)
@@ -276,15 +281,15 @@ class UnlinkedTorrentPlaybackTest {
         assertEquals("1", first.media.anime?.selectedEpisode)
         assertEquals(setOf("8"), second.media.anime?.episodes?.keys)
         // Negative/contiguous indices coerce sanely.
-        assertEquals("1", buildUnlinkedPlayback("P", "f.mkv", hash, -4).episodeKey)
+        assertEquals("1", buildUnlinkedPlayback("P", "f.mkv", -4, unlinkedMediaIdForTorrent(hash)).episodeKey)
     }
 
     @Test
     fun `same-torrent different-file state stays isolated`() {
         val hash = "E".repeat(40)
         val id = unlinkedMediaIdForTorrent(hash)
-        val file0 = buildUnlinkedPlayback("Pack", "a.mkv", hash, 0)
-        val file3 = buildUnlinkedPlayback("Pack", "b.mkv", hash, 3)
+        val file0 = buildUnlinkedPlayback("Pack", "a.mkv", 0, id)
+        val file3 = buildUnlinkedPlayback("Pack", "b.mkv", 3, id)
         val prefs = mutableMapOf<String, Long>()
         prefs[resumePositionKey(id, file0.episodeKey)] = 100L
         prefs[resumePositionKey(id, file3.episodeKey)] = 400L
@@ -308,5 +313,128 @@ class UnlinkedTorrentPlaybackTest {
             "Pack/$first",
             AnimeDownloaderService.AnimeDownloadTask.getTaskName("Pack", first)
         )
+    }
+
+    // ---- HOLD3: collision-checked claims ----
+
+    @Test
+    fun `reproduced truncation collision claims distinct stable ids`() {
+        // Reviewer-reproduced: these two distinct hashes truncated to the
+        // same Int (-205179230) under HOLD2 derivation. The claim registry
+        // must separate them on first contact and keep them apart after.
+        val hashA = "000000000000000000000000000000000000F1E5"
+        val hashB = "000000000000000000000000000000000001682A"
+        val store = mutableMapOf<String, Set<String>>()
+        fun claim(h: String?) = claimUnlinkedMediaId(
+            h,
+            readEntries = { store["ids"] ?: emptySet() },
+            writeEntries = { store["ids"] = it }
+        )
+        val idA = claim(hashA)
+        val idB = claim(hashB)
+        assertTrue(idA < 0)
+        assertTrue(idB < 0)
+        assertTrue("colliding torrents share id $idA", idA != idB)
+        // Stable across re-claims (registry hit, no re-probe).
+        assertEquals(idA, claim(hashA))
+        assertEquals(idA, claim(hashA.lowercase()))
+        assertEquals(idB, claim(hashB))
+        // Both survive the isolation predicate.
+        assertTrue(isUnlinkedId(idA))
+        assertTrue(isUnlinkedId(idB))
+    }
+
+    @Test
+    fun `forced walk probes past a taken candidate`() {
+        val hash = "F".repeat(40)
+        val taken = unlinkedMediaIdForTorrent(hash)
+        val pre = formatUnlinkedIdEntries(mapOf("OTHER" to taken)).toMutableSet()
+        val claimed = claimUnlinkedMediaId(
+            hash,
+            readEntries = { pre },
+            writeEntries = { pre.clear(); pre.addAll(it) }
+        )
+        assertTrue(claimed != taken)
+        assertTrue(claimed < 0)
+        // Registry now owns both rows; the pre-existing row is preserved.
+        val owned = parseUnlinkedIdEntries(pre)
+        assertEquals(taken, owned["OTHER"])
+        assertEquals(claimed, owned[hash])
+    }
+
+    @Test
+    fun `claim tolerates blank hashes and failing storage`() {
+        val empty = mutableSetOf<String>()
+        assertEquals(
+            UNLINKED_TORRENT_MEDIA_ID,
+            claimUnlinkedMediaId(null, { empty }, { })
+        )
+        assertEquals(
+            UNLINKED_TORRENT_MEDIA_ID,
+            claimUnlinkedMediaId("  ", { empty }, { })
+        )
+        // Throwing write still returns a usable reserved id (best-effort).
+        val id = claimUnlinkedMediaId(
+            "G".repeat(40),
+            readEntries = { emptySet() },
+            writeEntries = { throw java.io.IOException("injected") }
+        )
+        assertTrue(isUnlinkedId(id))
+        // Throwing read degrades to the pure candidate (still reserved).
+        val id2 = claimUnlinkedMediaId(
+            "H".repeat(40),
+            readEntries = { throw java.io.IOException("injected") },
+            writeEntries = { }
+        )
+        assertEquals(unlinkedMediaIdForTorrent("H".repeat(40)), id2)
+    }
+
+    @Test
+    fun `registry parse drops malformed and non-negative rows`() {
+        val owned = parseUnlinkedIdEntries(
+            setOf(
+                "ABCDEF=notanint",
+                "no-equals-here",
+                "=123",
+                "GOOD=-42",
+                "REALID=777001",
+                "  spaced = -43  "
+            )
+        )
+        assertEquals(mapOf("GOOD" to -42, "SPACED" to -43), owned)
+        assertEquals(
+            setOf("GOOD=-42", "SPACED=-43"),
+            formatUnlinkedIdEntries(owned)
+        )
+    }
+
+    // ---- HOLD3: per-file subtitle-language keys ----
+
+    @Test
+    fun `legacy sublang keys isolate synthetic files only`() {
+        val id = unlinkedMediaIdForTorrent("I".repeat(40))
+        // Synthetic siblings split; null episode keeps the legacy shape.
+        assertEquals("subLang_${id}_1", legacySubLangKey(id, "1"))
+        assertEquals("subLang_${id}_8", legacySubLangKey(id, "8"))
+        assertTrue(legacySubLangKey(id, "1") != legacySubLangKey(id, "8"))
+        assertEquals("subLang_$id", legacySubLangKey(id, null))
+        // Real media keys are byte-identical with or without an episode.
+        assertEquals("subLang_123", legacySubLangKey(123, "12"))
+        assertEquals("subLang_123", legacySubLangKey(123, null))
+    }
+
+    @Test
+    fun `off in one sibling never carries into another`() {
+        val id = unlinkedMediaIdForTorrent("J".repeat(40))
+        val prefs = mutableMapOf<String, String?>()
+        // File "1": user picks Off.
+        prefs[legacySubLangKey(id, "1")] = "None"
+        // File "8": untouched key reads default (player falls back to
+        // preferred-language matching, never to file 1's Off).
+        assertEquals(null, prefs[legacySubLangKey(id, "8")])
+        // And an explicit English choice on file 8 is independent.
+        prefs[legacySubLangKey(id, "8")] = "English"
+        assertEquals("None", prefs[legacySubLangKey(id, "1")])
+        assertEquals("English", prefs[legacySubLangKey(id, "8")])
     }
 }

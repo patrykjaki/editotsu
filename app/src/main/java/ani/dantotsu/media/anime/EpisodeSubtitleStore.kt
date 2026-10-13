@@ -1,6 +1,7 @@
 package ani.dantotsu.media.anime
 
 import android.content.Context
+import ani.dantotsu.media.isUnlinkedId
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.util.Logger
 import kotlinx.serialization.Serializable
@@ -279,6 +280,16 @@ object EpisodeSubtitleStore {
  */
 internal fun subtitlePrefKey(mediaId: Int, episodeNumber: String): String =
     "saved_ep_online_sub_${mediaId}_$episodeNumber"
+
+/**
+ * Legacy subtitle-language prefs key (M7A G2 HOLD2): per-media for real
+ * entries (byte-identical keys — normal behavior untouched), per
+ * (media, episode) for unlinked synthetic entries so Off/selection in one
+ * torrent file can never carry into a sibling file. Pure, JVM-tested.
+ */
+internal fun legacySubLangKey(mediaId: Int, episodeNumber: String?): String =
+    if (isUnlinkedId(mediaId) && !episodeNumber.isNullOrBlank()) "subLang_${mediaId}_${episodeNumber}"
+    else "subLang_$mediaId"
 
 internal fun stagedSubtitleFileName(
     mediaId: Int,
