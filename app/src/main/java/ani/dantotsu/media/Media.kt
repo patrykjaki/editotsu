@@ -880,6 +880,14 @@ const val UNLINKED_ID_MAP_PREF = "unlinkedTorrentIds"
 private val unlinkedIdClaimLock = Any()
 
 /**
+ * Thrown when a collision-safe synthetic identity can neither be
+ * established (registry unreadable) nor persisted. Callers must surface
+ * this distinctly and abort the handoff — never proceed with an
+ * unverified identity.
+ */
+class UnlinkedIdentityException(message: String) : IllegalStateException(message)
+
+/**
  * Lenient parse of the registry: malformed entries and non-negative ids
  * are dropped, so a tampered prefs value can never claim a real identity.
  */
@@ -897,15 +905,19 @@ internal fun formatUnlinkedIdEntries(mapping: Map<String, Int>): Set<String> =
     mapping.map { (hash, id) -> "$hash=$id" }.toSet()
 
 /**
- * Claims the stable synthetic id for one torrent (M7A G2 HOLD2):
+ * Claims the stable synthetic id for one torrent (M7A G2 HOLD2/HOLD4):
  * explicit collision-checked assignment over [unlinkedMediaIdForTorrent]'s
  * pure candidate. The first claim for a hash probes downward from the
  * candidate until an id free of every registered torrent is found, then
  * persists the registry; later claims for the same hash return the stored
- * id, so reopening is stable across sessions. A failed persist still
- * returns a usable id (best-effort); non-colliding torrents re-derive
- * identically with or without the registry. Serialized on
- * [unlinkedIdClaimLock] so concurrent handoffs cannot double-claim.
+ * id, so reopening is stable across sessions.
+ *
+ * FAIL-CLOSED (HOLD4): an unreadable registry means collisions cannot be
+ * checked, and an unpersisted registry means a concurrent claim could
+ * double-claim — both throw [UnlinkedIdentityException] instead of
+ * returning an unverified id. The only non-throwing early return is the
+ * blank-hash fallback (no registry identity exists to verify). Serialized
+ * on [unlinkedIdClaimLock] so concurrent handoffs cannot double-claim.
  * Pure storage seam (`readEntries`/`writeEntries`) — JVM-tested with a
  * fake map, wired to custom-val prefs in production.
  */
@@ -917,7 +929,12 @@ internal fun claimUnlinkedMediaId(
     if (infoHash.isNullOrBlank()) return UNLINKED_TORRENT_MEDIA_ID
     val norm = infoHash.trim().uppercase()
     synchronized(unlinkedIdClaimLock) {
-        val owned = parseUnlinkedIdEntries(runCatching { readEntries() }.getOrDefault(emptySet()))
+        val snapshot = try {
+            readEntries()
+        } catch (e: Exception) {
+            throw UnlinkedIdentityException("unlinked identity registry unreadable: ${e.message}")
+        }
+        val owned = parseUnlinkedIdEntries(snapshot)
         owned[norm]?.let { return it }
         var candidate = unlinkedMediaIdForTorrent(norm)
         val used = owned.values.toSet()
@@ -925,7 +942,11 @@ internal fun claimUnlinkedMediaId(
             candidate = if (candidate == Int.MIN_VALUE) UNLINKED_TORRENT_MEDIA_ID else candidate - 1
         }
         owned[norm] = candidate
-        runCatching { writeEntries(formatUnlinkedIdEntries(owned)) }
+        try {
+            writeEntries(formatUnlinkedIdEntries(owned))
+        } catch (e: Exception) {
+            throw UnlinkedIdentityException("unlinked identity not persisted: ${e.message}")
+        }
         return candidate
     }
 }

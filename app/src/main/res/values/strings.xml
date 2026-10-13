@@ -1402,6 +1402,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="manual_torrent_clipboard_empty">Clipboard has no magnet link or .torrent URL</string>
     <string name="manual_torrent_file_too_large">Torrent file is too large or unreadable</string>
     <string name="manual_torrent_resolve_failed">Couldn\'t read that torrent</string>
+    <string name="manual_torrent_identity_failed">Couldn\'t set up isolated playback — try again</string>
     <string name="manual_torrent_no_files">No files found in that torrent</string>
     <string name="manual_torrent_received_toast">Torrent received — open an anime to attach it</string>
     <string name="manual_torrent_receive_failed">Couldn\'t read the shared torrent</string>

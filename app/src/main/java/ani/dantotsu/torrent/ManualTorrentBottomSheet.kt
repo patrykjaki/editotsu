@@ -22,6 +22,7 @@ import ani.dantotsu.download.video.Helper
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.MediaDetailsViewModel
 import ani.dantotsu.media.UNLINKED_ID_MAP_PREF
+import ani.dantotsu.media.UnlinkedIdentityException
 import ani.dantotsu.media.anime.AnimeWatchFragment
 import ani.dantotsu.media.anime.Episode
 import ani.dantotsu.media.anime.ExoplayerView
@@ -482,7 +483,14 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                 Logger.log("ManualTorrentBottomSheet: unlinked play handoff failed")
                 withContext(Dispatchers.Main) {
                     if (!cancelled) {
-                        snackString(getString(R.string.manual_torrent_resolve_failed))
+                        // HOLD4: an unverified identity aborts with its own
+                        // error — never a generic resolve failure, never playback.
+                        snackString(
+                            getString(
+                                if (e is UnlinkedIdentityException) R.string.manual_torrent_identity_failed
+                                else R.string.manual_torrent_resolve_failed
+                            )
+                        )
                         showFiles()
                     }
                 }

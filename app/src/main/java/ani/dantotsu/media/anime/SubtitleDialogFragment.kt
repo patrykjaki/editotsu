@@ -413,7 +413,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
         val media = model.getMedia().value ?: return
         val savedEpSub = EpisodeSubtitleStore.getSavedSubtitle(media.id, episode.number)
         val onlineName = activeOnlineName ?: savedEpSub?.let { "${it.displayName} (${it.provider})" }
-        val savedLang: String? = PrefManager.getNullableCustomVal("subLang_${media.id}", null, String::class.java)
+        val savedLang: String? = PrefManager.getNullableCustomVal(legacySubLangKey(media.id, episode.number), null, String::class.java)
 
         val badgeText = when {
             onlineName != null -> {
@@ -429,7 +429,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                 getString(R.string.active_sub_prefix, "Stream: $trackName")
             }
             savedLang.startsWith("Online:") -> {
-                PrefManager.setCustomVal("subLang_${media.id}", null)
+                PrefManager.setCustomVal(legacySubLangKey(media.id, episode.number), null)
                 getString(R.string.status_sub_off)
             }
             else -> getString(R.string.active_sub_prefix, "${mapLanguageCode(savedLang)} [Server]")
@@ -441,7 +441,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
     private fun loadSubtitlesTab(episodeId: String) {
         val media = model.getMedia().value ?: return
         val items = mutableListOf<Any>()
-        val savedLang: String? = PrefManager.getNullableCustomVal("subLang_${media.id}", null, String::class.java)
+        val savedLang: String? = PrefManager.getNullableCustomVal(legacySubLangKey(media.id, episode.number), null, String::class.java)
 
         // 1. None Option
         items.add(NoneSubtitleOption)
@@ -840,7 +840,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
 
             val savedEpSub = media?.let { EpisodeSubtitleStore.getSavedSubtitle(it.id, episode.number) }
             val effectiveOnlineId = activeOnlineId ?: savedEpSub?.id
-            val savedLang: String? = PrefManager.getNullableCustomVal("subLang_${mediaId}", null, String::class.java)
+            val savedLang: String? = PrefManager.getNullableCustomVal(legacySubLangKey(mediaId, episode.number), null, String::class.java)
 
             // Reset visibility
             itemBinding.formatBadge.isVisible = false
@@ -872,7 +872,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                     itemBinding.subtitleCardRoot.setOnClickListener {
                         episode.selectedSubtitle = null
                         model.setEpisode(episode, "Subtitle")
-                        PrefManager.setCustomVal("subLang_${mediaId}", "None")
+                        PrefManager.setCustomVal(legacySubLangKey(mediaId, episode.number), "None")
                         // CP3: explicitly turn subtitles off in the player so the Off state
                         // is authoritative and survives FILE_LOADED / track refreshes.
                         // Beta03: also invalidate any in-flight server download so a
@@ -939,13 +939,13 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                             model.removeLocalSubtitle(epId, item)
                             loadLocalTab(epId)
                             if (savedLang == item.language) {
-                                PrefManager.setCustomVal("subLang_${mediaId}", "None")
+                                PrefManager.setCustomVal(legacySubLangKey(mediaId, episode.number), "None")
                                 updateActiveSubtitleBadge()
                             }
                         }
 
                         itemBinding.subtitleCardRoot.setOnClickListener {
-                            PrefManager.setCustomVal("subLang_${mediaId}", item.language)
+                            PrefManager.setCustomVal(legacySubLangKey(mediaId, episode.number), item.language)
                             if (item.file.url.isNotBlank()) {
                                 (requireActivity() as? ExoplayerView)?.reApplyLocalSubtitle(item.file.url)
                             }
@@ -983,7 +983,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                             val subIndex = currentExtractor?.subtitles?.indexOf(item) ?: -1
                             episode.selectedSubtitle = subIndex
                             model.setEpisode(episode, "Subtitle")
-                            PrefManager.setCustomVal("subLang_${mediaId}", item.language)
+                            PrefManager.setCustomVal(legacySubLangKey(mediaId, episode.number), item.language)
                             exoActivity?.subtitleManager?.clearOnlineSubtitle(mediaId, episode.number)
                             // 0.5.0-beta02: previously this only saved the pref (applied
                             // on next episode load). Kick a live download+attach so the
@@ -1012,7 +1012,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                     }
 
                     itemBinding.subtitleCardRoot.setOnClickListener {
-                        PrefManager.setCustomVal("subLang_${mediaId}", uniqueKey)
+                        PrefManager.setCustomVal(legacySubLangKey(mediaId, episode.number), uniqueKey)
                         exoActivity?.subtitleManager?.clearOnlineSubtitle(mediaId, episode.number)
                         exoActivity?.reApplyLocalSubtitle(item.subtitle.file.url)
                         updateActiveSubtitleBadge()
@@ -1042,7 +1042,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                     }
 
                     itemBinding.subtitleCardRoot.setOnClickListener {
-                        PrefManager.setCustomVal("subLang_${mediaId}", uniqueKey)
+                        PrefManager.setCustomVal(legacySubLangKey(mediaId, episode.number), uniqueKey)
                         // Beta03: an explicit embedded choice supersedes any
                         // in-flight server download (CP3-B02-2/3).
                         (requireActivity() as? ExoplayerView)?.let { exo ->

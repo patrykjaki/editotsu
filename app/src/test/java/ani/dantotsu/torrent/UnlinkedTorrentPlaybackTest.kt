@@ -5,6 +5,7 @@ import ani.dantotsu.connections.updateProgress
 import ani.dantotsu.download.anime.AnimeDownloaderService
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.UNLINKED_TORRENT_MEDIA_ID
+import ani.dantotsu.media.UnlinkedIdentityException
 import ani.dantotsu.media.claimUnlinkedMediaId
 import ani.dantotsu.media.continueListWith
 import ani.dantotsu.media.formatUnlinkedIdEntries
@@ -363,30 +364,81 @@ class UnlinkedTorrentPlaybackTest {
     }
 
     @Test
-    fun `claim tolerates blank hashes and failing storage`() {
-        val empty = mutableSetOf<String>()
-        assertEquals(
-            UNLINKED_TORRENT_MEDIA_ID,
-            claimUnlinkedMediaId(null, { empty }, { })
-        )
-        assertEquals(
-            UNLINKED_TORRENT_MEDIA_ID,
-            claimUnlinkedMediaId("  ", { empty }, { })
-        )
-        // Throwing write still returns a usable reserved id (best-effort).
-        val id = claimUnlinkedMediaId(
-            "G".repeat(40),
-            readEntries = { emptySet() },
-            writeEntries = { throw java.io.IOException("injected") }
-        )
+    fun `claim fails closed on unreadable registry`() {
+        var writes = 0
+        try {
+            claimUnlinkedMediaId(
+                "G".repeat(40),
+                readEntries = { throw java.io.IOException("injected") },
+                writeEntries = { writes += 1 }
+            )
+            assertTrue("unreadable registry must throw", false)
+        } catch (e: UnlinkedIdentityException) {
+            assertTrue((e.message ?: "").contains("unreadable"))
+        }
+        assertEquals(0, writes)
+    }
+
+    @Test
+    fun `claim fails closed on unpersisted registry`() {
+        val store = mutableSetOf<String>()
+        try {
+            claimUnlinkedMediaId(
+                "G".repeat(40),
+                readEntries = { store },
+                writeEntries = { throw java.io.IOException("injected") }
+            )
+            assertTrue("unpersisted registry must throw", false)
+        } catch (e: UnlinkedIdentityException) {
+            assertTrue((e.message ?: "").contains("persisted"))
+        }
+        assertTrue(store.isEmpty())
+    }
+
+    @Test
+    fun `claim recovers after transient storage failure`() {
+        val store = mutableSetOf<String>()
+        var failReads = 1
+        fun read(): Set<String> {
+            if (failReads-- > 0) throw java.io.IOException("injected")
+            return store
+        }
+        fun write(entries: Set<String>) {
+            store.clear()
+            store.addAll(entries)
+        }
+        try {
+            claimUnlinkedMediaId("G".repeat(40), ::read, ::write)
+            assertTrue("first claim must throw", false)
+        } catch (_: UnlinkedIdentityException) {
+        }
+        // Recovery: the retry claims, persists, and stays stable.
+        val id = claimUnlinkedMediaId("G".repeat(40), ::read, ::write)
         assertTrue(isUnlinkedId(id))
-        // Throwing read degrades to the pure candidate (still reserved).
-        val id2 = claimUnlinkedMediaId(
-            "H".repeat(40),
-            readEntries = { throw java.io.IOException("injected") },
-            writeEntries = { }
+        assertEquals(id, claimUnlinkedMediaId("G".repeat(40), ::read, ::write))
+        assertEquals(1, parseUnlinkedIdEntries(store).size)
+    }
+
+    @Test
+    fun `blank hashes fall back without touching storage`() {
+        var touches = 0
+        assertEquals(
+            UNLINKED_TORRENT_MEDIA_ID,
+            claimUnlinkedMediaId(
+                null,
+                readEntries = { touches += 1; emptySet() },
+                writeEntries = { touches += 1 }
+            )
         )
-        assertEquals(unlinkedMediaIdForTorrent("H".repeat(40)), id2)
+        assertEquals(
+            UNLINKED_TORRENT_MEDIA_ID,
+            claimUnlinkedMediaId(
+                "   ",
+                readEntries = { touches += 1; emptySet() },
+                writeEntries = { touches += 1 }
+            )
+        )
+        assertEquals(0, touches)
     }
 
     @Test
@@ -436,5 +488,29 @@ class UnlinkedTorrentPlaybackTest {
         prefs[legacySubLangKey(id, "8")] = "English"
         assertEquals("None", prefs[legacySubLangKey(id, "1")])
         assertEquals("English", prefs[legacySubLangKey(id, "8")])
+    }
+
+    @Test
+    fun `dialog and player reopen resolve identical keys`() {
+        // All 10 dialog sites plus the 7 player/manager sites compute keys
+        // purely from (mediaId, episode): reopening either surface
+        // re-derives the same keys, so Off/selection can neither leak
+        // across siblings nor vanish across reopens.
+        val id = unlinkedMediaIdForTorrent("K".repeat(40))
+        repeat(3) {
+            assertEquals("subLang_${id}_1", legacySubLangKey(id, "1"))
+            assertEquals("subLang_${id}_8", legacySubLangKey(id, "8"))
+            assertEquals("subLang_123", legacySubLangKey(123, "12"))
+        }
+        val prefs = mutableMapOf<String, String?>()
+        // Dialog writes Off on file 1, closes, reopens: still Off there…
+        prefs[legacySubLangKey(id, "1")] = "None"
+        assertEquals("None", prefs[legacySubLangKey(id, "1")])
+        // …and a later player reopen on file 8 still sees no selection.
+        assertEquals(null, prefs[legacySubLangKey(id, "8")])
+        // Server-subtitle selection on file 8 persists for file 8 only.
+        prefs[legacySubLangKey(id, "8")] = "Online:wyzie-1"
+        assertEquals("None", prefs[legacySubLangKey(id, "1")])
+        assertEquals("Online:wyzie-1", prefs[legacySubLangKey(id, "8")])
     }
 }
