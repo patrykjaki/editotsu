@@ -929,8 +929,13 @@ internal fun claimUnlinkedMediaId(
     if (infoHash.isNullOrBlank()) return UNLINKED_TORRENT_MEDIA_ID
     val norm = infoHash.trim().uppercase()
     synchronized(unlinkedIdClaimLock) {
+        // HOLD5: a store-typed failure (already an UnlinkedIdentityException
+        // from the strict adapter) passes through with its exact message;
+        // anything else is an unreadable registry.
         val snapshot = try {
             readEntries()
+        } catch (e: UnlinkedIdentityException) {
+            throw e
         } catch (e: Exception) {
             throw UnlinkedIdentityException("unlinked identity registry unreadable: ${e.message}")
         }
@@ -944,6 +949,8 @@ internal fun claimUnlinkedMediaId(
         owned[norm] = candidate
         try {
             writeEntries(formatUnlinkedIdEntries(owned))
+        } catch (e: UnlinkedIdentityException) {
+            throw e
         } catch (e: Exception) {
             throw UnlinkedIdentityException("unlinked identity not persisted: ${e.message}")
         }
