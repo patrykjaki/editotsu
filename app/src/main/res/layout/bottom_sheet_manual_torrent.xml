@@ -103,12 +103,15 @@
         android:layout_gravity="center"
         android:visibility="gone" />
 
-    <androidx.recyclerview.widget.RecyclerView
+    <!-- M7A G2 runtime P0: MaxHeightRecyclerView, because
+         android:maxHeight is silently ignored by RecyclerView and the
+         unbounded list pushed the action row off-screen. Same 320dp cap
+         the layout always intended. -->
+    <ani.dantotsu.torrent.MaxHeightRecyclerView
         android:id="@+id/manualTorrentFileList"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:maxHeight="320dp"
         android:visibility="gone" />
 
     <LinearLayout
