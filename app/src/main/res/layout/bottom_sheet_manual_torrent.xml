@@ -106,11 +106,16 @@
     <!-- M7A G2 runtime P0: MaxHeightRecyclerView, because
          android:maxHeight is silently ignored by RecyclerView and the
          unbounded list pushed the action row off-screen. Same 320dp cap
-         the layout always intended. -->
+         the layout always intended.
+         0dp + weight: when the sheet is shorter than its content
+         (landscape, large font) the list shrinks and scrolls instead of
+         pushing the action row below the screen; when it fits, the list
+         keeps its natural (capped) height. -->
     <ani.dantotsu.torrent.MaxHeightRecyclerView
         android:id="@+id/manualTorrentFileList"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:layout_marginTop="8dp"
         android:visibility="gone" />
 

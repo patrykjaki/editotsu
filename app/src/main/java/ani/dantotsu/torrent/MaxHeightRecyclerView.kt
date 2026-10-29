@@ -15,6 +15,11 @@ import androidx.recyclerview.widget.RecyclerView
  * value): short lists still wrap naturally, long lists scroll internally,
  * and the trailing action row always stays reachable. No behavior change
  * beyond measurement.
+ *
+ * The cap never widens the parent's constraint: an AT_MOST/EXACTLY spec
+ * smaller than the cap (landscape, large font) is kept, so the sheet's
+ * weighted layout can shrink the list below 320dp and leave room for the
+ * action row instead of the list claiming 320dp unconditionally.
  */
 class MaxHeightRecyclerView @JvmOverloads constructor(
     context: Context,
@@ -23,15 +28,27 @@ class MaxHeightRecyclerView @JvmOverloads constructor(
 ) : RecyclerView(context, attrs, defStyleAttr) {
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val capped = MeasureSpec.makeMeasureSpec(
-            (MAX_LIST_HEIGHT_DP * resources.displayMetrics.density).toInt(),
-            MeasureSpec.AT_MOST
-        )
-        super.onMeasure(widthMeasureSpec, capped)
+        val cap = (MAX_LIST_HEIGHT_DP * resources.displayMetrics.density).toInt()
+        super.onMeasure(widthMeasureSpec, cappedHeightSpec(heightMeasureSpec, cap))
     }
 
     companion object {
         /** Matches the sheet layout's original (ineffective) maxHeight. */
         const val MAX_LIST_HEIGHT_DP = 320
+
+        // MeasureSpec layout: top 2 bits = mode, low 30 bits = size. Bit math on
+        // the compile-time constants (instead of MeasureSpec.getSize/getMode/
+        // makeMeasureSpec) keeps this pure and JVM-unit-testable.
+        private const val MODE_MASK = 0x3 shl 30
+
+        /** Caps [spec] at [capPx] without ever loosening a tighter parent constraint. */
+        internal fun cappedHeightSpec(spec: Int, capPx: Int): Int {
+            val size = spec and MODE_MASK.inv()
+            return when (spec and MODE_MASK) {
+                MeasureSpec.EXACTLY -> minOf(size, capPx) or MeasureSpec.EXACTLY
+                MeasureSpec.AT_MOST -> minOf(size, capPx) or MeasureSpec.AT_MOST
+                else -> (capPx and MODE_MASK.inv()) or MeasureSpec.AT_MOST
+            }
+        }
     }
 }
