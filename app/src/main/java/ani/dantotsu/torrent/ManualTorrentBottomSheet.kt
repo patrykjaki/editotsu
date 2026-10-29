@@ -1,4 +1,7 @@
 package ani.dantotsu.torrent
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import android.annotation.SuppressLint
 
 import android.content.ClipboardManager
 import android.content.Context
@@ -33,6 +36,7 @@ import ani.dantotsu.toast
 import ani.dantotsu.util.Logger
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import eu.kanade.tachiyomi.data.torrentServer.model.Torrent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -140,12 +144,23 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                 getString(R.string.manual_torrent_title)
             }
 
-        binding.manualTorrentFileList.layoutManager = LinearLayoutManager(requireContext())
-        fileAdapter = FileAdapter { position ->
-            selectedPosition = position
-            fileAdapter?.setSelected(position)
-            updateActions()
+        // r2: recreated (rotation / process restore). media/episode are plain
+        // fields set by newInstance and are NOT restored, so a recreated
+        // anchored sheet would silently become unanchored. Fail closed.
+        if (savedInstanceState != null &&
+            savedInstanceState.getBoolean(STATE_ANCHORED) && !isAnchored()
+        ) {
+            dismissAllowingStateLoss()
+            return
         }
+
+        binding.manualTorrentFileList.layoutManager = LinearLayoutManager(requireContext())
+        // r2 (upstream DirectTorrentBottomSheet style): tap = play, row icon =
+        // download. Both reuse the existing handoff flows unchanged.
+        fileAdapter = FileAdapter(
+            onPlay = { position -> selectAndRun(position) { handOffPlay() } },
+            onDownload = { position -> selectAndRun(position) { handOffDownload() } },
+        )
         binding.manualTorrentFileList.adapter = fileAdapter
 
         binding.manualTorrentPaste.setOnClickListener { pasteMagnet() }
@@ -166,12 +181,46 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
             pickFile.launch(arrayOf(ManualTorrentEntry.TORRENT_MIME, "application/octet-stream"))
         }
         binding.manualTorrentUsePending.setOnClickListener { usePending() }
-        binding.manualTorrentPlay.setOnClickListener { handOffPlay() }
-        binding.manualTorrentDownload.setOnClickListener { handOffDownload() }
-        binding.manualTorrentCancel.setOnClickListener { dismissAllowingStateLoss() }
 
         refreshPendingRow()
         showInput(null)
+
+        // r2: re-resolve a typed/pasted magnet or http(s) .torrent after
+        // recreation. The engine still holds the handle (addTorrent finds it
+        // by info-hash), so this is cheap. Staged files are deleted with the
+        // old instance, so those fall back to the input state.
+        val restoredUrl = savedInstanceState?.getString(STATE_RESOLVED_URL)
+        val restoredPayload = restoredUrl?.let { ManualTorrentInput.classify(it) }
+        if (restoredPayload != null) {
+            restoreFileId = savedInstanceState.getInt(STATE_SELECTED_FILE_ID, -1)
+                .takeIf { it >= 0 }
+            resolvePayload(
+                restoredPayload,
+                pendingGeneration = null,
+                inputTitle = describeInputTitle(restoredPayload)
+            )
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_ANCHORED, isAnchored())
+        // Only re-resolvable inputs; staged-file locators are temp paths.
+        val url = resolvedRawUrl
+        if (url != null && ManualTorrentInput.classify(url) != null) {
+            outState.putString(STATE_RESOLVED_URL, url)
+            selectedEntry()?.let { outState.putInt(STATE_SELECTED_FILE_ID, it.index) }
+        }
+    }
+
+    /** File id to reselect after a recreation re-resolve. */
+    private var restoreFileId: Int? = null
+
+    private fun selectAndRun(position: Int, action: () -> Unit) {
+        if (handoffJob?.isActive == true || files.getOrNull(position) == null) return
+        selectedPosition = position
+        fileAdapter?.setSelected(position)
+        action()
     }
 
     override fun onResume() {
@@ -340,13 +389,18 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                     resolvedRawUrl = url
                     resolvedTitle = torrent.name?.takeIf { it.isNotBlank() } ?: title
                     files = entries
-                    selectedPosition = entries
+                    val restoreId = restoreFileId
+                    restoreFileId = null
+                    val restoredIndex = restoreId?.let { id -> entries.indexOfFirst { it.index == id } }
+                    selectedPosition = restoredIndex?.takeIf { it >= 0 } ?: entries
                         .indexOfFirst { it == pickDefaultManualFile(entries) }
                         .coerceAtLeast(0)
                     fileAdapter?.submit(files, selectedPosition)
                     showFiles()
                 }
             } catch (e: Exception) {
+                // Sheet dismissed: cancellation is not a failure (r2).
+                if (e is CancellationException) throw e
                 // Fixed string only: engine messages can carry raw magnet /
                 // file details (HOLD1-D), which must never reach logs.
                 Logger.log("ManualTorrentBottomSheet: resolve failed")
@@ -414,6 +468,8 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                     dismissAllowingStateLoss()
                 }
             } catch (e: Exception) {
+                // Sheet dismissed: cancellation is not a failure (r2).
+                if (e is CancellationException) throw e
                 Logger.log("ManualTorrentBottomSheet: play handoff failed")
                 withContext(Dispatchers.Main) {
                     if (!cancelled) {
@@ -474,6 +530,8 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                     dismissAllowingStateLoss()
                 }
             } catch (e: Exception) {
+                // Sheet dismissed: cancellation is not a failure (r2).
+                if (e is CancellationException) throw e
                 Logger.log("ManualTorrentBottomSheet: unlinked play handoff failed")
                 withContext(Dispatchers.Main) {
                     if (!cancelled) {
@@ -554,6 +612,8 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                     dismissAllowingStateLoss()
                 }
             } catch (e: Exception) {
+                // Sheet dismissed: cancellation is not a failure (r2).
+                if (e is CancellationException) throw e
                 // Fixed string only (HOLD1-D): no provider/engine detail.
                 Logger.log("ManualTorrentBottomSheet: download handoff failed")
                 withContext(Dispatchers.Main) {
@@ -629,6 +689,8 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
                     dismissAllowingStateLoss()
                 }
             } catch (e: Exception) {
+                // Sheet dismissed: cancellation is not a failure (r2).
+                if (e is CancellationException) throw e
                 Logger.log("ManualTorrentBottomSheet: unlinked download handoff failed")
                 withContext(Dispatchers.Main) {
                     if (!cancelled) {
@@ -655,7 +717,7 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
         if (message != null) binding.manualTorrentStatus.text = message
         binding.manualTorrentProgress.visibility = View.GONE
         binding.manualTorrentFileList.visibility = View.GONE
-        binding.manualTorrentActionRow.visibility = View.GONE
+        binding.manualTorrentFilesHint.visibility = View.GONE
         setInputsEnabled(true)
     }
 
@@ -663,7 +725,7 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
         binding.manualTorrentStatus.visibility = View.GONE
         binding.manualTorrentProgress.visibility = View.VISIBLE
         binding.manualTorrentFileList.visibility = View.GONE
-        binding.manualTorrentActionRow.visibility = View.GONE
+        binding.manualTorrentFilesHint.visibility = View.GONE
         setInputsEnabled(false)
     }
 
@@ -671,17 +733,20 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
         binding.manualTorrentStatus.visibility = View.GONE
         binding.manualTorrentProgress.visibility = View.GONE
         binding.manualTorrentFileList.visibility = View.VISIBLE
-        binding.manualTorrentActionRow.visibility = View.VISIBLE
+        binding.manualTorrentFilesHint.visibility = View.VISIBLE
         setInputsEnabled(true)
         refreshPendingRow()
         updateActions()
+        // r2: the base class expands only in onStart (before files exist), so
+        // a sheet that grows afterwards — always after a rotation re-resolve —
+        // would stay at peek height with the list off-screen.
+        (dialog as? BottomSheetDialog)?.behavior?.state = BottomSheetBehavior.STATE_EXPANDED
     }
 
     private fun showHandoff() {
         binding.manualTorrentProgress.visibility = View.VISIBLE
         setInputsEnabled(false)
-        binding.manualTorrentPlay.isEnabled = false
-        binding.manualTorrentDownload.isEnabled = false
+        fileAdapter?.setEnabled(false)
     }
 
     private fun setInputsEnabled(enabled: Boolean) {
@@ -693,9 +758,7 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
     }
 
     private fun updateActions() {
-        val ready = selectedEntry() != null && handoffJob?.isActive != true
-        binding.manualTorrentPlay.isEnabled = ready
-        binding.manualTorrentDownload.isEnabled = ready
+        fileAdapter?.setEnabled(handoffJob?.isActive != true)
     }
 
     override fun onDismiss(dialog: DialogInterface) {
@@ -712,11 +775,20 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
     }
 
     private class FileAdapter(
-        private val onPick: (Int) -> Unit,
+        private val onPlay: (Int) -> Unit,
+        private val onDownload: (Int) -> Unit,
     ) : RecyclerView.Adapter<FileAdapter.Holder>() {
 
         private var items: List<ManualTorrentFileEntry> = emptyList()
         private var selected = -1
+        private var enabled = true
+
+        @SuppressLint("NotifyDataSetChanged")
+        fun setEnabled(value: Boolean) {
+            if (enabled == value) return
+            enabled = value
+            notifyDataSetChanged()
+        }
 
         fun submit(newItems: List<ManualTorrentFileEntry>, selectedPosition: Int) {
             items = newItems
@@ -746,7 +818,16 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
             holder.binding.manualFileRoot.isActivated = isSelected
             holder.binding.manualFileSelected.visibility =
                 if (isSelected) View.VISIBLE else View.GONE
-            holder.binding.root.setOnClickListener { onPick(position) }
+            holder.binding.manualFileRoot.isEnabled = enabled
+            holder.binding.manualFileDownload.isEnabled = enabled
+            holder.binding.manualFileRoot.setOnClickListener {
+                holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
+                    ?.let(onPlay)
+            }
+            holder.binding.manualFileDownload.setOnClickListener {
+                holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
+                    ?.let(onDownload)
+            }
         }
 
         override fun getItemCount(): Int = items.size
@@ -767,6 +848,10 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
     }
 
     companion object {
+        private const val STATE_ANCHORED = "manualTorrent.anchored"
+        private const val STATE_RESOLVED_URL = "manualTorrent.resolvedUrl"
+        private const val STATE_SELECTED_FILE_ID = "manualTorrent.selectedFileId"
+
         fun newInstance(media: Media, episode: Episode): ManualTorrentBottomSheet {
             return ManualTorrentBottomSheet().apply {
                 this.media = media

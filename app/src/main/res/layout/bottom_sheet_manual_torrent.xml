@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- MAX MERGE M7A: manual torrent/magnet entry sheet. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/manualTorrentContainer"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -44,48 +45,53 @@
             android:text="@string/manual_torrent_use" />
     </LinearLayout>
 
-    <EditText
-        android:id="@+id/manualTorrentMagnetInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="@string/manual_torrent_magnet_hint"
-        android:inputType="textUri"
-        android:maxLines="3" />
-
+    <!-- M7A G2 sheet r2 (upstream DirectTorrentBottomSheet style): one input
+         row, so the file list keeps most of the sheet in landscape. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:gravity="end"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/manualTorrentPaste"
-            android:layout_width="wrap_content"
+        <EditText
+            android:id="@+id/manualTorrentMagnetInput"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="@string/manual_torrent_paste" />
+            android:layout_weight="1"
+            android:hint="@string/manual_torrent_magnet_hint"
+            android:importantForAutofill="no"
+            android:inputType="textUri"
+            android:maxLines="1"
+            android:singleLine="true" />
+
+        <ImageButton
+            android:id="@+id/manualTorrentPaste"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/manual_torrent_paste"
+            android:src="@drawable/ic_round_content_paste_24"
+            app:tint="?attr/colorPrimary" />
+
+        <ImageButton
+            android:id="@+id/manualTorrentPickFile"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/manual_torrent_pick_file"
+            android:src="@drawable/ic_round_folder_24"
+            app:tint="?attr/colorPrimary" />
 
         <Button
             android:id="@+id/manualTorrentAdd"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
             android:insetTop="0dp"
             android:insetBottom="0dp"
+            android:minWidth="0dp"
             android:text="@string/manual_torrent_add" />
     </LinearLayout>
-
-    <Button
-        android:id="@+id/manualTorrentPickFile"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:insetTop="0dp"
-        android:insetBottom="0dp"
-        android:text="@string/manual_torrent_pick_file" />
 
     <TextView
         android:id="@+id/manualTorrentStatus"
@@ -109,8 +115,18 @@
          the layout always intended.
          0dp + weight: when the sheet is shorter than its content
          (landscape, large font) the list shrinks and scrolls instead of
-         pushing the action row below the screen; when it fits, the list
-         keeps its natural (capped) height. -->
+         overflowing the screen; when it fits, the list keeps its natural
+         (capped) height. -->
+    <TextView
+        android:id="@+id/manualTorrentFilesHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:alpha="0.7"
+        android:text="@string/manual_torrent_tap_to_play"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
     <ani.dantotsu.torrent.MaxHeightRecyclerView
         android:id="@+id/manualTorrentFileList"
         android:layout_width="match_parent"
@@ -119,41 +135,7 @@
         android:layout_marginTop="8dp"
         android:visibility="gone" />
 
-    <LinearLayout
-        android:id="@+id/manualTorrentActionRow"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:gravity="end"
-        android:orientation="horizontal"
-        android:visibility="gone">
-
-        <Button
-            android:id="@+id/manualTorrentPlay"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="@string/manual_torrent_play" />
-
-        <Button
-            android:id="@+id/manualTorrentDownload"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="@string/manual_torrent_download" />
-    </LinearLayout>
-
-    <Button
-        android:id="@+id/manualTorrentCancel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="end"
-        android:layout_marginTop="4dp"
-        android:insetTop="0dp"
-        android:insetBottom="0dp"
-        android:text="@android:string/cancel" />
+    <!-- No action row (r2): tap a file to play it, the row's download icon
+         downloads it; back / swipe-down cancels. -->
 
 </LinearLayout>

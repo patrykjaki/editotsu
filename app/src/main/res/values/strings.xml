@@ -1397,6 +1397,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="manual_torrent_play">Play</string>
     <string name="manual_torrent_download">Download</string>
     <string name="manual_torrent_selected">Selected</string>
+    <string name="manual_torrent_tap_to_play">Tap a file to play it</string>
     <string name="manual_torrent_invalid_input">Not a valid magnet link or .torrent URL</string>
     <string name="manual_torrent_invalid_file">That file is not a .torrent</string>
     <string name="manual_torrent_clipboard_empty">Clipboard has no magnet link or .torrent URL</string>
