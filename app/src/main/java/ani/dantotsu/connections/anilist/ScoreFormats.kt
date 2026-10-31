@@ -110,7 +110,47 @@ object ScoreFormats {
         else -> toRaw(bucket.toDouble(), format)
     }
 
-    private val SMILEYS = listOf("", "🙁", "😐", "🙂") // 🙁 😐 🙂
+    /** Index 1-3 = POINT_3 values; index 0 = unscored. */
+    val SMILEYS = listOf("", "🙁", "😐", "🙂") // 🙁 😐 🙂
+
+    /** Max characters the editor accepts for [format]. */
+    fun inputLength(format: ScoreFormat): Int = when (format) {
+        ScoreFormat.POINT_100 -> 3
+        ScoreFormat.POINT_10_DECIMAL -> 4
+        ScoreFormat.POINT_10 -> 2
+        ScoreFormat.POINT_5, ScoreFormat.POINT_3 -> 1
+    }
+
+    /** Editor text -> value in [format]; null if it can't be read. Blank -> 0. */
+    fun parseInput(text: String, format: ScoreFormat): Double? {
+        val t = text.trim().replace(',', '.')
+        if (t.isEmpty()) return 0.0
+        if (format == ScoreFormat.POINT_3) {
+            val i = SMILEYS.indexOf(t)
+            if (i > 0) return i.toDouble()
+        }
+        return t.toDoubleOrNull()?.takeIf { !it.isNaN() && it >= 0.0 }
+    }
+
+    /**
+     * Raw score to save from the editor, or null to leave the stored score alone.
+     * Unchanged text (what [display] showed) returns null, so opening and saving
+     * never rewrites a raw score (e.g. raw 77 in POINT_5 stays 77, not 80).
+     * Clearing a scored entry returns 0.
+     */
+    fun editedRaw(initialRaw: Int, text: String, format: ScoreFormat): Int? {
+        if (text.trim() == display(initialRaw, format)) return null
+        val v = parseInput(text, format) ?: return null
+        val raw = toRaw(v, format)
+        return if (raw == 0 && initialRaw <= 0) null else raw
+    }
+
+    /**
+     * Score text on media cards: the user's own score in their format, or the
+     * AniList average (0-100, shown /10 as before) when unscored.
+     */
+    fun cardText(userRaw: Int, meanScore: Int?, format: ScoreFormat): String =
+        if (userRaw > 0) display(userRaw, format) else ((meanScore ?: 0) / 10.0).toString()
 
     // Integer half-up division for non-negative ints: halfUp(75, 20) = 4.
     private fun halfUp(n: Int, d: Int): Int = (n + d / 2) / d
