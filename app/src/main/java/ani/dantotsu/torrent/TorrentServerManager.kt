@@ -409,6 +409,30 @@ class TorrentServerManager(private val context: Context) {
         }
     }
 
+    /**
+     * Read-only engine snapshot for the bench rig (torrent/bench). Holds the per-hash
+     * handle lock like every other native call here. Returns null when the torrent is gone.
+     */
+    internal fun benchStatus(hash: String, firstPiece: Int = -1): String? {
+        val normalized = hash.uppercase()
+        return try {
+            val handle = sessionManager.find(Sha1Hash.parseHex(normalized)) ?: return null
+            synchronized(getHandleLock(normalized)) {
+                if (!handle.isValid) return "valid=false"
+                val s = handle.status()
+                val first = if (firstPiece >= 0) handle.havePiece(firstPiece).toString() else "na"
+                "state=${s.state()} progress=${"%.4f".format(s.progress())} peers=${s.numPeers()} " +
+                    "seeds=${s.numSeeds()} listPeers=${s.listPeers()} candidates=${s.connectCandidates()} " +
+                    "dlRate=${s.downloadRate()} done=${s.totalDone()} havePieces=${s.pieces()?.count()} " +
+                    "firstPiece=$first urlSeeds=${handle.urlSeeds().size} " +
+                    "err=${s.errorCode()?.value ?: 0} dhtNodes=${sessionManager.dhtNodes()} " +
+                    "firewalled=${sessionManager.isFirewalled}"
+            }
+        } catch (e: Exception) {
+            "statusError=${e.javaClass.simpleName}"
+        }
+    }
+
     fun getDeadlineRegistry(hash: String): TorrentDeadlineRegistry? {
         val normalized = hash.uppercase()
         registries[normalized]?.let { return it }

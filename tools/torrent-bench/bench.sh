@@ -66,7 +66,6 @@ while IFS= read -r uri <&3; do
     b64=$(printf '%s' "$uri" | base64 | tr -d '\n')
     $A shell am broadcast -a ani.editotsu.bench.TORRENT -p "$PKG" --es cmd add --es uri_b64 "$b64" >/dev/null
     added=$(wait_bench "$since" "event=(added|add_failed|error)" "$ADD_TIMEOUT")
-    $A logcat -d -v epoch -T "$since" > "$OUT/$label-run$run.logcat.txt" 2>/dev/null
     hash=$(kv "$added" hash); len=$(kv "$added" len); url=$(kv "$added" url)
     files=$(kv "$added" files); meta=$(kv "$added" metaMs)
     head="" tput_b="" tput_s="" mid="" tail="" removed=""
@@ -88,6 +87,7 @@ while IFS= read -r uri <&3; do
       if [ -n "$added" ]; then note="${note:+$note;}$(kv "$added" event)"; else note="${note:+$note;}add_timeout"; fi
     fi
     ab=$(aborted_since "$since"); pid1=$($A shell pidof "$PKG" | tr -d '\r')
+    $A logcat -d -v epoch -T "$since" > "$OUT/$label-run$run.logcat.txt" 2>/dev/null
     $A logcat -d -b crash -v epoch -T "$since" > "$OUT/$label-run$run.crash.txt" 2>/dev/null
     abort=$([ -n "$ab" ] && echo yes || echo no)
     pidc=$([ "$pid0" != "$pid1" ] && echo yes || echo no)
