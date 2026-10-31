@@ -11,10 +11,95 @@ import ani.dantotsu.parsers.VideoType
 object SourceRowSummarizer {
 
     /**
-     * Maximum number of pills to surface on the collapsed card. Per the
-     * visual-hierarchy brief: "maximum 3-4 visible chips".
+     * Language code/name -> flag glyph mapping (v3 redesign: FLAGS, not
+     * language-code text chips, per user decision).
+     *
+     * Only unambiguous ISO 639 mappings are listed. Unknown codes,
+     * stateless languages and `Multi-subs` (not a language) stay text —
+     * a wrong flag is worse than a text chip. Audio Dual/Dub pills
+     * stay text (track semantics, not subtitle languages).
      */
-    private const val MAX_VISIBLE_PILLS = 4
+    object LanguageFlagMapper {
+        private val CODE_TO_FLAG: Map<String, String> = mapOf(
+            "EN" to "🇬🇧", "ENG" to "🇬🇧",
+            "JA" to "🇯🇵", "JP" to "🇯🇵", "JPN" to "🇯🇵",
+            "FR" to "🇫🇷", "FRE" to "🇫🇷", "FRA" to "🇫🇷",
+            "DE" to "🇩🇪", "GER" to "🇩🇪", "DEU" to "🇩🇪",
+            "IT" to "🇮🇹", "ITA" to "🇮🇹",
+            "ES" to "🇪🇸", "SPA" to "🇪🇸", "ESP" to "🇪🇸",
+            "PT" to "🇵🇹", "POR" to "🇵🇹",
+            "BR" to "🇧🇷", "PT-BR" to "🇧🇷", "POR-BR" to "🇧🇷",
+            "MX" to "🇲🇽", "ES-LA" to "🇲🇽", "SPA-LA" to "🇲🇽", "LATINO" to "🇲🇽",
+            "RU" to "🇷🇺", "RUS" to "🇷🇺",
+            "ZH" to "🇨🇳", "CHI" to "🇨🇳", "ZHO" to "🇨🇳", "CHS" to "🇨🇳",
+            "CHT" to "🇹🇼",
+            "KO" to "🇰🇷", "KOR" to "🇰🇷",
+            "HI" to "🇮🇳", "HIN" to "🇮🇳", "TAM" to "🇮🇳", "TEL" to "🇮🇳",
+            "KAN" to "🇮🇳", "MAR" to "🇮🇳",
+            "PL" to "🇵🇱", "POL" to "🇵🇱",
+            "TR" to "🇹🇷", "TUR" to "🇹🇷",
+            "UK" to "🇺🇦", "UKR" to "🇺🇦",
+            "VI" to "🇻🇳", "VIE" to "🇻🇳",
+            "TH" to "🇹🇭", "THA" to "🇹🇭",
+            "ID" to "🇮🇩",
+            "NL" to "🇳🇱",
+            "SV" to "🇸🇪", "SWE" to "🇸🇪",
+            "NO" to "🇳🇴", "NOR" to "🇳🇴",
+            "DA" to "🇩🇰", "DAN" to "🇩🇰",
+            "FI" to "🇫🇮", "FIN" to "🇫🇮",
+            "EL" to "🇬🇷", "GRE" to "🇬🇷", "ELL" to "🇬🇷",
+            "HE" to "🇮🇱", "HEB" to "🇮🇱",
+            "AR" to "🇸🇦", "ARA" to "🇸🇦",
+            "RO" to "🇷🇴", "RUM" to "🇷🇴",
+            "HU" to "🇭🇺", "HUN" to "🇭🇺",
+            "CS" to "🇨🇿", "CZE" to "🇨🇿",
+            "SK" to "🇸🇰",
+            "HR" to "🇭🇷", "HRV" to "🇭🇷",
+            "SR" to "🇷🇸", "SRP" to "🇷🇸",
+            "BG" to "🇧🇬", "BUL" to "🇧🇬",
+            "YO" to "🇳🇬", "YOR" to "🇳🇬",
+        )
+
+        /**
+         * Map one language token to its flag, or null when unknown.
+         * Lookup is case-insensitive; surrounding whitespace ignored.
+         */
+        fun flagFor(token: String): String? {
+            return CODE_TO_FLAG[token.trim().uppercase()]
+        }
+
+        /**
+         * Map a `+`-joined language summary (e.g. `ENG+POR-BR`) to a
+         * space-joined flag string (`🇬🇧 🇧🇷`). Returns null unless EVERY
+         * part maps — mixed/unknown input keeps its original text so no
+         * wrong flag is ever shown. A hyphenated part with no whole
+         * mapping (e.g. `ESP-ENG`) maps piece-wise when both sides map.
+         */
+        fun mapJoined(summary: String): String? {
+            val parts = summary.split("+").map { it.trim() }.filter { it.isNotEmpty() }
+            if (parts.isEmpty()) return null
+            val mapped = parts.map { part ->
+                flagFor(part) ?: mapHyphenated(part) ?: mapHyphenatedSub(part) ?: return null
+            }
+            return mapped.joinToString(" ")
+        }
+
+        private fun mapHyphenated(part: String): String? {
+            val sides = part.split("-").map { it.trim() }.filter { it.isNotEmpty() }
+            if (sides.size != 2) return null
+            // Whole-token mappings (POR-BR, PT-BR, ES-LA, ...) were
+            // already tried by the caller; only split when both sides
+            // are independently known languages.
+            return sides.map { flagFor(it) ?: return null }.joinToString(" ")
+        }
+
+        private fun mapHyphenatedSub(part: String): String? {
+            val sides = part.split("-").map { it.trim() }.filter { it.isNotEmpty() }
+            if (sides.size != 2) return null
+            if (!sides[1].matches(Regex("""(?i)^(subs?|subbed|subtitles?)$"""))) return null
+            return flagFor(sides[0])
+        }
+    }
 
     fun build(
         displayLabel: String,
@@ -64,8 +149,10 @@ object SourceRowSummarizer {
         val meta = buildReleaseMeta(fields)
         val details = buildReleaseDetails(fields, transport)
         // Build a UI-only clean title that removes tokens already shown
-        // elsewhere (group, resolution, codec, bit depth, source service).
-        // The exact raw release name is preserved in details for identity.
+        // elsewhere (group, resolution, codec, bit depth, HDR variant,
+        // audio duplicates, batch markers, source service, checksums,
+        // container). The exact raw release name is preserved in
+        // details for identity.
         val cleanTitle = SourceRowClassifier.cleanDisplayTitle(
             releaseName = fields.releaseName,
             releaseGroup = fields.releaseGroup,
@@ -73,15 +160,37 @@ object SourceRowSummarizer {
             codec = fields.codec,
             bitDepth = fields.bitDepth,
             sourceService = fields.sourceService,
+            hdrVariant = fields.hdrVariant,
+            audioSummary = fields.audioSummary,
+            batch = fields.batch,
+            audioFormat = fields.audioFormat,
+            subtitleSummary = fields.subtitleSummary,
+            subtitleLanguages = fields.subtitleLanguages,
+            sourceClass = fields.sourceClass,
         )
+        // v3: when no release group exists, the clean title becomes the
+        // visual primary label (never invent a group from provenance).
+        // The binding hides the title line when it equals the header.
+        val header = fields.releaseGroup ?: cleanTitle.takeIf { it.isNotBlank() }
+        // v3.1 critical/optional seam: P0 resolution + subtitle/language
+        // pills are split out for fixed layout slots; everything else
+        // flows to the flexible strip in priority order.
+        val criticalPills = pills.filter {
+            it.kind == SourcePillKind.QUALITY || it.kind == SourcePillKind.SUB_LANG
+        }
+        val optionalPills = pills.filter {
+            it.kind != SourcePillKind.QUALITY && it.kind != SourcePillKind.SUB_LANG
+        }
         return SourceRowViewModel(
             displayLabel = displayLabel,
             presentation = SourcePresentationKind.RELEASE,
             transport = transport,
-            header = fields.releaseGroup,
+            header = header,
             cleanSubtitle = cleanTitle,
             subtitle = fields.releaseName,
             pills = pills,
+            criticalPills = criticalPills,
+            optionalPills = optionalPills,
             audioSummary = fields.audioSummary,
             subtitleSummary = fields.subtitleSummary,
             subtitleLanguages = fields.subtitleLanguages,
@@ -97,15 +206,20 @@ object SourceRowSummarizer {
     /**
      * Build the right-aligned pill list, deduplicated and priority-ordered.
      *
-     * Priority (per the visual-hierarchy brief):
+     * v3 priority (explicit; subtitle/language visibility outranks
+     * codec/bit-depth):
      *   1. resolution (always first)
-     *   2. HDR variant (HDR10+ > HDR10 > Dolby Vision > plain HDR)
-     *   3. codec + bit-depth as separate pills
-     *   4. audio format / audio mode
-     *   5. subtitle summary
+     *   2. subtitle/language visibility (flags; never dropped)
+     *   3. HDR variant (HDR10+ > HDR10 > Dolby Vision > plain HDR)
+     *   4. audio mode (Dual / Dub)
+     *   5. codec + bit-depth as space permits
+     *   6. audio format
+     *   7. batch marker (P3, last)
      *
-     * The list is capped at [MAX_VISIBLE_PILLS]; the remainder lives in
-     * details.
+     * v3 has NO magic take(N) information cap (addendum): the full
+     * deterministic list is returned and the UI constrains the row
+     * (single clipped line at header height). Language/subtitle data
+     * therefore can never be cut by codec pills.
      */
     private fun buildPills(fields: SourceRowClassifier.ReleaseFields): List<SourceRowPill> {
         val out = mutableListOf<SourceRowPill>()
@@ -117,8 +231,14 @@ object SourceRowSummarizer {
             out += SourceRowPill(label, SourcePillKind.QUALITY)
         }
 
-        // 2. Codec (one pill).
-        fields.codec?.let { out += SourceRowPill(it, SourcePillKind.CODEC) }
+        // 2. Subtitle/language visibility (flags; mapped from codes).
+        //    Emitted before codec so dense rows never drop it.
+        if (fields.subtitleFlags.isNotEmpty() || fields.subtitleLanguages.isNotEmpty() ||
+            fields.subtitleSummary != null
+        ) {
+            val label = buildSubtitlePillLabel(fields)
+            out += SourceRowPill(label, SourcePillKind.SUB_LANG)
+        }
 
         // 3. HDR variant (one pill). The plain "HDR" pill is suppressed
         // when the resolution pill already says "1080p HDR" so we do not
@@ -136,13 +256,15 @@ object SourceRowSummarizer {
                 }
             }
         }
-        // Bit depth as a separate pill only when distinct from HDR.
-        if (fields.hdrVariant == null) {
-            fields.bitDepth?.let { out += SourceRowPill(it, SourcePillKind.BIT_DEPTH) }
+        // Bit depth is P2 with codec (emitted only when distinct from
+        // HDR); both read after audio mode.
+        val bitDepthPill = if (fields.hdrVariant == null) {
+            fields.bitDepth?.let { SourceRowPill(it, SourcePillKind.BIT_DEPTH) }
+        } else {
+            null
         }
 
-        // 4. Audio (format / mode).
-        fields.audioFormat?.let { out += SourceRowPill(it, SourcePillKind.AUDIO_FMT) }
+        // 4. Audio mode (Dual / Dub track kind).
         fields.audioSummary?.let {
             // Skip if the audio summary IS the same as the audio format
             // (e.g. "AAC 2.0" is a format, not a mode).
@@ -151,20 +273,26 @@ object SourceRowSummarizer {
             }
         }
 
-        // 5. Subtitle summary (flags + codes).
-        if (fields.subtitleFlags.isNotEmpty() || fields.subtitleLanguages.isNotEmpty() ||
-            fields.subtitleSummary != null
-        ) {
-            val label = buildSubtitlePillLabel(fields)
-            out += SourceRowPill(label, SourcePillKind.SUB_LANG)
+        // 5. Codec (one pill), then bit depth.
+        fields.codec?.let { out += SourceRowPill(it, SourcePillKind.CODEC) }
+        bitDepthPill?.let { out += it }
+
+        // 6. Audio format.
+        fields.audioFormat?.let { out += SourceRowPill(it, SourcePillKind.AUDIO_FMT) }
+
+        // 7. Batch marker (P3, last).
+        if (fields.batch) {
+            out += SourceRowPill("Batch", SourcePillKind.BATCH)
         }
 
-        return out.take(MAX_VISIBLE_PILLS)
+        return out
     }
 
     private fun buildSubtitlePillLabel(fields: SourceRowClassifier.ReleaseFields): String {
         // Prefer flag glyphs when present (the brief: "preserve the original
-        // flag glyph"). Fall back to the compact summary otherwise.
+        // flag glyph"). Fall back to the compact summary otherwise, mapping
+        // language codes to flags (FLAGS, not text chips, per v3 user
+        // decision); unmapped input keeps its text, never a wrong flag.
         if (fields.subtitleFlags.isNotEmpty()) {
             return if (fields.subtitleFlags.size <= 3) {
                 fields.subtitleFlags.joinToString(" ")
@@ -172,7 +300,8 @@ object SourceRowSummarizer {
                 "${fields.subtitleFlags.take(3).joinToString(" ")} +${fields.subtitleFlags.size - 3}"
             }
         }
-        return fields.subtitleSummary ?: "Multi-subs"
+        val summary = fields.subtitleSummary ?: "Multi-subs"
+        return LanguageFlagMapper.mapJoined(summary) ?: summary
     }
 
     /**
@@ -219,6 +348,10 @@ object SourceRowSummarizer {
             cleanSubtitle = null,
             subtitle = null,
             pills = pills,
+            // STREAM inline card renders pills itself; no header
+            // critical/optional seam applies (empty by construction).
+            criticalPills = emptyList(),
+            optionalPills = emptyList(),
             audioSummary = audioSummary,
             subtitleSummary = null,
             subtitleLanguages = emptyList(),
@@ -254,9 +387,13 @@ object SourceRowSummarizer {
             out += SourceDetailLine(label = "Codec", value = parts.joinToString(" "))
         }
         if (fields.hdrVariant != null) {
-            out += SourceDetailLine(label = "HDR", value = fields.hdrVariant)
+            // v3.3 finding 5: never echo label as value (`HDR: HDR`).
+            // A plain-HDR signal reads as a presence marker; precise
+            // variants keep their exact value.
+            val hdrValue = if (fields.hdrVariant == "HDR") "Yes" else fields.hdrVariant
+            out += SourceDetailLine(label = "HDR", value = hdrValue)
         } else if (fields.hdr) {
-            out += SourceDetailLine(label = "HDR", value = "HDR")
+            out += SourceDetailLine(label = "HDR", value = "Yes")
         }
         fields.audioFormat?.let {
             out += SourceDetailLine(label = "Audio format", value = it)
@@ -289,7 +426,9 @@ object SourceRowSummarizer {
             out += SourceDetailLine(label = "Source service", value = it)
         }
         fields.sourceClass?.let {
-            out += SourceDetailLine(label = "Source class", value = it)
+            // v3.3 finding 6: user-facing label is `Source type`
+            // (parser/model concept stays `sourceClass`).
+            out += SourceDetailLine(label = "Source type", value = it)
         }
         out += SourceDetailLine(label = "Transport", value = transportLabelString(transport))
         out += SourceDetailLine(

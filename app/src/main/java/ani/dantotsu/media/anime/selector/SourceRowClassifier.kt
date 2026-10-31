@@ -87,6 +87,10 @@ object SourceRowClassifier {
         "AT-X" to "AT-X",
         "ATX" to "AT-X",
         "ATVP" to "Apple TV+",
+        // v3.3 finding 1 (Feibanyama device row): iQiyi emits raw
+        // `[IQIYI ...]` blocks. Additive alias only; the delimited
+        // clean-title strip reuses the existing alias-key path.
+        "IQIYI" to "iQIYI",
     )
 
     // ---- Regexes ----------------------------------------------------------
@@ -468,6 +472,22 @@ object SourceRowClassifier {
         return noQuery.substringBefore('#')
     }
 
+    /**
+     * Batch/pack markers (v3 redesign): an explicit `Batch` word or a
+     * `Complete <pack-noun>` / `Season Pack` phrase. Bare `COMPLETE`
+     * alone is NOT enough (ambiguous adjective in many languages).
+     */
+    private val REGEX_BATCH_MARKER = Regex(
+        """(?i)\b(batch|complete[\s\-]+(series|pack|collection|set|movies?)|season[\s\-]+packs?)\b""",
+    )
+
+    /**
+     * Checksum/CRC-like bracket tokens (`[AAA94036]`, `[F02B9CEE]`,
+     * `(AB12CD34)`): 6+ hex chars, stripped from the clean display
+     * title (the exact raw name keeps them for identity/details).
+     */
+    private val REGEX_CHECKSUM_BRACKET = Regex("""[\[(][A-Fa-f0-9]{6,}[\])]""")
+
     // ---- Release-name extraction ----------------------------------------
 
     fun extractReleaseName(qualityText: String): String {
@@ -480,8 +500,7 @@ object SourceRowClassifier {
     private fun isMetadataMarkerLine(line: String): Boolean {
         if (line == "Torrentio") return true
         if (line.firstOrNull()?.let { MARKER_EMOJIS.any { e -> line.startsWith(e) } } == true) return true
-        if (line.matches(Regex("""^(seeders?|size|indexer|provider|language|audio)\s*[:=].+""",
-                RegexOption.IGNORE_CASE))) return true
+        if (line.matches(REGEX_METADATA_MARKER_LINE)) return true
         return false
     }
 
@@ -518,7 +537,7 @@ object SourceRowClassifier {
     // ---- Codec / bit-depth / HDR / DV normalisation ---------------------
 
     fun normaliseCodec(raw: String): String? {
-        val t = raw.uppercase().replace(Regex("""[\s.]"""), "")
+        val t = raw.uppercase().replace(REGEX_WS_DOT, "")
         return when {
             t.startsWith("X264") || t.startsWith("H264") -> "AVC"
             t.startsWith("X265") || t.startsWith("H265") || t == "HEVC" -> "HEVC"
@@ -532,7 +551,7 @@ object SourceRowClassifier {
     }
 
     fun normaliseBitDepth(raw: String): String? {
-        val t = raw.lowercase().replace(Regex("""[\s]"""), "")
+        val t = raw.lowercase().replace(REGEX_WS_SINGLE, "")
         return when {
             t == "10-bit" || t == "10bit" || t == "10-bits" || t == "10bits" -> "10-bit"
             t == "8-bit" || t == "8bit" || t == "8-bits" || t == "8bits" -> "8-bit"
@@ -542,7 +561,7 @@ object SourceRowClassifier {
     }
 
     fun normaliseHdr(raw: String): String? {
-        val t = raw.lowercase().replace(Regex("""\s+"""), " ").trim()
+        val t = raw.lowercase().replace(REGEX_WS_RUN, " ").trim()
         return when {
             t == "hdr10+" || t == "hdr10plus" -> "HDR10+"
             t == "hdr10" -> "HDR10"
@@ -590,7 +609,7 @@ object SourceRowClassifier {
             val raw = match.groupValues[1]
             raw.split("+").forEach { part ->
                 if (isLikelyLanguageTag(part) ||
-                    part.matches(Regex("""[A-Za-z]{2,3}-[A-Za-z0-9]{2,4}"""))
+                    part.matches(REGEX_LANG_PAIR_TOKEN)
                 ) {
                     out.add(part.uppercase())
                 }
@@ -643,7 +662,7 @@ object SourceRowClassifier {
 
     fun detectSourceService(releaseName: String): String? {
         // 1. Bracketed token in the title (the common form).
-        val bracketToken = Regex("""\[([A-Za-z0-9\-]+)]""")
+        val bracketToken = REGEX_SERVICE_BRACKET_TOKEN
             .findAll(releaseName)
             .map { it.groupValues[1].uppercase() }
             .firstOrNull { SOURCE_SERVICE_ALIASES.containsKey(it) }
@@ -651,16 +670,12 @@ object SourceRowClassifier {
         // 2. Standalone, clearly delimited alias derived from the
         //    authoritative visual map (standards-gap fix v1), so every
         //    high-confidence entry works — not just NF/AMZN/CR.
-        //    Delimiters are start/end, whitespace or dots.
-        val aliases = SOURCE_SERVICE_ALIASES.keys
-            .sortedByDescending { it.length }
-            .joinToString("|") { Regex.escape(it) }
-        val standalone = Regex(
-            """(?:^|[\s.])(?:$aliases)(?:[\s.]|$)""",
-            RegexOption.IGNORE_CASE,
-        )
-        standalone.find(releaseName)?.let { match ->
-            val alias = match.value.trim().trim('.').uppercase()
+        //    Delimiters are start/end, whitespace, dots or brackets
+        //    (v3.1: parenthesized tech blocks like `(CR WEB 480p …)`
+        //    carry the alias after `(`). Precompiled once (v3.3): the
+        //    alias map is static, so the pattern never changes.
+        SOURCE_SERVICE_STANDALONE.find(releaseName)?.let { match ->
+            val alias = match.value.trim().trim('.', '(', ')', '[', ']').uppercase()
             if (SOURCE_SERVICE_ALIASES.containsKey(alias)) {
                 return SOURCE_SERVICE_ALIASES[alias]
             }
@@ -678,6 +693,13 @@ object SourceRowClassifier {
         for (c in candidates) {
             if (releaseName.contains(c, ignoreCase = true)) return c.uppercase()
         }
+        // v3.3 finding 2 (Salieri device row): bare `BD` is a real
+        // source-type token, but `contains` would overmatch ordinary
+        // words (`Abducted`, `Bdubs`), so it needs strict delimited
+        // matching. Ordered AFTER `BDRip` so `BDRip` keeps its precise
+        // label (`BDRip` never matches: `R` follows `BD`). Canonical
+        // value is `BD`, matching the existing strip vocabulary.
+        if (SOURCE_CLASS_BD_DELIMITED.containsMatchIn(releaseName)) return "BD"
         return null
     }
 
@@ -734,6 +756,12 @@ object SourceRowClassifier {
                 }
             }
         }
+
+        // 2b. File-name bracket: `[Group] Title - 01 (...).mkv`. Covers
+        //     releases whose title starts with free text before the
+        //     first bracket (phone case, Frieren S2 2026-10-31:
+        //     "4k Frieren: U kresu drogi / ... [Shiniori-Raws] ...").
+        fileNameBracketGroup(qualityText)?.let { return it }
 
         // 3. Trailing `-GROUP` filename suffix (weak guess), scanned
         //    over the raw qualityText title/file lines (Fix B), so an
@@ -804,10 +832,10 @@ object SourceRowClassifier {
     private fun isSuffixGroupCandidate(token: String): Boolean {
         if (token.length !in 2..12) return false
         // Episode/version shaped: S01E01, E01, S1, 01, v2.
-        if (token.matches(Regex("""(?i)^([se]?\d+)+[a-z]?$"""))) return false
-        if (token.matches(Regex("""(?i)^v\d+[a-z]?$"""))) return false
+        if (token.matches(REGEX_EPISODE_SHAPE_TOKEN)) return false
+        if (token.matches(REGEX_VERSION_SHAPE_TOKEN)) return false
         // Resolution shaped: 1080p (4K/8K are in the deny set).
-        if (token.matches(Regex("""(?i)^\d+p$"""))) return false
+        if (token.matches(REGEX_RES_SHAPE_TOKEN)) return false
         val upper = token.uppercase()
         if (upper in SUFFIX_GROUP_DENY) return false
         if (SOURCE_SERVICE_ALIASES.containsKey(upper)) return false
@@ -844,8 +872,7 @@ object SourceRowClassifier {
             if (firstBracket < 0) continue
             val prefix = line.substring(0, firstBracket).trim()
             if (!isGroupPositionPrefix(prefix, parsedTracker)) continue
-            val bracketRegex = Regex("""\[([^\]]+)]""")
-            val match = bracketRegex.find(line.substring(firstBracket)) ?: continue
+            val match = REGEX_TITLE_BRACKET.find(line.substring(firstBracket)) ?: continue
             val token = match.groupValues[1].trim()
             if (!isGroupCandidate(token)) continue
             if ('.' in token) {
@@ -873,7 +900,7 @@ object SourceRowClassifier {
         parsedTracker: String?,
     ): Boolean {
         if (prefix.isEmpty()) return true
-        val tokens = prefix.split(Regex("""\s+"""))
+        val tokens = prefix.split(REGEX_WS_RUN)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
         if (tokens.isEmpty()) return true
@@ -950,12 +977,12 @@ object SourceRowClassifier {
         if (upper in COMPOUND_TECHNICAL_EXTRA) return true
         if (SOURCE_SERVICE_ALIASES.containsKey(upper)) return true
         if (KNOWN_LANG_CODES.any { it.equals(upper, ignoreCase = true) }) return true
-        if (segment.matches(Regex("""(?i)^(\d{3,4}p|4k|2k|8k)$"""))) return true
-        if (segment.matches(Regex("""(?i)^((x|h)\.?26[45]|hevc|avc|av1|vp9|xvid|divx)$"""))) return true
-        if (segment.matches(Regex("""(?i)^(aac|ac-?3|dts|e-?ac-?3|ddp|flac|opus|mp3|truehd|atmos)[\d.]*$"""))) return true
-        if (segment.matches(Regex("""(?i)^((8|10)-?bits?|hi10p|hdr\d*\+?|dolby(vision)?|dv)$"""))) return true
-        if (segment.matches(Regex("""(?i)^(web-?dl|webrip|bluray|bdrip|hdtv|dvdrip|remux)$"""))) return true
-        if (segment.matches(Regex("""(?i)^(subs?|subbed|subtitles?|dubs?|dubbed|dual|multi|audio)$"""))) return true
+        if (segment.matches(REGEX_TECH_DOT_RES)) return true
+        if (segment.matches(REGEX_TECH_DOT_CODEC)) return true
+        if (segment.matches(REGEX_TECH_DOT_AUDIO)) return true
+        if (segment.matches(REGEX_TECH_DOT_DEPTH_HDR)) return true
+        if (segment.matches(REGEX_TECH_DOT_CLASS)) return true
+        if (segment.matches(REGEX_TECH_DOT_SUBDUB)) return true
         return false
     }
 
@@ -1011,7 +1038,7 @@ object SourceRowClassifier {
     @Suppress("unused")
     private fun isAllowedPrefix(prefix: String): Boolean {
         if (prefix.isEmpty()) return true
-        val tokens = prefix.split(Regex("""\s+""")).map { it.trim() }.filter { it.isNotEmpty() }
+        val tokens = prefix.split(REGEX_WS_RUN).map { it.trim() }.filter { it.isNotEmpty() }
         if (tokens.isEmpty()) return true
         for (t in tokens) {
             val lower = t.lowercase()
@@ -1046,6 +1073,7 @@ object SourceRowClassifier {
         val audioLanguages: List<String>,
         val sourceService: String?,
         val sourceClass: String?,
+        val batch: Boolean = false,
     )
 
     fun parseRelease(qualityText: String): ReleaseFields {
@@ -1119,12 +1147,13 @@ object SourceRowClassifier {
             ?: markedSubs
         val sourceService = detectSourceService(releaseName)
         val sourceClass = detectSourceClass(releaseName)
+        val batch = REGEX_BATCH_MARKER.containsMatchIn(releaseName)
         return ReleaseFields(
             resolution, hdr, releaseName, releaseGroup, seeders, sizeText,
             tracker, indexer, audioSummary, audioFormat, codec, bitDepth, hdrVariant,
             subtitleSummary, subtitleFlags, flagSets.audioFlags,
             subtitleLanguages, flagSets.audioLanguages,
-            sourceService, sourceClass,
+            sourceService, sourceClass, batch,
         )
     }
 
@@ -1255,7 +1284,7 @@ object SourceRowClassifier {
         // All E-AC-3 spellings (`EAC3`, `E-AC3`, `EAC-3`, `E-AC-3`)
         // canonicalize before channel rules, so the generic
         // letters+digit rewrite can never emit `EAC 3`.
-        val collapsed = raw.replace(Regex("""\s+"""), " ").trim()
+        val collapsed = raw.replace(REGEX_WS_RUN, " ").trim()
         // Channel-separator normalization (v2.2 Fix E): bounded
         // `FORMAT<dot/underscore/hyphen>channels` spellings become
         // `FORMAT channels` before the existing pipeline, so `DD.5.1`,
@@ -1263,26 +1292,26 @@ object SourceRowClassifier {
         // their spaced forms. Family words are explicit; version-like
         // `MP3.320` stays descriptive via fallthrough.
         val chanNorm = collapsed.replace(
-            Regex("""(?i)\b(DDP?|DD\+|AC-?3|E-?A-?C-?3|FLAC|AAC|OPUS|MP3|PCM|LPCM)\s*[._\-]+\s*(\d)"""),
+            REGEX_CHAN_NORM,
             "$1 $2",
         )
         // Early E-AC-3 canonicalization on the channel-normalized form,
         // before the letters+digit rewrite below can split `EAC3` into
         // `EAC 3` (which no later rule could rejoin).
         val eacEarly = chanNorm.replace(
-            Regex("""(?i)^E-?A-?C-?3\b"""),
+            REGEX_EAC_PREFIX,
             "E-AC-3",
         )
-        val withSpace = eacEarly.replace(Regex("""^([A-Za-z]+)(\d)"""), "$1 $2")
+        val withSpace = eacEarly.replace(REGEX_LETTERS_DIGIT_GLUE, "$1 $2")
         val stereoStripped = withSpace
-            .replace(Regex("""\s+2\.0$"""), "")
+            .replace(REGEX_STEREO_TAIL, "")
             .trim()
         // Canonical E-AC-3 prefix: every spelling (`EAC3`, `E-AC3`,
         // `EAC-3`, `E-AC-3`, with optional channels) normalizes before
         // channel rules, so the generic letters+digit rewrite can never
         // emit `EAC 3`.
         val eacNorm = stereoStripped.replace(
-            Regex("""(?i)^E-?A-?C-?3\b"""),
+            REGEX_EAC_PREFIX,
             "E-AC-3",
         )
         // Canonical DTS-HD tails (standards-gap v2.1 correction,
@@ -1291,12 +1320,12 @@ object SourceRowClassifier {
         // keeps the family with stereo `2.0` collapsed and 5.1/7.1
         // preserved (`DTS-HDMA.2.0` -> `DTS-HD MA`, reviewer blocker).
         val dtsNorm = eacNorm.replace(
-            Regex("""(?i)^DTS[\s.\-_]+HD[\s.\-_]+(MA|HRA)([\s.]+(\d\.\d))?$"""),
+            REGEX_DTS_HD_SPACED,
         ) { m ->
             val ch = m.groupValues[3]
             "DTS-HD ${m.groupValues[1].uppercase()}${if (ch.isEmpty() || ch == "2.0") "" else " $ch"}"
         }.replace(
-            Regex("""(?i)^DTS[\s.\-_]*HDMA(?:[\s.]+(\d\.\d))?$"""),
+            REGEX_DTS_HDMA_JOINED,
         ) { m ->
             val ch = m.groupValues[1]
             if (ch.isEmpty() || ch == "2.0") "DTS-HD MA" else "DTS-HD MA $ch"
@@ -1313,7 +1342,7 @@ object SourceRowClassifier {
             else -> null
         }
         if (dolbyFamily != null) {
-            val ch = Regex("""([567])\.1$""").find(upSpaced.trim())?.groupValues?.get(1)
+            val ch = REGEX_DOLBY_CH_TAIL.find(upSpaced.trim())?.groupValues?.get(1)
             return when (dolbyFamily) {
                 "DDP" -> if (ch != null) "E-AC-3 / DDP $ch.1" else "E-AC-3 / DDP"
                 "DD" -> if (ch != null) "DD $ch.1" else "DD"
@@ -1325,10 +1354,10 @@ object SourceRowClassifier {
         // Smashed multichannel (`DD61`, `EAC361`) is re-dotted first so
         // one dotted branch set covers every spelling.
         val key = dtsNorm.uppercase()
-            .replace(Regex("""\s+"""), "")
-            .replace(Regex("""\.+$"""), "")
+            .replace(REGEX_WS_RUN, "")
+            .replace(REGEX_TRAIL_DOTS, "")
             .replace(
-                Regex("""^((?:DDP?|DD\+|AC-?3|E-?A-?C-?3|AAC|FLAC|TRUEHD))(\d)(\d)$"""),
+                REGEX_SMASHED_CHANNEL,
                 "$1$2.$3",
             )
         return when (key) {
@@ -1430,10 +1459,414 @@ object SourceRowClassifier {
     // ---- Clean display title (v3.3) ------------------------------------
 
     /**
+     * Delimiter class shared by aggressive clean-title stripping: a
+     * technical token counts as standalone when bounded by
+     * start/end, whitespace, dots, underscores, hyphens, brackets,
+     * parens or commas. Letters/digits on either side protect real
+     * words (`AVC1`, `SAV1`, `2160p60`, `HorribleSubs` never match).
+     */
+    private const val CLEAN_DELIM_CLASS = """[\s._\-()\[\],]"""
+
+    /**
+     * Bare-`BD` source-type detector (v3.3 finding 2). Strictly
+     * delimited: start/end, whitespace, dots, underscores, hyphens,
+     * brackets, parens or commas on BOTH sides, so `Abducted`,
+     * `Bdubs` and `BDRip` never match while `S1 - BD (1080p)`,
+     * `[BD]` and trailing `BD` do.
+     */
+    private val SOURCE_CLASS_BD_DELIMITED =
+        Regex("""(^|$CLEAN_DELIM_CLASS)BD(${"$"}|$CLEAN_DELIM_CLASS)""", RegexOption.IGNORE_CASE)
+
+    // ---- v3.3 precompiled hot-path patterns --------------------------
+    // Textually identical to the inline `Regex(...)` literals they
+    // replace; hoisting only removes per-bind `Pattern.compile` work
+    // (host-measured: `cleanDisplayTitle` dominated the bind at ~2.3ms
+    // on a checksum row, `parseRelease` ~0.9ms). No matching semantics
+    // change. Only static patterns hoist; runtime-interpolated ones
+    // (release group, service alias, subtitle languages) stay local,
+    // except through the bounded [delimitedPattern] cache below.
+    private val REGEX_WS_RUN = Regex("""\s+""")
+    private val REGEX_WS_DOT = Regex("""[\s.]""")
+    private val REGEX_WS_SINGLE = Regex("""\s""")
+    private val REGEX_METADATA_MARKER_LINE =
+        Regex("""^(seeders?|size|indexer|provider|language|audio)\s*[:=].+""", RegexOption.IGNORE_CASE)
+    private val REGEX_LANG_PAIR_TOKEN = Regex("""[A-Za-z]{2,3}-[A-Za-z0-9]{2,4}""")
+    private val REGEX_EPISODE_SHAPE_TOKEN = Regex("""(?i)^([se]?\d+)+[a-z]?$""")
+    private val REGEX_VERSION_SHAPE_TOKEN = Regex("""(?i)^v\d+[a-z]?$""")
+    private val REGEX_RES_SHAPE_TOKEN = Regex("""(?i)^\d+p$""")
+    private val REGEX_TITLE_BRACKET = Regex("""\[([^\]]+)]""")
+
+    /** `[Group]` right before a file name ending in a video extension, with no bracket after it. */
+    private val REGEX_FILE_NAME_BRACKET =
+        Regex("""(?:^|/|]\s*)\[([^\]]+)]\s*[^\[\]/]+\.(?:mkv|mp4|avi|m2ts|webm)\s*$""", RegexOption.IGNORE_CASE)
+
+    private fun fileNameBracketGroup(qualityText: String): String? {
+        for (rawLine in qualityText.lines()) {
+            val line = rawLine.trim()
+            if (line.isEmpty() || isMetadataMarkerLine(line)) continue
+            val token = REGEX_FILE_NAME_BRACKET.find(line)?.groupValues?.get(1)?.trim() ?: continue
+            if (isGroupCandidate(token) && '.' !in token) return token
+        }
+        return null
+    }
+    private val REGEX_TECH_DOT_RES = Regex("""(?i)^(\d{3,4}p|4k|2k|8k)$""")
+    private val REGEX_TECH_DOT_CODEC = Regex("""(?i)^((x|h)\.?26[45]|hevc|avc|av1|vp9|xvid|divx)$""")
+    private val REGEX_TECH_DOT_AUDIO =
+        Regex("""(?i)^(aac|ac-?3|dts|e-?ac-?3|ddp|flac|opus|mp3|truehd|atmos)[\d.]*$""")
+    private val REGEX_TECH_DOT_DEPTH_HDR =
+        Regex("""(?i)^((8|10)-?bits?|hi10p|hdr\d*\+?|dolby(vision)?|dv)$""")
+    private val REGEX_TECH_DOT_CLASS =
+        Regex("""(?i)^(web-?dl|webrip|bluray|bdrip|hdtv|dvdrip|remux)$""")
+    private val REGEX_TECH_DOT_SUBDUB =
+        Regex("""(?i)^(subs?|subbed|subtitles?|dubs?|dubbed|dual|multi|audio)$""")
+    private val REGEX_SERVICE_BRACKET_TOKEN = Regex("""\[([A-Za-z0-9\-]+)]""")
+    private val SOURCE_SERVICE_STANDALONE: Regex by lazy {
+        val aliases = SOURCE_SERVICE_ALIASES.keys
+            .sortedByDescending { it.length }
+            .joinToString("|") { Regex.escape(it) }
+        Regex(
+            """(?:^|[\s.()\[\]])(?:$aliases)(?:[\s.()\[\]]|$)""",
+            RegexOption.IGNORE_CASE,
+        )
+    }
+    private val REGEX_CHANNEL_TAIL_TRIM = Regex("""\s+\d\.\d$""")
+    private val REGEX_CHAN_NORM =
+        Regex("""(?i)\b(DDP?|DD\+|AC-?3|E-?A-?C-?3|FLAC|AAC|OPUS|MP3|PCM|LPCM)\s*[._\-]+\s*(\d)""")
+    private val REGEX_EAC_PREFIX = Regex("""(?i)^E-?A-?C-?3\b""")
+    private val REGEX_LETTERS_DIGIT_GLUE = Regex("""^([A-Za-z]+)(\d)""")
+    private val REGEX_STEREO_TAIL = Regex("""\s+2\.0$""")
+    private val REGEX_DTS_HD_SPACED =
+        Regex("""(?i)^DTS[\s.\-_]+HD[\s.\-_]+(MA|HRA)([\s.]+(\d\.\d))?$""")
+    private val REGEX_DTS_HDMA_JOINED =
+        Regex("""(?i)^DTS[\s.\-_]*HDMA(?:[\s.]+(\d\.\d))?$""")
+    private val REGEX_DOLBY_CH_TAIL = Regex("""([567])\.1$""")
+    private val REGEX_TRAIL_DOTS = Regex("""\.+$""")
+    private val REGEX_SMASHED_CHANNEL =
+        Regex("""^((?:DDP?|DD\+|AC-?3|E-?A-?C-?3|AAC|FLAC|TRUEHD))(\d)(\d)$""")
+    private val CLEAN_PAREN_RES =
+        Regex("""\(\s*(?:\d{3,4}p|4k|2160p)\s*\)""", RegexOption.IGNORE_CASE)
+    private val CLEAN_PAREN_HDR =
+        Regex("""\(\s*(?:HDR10\+|HDR10PLUS|HDR10|HDR|DV|DOLBY\s+VISION)\s*\)""", RegexOption.IGNORE_CASE)
+    private val CLEAN_BATCH_BRACKET =
+        Regex("""\[(?:batch|complete\b[^\]]*)\]""", RegexOption.IGNORE_CASE)
+    private val CLEAN_LEADING_TECH =
+        Regex(
+            """^(?:\s*(?:4k|2160p|1080p|720p|480p|1440p|hdr10\+|hdr10plus|hdr10|hdr|dv)\b)+""",
+            RegexOption.IGNORE_CASE,
+        )
+    private val CLEAN_AUDIO_MARKER = Regex(
+        """\[\s*audio(?:[\s._\-]*(?:\d\.\d))?\s*]""" +
+            """|(?:^|$CLEAN_DELIM_CLASS)audio[\s._\-]+\d\.\d(?=${'$'}|$CLEAN_DELIM_CLASS)""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val CLEAN_LANG_CLUSTER = Regex(
+        """(^|$CLEAN_DELIM_CLASS)(?:[A-Z]{2,4}(?:\+[A-Z]{2,4})+)(${'$'}|$CLEAN_DELIM_CLASS)""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val CLEAN_PACK_PHRASE = Regex(
+        """(^|$CLEAN_DELIM_CLASS)(?:complete[\s._\-]+(?:series|packs?|collections?|sets?|movies?|box[\s._\-]*sets?)(?:[\s._\-]*\+[\s._\-]*\w+)?)(${'$'}|$CLEAN_DELIM_CLASS)""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val CLEAN_WXH = Regex(
+        """(^|$CLEAN_DELIM_CLASS)(?:\d{3,4}x\d{3,4})(${'$'}|$CLEAN_DELIM_CLASS)""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val CLEAN_TRAILING_TAG = Regex(
+        """\[([A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)?)\]\s*${'$'}""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val CLEAN_VERSION_TAG = Regex("""^[vV]\d+$""")
+    private val CLEAN_FPS_PAREN = Regex(
+        """\(\s*\d+(?:\.\d+)?\s*FPS\s*\)""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val CLEAN_CHAPTER_BRACKET = Regex("""\[\s*chapters?\s*]""", RegexOption.IGNORE_CASE)
+    private val CLEAN_EMPTY_BRACKET = Regex("""\[\s*]""")
+    private val CLEAN_EMPTY_PAREN = Regex("""\(\s*\)""")
+    private val CLEAN_DOT_SEP = Regex("""(?<=\d)\.(?!\d)|(?<=[^\d\s])\.(?=\S)""")
+    private val CLEAN_DASH_RUN = Regex("""\s*[\-–—](?:\s*[\-–—])+\s*""")
+    private val CLEAN_EDGE_LEAD = Regex("""^[\-–—,\s]+""")
+    private val CLEAN_DOT_LEAD = Regex("""^\.\s+""")
+    private val CLEAN_EDGE_TRAIL = Regex("""[\-–—,\s]+${'$'}""")
+    private val CLEAN_DIGIT_DOT_TRAIL = Regex("""(?<=\d)\.\s*${'$'}""")
+    private val CLEAN_DOT_TRAIL = Regex("""\s+\.${'$'}""")
+
+    /**
+     * Bounded compiled-pattern cache for [delimitedPattern] bodies
+     * (v3.3 finding 7). Every strip helper funnels through
+     * [delimitedPattern] with runtime-built bodies (spellings,
+     * variants, channel tails), so without a cache each of the
+     * dozens of strip calls per clean compiles its own `Pattern`
+     * on every pass. The cache maps body text to the compiled
+     * pattern; identical bodies (the closed per-row vocabulary)
+     * compile once.
+     *
+     * Bound: hard cap of 512 entries with best-effort eviction
+     * (clear on overflow) — never unbounded. Thread safety via
+     * `ConcurrentHashMap`: concurrent misses only recompile the
+     * same equal pattern, so results stay deterministic. Pure
+     * speed optimization: a miss behaves exactly like v3.2.
+     */
+    private val delimitedPatternCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+
+    /**
+     * Raw (un-normalized) spellings behind one normalized audio
+     * format, longest first. The parser normalizes (`DDP2.0` ->
+     * `E-AC-3 / DDP`) but titles print raw forms, so stripping must
+     * try raw spellings; channel tails are handled by the compound
+     * pattern in [stripAudioFormatToken].
+     *
+     * Single source of truth with [AUDIO_FORMAT_KNOWN_BASES] /
+     * [ALL_AUDIO_FORMAT_SPELLINGS]: every normalized base the parser
+     * can emit (see `normaliseAudioFormat` branches + fallthrough
+     * families) has a branch here, and the clean-title universe is
+     * derived from this table — never a second hand-maintained list —
+     * so parser and cleaner cannot silently drift again (v3.2:
+     * `PCM` / `LPCM` / `MP2` were missing from the universe while the
+     * parser emits them first-class).
+     */
+    private fun audioFormatRawSpellings(format: String): List<String> {
+        val base = format.uppercase().replace(REGEX_CHANNEL_TAIL_TRIM, "").trim()
+        val raws = when (base) {
+            "E-AC-3 / DDP" -> listOf(
+                "DOLBY DIGITAL PLUS", "E-AC-3", "EAC3", "DDP", "DD+",
+            )
+            "DD" -> listOf("DOLBY DIGITAL", "DD")
+            "AC-3" -> listOf("AC-3", "AC3")
+            "E-AC-3" -> listOf("E-AC-3", "EAC3")
+            "AAC" -> listOf("AAC")
+            "FLAC" -> listOf("FLAC")
+            "TRUEHD" -> listOf("DOLBY TRUEHD", "TRUE-HD", "TRUEHD", "THD")
+            "DTS-HD MA", "DTS-HD HRA" -> listOf(
+                "DTS-HD MA", "DTS-HD HRA", "DTS-HDMA", "DTSHDMA",
+                "DTS-HD", "DTSHD", "DTS",
+            )
+            "DTS" -> listOf("DTS")
+            "ATMOS" -> listOf("DOLBY ATMOS", "ATMOS")
+            "MP3" -> listOf("MP3")
+            "OPUS" -> listOf("OPUS")
+            "MP2" -> listOf("MP2")
+            "LPCM" -> listOf("LPCM")
+            "PCM" -> listOf("PCM")
+            else -> listOf(format.trim())
+        }
+        return raws.sortedByDescending { it.length }
+    }
+
+    /** Raw spellings behind one normalized codec (empty when none). */
+    private fun codecRawSpellings(codec: String): List<String> = when (codec.uppercase()) {
+        "HEVC" -> listOf("X.265", "H.265", "X265", "H265")
+        "AVC" -> listOf("X.264", "H.264", "X264", "H264")
+        else -> emptyList()
+    }
+
+    /**
+     * Separator variants of one token (`10-bit` -> `10bit`,
+     * `10 bit`, `10-bit`; `Dual Audio` -> `DUALAUDIO`,
+     * `DUAL-AUDIO`, ...), so unbracketed titles print in any
+     * separator style and still strip.
+     */
+    private fun tokenSeparatorVariants(token: String): Set<String> {
+        val t = token.trim()
+        if (t.isEmpty()) return emptySet()
+        return setOf(
+            t,
+            t.replace(REGEX_WS_RUN, ""),
+            t.replace(REGEX_WS_RUN, "-"),
+            t.replace(REGEX_WS_RUN, "_"),
+            t.replace("-", ""),
+            t.replace("-", " "),
+        ).filter { it.isNotEmpty() }.toSet()
+    }
+
+    /**
+     * Keep a consumed paren/bracket boundary, drop anything else.
+     * Shared by every delimited replacement below.
+     */
+    private fun keepBracketBoundary(s: String): String =
+        if (s == "(" || s == "[") s
+        else if (s == ")" || s == "]") s
+        else " "
+
+    /**
+     * Replace a [MatchResult] of a delimited pattern (groups 1+2 are
+     * the boundaries) keeping paren/bracket edges.
+     */
+    private fun keptBoundaries(m: MatchResult): String =
+        keepBracketBoundary(m.groupValues[1]) + keepBracketBoundary(m.groupValues[2])
+
+    /**
+     * Delimited pattern with capturable boundaries around [body].
+     * [leadExtra] appends an alternative leading shape (used for the
+     * digit-glued subtitle tags). Compiled patterns are held in the
+     * bounded [delimitedPatternCache]; a miss compiles exactly the
+     * v3.2 pattern, so behavior is unchanged.
+     */
+    private fun delimitedPattern(body: String, leadExtra: String = ""): Regex {
+        val key = if (leadExtra.isEmpty()) body else leadExtra + "\n" + body
+        return delimitedPatternCache.getOrPut(key) {
+            Regex(
+                "(^|" + CLEAN_DELIM_CLASS + leadExtra + ")(?:" + body + ")(\$|" + CLEAN_DELIM_CLASS + ")",
+                RegexOption.IGNORE_CASE,
+            )
+        }.also {
+            if (delimitedPatternCache.size > 512) delimitedPatternCache.clear()
+        }
+    }
+
+    /**
+     * Core delimited strip: [body] matches with boundary sharing, but
+     * consumed paren/bracket edges are preserved, so stripping `480p`
+     * from `(480p AAC)` leaves `( AAC)` (which later collapses to
+     * nothing) instead of stranding `)`. Spaces/dots stay consumed so
+     * adjacent tokens (`HEVC 10-bit`) keep stripping in one pass.
+     */
+    private fun stripDelimitedBody(text: String, body: String, leadExtra: String = ""): String =
+        delimitedPattern(body, leadExtra).replace(text, ::keptBoundaries)
+
+    /**
+     * Remove every delimited occurrence of [token] (case-insensitive).
+     * Returns the input unchanged when nothing matches.
+     */
+    private fun stripDelimitedToken(text: String, token: String): String {
+        if (token.isBlank()) return text
+        return stripDelimitedBody(text, Regex.escape(token.trim()))
+    }
+
+    /**
+     * Every known codec spelling (normalized + raw), for universe
+     * stripping when ANY codec was parsed. Delimited boundaries keep
+     * `AVC1` / `2160p60`-style compounds safe.
+     */
+    private val ALL_CODEC_SPELLINGS = listOf(
+        "HEVC", "X265", "H265", "X.265", "H.265",
+        "AVC", "X264", "H264", "X.264", "H.264",
+        "AV1", "VP9", "XVID", "DIVX",
+    )
+
+    /**
+     * Closed subtitle-marker word set for aggressive stripping. The
+     * full English word `SUBTITLES` is deliberately excluded: `X with
+     * Subtitles` reads as title content (reviewer fixture), while the
+     * abbreviated/marker forms below are unambiguous release
+     * metadata. Bare `SUB` and lone language codes are excluded too.
+     */
+    private val SUBTITLE_MARKER_WORDS = listOf(
+        "MULTI SUBS", "MULTI SUB", "SUBBED", "SUBS",
+        "SUBTITULADO", "VOSTFR", "NAPISY PL", "NAPISY", "LEGENDADO",
+    )
+
+    /**
+     * Bracketed subtitle-file formats (`[TTML]`, `[ASS]`). Stripped
+     * only when subs were parsed; unbracketed uses are left alone.
+     */
+    private val SUBTITLE_FORMAT_BRACKETS = listOf(
+        "SRT", "ASS", "SSA", "PGS", "SUP", "VTT", "TTML", "SMI", "IDX",
+    )
+
+    /**
+     * Compound source-class tokens. Bare `WEB` is handled separately
+     * (resolution context required) since it can be a title word.
+     */
+    private val SOURCE_CLASS_STRIP_TOKENS = listOf(
+        "WEB-DL", "WEBDL", "WEBRip", "WEB-RIP", "BLURAY", "BLU-RAY",
+        "BDRIP", "DVDRIP", "HDTV", "PDTV", "SDTV", "TVRIP", "REMUX",
+        "DVD", "BD",
+    )
+
+    /**
+     * Bounded normalized audio-format bases the parser can emit (see
+     * `normaliseAudioFormat` branches + fallthrough families).
+     * Together with [audioFormatRawSpellings] this is the one source
+     * of truth the clean-title universe is derived from.
+     */
+    private val AUDIO_FORMAT_KNOWN_BASES = listOf(
+        "E-AC-3 / DDP", "DD", "AC-3", "E-AC-3", "AAC", "FLAC",
+        "TRUEHD", "DTS-HD MA", "DTS-HD HRA", "DTS", "ATMOS",
+        "MP3", "OPUS", "MP2", "LPCM", "PCM",
+    )
+
+    /**
+     * Every raw audio spelling in the universe, longest first. Derived
+     * from [audioFormatRawSpellings] over [AUDIO_FORMAT_KNOWN_BASES] —
+     * never hand-maintained separately. Used when ANY audio format was
+     * parsed: format tokens are never title content, and multi-format
+     * rows (`TrueHD … FLAC`) must strip every one.
+     */
+    private val ALL_AUDIO_FORMAT_SPELLINGS: List<String> by lazy {
+        AUDIO_FORMAT_KNOWN_BASES
+            .flatMap { audioFormatRawSpellings(it) }
+            .distinct()
+            .sortedByDescending { it.length }
+    }
+    /**
+     * Remove delimited occurrences of [token] where a digit may also
+     * lead (episode-glued subtitle tags like `E01VOSTFR`). Used only
+     * for the closed subtitle-marker set, only when subs were parsed.
+     */
+    private fun stripDelimitedSubWord(text: String, token: String): String {
+        if (token.isBlank()) return text
+        return stripDelimitedBody(text, Regex.escape(token.trim()), "|(?<=\\d)")
+    }
+
+    /**
+     * Remove delimited occurrences of [token] EXCEPT a leading one: a
+     * bare `Dual`/`Dub`/`Dubbed` as the title's first token may be the
+     * title's own first word, so only non-first occurrences strip.
+     * Paren/bracket edges are preserved like everywhere else.
+     */
+    private fun stripDelimitedTokenNonLeading(text: String, token: String): String {
+        if (token.isBlank()) return text
+        val body = Regex.escape(token.trim())
+        val first = delimitedPattern(body).find(text) ?: return text
+        if (text.substring(0, first.range.first).isNotBlank()) {
+            return stripDelimitedBody(text, body)
+        }
+        val head = text.substring(0, first.range.last + 1)
+        val tail = text.substring(first.range.last + 1)
+        return head + stripDelimitedBody(tail, body)
+    }
+
+    /**
+     * Remove one raw audio-format spelling plus an optional glued or
+     * spaced channel tail (`FLAC`, `TrueHD 7.1`, `AAC 2.0`, `DDP5.1`,
+     * `PCM20`, broken `DDP2 0`). The tail only ever attaches directly
+     * to the format — and a following digit blocks the match, so years
+     * (`FLAC 2024`) can never be eaten — mirroring the parser's own
+     * smashed-channel key expansion (`DD61`, `EAC361`, `PCM51`).
+     */
+    private fun stripAudioFormatToken(text: String, spelling: String): String {
+        if (spelling.isBlank()) return text
+        val body = Regex.escape(spelling.trim()) +
+            """(?:[\s._\-]*(?:[567]\.1|2\.0|1\.0|\d{1,2}(?:\s+\d{1,2})?))?"""
+        return stripDelimitedBody(text, body)
+    }
+
+    /**
      * Produce a cleaned display title that removes tokens already
      * confidently represented elsewhere (quality, codec, bit depth,
      * source service, release group). The exact raw title is preserved
      * separately for identity/selection.
+     *
+     * v3 aggressive rules (all UI-only, raw preserved): bracketed HDR
+     * variant, bracketed audio-mode/format duplicates, batch markers,
+     * checksum brackets, container extension, parenthesized resolution
+     * and leading HDR-ish tokens are also removed — but only from
+     * confidently parsed values passed in by the caller. Bare
+     * audio-mode/language words mid-title are never touched, and
+     * season/episode identity is preserved.
+     *
+     * v3.1 extends the same gate to UNBRACKETED tokens: resolution
+     * (+`4K` alias), codec raw spellings (`x264`/`x265`/`H.264`),
+     * bit-depth separator forms, HDR variants, audio-format raw
+     * spellings with channel tails (`TrueHD 7.1`, `AAC 2.0`,
+     * `DDP5.1`), audio-mode words (phrases anywhere; bare
+     * `Dual`/`Dub`/`Dubbed`/`Multidub` never in first-token position),
+     * subtitle markers incl. episode-glued `E01VOSTFR` and `ENG+JPN`
+     * clusters, `Batch` + complete-pack phrases, dotted/underscored
+     * titles re-spaced, and a trailing `-GROUP` matching the header.
+     * Season/episode tokens (`S01`/`E01`/`EP01`/decimals like `5.1`)
+     * are never stripped.
      */
     fun cleanDisplayTitle(
         releaseName: String,
@@ -1442,6 +1875,13 @@ object SourceRowClassifier {
         codec: String?,
         bitDepth: String?,
         sourceService: String?,
+        hdrVariant: String? = null,
+        audioSummary: String? = null,
+        batch: Boolean = false,
+        audioFormat: String? = null,
+        subtitleSummary: String? = null,
+        subtitleLanguages: List<String> = emptyList(),
+        sourceClass: String? = null,
     ): String {
         var cleaned = releaseName
         // Remove a single matching technical token per pass; stop when
@@ -1450,6 +1890,40 @@ object SourceRowClassifier {
         codec?.let { removableBrackets.add(it) }
         bitDepth?.let { removableBrackets.add(it) }
         resolution?.let { removableBrackets.add(it) }
+        // HDR variant forms (e.g. variant "HDR10+" also removes
+        // "[HDR10PLUS]"; variant "Dolby Vision" also removes "[DV]").
+        hdrVariant?.let { variant ->
+            removableBrackets.add(variant)
+            when (variant) {
+                "HDR10+" -> {
+                    removableBrackets.add("HDR10PLUS")
+                    removableBrackets.add("HDR10 PLUS")
+                }
+                "Dolby Vision" -> {
+                    removableBrackets.add("DOLBY VISION")
+                    removableBrackets.add("DOLBYVISION")
+                    removableBrackets.add("DV")
+                }
+                "HDR10" -> {
+                    removableBrackets.add("HDR10")
+                }
+                "HDR" -> {
+                    removableBrackets.add("HDR")
+                }
+            }
+        }
+        // Bracketed audio-mode duplicates (e.g. "[Dual Audio]") when an
+        // audio summary was parsed; bare language codes are protected.
+        audioSummary?.let { summary ->
+            val upper = summary.uppercase()
+            val bareCode = upper.length in 2..4 && upper.all { it.isLetter() }
+            if (!bareCode) removableBrackets.add(summary)
+        }
+        // Batch markers when a batch was confidently parsed.
+        if (batch) {
+            removableBrackets.add("BATCH")
+            removableBrackets.add("COMPLETE")
+        }
         // Use the source-service ALIAS KEY (NF, AMZN, CR) when matching
         // the raw title, because that is the form Torrentio actually
         // emits in the title. The expanded form ("Netflix") is what the
@@ -1458,19 +1932,56 @@ object SourceRowClassifier {
             val alias = SOURCE_SERVICE_ALIASES.entries.firstOrNull { it.value == service }?.key
             if (alias != null) removableBrackets.add(alias)
         }
+        // Precompile the bracket-token patterns ONCE per clean call
+        // (v3.3 finding 7): the token set is loop-invariant, so
+        // rebuilding every convergence pass only recompiled identical
+        // patterns. Same patterns, same order — same behavior.
+        val removableBracketPatterns = removableBrackets.map { token ->
+            // Match bracketed token either as-is (e.g. "[10-bit]") or
+            // with the hyphen stripped (e.g. "[10bit]").
+            val noHyphen = token.replace("-", "")
+            val noSpace = token.replace(REGEX_WS_RUN, "")
+            Regex(
+                """\[(?:\Q$token\E|\Q$noHyphen\E|\Q$noSpace\E)\]""",
+                RegexOption.IGNORE_CASE,
+            )
+        }
         // Try up to 8 passes to converge.
         repeat(8) {
             var changed = false
-            for (token in removableBrackets) {
-                // Match bracketed token either as-is (e.g. "[10-bit]") or
-                // with the hyphen stripped (e.g. "[10bit]").
-                val noHyphen = token.replace("-", "")
-                val pattern = Regex(
-                    """\[(?:\Q$token\E|\Q$noHyphen\E)\]""",
-                    RegexOption.IGNORE_CASE,
-                )
+            for (pattern in removableBracketPatterns) {
                 if (pattern.containsMatchIn(cleaned)) {
                     cleaned = pattern.replace(cleaned, "")
+                    changed = true
+                }
+            }
+            // Checksum/CRC brackets (e.g. "[AAA94036]").
+            if (REGEX_CHECKSUM_BRACKET.containsMatchIn(cleaned)) {
+                cleaned = REGEX_CHECKSUM_BRACKET.replace(cleaned, "")
+                changed = true
+            }
+            // Container extension at the end.
+            val strippedExt = REGEX_STRIP_MEDIA_EXTENSION.replace(cleaned, "")
+            if (strippedExt != cleaned) {
+                cleaned = strippedExt
+                changed = true
+            }
+            // Parenthesized resolution (e.g. "(1080p)") and HDR markers
+            // (e.g. "(HDR)") when an HDR variant was parsed.
+            if (CLEAN_PAREN_RES.containsMatchIn(cleaned)) {
+                cleaned = CLEAN_PAREN_RES.replace(cleaned, "")
+                changed = true
+            }
+            if (hdrVariant != null) {
+                if (CLEAN_PAREN_HDR.containsMatchIn(cleaned)) {
+                    cleaned = CLEAN_PAREN_HDR.replace(cleaned, "")
+                    changed = true
+                }
+            }
+            // Batch phrases in brackets when a batch was parsed.
+            if (batch) {
+                if (CLEAN_BATCH_BRACKET.containsMatchIn(cleaned)) {
+                    cleaned = CLEAN_BATCH_BRACKET.replace(cleaned, "")
                     changed = true
                 }
             }
@@ -1486,12 +1997,11 @@ object SourceRowClassifier {
                     changed = true
                 }
             }
-            // Remove leading technical tokens like "1080p" or "4k" before
-            // the title.
-            val leadingTechPattern =
-                Regex("""^(?:\s*(?:4k|2160p|1080p|720p|480p|1440p)\b)+""", RegexOption.IGNORE_CASE)
-            if (leadingTechPattern.containsMatchIn(cleaned)) {
-                cleaned = leadingTechPattern.replace(cleaned, "")
+            // Remove leading technical tokens like "1080p", "4k" or
+            // "HDR" before the title (the Salieri duplication: a leading
+            // HDR already shown as a chip must not repeat in the title).
+            if (CLEAN_LEADING_TECH.containsMatchIn(cleaned)) {
+                cleaned = CLEAN_LEADING_TECH.replace(cleaned, "")
                 changed = true
             }
             // Remove a leading "[GROUP] " if not already removed (alternative
@@ -1517,17 +2027,293 @@ object SourceRowClassifier {
                     it.value == sourceService
                 }?.key ?: sourceService
                 val ssPattern = Regex(
-                    """(?:^|\s)\Q$alias\E(?:\s|$)""",
+                    """(^|$CLEAN_DELIM_CLASS)\Q$alias\E(${'$'}|$CLEAN_DELIM_CLASS)""",
                     RegexOption.IGNORE_CASE,
                 )
                 if (ssPattern.containsMatchIn(cleaned)) {
-                    cleaned = ssPattern.replace(cleaned, " ")
+                    cleaned = ssPattern.replace(cleaned, ::keptBoundaries)
+                    changed = true
+                }
+            }
+            // ---- v3.1 aggressive delimited stripping ------------------
+            // Resolution (+`4K` alias), codec raw spellings, bit-depth
+            // separator forms, HDR variants: parsed pill duplicates in
+            // any separator style.
+            val delimitedValues = mutableSetOf<String>()
+            resolution?.let {
+                delimitedValues.add(it)
+                if (it.equals("2160p", ignoreCase = true)) delimitedValues.add("4K")
+            }
+            // Codec spellings: the parsed value plus raw alternates AND
+            // the whole known universe (`H.264` in an HEVC row is still
+            // codec metadata, never title content). Each spelling also
+            // strips a glued alpha scene suffix (`x264-PCW`); the
+            // suffix is letters-only so `S01E01`/`10bit` can never be
+            // eaten (`HEVC-S01E01` is impossible input anyway, but the
+            // shape guard makes it structurally safe).
+            codec?.let {
+                val spellings = (listOf(it) + codecRawSpellings(it) +
+                    ALL_CODEC_SPELLINGS).distinct()
+                for (spelling in spellings) {
+                    for (variant in tokenSeparatorVariants(spelling)) {
+                        val compound = Regex.escape(variant) +
+                            """(?:-(?:[A-Za-z]{2,6}))?"""
+                        val stripped = stripDelimitedBody(cleaned, compound)
+                        if (stripped != cleaned) {
+                            cleaned = stripped
+                            changed = true
+                        }
+                    }
+                }
+            }
+            bitDepth?.let { delimitedValues.addAll(tokenSeparatorVariants(it)) }
+            hdrVariant?.let { variant ->
+                delimitedValues.add(variant)
+                when (variant) {
+                    "HDR10+" -> delimitedValues.addAll(
+                        listOf("HDR10PLUS", "HDR10 PLUS", "HDR10-PLUS", "HDR10_PLUS"))
+                    "Dolby Vision" -> delimitedValues.addAll(
+                        listOf("DOLBY VISION", "DOLBYVISION", "DV"))
+                    "HDR10" -> delimitedValues.add("HDR10")
+                    "HDR" -> delimitedValues.add("HDR")
+                }
+                delimitedValues.addAll(tokenSeparatorVariants(variant))
+            }
+            for (token in delimitedValues) {
+                for (variant in tokenSeparatorVariants(token)) {
+                    val stripped = stripDelimitedToken(cleaned, variant)
+                    if (stripped != cleaned) {
+                        cleaned = stripped
+                        changed = true
+                    }
+                }
+            }
+            // Audio-format raw spellings with optional channel tails
+            // (`FLAC`, `TrueHD 7.1`, `AAC 2.0`, `DDP5.1`). Gated on ANY
+            // parsed format but stripping the whole known universe:
+            // format tokens are never title content, and multi-format
+            // rows (`TrueHD … FLAC`) must strip every one.
+            if (audioFormat != null) {
+                for (spelling in ALL_AUDIO_FORMAT_SPELLINGS) {
+                    val stripped = stripAudioFormatToken(cleaned, spelling)
+                    if (stripped != cleaned) {
+                        cleaned = stripped
+                        changed = true
+                    }
+                }
+                // Generic audio-channel markers (`[Audio 5.1]`,
+                // `Audio 2.0`, bracketed bare `[Audio]`). Unbracketed
+                // bare `Audio` without a tail is left alone.
+                if (CLEAN_AUDIO_MARKER.containsMatchIn(cleaned)) {
+                    cleaned = CLEAN_AUDIO_MARKER.replace(cleaned, " ")
+                    changed = true
+                }
+            }
+            // Audio-mode duplicates when Dual/Dub audio was parsed.
+            // Phrases strip anywhere; bare singles never in
+            // first-token position (a leading Dual/Dub may be the
+            // title's own first word).
+            val isDualAudio = audioSummary.equals("Dual", ignoreCase = true)
+            val isDubAudio = audioSummary.equals("Dub", ignoreCase = true)
+            if (isDualAudio) {
+                for (phrase in listOf("DUAL AUDIO", "MULTI AUDIO")) {
+                    for (variant in tokenSeparatorVariants(phrase)) {
+                        val stripped = stripDelimitedToken(cleaned, variant)
+                        if (stripped != cleaned) {
+                            cleaned = stripped
+                            changed = true
+                        }
+                    }
+                }
+                for (bare in listOf("MULTIDUB", "DUAL")) {
+                    val stripped = stripDelimitedTokenNonLeading(cleaned, bare)
+                    if (stripped != cleaned) {
+                        cleaned = stripped
+                        changed = true
+                    }
+                }
+                // Bare MULTI is audio only when no subtitle signal
+                // claims the title (mirrors the parser gate).
+                if (subtitleSummary == null && subtitleLanguages.isEmpty()) {
+                    val stripped = stripDelimitedTokenNonLeading(cleaned, "MULTI")
+                    if (stripped != cleaned) {
+                        cleaned = stripped
+                        changed = true
+                    }
+                }
+            }
+            if (isDubAudio) {
+                for (bare in listOf("DUBBED", "DUB")) {
+                    val stripped = stripDelimitedTokenNonLeading(cleaned, bare)
+                    if (stripped != cleaned) {
+                        cleaned = stripped
+                        changed = true
+                    }
+                }
+            }
+            // Subtitle markers when subs were parsed (flags, codes, or
+            // bare markers): marker words anywhere — digits may lead
+            // for episode-glued tags (`E01VOSTFR`) — plus `ENG+JPN`
+            // clusters and bracketed language codes.
+            val hasSubs = subtitleSummary != null || subtitleLanguages.isNotEmpty()
+            if (hasSubs) {
+                for (word in SUBTITLE_MARKER_WORDS) {
+                    for (variant in tokenSeparatorVariants(word)) {
+                        val stripped = stripDelimitedSubWord(cleaned, variant)
+                        if (stripped != cleaned) {
+                            cleaned = stripped
+                            changed = true
+                        }
+                    }
+                }
+                if (CLEAN_LANG_CLUSTER.containsMatchIn(cleaned)) {
+                    cleaned = CLEAN_LANG_CLUSTER.replace(cleaned, ::keptBoundaries)
+                    changed = true
+                }
+                for (lang in subtitleLanguages) {
+                    if (lang.isBlank()) continue
+                    val langBracket = Regex(
+                        """\[\s*""" + Regex.escape(lang.trim()) + """\s*]""",
+                        RegexOption.IGNORE_CASE,
+                    )
+                    if (langBracket.containsMatchIn(cleaned)) {
+                        cleaned = langBracket.replace(cleaned, " ")
+                        changed = true
+                    }
+                }
+            }
+            // Unbracketed `Batch` + complete-pack phrases when a batch
+            // was parsed. Bare `Complete` alone never strips (it can be
+            // a title word); only the full pack phrase does.
+            if (batch) {
+                val strippedBatch = stripDelimitedToken(cleaned, "Batch")
+                if (strippedBatch != cleaned) {
+                    cleaned = strippedBatch
+                    changed = true
+                }
+                if (CLEAN_PACK_PHRASE.containsMatchIn(cleaned)) {
+                    cleaned = CLEAN_PACK_PHRASE.replace(cleaned, ::keptBoundaries)
+                    changed = true
+                }
+            }
+            // Source-class compounds (`BluRay`, `REMUX`, `WEB-DL`) when
+            // a class was parsed, in any separator style. Runs BEFORE
+            // the bare-`WEB` rule below so `WEB-DL` strips whole
+            // instead of leaving a `DL` residue.
+            sourceClass?.let {
+                for (token in SOURCE_CLASS_STRIP_TOKENS) {
+                    for (variant in tokenSeparatorVariants(token)) {
+                        val stripped = stripDelimitedToken(cleaned, variant)
+                        if (stripped != cleaned) {
+                            cleaned = stripped
+                            changed = true
+                        }
+                    }
+                }
+            }
+            // `WxH` resolution form (`1920x1080`) when a resolution was
+            // parsed. The digit counts exclude episode shapes.
+            if (resolution != null) {
+                if (CLEAN_WXH.containsMatchIn(cleaned)) {
+                    cleaned = CLEAN_WXH.replace(cleaned, ::keptBoundaries)
+                    changed = true
+                }
+                // Bare `WEB` only with resolution context (it can be a
+                // title word).
+                val bareWeb = stripDelimitedToken(cleaned, "WEB")
+                if (bareWeb != cleaned) {
+                    cleaned = bareWeb
+                    changed = true
+                }
+                // Trailing group-shape bracket (`[Kira-Fansub]`) when NO
+                // group was parsed: the parser only considers the first
+                // bracket per line, so a trailing fansub tag can be left
+                // unknown. Shape-restricted (1-2 word/hyphen tokens) and
+                // excluding episode/season/version shapes, checksums and
+                // known language codes — never invents, only de-dups a
+                // trailing tag the header cannot show (null group falls
+                // back to the clean title, so the tag would otherwise
+                // repeat as its own header).
+                if (releaseGroup == null) {
+                    val tagMatch = CLEAN_TRAILING_TAG.find(cleaned)
+                    if (tagMatch != null) {
+                        val tag = tagMatch.groupValues[1]
+                        // The episode regex is bare-token shaped (no
+                        // brackets), so match the tag itself.
+                        val isEpisodeShape =
+                            REGEX_SEASON_EPISODE_BRACKET.matches(tag)
+                        val isVersion = CLEAN_VERSION_TAG.matches(tag)
+                        val tagUpper = tag.uppercase()
+                        val isLangCode = KNOWN_LANG_CODES.any {
+                            it.equals(tagUpper, ignoreCase = true)
+                        }
+                        if (!isEpisodeShape && !isVersion && !isLangCode &&
+                            !REGEX_CHECKSUM_BRACKET.containsMatchIn("[" + tag + "]")
+                        ) {
+                            cleaned = CLEAN_TRAILING_TAG.replace(cleaned, " ")
+                            changed = true
+                        }
+                    }
+                }
+            }
+            // Framerate parentheticals (`(23.976FPS)`) are never title
+            // content; bracketed `[Chapter]` likewise. Bracketed
+            // subtitle-file formats strip only when subs were parsed.
+            if (CLEAN_FPS_PAREN.containsMatchIn(cleaned)) {
+                cleaned = CLEAN_FPS_PAREN.replace(cleaned, " ")
+                changed = true
+            }
+            if (CLEAN_CHAPTER_BRACKET.containsMatchIn(cleaned)) {
+                cleaned = CLEAN_CHAPTER_BRACKET.replace(cleaned, " ")
+                changed = true
+            }
+            if (hasSubs) {
+                for (fmt in SUBTITLE_FORMAT_BRACKETS) {
+                    val fmtBracket = Regex(
+                        """\[\s*""" + Regex.escape(fmt) + """\s*]""",
+                        RegexOption.IGNORE_CASE,
+                    )
+                    if (fmtBracket.containsMatchIn(cleaned)) {
+                        cleaned = fmtBracket.replace(cleaned, " ")
+                        changed = true
+                    }
+                }
+            }
+            // Trailing `-GROUP` matching the header group (suffix
+            // groups are shown in the header, not repeated).
+            if (releaseGroup != null) {
+                val suffixGroup = Regex(
+                    """[\s._\-]+""" + Regex.escape(releaseGroup) + """\s*${'$'}""",
+                    RegexOption.IGNORE_CASE,
+                )
+                val strippedSuffix = suffixGroup.replace(cleaned, "")
+                if (strippedSuffix != cleaned) {
+                    cleaned = strippedSuffix
                     changed = true
                 }
             }
             if (!changed) return@repeat
         }
-        // Final cleanup: collapse whitespace.
-        return cleaned.replace(Regex("""\s+"""), " ").trim()
+        // Final cleanup: empty brackets/parens left by removals, then
+        // dots re-spaced — decimals (`5.1`, `v2.0`) and sentence dots
+        // (`with Subtitles.`, `.hack`) stay; dotted separators
+        // (`Kaijuu.8.Gou`) and digit-led residue (`E05. `) become
+        // spaces — then underscores, dash runs, and stray edge
+        // separators (including a trailing digit-dot like `V3.`).
+        // A glued trailing letter-dot (`.hack`, `Subtitles.`) is title
+        // content and stays; only spaced dots trim.
+        cleaned = cleaned
+            .replace(CLEAN_EMPTY_BRACKET, "")
+            .replace(CLEAN_EMPTY_PAREN, "")
+            .replace(CLEAN_DOT_SEP, " ")
+            .replace("_", " ")
+            .replace(CLEAN_DASH_RUN, " ")
+            .replace(REGEX_WS_RUN, " ")
+            .replace(CLEAN_EDGE_LEAD, "")
+            .replace(CLEAN_DOT_LEAD, "")
+            .replace(CLEAN_EDGE_TRAIL, "")
+            .replace(CLEAN_DIGIT_DOT_TRAIL, "")
+            .replace(CLEAN_DOT_TRAIL, "")
+        return cleaned.trim()
     }
 }

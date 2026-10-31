@@ -23,9 +23,8 @@
             android:layout_height="wrap_content"
             android:fontFamily="@font/poppins_bold"
             android:padding="10dp"
-            android:text="@string/auto_select_server"
+            android:text="@string/picker_auto_title"
             android:textAlignment="center"
-            android:textAllCaps="true"
             android:textSize="20sp" />
 
         <ProgressBar
@@ -42,7 +41,6 @@
             android:fontFamily="@font/poppins_bold"
             android:padding="10dp"
             android:textAlignment="center"
-            android:textAllCaps="true"
             android:textSize="14sp" />
 
         <Button
@@ -69,33 +67,68 @@
         android:orientation="vertical"
         tools:visibility="gone">
 
+        <!-- Source Picker v3 Final: "Episode N" + source name, Sub/Dub filter,
+             remembered-family notice. The remember switch is in the footer. -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:baselineAligned="true"
             android:orientation="horizontal"
-            android:gravity="center_vertical"
             android:paddingStart="20dp"
-            android:paddingEnd="12dp"
-            android:paddingTop="8dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="20dp"
             android:paddingBottom="4dp">
 
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:fontFamily="@font/poppins_bold"
-                android:text="@string/select_source"
-                android:textAlignment="textStart"
-                android:textSize="18sp" />
-
-            <CheckBox
-                android:id="@+id/selectorMakeDefault"
+                android:id="@+id/selectorHeaderTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:checked="true"
-                android:text="@string/make_default"
-                android:textAlignment="textEnd" />
+                android:fontFamily="@font/poppins_bold"
+                android:text="@string/select_source"
+                android:textSize="18sp" />
+
+            <TextView
+                android:id="@+id/selectorHeaderMeta"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:alpha="0.75"
+                android:ellipsize="end"
+                android:fontFamily="@font/poppins"
+                android:gravity="end"
+                android:singleLine="true"
+                android:textSize="13sp"
+                tools:text="Torrentio · 23 releases" />
         </LinearLayout>
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/selectorFilters"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:visibility="gone"
+            app:chipSpacingHorizontal="8dp"
+            app:selectionRequired="true"
+            app:singleLine="true"
+            app:singleSelection="true"
+            tools:visibility="visible" />
+
+        <TextView
+            android:id="@+id/selectorNotice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/poppins"
+            android:paddingStart="20dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="4dp"
+            android:textColor="?attr/colorPrimary"
+            android:textSize="13sp"
+            android:visibility="gone"
+            tools:text="@string/picker_family_missing"
+            tools:visibility="visible" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/selectorRecyclerView"
@@ -103,7 +136,77 @@
             android:layout_height="wrap_content"
             android:requiresFadingEdge="vertical"
             tools:itemCount="4"
-            tools:listitem="@layout/item_stream" />
+            tools:listitem="@layout/item_source_release" />
+
+        <!-- Empty state: replaces the old snackbar + dismiss. -->
+        <LinearLayout
+            android:id="@+id/selectorEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingStart="32dp"
+            android:paddingTop="24dp"
+            android:paddingEnd="32dp"
+            android:paddingBottom="16dp"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <TextView
+                android:id="@+id/selectorEmptyTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/poppins_bold"
+                android:gravity="center"
+                android:textSize="16sp"
+                tools:text="No streams for episode 1" />
+
+            <TextView
+                android:id="@+id/selectorEmptyMessage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:alpha="0.8"
+                android:fontFamily="@font/poppins"
+                android:gravity="center"
+                android:textSize="14sp"
+                tools:text="AnimePahe returned nothing. It may not have this episode yet, or the site may be down." />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/selectorEmptyRetry"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/poppins_bold"
+                    android:text="@string/picker_retry" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/selectorEmptyChangeSource"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:fontFamily="@font/poppins_bold"
+                    android:text="@string/picker_change_source" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/selectorMakeDefault"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="16dp"
+            android:checked="true"
+            android:fontFamily="@font/poppins"
+            android:minHeight="48dp"
+            android:text="@string/picker_auto_play"
+            android:textSize="14sp" />
 
         <!-- MAX MERGE M7A: manual torrent/magnet entry, anchored to the
              current episode. The sheet gates on torrent availability. -->

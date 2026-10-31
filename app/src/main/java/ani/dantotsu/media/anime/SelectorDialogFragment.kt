@@ -19,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 //import androidx.compose.ui.geometry.isEmpty
 //import androidx.compose.ui.semantics.text
 import androidx.core.content.ContextCompat
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.activityViewModels
@@ -38,9 +39,8 @@ import ani.dantotsu.copyToClipboard
 import ani.dantotsu.currActivity
 import ani.dantotsu.currContext
 import ani.dantotsu.databinding.BottomSheetSelectorBinding
-import ani.dantotsu.databinding.ItemStreamBinding
-import ani.dantotsu.databinding.ItemUrlBinding
-import ani.dantotsu.databinding.ItemUrlStreamInlineBinding
+import ani.dantotsu.databinding.ItemSourceReleaseBinding
+import ani.dantotsu.databinding.ItemSourceStreamBinding
 import ani.dantotsu.download.DownloadedType
 import ani.dantotsu.download.video.Helper
 import ani.dantotsu.download.video.findBestVideoForDownload
@@ -63,7 +63,21 @@ import ani.dantotsu.media.anime.selector.SourcePillKind
 import ani.dantotsu.media.anime.selector.SourceRowPill
 import ani.dantotsu.media.anime.selector.SourceRowSummarizer
 import ani.dantotsu.media.anime.selector.SourceRowViewModel
-import ani.dantotsu.media.anime.selector.StreamRowLayoutPolicy
+import ani.dantotsu.media.anime.selector.AudioKind
+import ani.dantotsu.media.anime.selector.AudioKindDetector
+import ani.dantotsu.media.anime.selector.AudioKindFilter
+import ani.dantotsu.media.anime.selector.BestReason
+import ani.dantotsu.media.anime.selector.CompactDetails
+import ani.dantotsu.media.anime.selector.PickerEntry
+import ani.dantotsu.media.anime.selector.PickerList
+import ani.dantotsu.media.anime.selector.PickerListBuilder
+import ani.dantotsu.media.anime.selector.PickerRow
+import ani.dantotsu.media.anime.selector.QualityVariant
+import ani.dantotsu.media.anime.selector.ResolutionLabel
+import ani.dantotsu.media.anime.selector.RowRef
+import ani.dantotsu.media.anime.selector.SeederHealth
+import ani.dantotsu.media.anime.selector.SourceRowClassifier
+import ani.dantotsu.media.anime.selector.TransportLabel
 import ani.dantotsu.media.anime.selector.FamilyAttemptSuppression
 import ani.dantotsu.media.anime.selector.FamilyPayload
 import ani.dantotsu.media.anime.selector.RecoveryCoordinator
@@ -194,11 +208,35 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                     }
                     binding.selectorRecyclerView.adapter = null
                     binding.selectorProgressBar.visibility = View.VISIBLE
+                    binding.selectorEmpty.visibility = View.GONE
+                    binding.selectorRecyclerView.visibility = View.VISIBLE
+                    binding.selectorHeaderTitle.text = getString(R.string.picker_episode_title, ep.number)
+                    val sourceName = model.watchSources?.get(media?.selected?.sourceIndex ?: 0)?.name.orEmpty()
+                    binding.selectorHeaderMeta.text = getString(R.string.picker_meta_loading, sourceName)
                     makeDefault = PrefManager.getVal(PrefName.MakeDefault)
                     binding.selectorMakeDefault.isChecked = makeDefault
                     binding.selectorMakeDefault.setOnClickListener {
                         makeDefault = binding.selectorMakeDefault.isChecked
                         PrefManager.setVal(PrefName.MakeDefault, makeDefault)
+                        (binding.selectorRecyclerView.adapter as? ExtractorAdapter)?.rebuild()
+                    }
+                    // Source Picker v3 Final: nothing found stays in the sheet
+                    // with Retry / Change source instead of snackbar + dismiss.
+                    fun showEmpty() {
+                        binding.selectorProgressBar.visibility = View.GONE
+                        binding.selectorRecyclerView.visibility = View.GONE
+                        binding.selectorFilters.visibility = View.GONE
+                        binding.selectorNotice.visibility = View.GONE
+                        binding.selectorEmpty.visibility = View.VISIBLE
+                        binding.selectorEmptyTitle.text = getString(R.string.picker_empty_title, ep.number)
+                        binding.selectorEmptyMessage.text = getString(R.string.picker_empty_message, sourceName)
+                        binding.selectorEmptyRetry.setOnClickListener {
+                            ep.allStreams = false
+                            initializeVideoServerSelector(ep, onEpisodeDownloadHandler)
+                        }
+                        binding.selectorEmptyChangeSource.setOnClickListener {
+                            tryWith { dismissAllowingStateLoss() }
+                        }
                     }
                     binding.selectorRecyclerView.layoutManager =
                         LinearLayoutManager(
@@ -221,8 +259,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             withContext(Dispatchers.Main) {
                                 if (_binding == null || !isAdded) return@withContext
                                 binding.selectorProgressBar.visibility = View.GONE
-                                if (adapter.itemCount == 0) {
-                                    fail(R.string.stream_selection_empty)
+                                if (adapter.links.isEmpty()) {
+                                    showEmpty()
+                                    return@withContext
                                 }
                                 if (model.watchSources!!.isDownloadedSource(media?.selected!!.sourceIndex)) {
                                     adapter.performClick(0)
@@ -235,8 +274,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             media!!.anime?.episodes?.set(epKey, ep)
                         }
                         adapter.addAll(ep.extractors)
-                        if (ep.extractors?.size == 0) {
-                            fail(R.string.stream_selection_empty)
+                        if (ep.extractors.isNullOrEmpty()) {
+                            showEmpty()
+                            return
                         }
                         if (model.watchSources!!.isDownloadedSource(media?.selected!!.sourceIndex)) {
                             adapter.performClick(0)
@@ -446,7 +486,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                         if (selected != null && media?.format != "LOCAL") {
                             binding.selectorListContainer.visibility = View.GONE
                             binding.selectorAutoListContainer.visibility = View.VISIBLE
-                            binding.selectorAutoText.text = selected
+                            binding.selectorAutoText.text = selected?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: selected
                             binding.selectorCancel.setOnClickListener {
                                 media!!.selected!!.server = null
                                 model.saveSelected(media!!.id, media!!.selected!!)
@@ -813,54 +853,68 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         }
     }
 
+    /**
+     * Source Picker v3 Final list. Holds every loaded extractor in
+     * [links] (same as before) and renders them as one flat list of
+     * cards built by [PickerListBuilder]: stream links of one group and
+     * audio share a card with quality buttons, torrents keep one card
+     * each. All selection, download and long-press behaviour goes
+     * through [RowActions], which is the previous per-server code.
+     */
     private inner class ExtractorAdapter(private val onEpisodeDownloadHandler: EpisodeDownloadHandler? = null) :
-        RecyclerView.Adapter<ExtractorAdapter.StreamViewHolder>() {
+        RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         val links = mutableListOf<VideoExtractor>()
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StreamViewHolder =
-            StreamViewHolder(
-                ItemStreamBinding.inflate(
-                    LayoutInflater.from(parent.context),
-                    parent,
-                    false
-                )
-            )
+        private val actions = java.util.IdentityHashMap<VideoExtractor, RowActions>()
+        private var list = PickerList(emptyList(), null, -1, false)
+        private var visible: List<PickerEntry> = emptyList()
+        private var filter: AudioKind? = null
+        private var filterChosenByUser = false
+        private val expanded = mutableSetOf<String>()
+        private val viewTypeStream = 0
+        private val viewTypeRelease = 1
 
-        override fun onBindViewHolder(holder: StreamViewHolder, position: Int) {
-            val extractor = links.getOrNull(position) ?: return
-            holder.binding.streamName.text = ""//extractor.server.name
-            holder.binding.streamName.visibility = View.GONE
+        fun actionsFor(extractor: VideoExtractor): RowActions =
+            actions.getOrPut(extractor) { RowActions(extractor, onEpisodeDownloadHandler) }
 
-            holder.binding.streamRecyclerView.layoutManager = LinearLayoutManager(requireContext())
-            holder.binding.streamRecyclerView.adapter = VideoAdapter(extractor, onEpisodeDownloadHandler)
+        override fun getItemCount(): Int = visible.size
+
+        override fun getItemViewType(position: Int): Int =
+            if (visible[position] is PickerEntry.StreamGroup) viewTypeStream else viewTypeRelease
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val inflater = LayoutInflater.from(parent.context)
+            return if (viewType == viewTypeStream) {
+                StreamHolder(ItemSourceStreamBinding.inflate(inflater, parent, false))
+            } else {
+                ReleaseHolder(ItemSourceReleaseBinding.inflate(inflater, parent, false))
+            }
         }
 
-        override fun getItemCount(): Int = links.size
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            when (val entry = visible[position]) {
+                is PickerEntry.StreamGroup -> bindStream((holder as StreamHolder).binding, entry)
+                is PickerEntry.Release -> bindRelease((holder as ReleaseHolder).binding, entry)
+            }
+        }
 
         fun add(videoExtractor: VideoExtractor) {
             if (videoExtractor.videos.isNotEmpty()) {
                 val existingIndex = links.indexOfFirst { it.server.name == videoExtractor.server.name }
                 if (existingIndex >= 0) {
                     links[existingIndex] = videoExtractor
-                    notifyItemChanged(existingIndex)
                 } else {
                     // FINAL-PORT C4 (upstream 6f77ea20): preferred servers
                     // list first; stable otherwise.
-                    if (videoExtractor.isPreferred) {
-                        links.add(0, videoExtractor)
-                        notifyItemInserted(0)
-                    } else {
-                        links.add(videoExtractor)
-                        notifyItemInserted(links.size - 1)
-                    }
+                    if (videoExtractor.isPreferred) links.add(0, videoExtractor) else links.add(videoExtractor)
                 }
+                rebuild()
             }
         }
 
         fun addAll(extractors: List<VideoExtractor>?) {
             if (extractors == null) return
-            val sorted = extractors.sortedByDescending { it.isPreferred }
-            links.addAll(sorted)
-            notifyItemRangeInserted(0, sorted.size)
+            links.addAll(extractors.sortedByDescending { it.isPreferred })
+            rebuild()
         }
 
         fun performClick(position: Int) {
@@ -882,54 +936,398 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             }
         }
 
-        private inner class StreamViewHolder(val binding: ItemStreamBinding) :
+        // ---- list building ------------------------------------------------
+
+        @SuppressLint("NotifyDataSetChanged")
+        fun rebuild() {
+            val mediaId = media?.id
+            val storedKey = mediaId?.let { SelectedKeyStore.load(it) }
+            val storedFamily = mediaId?.let { SelectedFamilyStore.load(it) }
+            val rows = mutableListOf<PickerRow>()
+            links.forEachIndexed { ei, extractor ->
+                val server = extractor.server
+                val provider = StableCandidateBuilder.providerOf(server)
+                val exact = StableCandidateBuilder.exactKey(provider, server)
+                val family = StableCandidateBuilder.familyCandidate(server)
+                val aniVideo = server.video
+                extractor.videos.forEachIndexed { vi, video ->
+                    val viewModel = summarize(extractor, video)
+                    rows += PickerRow(
+                        ref = RowRef(ei, vi),
+                        provider = provider ?: sourceName(),
+                        presentation = viewModel.presentation,
+                        header = viewModel.header?.takeIf { it.isNotBlank() } ?: viewModel.displayLabel,
+                        resolution = ResolutionLabel.resolve(aniVideo?.resolution, server.name)
+                            ?: video.quality?.takeIf { it >= 144 },
+                        transport = TransportLabel.of(video.file.url, video.format?.name),
+                        audioKind = AudioKindDetector.detect(server.name),
+                        preferred = extractor.isPreferred || aniVideo?.preferred == true,
+                        rememberedExact = storedKey != null && exact == storedKey,
+                        rememberedFamily = storedFamily != null && family != null &&
+                            family.providerPkg == storedFamily.providerPkg &&
+                            family.groupKey == storedFamily.groupKey,
+                    )
+                }
+            }
+            list = PickerListBuilder.build(rows, hasRememberedFamily = storedFamily != null)
+            val showFilter = AudioKindFilter.shouldShow(list.entries)
+            if (!showFilter) {
+                filter = null
+            } else if (!filterChosenByUser) {
+                filter = list.bestIndex.takeIf { it >= 0 }?.let { list.entries[it].audioKind }
+            }
+            visible = AudioKindFilter.apply(list.entries, filter)
+            notifyDataSetChanged()
+            onListChanged(showFilter)
+        }
+
+        private fun sourceName(): String? =
+            model.watchSources?.get(media?.selected?.sourceIndex ?: 0)?.name
+
+        private fun summarize(extractor: VideoExtractor, video: Video): SourceRowViewModel =
+            SourceRowSummarizer.build(
+                displayLabel = extractor.server.name,
+                qualityText = extractor.server.name,
+                format = video.format,
+                url = video.file.url,
+            )
+
+        private fun onListChanged(showFilter: Boolean) {
+            if (_binding == null) return
+            val releases = list.entries.count { it is PickerEntry.Release }
+            val source = sourceName().orEmpty()
+            binding.selectorHeaderMeta.text = when {
+                list.entries.isEmpty() -> getString(R.string.picker_meta_loading, source)
+                releases > 0 -> getString(R.string.picker_meta_releases, source, releases)
+                else -> getString(R.string.picker_meta_servers, source, list.entries.size)
+            }
+            binding.selectorNotice.isVisible = makeDefault && list.rememberedFamilyMissing
+            binding.selectorNotice.setText(R.string.picker_family_missing)
+            bindFilters(showFilter)
+        }
+
+        @SuppressLint("NotifyDataSetChanged")
+        private fun bindFilters(show: Boolean) {
+            val group = binding.selectorFilters
+            group.setOnCheckedStateChangeListener(null)
+            group.removeAllViews()
+            group.isVisible = show
+            if (!show) return
+            val options = listOf<AudioKind?>(null) + AudioKindFilter.kinds(list.entries)
+            options.forEach { kind ->
+                val count = AudioKindFilter.count(list.entries, kind)
+                val label = when (kind) {
+                    null -> getString(R.string.picker_filter_all, count)
+                    AudioKind.SUB -> getString(R.string.picker_filter_sub, count)
+                    AudioKind.DUB -> getString(R.string.picker_filter_dub, count)
+                    AudioKind.DUAL -> getString(R.string.picker_filter_dual, count)
+                }
+                val chip = com.google.android.material.chip.Chip(group.context).apply {
+                    id = View.generateViewId()
+                    text = label
+                    tag = kind
+                    isCheckable = true
+                    isCheckedIconVisible = false
+                    isChecked = kind == filter
+                }
+                group.addView(chip)
+            }
+            group.setOnCheckedStateChangeListener { g, ids ->
+                val chip = ids.firstOrNull()?.let { g.findViewById<com.google.android.material.chip.Chip>(it) }
+                    ?: return@setOnCheckedStateChangeListener
+                filter = chip.tag as? AudioKind
+                filterChosenByUser = true
+                visible = AudioKindFilter.apply(list.entries, filter)
+                notifyDataSetChanged()
+            }
+        }
+
+        private fun isBest(entry: PickerEntry): Boolean {
+            val best = list.best ?: return false
+            return best.ref in entry.refs
+        }
+
+        private fun bestText(): String? = when (list.best?.reason) {
+            BestReason.REMEMBERED -> getString(R.string.picker_best_remembered)
+            BestReason.SAME_GROUP -> getString(R.string.picker_best_same_group)
+            BestReason.EXTENSION_PREFERRED -> getString(R.string.picker_best_preferred)
+            null -> null
+        }
+
+        private fun markBest(card: androidx.cardview.widget.CardView, why: android.widget.TextView, entry: PickerEntry) {
+            val best = isBest(entry)
+            card.foreground = if (best) {
+                ContextCompat.getDrawable(card.context, R.drawable.source_card_best_outline)
+            } else {
+                val tv = android.util.TypedValue()
+                card.context.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
+                ContextCompat.getDrawable(card.context, tv.resourceId)
+            }
+            why.isVisible = best
+            why.text = if (best) bestText() else null
+        }
+
+        private fun keyOf(entry: PickerEntry): String =
+            entry.refs.firstOrNull()?.let { ref ->
+                "${links.getOrNull(ref.extractor)?.server?.name}#${ref.video}"
+            }.orEmpty()
+
+        private fun bindExpand(button: View, details: android.widget.TextView, entry: PickerEntry, text: () -> String) {
+            val key = keyOf(entry)
+            val open = key in expanded
+            details.isVisible = open
+            if (open) details.text = text()
+            button.setOnClickListener {
+                if (key in expanded) expanded.remove(key) else expanded.add(key)
+                val nowOpen = key in expanded
+                details.isVisible = nowOpen
+                if (nowOpen) details.text = text()
+            }
+        }
+
+        // ---- stream card ---------------------------------------------------
+
+        private fun bindStream(b: ItemSourceStreamBinding, entry: PickerEntry.StreamGroup) {
+            b.streamName.text = entry.name
+            b.streamAudio.isVisible = entry.audioTag != null
+            b.streamAudio.text = entry.audioTag
+            markBest(b.sourceCard, b.streamWhy, entry)
+
+            val top = entry.primary.firstOrNull()
+            val topExtractor = top?.let { links.getOrNull(it.ref.extractor) }
+            val subtitles = topExtractor?.subtitles.orEmpty()
+            b.streamSub.isVisible = subtitles.isNotEmpty()
+            if (topExtractor != null) actionsFor(topExtractor).setupRowSubtitleButton(b.streamSub, subtitles)
+
+            b.streamQualities.removeAllViews()
+            entry.primary.forEachIndexed { i, variant ->
+                b.streamQualities.addView(qualityButton(b.streamQualities, entry, variant, filled = i == 0))
+            }
+            b.streamAlternates.removeAllViews()
+            b.streamAlternates.isVisible = entry.alternates.isNotEmpty()
+            if (entry.alternates.isNotEmpty()) {
+                val label = android.widget.TextView(b.root.context).apply {
+                    text = entry.alternateLabel?.let { getString(R.string.picker_also_as, it) }
+                        ?: getString(R.string.picker_also)
+                    alpha = 0.75f
+                    textSize = 13f
+                    typeface = ResourcesCompat.getFont(context, R.font.poppins)
+                }
+                b.streamAlternates.addView(label, flexParams(b.root.context, endDp = 8, bottomDp = 0))
+                entry.alternates.forEach { variant ->
+                    b.streamAlternates.addView(qualityButton(b.streamAlternates, entry, variant, filled = false, compact = true))
+                }
+            }
+            bindExpand(b.streamExpand, b.streamDetails, entry) {
+                (entry.primary + entry.alternates).joinToString("\n") { v ->
+                    val raw = links.getOrNull(v.ref.extractor)?.server?.name?.lineSequence()?.firstOrNull().orEmpty()
+                    listOfNotNull(v.label, v.transport).joinToString(" · ") + ": " + raw
+                }
+            }
+        }
+
+        private fun flexParams(context: android.content.Context, endDp: Int, bottomDp: Int) =
+            com.google.android.flexbox.FlexboxLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                val d = context.resources.displayMetrics.density
+                marginEnd = (endDp * d).toInt()
+                bottomMargin = (bottomDp * d).toInt()
+            }
+
+        private fun qualityButton(
+            parent: ViewGroup,
+            entry: PickerEntry.StreamGroup,
+            variant: QualityVariant,
+            filled: Boolean,
+            compact: Boolean = false,
+        ): View {
+            val context = parent.context
+            val d = context.resources.displayMetrics.density
+            val tv = android.widget.TextView(context).apply {
+                text = variant.label
+                textSize = if (compact) 13f else 14f
+                typeface = ResourcesCompat.getFont(context, R.font.poppins_semi_bold)
+                gravity = android.view.Gravity.CENTER
+                minHeight = ((if (compact) 36 else 44) * d).toInt()
+                minWidth = ((if (compact) 52 else 64) * d).toInt()
+                val padH = ((if (compact) 10 else 14) * d).toInt()
+                setPadding(padH, 0, padH, 0)
+                setBackgroundResource(if (filled) R.drawable.quality_button_filled else R.drawable.quality_button_outlined)
+                setTextColor(
+                    context.getThemeColor(
+                        if (filled) com.google.android.material.R.attr.colorOnPrimaryContainer
+                        else com.google.android.material.R.attr.colorOnSurface,
+                    ),
+                )
+                contentDescription = getString(R.string.picker_play_quality, entry.name, variant.label)
+                isClickable = true
+                isFocusable = true
+            }
+            val extractor = links.getOrNull(variant.ref.extractor)
+            if (extractor != null) {
+                val rowActions = actionsFor(extractor)
+                tv.setSafeOnClickListener {
+                    rowActions.onRowClicked(variant.ref.video) {
+                        rowActions.startDownload(variant.ref.video, extractor.subtitles)
+                    }
+                }
+                tv.setOnLongClickListener { rowActions.onRowLongClicked(variant.ref.video) }
+            }
+            tv.layoutParams = flexParams(context, endDp = 8, bottomDp = if (compact) 0 else 8)
+            return tv
+        }
+
+        // ---- release card --------------------------------------------------
+
+        private fun bindRelease(b: ItemSourceReleaseBinding, entry: PickerEntry.Release) {
+            val ref = entry.row.ref
+            val extractor = links.getOrNull(ref.extractor) ?: return
+            val video = extractor.videos.getOrNull(ref.video) ?: return
+            val viewModel = summarize(extractor, video)
+            val rowActions = actionsFor(extractor)
+
+            val header = viewModel.header?.takeIf { it.isNotBlank() } ?: viewModel.displayLabel
+            b.sourceHeader.text = header
+
+            val seeders = SeederHealth.parse(viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SEEDERS }?.text)
+            b.sourceSeeders.isVisible = seeders != null
+            if (seeders != null) {
+                b.sourceSeeders.text = if (SeederHealth.isLow(seeders)) {
+                    getString(R.string.picker_seeds_low, seeders)
+                } else {
+                    getString(R.string.picker_seeds, seeders)
+                }
+                b.sourceSeeders.setTextColor(
+                    b.root.context.getThemeColor(
+                        if (SeederHealth.isLow(seeders)) com.google.android.material.R.attr.colorError
+                        else com.google.android.material.R.attr.colorPrimary,
+                    ),
+                )
+            }
+
+            val title = viewModel.cleanSubtitle?.takeIf { it.isNotBlank() } ?: viewModel.subtitle
+            b.sourceTitle.isVisible = !title.isNullOrBlank() && title != header
+            b.sourceTitle.text = title
+
+            markBest(b.sourceCard, b.sourceWhy, entry)
+
+            b.sourceTags.removeAllViews()
+            viewModel.pills.forEach { pill -> b.sourceTags.addView(makePillTextView(b.root.context, pill)) }
+            b.sourceTags.overflowView = android.widget.TextView(b.root.context).apply {
+                setBackgroundResource(R.drawable.pill_more)
+                textSize = 11f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                val padH = (5 * resources.displayMetrics.density).toInt()
+                val padV = (2 * resources.displayMetrics.density).toInt()
+                setPadding(padH, padV, padH, padV)
+                setSingleLine(true)
+                alpha = 0.8f
+                setOnClickListener { b.sourceExpand.performClick() }
+            }
+
+            val size = viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SIZE }?.text
+            b.sourceSize.isVisible = !size.isNullOrBlank()
+            b.sourceSize.text = size
+
+            val subtitles = extractor.subtitles
+            b.sourceSub.isVisible = subtitles.isNotEmpty()
+            rowActions.setupRowSubtitleButton(b.sourceSub, subtitles)
+            b.sourceDownload.isVisible = isDownloadMenu == true
+            rowActions.setupRowDownloadButton(b.sourceDownload, ref.video, subtitles)
+
+            bindExpand(b.sourceExpand, b.sourceDetails, entry) {
+                val qualityText = extractor.server.name
+                val fields = SourceRowClassifier.parseRelease(qualityText)
+                val tags = viewModel.pills.joinToString(" · ") { it.text }
+                (CompactDetails.lines(
+                    group = fields.releaseGroup,
+                    tracker = viewModel.tracker ?: fields.indexer ?: fields.tracker,
+                    fileName = CompactDetails.fileLine(qualityText),
+                    rawName = SourceRowClassifier.extractReleaseName(qualityText),
+                    transport = entry.row.transport,
+                ) + listOfNotNull(tags.takeIf { it.isNotBlank() }?.let { "Tags" to it }))
+                    .joinToString("\n") { (label, value) -> "$label: $value" }
+            }
+
+            b.sourceCard.setSafeOnClickListener {
+                rowActions.onRowClicked(ref.video) { b.sourceDownload.performClick() }
+            }
+            b.sourceCard.setOnLongClickListener { rowActions.onRowLongClicked(ref.video) }
+        }
+
+        // ---- tags (unchanged look from v3) ---------------------------------
+
+        private fun makePillTextView(
+            context: android.content.Context,
+            pill: SourceRowPill,
+        ): android.widget.TextView {
+            val tv = android.widget.TextView(context)
+            tv.text = pill.text
+            tv.setTextColor(pillTextColor(pill.kind))
+            tv.setBackgroundResource(pillBackground(pill.kind))
+            val padH = (4 * context.resources.displayMetrics.density).toInt()
+            val padV = (2 * context.resources.displayMetrics.density).toInt()
+            tv.setPadding(padH, padV, padH, padV)
+            tv.textSize = 11f
+            tv.typeface = android.graphics.Typeface.DEFAULT_BOLD
+            tv.maxLines = 1
+            tv.setSingleLine(true)
+            return tv
+        }
+
+        private fun pillBackground(kind: SourcePillKind): Int = when (kind) {
+            SourcePillKind.QUALITY -> R.drawable.pill_quality
+            SourcePillKind.CODEC -> R.drawable.pill_codec
+            SourcePillKind.BIT_DEPTH -> R.drawable.pill_bit_depth
+            SourcePillKind.AUDIO_FMT -> R.drawable.pill_audio
+            SourcePillKind.SUB_LANG -> R.drawable.pill_sub
+            SourcePillKind.AUDIO_MODE -> R.drawable.pill_audio_mode
+            SourcePillKind.HDR -> R.drawable.pill_hdr
+            SourcePillKind.HDR10 -> R.drawable.pill_hdr10
+            SourcePillKind.HDR10_PLUS -> R.drawable.pill_hdr10_plus
+            SourcePillKind.DOLBY_VISION -> R.drawable.pill_dolby_vision
+            SourcePillKind.BATCH -> R.drawable.pill_batch
+        }
+
+        private fun pillTextColor(kind: SourcePillKind): Int {
+            val context = ani.dantotsu.currContext() ?: return 0
+            val attr = when (kind) {
+                SourcePillKind.QUALITY -> com.google.android.material.R.attr.colorOnPrimaryContainer
+                SourcePillKind.CODEC -> com.google.android.material.R.attr.colorOnTertiaryContainer
+                SourcePillKind.BIT_DEPTH -> com.google.android.material.R.attr.colorOnSecondaryContainer
+                SourcePillKind.AUDIO_FMT -> com.google.android.material.R.attr.colorOnSecondaryContainer
+                SourcePillKind.SUB_LANG -> com.google.android.material.R.attr.colorOnTertiaryContainer
+                SourcePillKind.AUDIO_MODE -> com.google.android.material.R.attr.colorOnPrimaryContainer
+                SourcePillKind.HDR -> com.google.android.material.R.attr.colorOnTertiaryContainer
+                SourcePillKind.HDR10 -> com.google.android.material.R.attr.colorOnTertiaryContainer
+                SourcePillKind.HDR10_PLUS -> com.google.android.material.R.attr.colorOnTertiaryContainer
+                SourcePillKind.DOLBY_VISION -> com.google.android.material.R.attr.colorOnTertiaryContainer
+                SourcePillKind.BATCH -> com.google.android.material.R.attr.colorOnSecondaryContainer
+            }
+            val typedValue = android.util.TypedValue()
+            val resolved = context.theme.resolveAttribute(attr, typedValue, true)
+            return if (resolved) typedValue.data else 0
+        }
+
+        private inner class StreamHolder(val binding: ItemSourceStreamBinding) :
+            RecyclerView.ViewHolder(binding.root)
+
+        private inner class ReleaseHolder(val binding: ItemSourceReleaseBinding) :
             RecyclerView.ViewHolder(binding.root)
     }
 
-    private inner class VideoAdapter(private val extractor: VideoExtractor,private val onEpisodeDownloadHandler: EpisodeDownloadHandler?) :
-        RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-
-        private val viewTypeRelease = 0
-        private val viewTypeInlineStream = 1
-
-        override fun getItemViewType(position: Int): Int {
-            // Every row of one extractor shares server.name as its
-            // quality text, so the whole section resolves to one
-            // layout deterministically.
-            return if (StreamRowLayoutPolicy.isInlineServerName(extractor.server.name)) {
-                viewTypeInlineStream
-            } else {
-                viewTypeRelease
-            }
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-            val inflater = LayoutInflater.from(parent.context)
-            return if (viewType == viewTypeInlineStream) {
-                InlineStreamViewHolder(
-                    ItemUrlStreamInlineBinding.inflate(
-                        inflater,
-                        parent,
-                        false
-                    )
-                )
-            } else {
-                UrlViewHolder(
-                    ItemUrlBinding.inflate(
-                        inflater,
-                        parent,
-                        false
-                    )
-                )
-            }
-        }
-
-        /**
-         * Subtitle-download dialog for one row's subtitle button. Shared
-         * by the full release card and the inline stream card with
-         * identical behavior; only the clicked button view differs.
-         */
-        private fun setupRowSubtitleButton(
+    /**
+     * Per-extractor actions: selection transaction, subtitle download,
+     * download flow and long-press. This is the previous per-server
+     * adapter's code, kept as it was; only the RecyclerView parts left.
+     */
+    private inner class RowActions(
+        private val extractor: VideoExtractor,
+        private val onEpisodeDownloadHandler: EpisodeDownloadHandler?,
+    ) {
+        fun setupRowSubtitleButton(
             button: android.widget.ImageButton,
             subtitles: List<Subtitle>,
         ) {
@@ -967,17 +1365,17 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             }
         }
 
-        /**
-         * Download flow for one row's download button. Shared by the
-         * full release card and the inline stream card with identical
-         * behavior; only the clicked button view differs.
-         */
-        private fun setupRowDownloadButton(
+        fun setupRowDownloadButton(
             button: android.widget.ImageButton,
             position: Int,
             subtitles: List<Subtitle>,
         ) {
-            button.setSafeOnClickListener {
+            button.setSafeOnClickListener { startDownload(position, subtitles) }
+        }
+
+        /** Download flow for one video; the old button body, callable from a quality button. */
+        fun startDownload(position: Int, subtitles: List<Subtitle>) {
+            run startDownload@{
                 val currentEp = media?.anime?.episodes?.getEpisode(media?.anime?.selectedEpisode) ?: episode
                 val epKey = media?.anime?.episodes?.getEpisodeKey(media?.anime?.selectedEpisode) ?: media?.anime?.selectedEpisode
                 if (currentEp != null) {
@@ -999,7 +1397,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             }
                 }
                 else {
-            val ep = currentEp ?: return@setSafeOnClickListener
+            val ep = currentEp ?: return@startDownload
             val selectedVideo =
                 if (extractor.videos.size > ep.selectedVideo) extractor.videos[ep.selectedVideo] else extractor.videos.getOrNull(0)
             val downloadAddonManager: DownloadAddonManager = Injekt.get()
@@ -1021,14 +1419,14 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                     show()
                 }
                 dismissAllowingStateLoss()
-                return@setSafeOnClickListener
+                return@startDownload
             }
             selectedVideo?.file?.url?.let { url ->
                 if (url.startsWith("magnet:") || url.endsWith(".torrent")) {
                     val torrentManager = Injekt.get<TorrentServerManager>()
                     if (!torrentManager.isAvailable()) {
                         toast(R.string.torrent_addon_not_available)
-                        return@setSafeOnClickListener
+                        return@startDownload
                     }
                 }
             }
@@ -1119,306 +1517,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             }
         }
 
-        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            val video = extractor.videos[position]
-            val subtitles = extractor.subtitles
-            if (holder is InlineStreamViewHolder) {
-                bindInlineStreamRow(holder.binding, video, position, subtitles)
-                return
-            }
-            val binding = (holder as UrlViewHolder).binding
-            if (isDownloadMenu == true) {
-                binding.urlDownload.visibility = View.VISIBLE
-            } else {
-                binding.urlDownload.visibility = View.GONE
-            }
-            if (subtitles.isNotEmpty()) {
-                binding.urlSub.visibility = View.VISIBLE
-            } else {
-                binding.urlSub.visibility = View.GONE
-            }
-            setupRowSubtitleButton(binding.urlSub, subtitles)
-            setupRowDownloadButton(binding.urlDownload, position, subtitles)
-            // Legacy size/format chrome is hidden for every redesigned row. The new
-            // Legacy size/format chrome is hidden for every redesigned row.
-            // The new compact row's metadata line is the single source of
-            // size truth; transport is surfaced only in the expandable
-            // Details panel. The layout no longer carries urlSize/urlNote
-            // fields (replaced by the new urlMeta / urlPills row).
-            bindSourceRow(holder, extractor, video)
-        }
-
-        override fun getItemCount(): Int = extractor.videos.size
-
-        /**
-         * Drive the picker row from a [SourceRowViewModel]. Pure display
-         * pass; selection semantics live in [UrlViewHolder.init]. The legacy
-         * `urlQuality` TextView is reused as the primary row (single-line,
-         * ellipsized) so existing styling matches.
-         */
-        private fun bindSourceRow(
-            holder: UrlViewHolder,
-            extractor: VideoExtractor,
-            video: Video,
-        ) {
-            val viewModel = SourceRowSummarizer.build(
-                displayLabel = extractor.server.name,
-                qualityText = extractor.server.name,
-                format = video.format,
-                url = video.file.url,
-            )
-            val binding = holder.binding
-
-            // v3.5 hierarchy:
-            // 1. Header: release group (RELEASE) or host (STREAM), large.
-            // 2. Tracker cue: small right-side text, only when
-            //    confidently parsed (never guess).
-            // 3. Title: clean human-readable line.
-            // 4. Seeders: prominent primary secondary signal.
-            // 5. Size + tracker: lightweight secondary metadata.
-            // 6. Technical pills: resolution / codec / HDR / audio / subs.
-            // 7. Actions: subs / download / info.
-
-            val header = viewModel.header
-            if (!header.isNullOrBlank()) {
-                binding.urlHeader.text = header
-                binding.urlHeader.contentDescription = header
-                binding.urlHeader.visibility = View.VISIBLE
-            } else {
-                binding.urlHeader.text = ""
-                binding.urlHeader.contentDescription = null
-                binding.urlHeader.visibility = View.INVISIBLE
-            }
-
-            // Tracker cue: only the explicitly parsed tracker from the
-            // 📂 line. The cue is a small icon (no duplicated text) whose
-            // contentDescription is the parsed tracker string. Hidden when
-            // no tracker was parsed. No network / favicon / copied logo
-            // assets are involved.
-            val tracker = viewModel.tracker
-            if (!tracker.isNullOrBlank()) {
-                binding.urlTrackerCue.contentDescription = tracker
-                binding.urlTrackerCue.visibility = View.VISIBLE
-            } else {
-                binding.urlTrackerCue.contentDescription = null
-                binding.urlTrackerCue.visibility = View.GONE
-            }
-
-            // Cleaned release title (UI-only).
-            val cleanSubtitle = viewModel.cleanSubtitle
-            val subtitle = viewModel.subtitle
-            val subToShow = if (!cleanSubtitle.isNullOrBlank()) cleanSubtitle else subtitle
-            if (!subToShow.isNullOrBlank() && subToShow != viewModel.displayLabel) {
-                binding.urlReleaseName.text = subToShow
-                binding.urlReleaseName.visibility = View.VISIBLE
-            } else {
-                binding.urlReleaseName.visibility = View.GONE
-            }
-
-            // Seeders (prominent, theme primary).
-            val seederChip = viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SEEDERS }
-            if (seederChip != null) {
-                binding.urlSeeders.text = seederChip.text
-                binding.urlSeeders.visibility = View.VISIBLE
-            } else {
-                binding.urlSeeders.text = ""
-                binding.urlSeeders.visibility = View.GONE
-            }
-
-            // Size + tracker (lightweight secondary).
-            val sizeTracker = viewModel.meta
-                .filter { it.icon == SourceMetaIcon.SIZE || it.icon == SourceMetaIcon.INDEXER }
-                .joinToString(" · ") { it.text }
-            if (sizeTracker.isNotEmpty()) {
-                binding.urlSizeAndTracker.text = "· " + sizeTracker
-                binding.urlSizeAndTracker.visibility = View.VISIBLE
-            } else {
-                binding.urlSizeAndTracker.text = ""
-                binding.urlSizeAndTracker.visibility = View.GONE
-            }
-
-            // Technical pills (resolution / codec / HDR / audio / subs).
-            // These live in their own row in the layout, NOT beside the
-            // release-group header. The pill order is enforced inside
-            // buildPills(); here we just render whatever was selected.
-            bindPills(binding.urlPills, viewModel.pills)
-
-            // Details panel content (always reset on every bind; tap toggles
-            // visibility). The content text is plain monospace-style rows
-            // joined with newlines for now.
-            binding.urlDetails.visibility = View.GONE
-            binding.urlDetailsText.text = formatDetailsText(viewModel)
-            binding.urlExpand.setOnClickListener {
-                val visible = binding.urlDetails.visibility == View.VISIBLE
-                binding.urlDetails.visibility = if (visible) View.GONE else View.VISIBLE
-            }
-        }
-
-        /**
-         * Drive one inline direct-stream row. STREAM rows carry only a
-         * server name, compact pills, and actions; release-group,
-         * tracker-cue, clean-title, seeder, and size rows do not exist
-         * in the inline card. Action-button visibility and dialogs go
-         * through the same shared setup functions as the full card.
-         */
-        private fun bindInlineStreamRow(
-            binding: ItemUrlStreamInlineBinding,
-            video: Video,
-            position: Int,
-            subtitles: List<Subtitle>,
-        ) {
-            val viewModel = SourceRowSummarizer.build(
-                displayLabel = extractor.server.name,
-                qualityText = extractor.server.name,
-                format = video.format,
-                url = video.file.url,
-            )
-            val header = viewModel.header
-            if (!header.isNullOrBlank()) {
-                binding.urlHeader.text = header
-                binding.urlHeader.contentDescription = header
-                binding.urlHeader.visibility = View.VISIBLE
-            } else {
-                binding.urlHeader.text = ""
-                binding.urlHeader.contentDescription = null
-                binding.urlHeader.visibility = View.GONE
-            }
-            bindPills(binding.urlPills, viewModel.pills)
-            if (isDownloadMenu == true) {
-                binding.urlDownload.visibility = View.VISIBLE
-            } else {
-                binding.urlDownload.visibility = View.GONE
-            }
-            if (subtitles.isNotEmpty()) {
-                binding.urlSub.visibility = View.VISIBLE
-            } else {
-                binding.urlSub.visibility = View.GONE
-            }
-            setupRowSubtitleButton(binding.urlSub, subtitles)
-            setupRowDownloadButton(binding.urlDownload, position, subtitles)
-            binding.urlDetails.visibility = View.GONE
-            binding.urlDetailsText.text = formatDetailsText(viewModel)
-            binding.urlExpand.setOnClickListener {
-                val visible = binding.urlDetails.visibility == View.VISIBLE
-                binding.urlDetails.visibility = if (visible) View.GONE else View.VISIBLE
-            }
-        }
-
-        /**
-         * Populate the right-aligned pill row. Each pill is a small
-         * rounded-corner TextView with a colored background per kind.
-         * Existing pills are removed on every bind so recycled holders
-         * never leak.
-         */
-        private fun bindPills(
-            container: android.widget.LinearLayout,
-            pills: List<SourceRowPill>,
-        ) {
-            container.removeAllViews()
-            for (pill in pills) {
-                val tv = makePillTextView(container.context, pill)
-                val lp = android.widget.LinearLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                )
-                lp.marginStart = pillMarginPx(container.context)
-                container.addView(tv, lp)
-            }
-        }
-
-        /**
-         * Flexbox overload for the compact RELEASE card, whose pill row
-         * wraps instead of clipping when width/content requires it. Pill
-         * appearance is identical to the linear variant; only the
-         * container layout params differ. The inline STREAM card keeps
-         * using the LinearLayout overload above (frozen v2 behavior).
-         */
-        private fun bindPills(
-            container: com.google.android.flexbox.FlexboxLayout,
-            pills: List<SourceRowPill>,
-        ) {
-            container.removeAllViews()
-            for (pill in pills) {
-                val tv = makePillTextView(container.context, pill)
-                val lp = com.google.android.flexbox.FlexboxLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                )
-                lp.marginStart = pillMarginPx(container.context)
-                container.addView(tv, lp)
-            }
-        }
-
-        private fun pillMarginPx(context: android.content.Context): Int =
-            (4 * context.resources.displayMetrics.density).toInt()
-
-        private fun makePillTextView(
-            context: android.content.Context,
-            pill: SourceRowPill,
-        ): android.widget.TextView {
-            val tv = android.widget.TextView(context)
-            tv.text = pill.text
-            tv.setTextColor(pillTextColor(pill.kind))
-            tv.setBackgroundResource(pillBackground(pill.kind))
-            val padH = (4 * context.resources.displayMetrics.density).toInt()
-            val padV = (2 * context.resources.displayMetrics.density).toInt()
-            tv.setPadding(padH, padV, padH, padV)
-            tv.textSize = 11f
-            tv.typeface = android.graphics.Typeface.DEFAULT_BOLD
-            tv.maxLines = 1
-            tv.setSingleLine(true)
-            return tv
-        }
-
-        private fun pillBackground(kind: SourcePillKind): Int = when (kind) {
-            SourcePillKind.QUALITY -> ani.dantotsu.R.drawable.pill_quality
-            SourcePillKind.CODEC -> ani.dantotsu.R.drawable.pill_codec
-            SourcePillKind.BIT_DEPTH -> ani.dantotsu.R.drawable.pill_bit_depth
-            SourcePillKind.AUDIO_FMT -> ani.dantotsu.R.drawable.pill_audio
-            SourcePillKind.SUB_LANG -> ani.dantotsu.R.drawable.pill_sub
-            SourcePillKind.AUDIO_MODE -> ani.dantotsu.R.drawable.pill_audio_mode
-            SourcePillKind.HDR -> ani.dantotsu.R.drawable.pill_hdr
-            SourcePillKind.HDR10 -> ani.dantotsu.R.drawable.pill_hdr10
-            SourcePillKind.HDR10_PLUS -> ani.dantotsu.R.drawable.pill_hdr10_plus
-            SourcePillKind.DOLBY_VISION -> ani.dantotsu.R.drawable.pill_dolby_vision
-        }
-
-        /**
-         * Text color for a pill: paired with the pill background per the
-         * Material 3 "container" + "onContainer" convention. Theme-aware.
-         */
-        private fun pillTextColor(kind: SourcePillKind): Int {
-            val context = ani.dantotsu.currContext() ?: return 0
-            val attr = when (kind) {
-                SourcePillKind.QUALITY -> com.google.android.material.R.attr.colorOnPrimaryContainer
-                SourcePillKind.CODEC -> com.google.android.material.R.attr.colorOnTertiaryContainer
-                SourcePillKind.BIT_DEPTH -> com.google.android.material.R.attr.colorOnSecondaryContainer
-                SourcePillKind.AUDIO_FMT -> com.google.android.material.R.attr.colorOnSecondaryContainer
-                SourcePillKind.SUB_LANG -> com.google.android.material.R.attr.colorOnTertiaryContainer
-                SourcePillKind.AUDIO_MODE -> com.google.android.material.R.attr.colorOnPrimaryContainer
-                SourcePillKind.HDR -> com.google.android.material.R.attr.colorOnTertiaryContainer
-                SourcePillKind.HDR10 -> com.google.android.material.R.attr.colorOnTertiaryContainer
-                SourcePillKind.HDR10_PLUS -> com.google.android.material.R.attr.colorOnTertiaryContainer
-                SourcePillKind.DOLBY_VISION -> com.google.android.material.R.attr.colorOnTertiaryContainer
-            }
-            val typedValue = android.util.TypedValue()
-            val resolved = context.theme.resolveAttribute(attr, typedValue, true)
-            return if (resolved) typedValue.data else 0
-        }
-
-        private fun formatDetailsText(viewModel: SourceRowViewModel): String =
-            viewModel.details.joinToString("\n") { line ->
-                val label = line.label?.let { "$it: " } ?: ""
-                "$label${line.value}"
-            }
-
-        /**
-         * Row-click selection transaction shared by the full release
-         * card and the inline stream card. Moved verbatim from
-         * [UrlViewHolder.init]; behavior is identical for both row
-         * kinds. `position` is the adapter position at click time.
-         */
-        private fun onRowClicked(
+        fun onRowClicked(
             position: Int,
             downloadClick: () -> Unit,
         ) {
@@ -1490,7 +1589,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
          * full release card and the inline stream card. Moved verbatim
          * from [UrlViewHolder.init]; behavior is identical.
          */
-        private fun onRowLongClicked(position: Int): Boolean {
+        fun onRowLongClicked(position: Int): Boolean {
             val video = extractor.videos[position]
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(Uri.parse(video.file.url), "video/*")
@@ -1499,35 +1598,6 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             dismissAllowingStateLoss()
             startActivity(Intent.createChooser(intent, "Open Video in :"))
             return true
-        }
-
-        private inner class UrlViewHolder(val binding: ItemUrlBinding) :
-            RecyclerView.ViewHolder(binding.root) {
-            init {
-                itemView.setSafeOnClickListener {
-                    onRowClicked(bindingAdapterPosition) { binding.urlDownload.performClick() }
-                }
-                itemView.setOnLongClickListener {
-                    onRowLongClicked(bindingAdapterPosition)
-                }
-            }
-        }
-
-        /**
-         * Compact single-row holder for direct-stream rows. Click and
-         * long-click behavior is shared with [UrlViewHolder] through
-         * [onRowClicked]/[onRowLongClicked]; only the bound views differ.
-         */
-        private inner class InlineStreamViewHolder(val binding: ItemUrlStreamInlineBinding) :
-            RecyclerView.ViewHolder(binding.root) {
-            init {
-                itemView.setSafeOnClickListener {
-                    onRowClicked(bindingAdapterPosition) { binding.urlDownload.performClick() }
-                }
-                itemView.setOnLongClickListener {
-                    onRowLongClicked(bindingAdapterPosition)
-                }
-            }
         }
     }
 
