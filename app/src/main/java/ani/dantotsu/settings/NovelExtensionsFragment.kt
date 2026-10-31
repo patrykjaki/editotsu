@@ -22,6 +22,7 @@ import ani.dantotsu.settings.paging.NovelExtensionsViewModelFactory
 import ani.dantotsu.settings.paging.OnNovelInstallClickListener
 import ani.dantotsu.snackString
 import eu.kanade.tachiyomi.data.notification.Notifications
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import rx.android.schedulers.AndroidSchedulers
@@ -62,6 +63,9 @@ class NovelExtensionsFragment : Fragment(),
             }
         }
 
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            novelExtensionManager.findAvailableExtensions()
+        }
 
         viewModel.invalidatePager() // Force a refresh of the pager
         return binding.root
@@ -72,6 +76,7 @@ class NovelExtensionsFragment : Fragment(),
     }
 
     override fun notifyDataChanged() {
+        novelExtensionManager.danNovelManager.refreshInstalledExtensions()
         viewModel.invalidatePager()
     }
 
@@ -136,6 +141,7 @@ class NovelExtensionsFragment : Fragment(),
                             .setContentText("The extension has been successfully installed.")
                             .setPriority(NotificationCompat.PRIORITY_LOW)
                         notificationManager.notify(1, builder.build())
+                        novelExtensionManager.danNovelManager.refreshInstalledExtensions()
                         viewModel.invalidatePager()
                         snackString("Extension installed")
                     }

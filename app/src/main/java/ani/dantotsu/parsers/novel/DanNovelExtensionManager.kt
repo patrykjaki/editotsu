@@ -59,6 +59,11 @@ class DanNovelExtensionManager(private val context: Context) {
             .filterIsInstance<NovelLoadResult.Success>()
             .map { it.extension }
         isInitialized = true
+        updatedInstalledNovelExtensionsStatuses(_availableNovelExtensionsFlow.value)
+    }
+
+    fun refreshInstalledExtensions() {
+        initNovelExtensions()
     }
 
     fun getSourceData(id: Long) = availableNovelExtensionsSourcesData[id]
@@ -162,7 +167,11 @@ class DanNovelExtensionManager(private val context: Context) {
         return ani.dantotsu.parsers.ExtensionRepoMetaHelper.selectOriginEntry(
             list, installed.pkgName, origin,
             pkgOf = { it.pkgName }, repoOf = { it.repository }
-        )
+        ) ?: list.find {
+            // Upstream c0065f38: same extension under another package id
+            // (e.g. official prefix). Fallback only, after the exact match.
+            isSameNovelExtension(it.pkgName, it.name, installed.pkgName, installed.name)
+        }
     }
 
     fun updateExtension(extension: NovelExtension.Installed): Observable<InstallStep> {
@@ -184,20 +193,28 @@ class DanNovelExtensionManager(private val context: Context) {
     fun uninstallExtension(pkgName: String) = installer.uninstallApk(pkgName)
 
     private fun registerNewExtension(ext: NovelExtension.Installed) {
-        _installedNovelExtensionsFlow.value += ext
+        val mut = _installedNovelExtensionsFlow.value.toMutableList()
+        mut.removeAll { isSameNovelExtension(it.pkgName, it.name, ext.pkgName, ext.name) }
+        mut.add(ext)
+        _installedNovelExtensionsFlow.value = mut
     }
 
     private fun registerUpdatedExtension(ext: NovelExtension.Installed) {
         val mut = _installedNovelExtensionsFlow.value.toMutableList()
-        val old = mut.find { it.pkgName == ext.pkgName }
-        if (old != null) mut -= old
-        mut += ext
+        // Exact package first; upstream c0065f38 fuzzy identity (official
+        // package prefix / renamed pkg) only when no exact entry exists.
+        var index = mut.indexOfFirst { it.pkgName == ext.pkgName }
+        if (index == -1) {
+            index = mut.indexOfFirst { isSameNovelExtension(it.pkgName, it.name, ext.pkgName, ext.name) }
+        }
+        if (index != -1) mut[index] = ext else mut.add(ext)
         _installedNovelExtensionsFlow.value = mut
     }
 
     private fun unregisterNovelExtension(pkgName: String) {
-        val ext = _installedNovelExtensionsFlow.value.find { it.pkgName == pkgName }
-        if (ext != null) _installedNovelExtensionsFlow.value -= ext
+        val mut = _installedNovelExtensionsFlow.value.toMutableList()
+        mut.removeAll { isSameNovelExtension(it.pkgName, it.name, pkgName, "") }
+        _installedNovelExtensionsFlow.value = mut
     }
 
     private inner class NovelInstallationListener : ExtensionInstallReceiver.NovelListener {
