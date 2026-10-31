@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Source Picker v3 Final: one stream card (e.g. AnimePahe "MTBB").
+    All links from one group and audio share the card; each quality is
+    a button, highest first. Second links for an existing quality sit
+    on the "Also as MP4" line.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="8dp"
+    android:paddingTop="4dp"
+    android:paddingEnd="8dp"
+    android:paddingBottom="4dp">
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/sourceCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="4dp"
+            android:paddingBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/streamName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxWidth="220dp"
+                    android:ellipsize="end"
+                    android:fontFamily="@font/poppins_bold"
+                    android:singleLine="true"
+                    android:textSize="18sp"
+                    tools:text="MTBB" />
+
+                <TextView
+                    android:id="@+id/streamAudio"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/pill_sub"
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:paddingStart="6dp"
+                    android:paddingTop="2dp"
+                    android:paddingEnd="6dp"
+                    android:paddingBottom="2dp"
+                    android:singleLine="true"
+                    android:textColor="?attr/colorOnTertiaryContainer"
+                    android:textSize="12sp"
+                    android:visibility="gone"
+                    tools:text="Sub · English"
+                    tools:visibility="visible" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <ImageButton
+                    android:id="@+id/streamSub"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/download_subtitle"
+                    android:src="@drawable/ic_round_subtitles_24"
+                    android:visibility="gone"
+                    app:tint="?attr/colorOnBackground" />
+
+                <ImageButton
+                    android:id="@+id/streamExpand"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/source_details"
+                    android:src="@drawable/ic_round_info_24"
+                    app:tint="?attr/colorOnBackground" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/streamWhy"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="6dp"
+                android:fontFamily="@font/poppins_semi_bold"
+                android:paddingEnd="12dp"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="13sp"
+                android:visibility="gone"
+                tools:text="Best match · preferred by the extension"
+                tools:visibility="visible" />
+
+            <com.google.android.flexbox.FlexboxLayout
+                android:id="@+id/streamQualities"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingEnd="12dp"
+                app:flexWrap="wrap" />
+
+            <com.google.android.flexbox.FlexboxLayout
+                android:id="@+id/streamAlternates"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:paddingEnd="12dp"
+                android:visibility="gone"
+                app:alignItems="center"
+                app:flexWrap="wrap"
+                tools:visibility="visible" />
+
+            <TextView
+                android:id="@+id/streamDetails"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:alpha="0.85"
+                android:fontFamily="@font/poppins"
+                android:lineSpacingExtra="2dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="12dp"
+                android:textIsSelectable="true"
+                android:textSize="13sp"
+                android:visibility="gone"
+                tools:text="Name: MTBB · 1080p (138MB) eng\nType: HLS"
+                tools:visibility="visible" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+</FrameLayout>

@@ -650,7 +650,7 @@ class SourceRowClassifierTest {
     // ---- v3.3: pills use the agreed priority ----
 
     @Test
-    fun pills_priorityIsResolutionThenCodecThenHdrThenAudio() {
+    fun pills_priorityIsResolutionThenSubsThenHdrThenAudioThenCodec() {
         val f = SourceRowClassifier.parseRelease(
             "1080p [Group] Title S01E01 [HEVC] [10bit] [HDR10+] [AAC 2.0] [Japanese].mkv",
         )
@@ -660,15 +660,18 @@ class SourceRowClassifierTest {
             formatName = "CONTAINER",
             url = "magnet:?xt=urn:btih:0123456789ABCDEF0123456789ABCDEF01234567",
         )
+        // v3 priority (intentional change, redesign handoff + addendum):
+        // resolution, subtitle/language visibility, HDR variant, audio
+        // mode, codec, bit depth, audio format. Subtitle pills outrank
+        // codec so dense rows never drop language visibility.
         // First pill: resolution.
         assertEquals(SourcePillKind.QUALITY, row.pills[0].kind)
-        // Second pill: codec.
-        assertEquals(SourcePillKind.CODEC, row.pills[1].kind)
-        // Third pill: HDR variant (more informative than bit depth).
-        assertEquals(SourcePillKind.HDR10_PLUS, row.pills[2].kind)
-        // At most 4 pills.
-        assertTrue("pills must be capped at 4, was ${row.pills.size}",
-            row.pills.size <= 4)
+        // Second pill: HDR variant (more informative than bit depth).
+        assertEquals(SourcePillKind.HDR10_PLUS, row.pills[1].kind)
+        // Third pill: codec (no subtitle/audio-mode signal on this row).
+        assertEquals(SourcePillKind.CODEC, row.pills[2].kind)
+        // Fourth pill: audio format.
+        assertEquals(SourcePillKind.AUDIO_FMT, row.pills[3].kind)
     }
 
     // ---- v3.4 additional regressions (per override.md) -----------
@@ -2066,6 +2069,1128 @@ class SourceRowClassifierTest {
             SourceRowClassifier.parseRelease("[Group] Title DD 6.1.mkv").audioFormat)
         assertEquals("E-AC-3 / DDP 7.1",
             SourceRowClassifier.parseRelease("[Group] Title DDP 7.1.mkv").audioFormat)
+    }
+
+
+    // ---- v3 redesign: flags, priority, clean titles ---------------
+    //
+    // FLAGS (not text) for subtitle languages; deterministic priority
+    // with subtitle visibility outranking codec; aggressive clean
+    // titles driven by confidently parsed tokens; raw names preserved.
+
+    @Test
+    fun v3_flagMapping_codesBecomeFlags() {
+        val mapper = SourceRowSummarizer.LanguageFlagMapper
+        assertEquals("🇬🇧", mapper.flagFor("ENG"))
+        assertEquals("🇧🇷", mapper.flagFor("POR-BR"))
+        assertEquals("🇲🇽", mapper.flagFor("SPA-LA"))
+        assertEquals("🇫🇷", mapper.flagFor("FRE"))
+        assertEquals("🇯🇵", mapper.flagFor("JPN"))
+        assertEquals("🇬🇧 🇧🇷", mapper.mapJoined("ENG+POR-BR"))
+        assertEquals("🇪🇸 🇬🇧", mapper.mapJoined("ESP-ENG"))
+    }
+
+    @Test
+    fun v3_flagMapping_langSubSuffix() {
+        // `ENG-SUB` is English subtitles (live JPN+ENG-SUB rows).
+        assertEquals("🇬🇧", SourceRowSummarizer.LanguageFlagMapper.mapJoined("ENG-SUB"))
+    }
+
+    @Test
+    fun v3_flagMapping_unknownStaysText() {
+        val mapper = SourceRowSummarizer.LanguageFlagMapper
+        // Stateless/ambiguous codes must never show a wrong flag.
+        assertNull(mapper.flagFor("YID"))
+        assertNull(mapper.flagFor("MAL"))
+        assertNull(mapper.flagFor("XYZ"))
+        assertNull(mapper.mapJoined("ENG+XYZ"))
+        // Multi-subs is not a language; it stays text.
+        assertNull(mapper.mapJoined("Multi-subs"))
+    }
+
+    @Test
+    fun v3_engImpliedBecomesFlagPill() {
+        // The user's ENG-chip complaint: implied ENG now renders 🇬🇧.
+        val row = SourceRowSummarizer.build(
+            displayLabel = "1080p [SubsPlease] Title S01E01.mkv",
+            qualityText = "1080p [SubsPlease] Title S01E01.mkv",
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        )
+        val sub = row.pills.firstOrNull { it.kind == SourcePillKind.SUB_LANG }
+        assertNotNull("ENG row must carry a subtitle pill", sub)
+        assertEquals("🇬🇧", sub!!.text)
+    }
+
+    @Test
+    fun v3_vostfrBecomesFlagPill() {
+        val row = SourceRowSummarizer.build(
+            displayLabel = "[Group] Title S01 BDRIP 1080p X265 10bit Vostfr.mkv",
+            qualityText = "[Group] Title S01 BDRIP 1080p X265 10bit Vostfr.mkv",
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        )
+        val sub = row.pills.firstOrNull { it.kind == SourcePillKind.SUB_LANG }
+        assertNotNull(sub)
+        assertEquals("🇫🇷", sub!!.text)
+    }
+
+    @Test
+    fun v3_priorityNeverDropsSubs() {
+        // Rapta-shaped dense row: res + codec + depth + audio + subs
+        // must keep the subtitle pill (uncapped model, subs before codec).
+        val f = SourceRowClassifier.parseRelease(
+            "[Rapta] Title S01E01 [1080p][HEVC][10bit][DUAL AAC2.0][Multi-Subs].mkv",
+        )
+        val row = SourceRowSummarizer.build(
+            displayLabel = f.releaseName,
+            qualityText = f.releaseName,
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        )
+        val kinds = row.pills.map { it.kind }
+        assertTrue("subs pill must survive dense rows",
+            SourcePillKind.SUB_LANG in kinds)
+        assertEquals("resolution stays first", SourcePillKind.QUALITY, kinds.first())
+        val subIdx = kinds.indexOf(SourcePillKind.SUB_LANG)
+        val codecIdx = kinds.indexOf(SourcePillKind.CODEC)
+        assertTrue("subs outrank codec", subIdx < codecIdx)
+    }
+
+    @Test
+    fun v3_hdrDuplicationRemovedFromCleanTitle() {
+        // Live Salieri shape (with its real metadata lines, as served):
+        // leading HDR already shown as a chip.
+        val qualityText =
+            "HDR Frieren - Beyond Journey's End S1 - BD (1080p) (HDR) [Dual Audio].mkv\n" +
+                "👤 49 💾 3.28 GB ⚙️ NyaaSi"
+        val f = SourceRowClassifier.parseRelease(qualityText)
+        val row = SourceRowSummarizer.build(
+            displayLabel = qualityText,
+            qualityText = qualityText,
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        )
+        val clean = row.cleanSubtitle ?: ""
+        assertFalse("leading HDR must not repeat the chip", clean.startsWith("HDR "))
+        assertFalse("bracketed HDR must not repeat", clean.contains("[HDR]") || clean.contains("(HDR)"))
+        // Raw name preserved for details/identity.
+        assertEquals(f.releaseName, row.subtitle)
+        assertTrue(row.details.any { it.label == "Raw release name" })
+    }
+
+    @Test
+    fun v3_resolutionDuplicationRemoved() {
+        val f = SourceRowClassifier.parseRelease(
+            "1080p [Group] Title S01E01 [1080p][HEVC].mkv",
+        )
+        val clean = SourceRowSummarizer.build(
+            displayLabel = f.releaseName,
+            qualityText = f.releaseName,
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        ).cleanSubtitle ?: ""
+        assertFalse(clean.contains("1080p"))
+    }
+
+    @Test
+    fun v3_codecDuplicationRemovedOnlyWhenParsed() {
+        // Parsed codec is stripped ...
+        val parsed = SourceRowClassifier.parseRelease("[Group] Title [HEVC].mkv")
+        val clean = SourceRowSummarizer.build(
+            displayLabel = parsed.releaseName,
+            qualityText = parsed.releaseName,
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        ).cleanSubtitle ?: ""
+        assertFalse(clean.contains("[HEVC]"))
+        // ... but ordinary title words are never eaten.
+        val plain = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "My Special Title S01E01.mkv",
+            releaseGroup = null,
+            resolution = null,
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+        )
+        assertTrue(plain.contains("Special"))
+    }
+
+    @Test
+    fun v3_aggressiveTitleStripsCrcAndExtension() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "1080p [SubsPlease] Sousou no Frieren - 01 (1080p) [F02B9CEE].mkv",
+            releaseGroup = "SubsPlease",
+            resolution = "1080p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+        )
+        assertFalse(cleaned.contains("F02B9CEE"))
+        assertFalse(cleaned.contains(".mkv"))
+        assertFalse(cleaned.contains("(1080p)"))
+        assertTrue(cleaned.contains("Sousou no Frieren - 01"))
+    }
+
+    @Test
+    fun v3_batchPillAndStrip() {
+        val f = SourceRowClassifier.parseRelease(
+            "[Group] Title Complete Series + Movies 1080p.mkv",
+        )
+        assertTrue(f.batch)
+        val row = SourceRowSummarizer.build(
+            displayLabel = f.releaseName,
+            qualityText = f.releaseName,
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        )
+        val batch = row.pills.firstOrNull { it.kind == SourcePillKind.BATCH }
+        assertNotNull("batch rows carry a Batch pill", batch)
+        assertEquals("Batch", batch!!.text)
+    }
+
+    @Test
+    fun v3_nullGroupFallsBackToCleanTitleHeader() {
+        // No invented provider-as-header: the clean title becomes the
+        // visual primary label. displayLabel carries the full server
+        // name (with metadata lines), exactly as the adapter passes it.
+        val qualityText =
+            "Some.Show.S01E01.1080p.x265.mkv\n👤 10 💾 1.2 GB ⚙️ TorrentGalaxy"
+        val row = SourceRowSummarizer.build(
+            displayLabel = qualityText,
+            qualityText = qualityText,
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        )
+        assertNull(row.header?.takeIf { it == "TorrentGalaxy" })
+        assertEquals("TorrentGalaxy", row.tracker)
+        assertFalse("header must not be blank", row.header.isNullOrBlank())
+    }
+
+    @Test
+    fun v3_groupProviderSemanticsUnchanged() {
+        // Spot checks that v2.2 semantics survived the redesign.
+        val bracket = SourceRowClassifier.parseRelease("1080p [SubsPlease] Title S01E01.mkv")
+        assertEquals("SubsPlease", bracket.releaseGroup)
+        val suffix = SourceRowClassifier.parseRelease("Title S01E01 1080p-VARYG.mkv")
+        assertEquals("VARYG", suffix.releaseGroup)
+        val legacy = SourceRowClassifier.parseRelease("📂 NyaaSi\n⚙️ SubsPlease\nTitle.mkv")
+        assertEquals("SubsPlease", legacy.releaseGroup)
+        assertEquals("NyaaSi", legacy.tracker)
+    }
+
+    @Test
+    fun v3_streamUnaffectedByTorrentPresentation() {
+        // STREAM rows keep exactly quality + track pills; the "Sub"
+        // track label is NOT flag-mapped (track semantics, UTF text).
+        val row = SourceRowSummarizer.build(
+            displayLabel = "Vidstream - Sub - 1080p",
+            qualityText = "Vidstream - Sub - 1080p",
+            formatName = "M3U8",
+            url = "https://example.com/vidstream/playlist.m3u8",
+        )
+        assertEquals(SourcePresentationKind.STREAM, row.presentation)
+        assertEquals(
+            listOf(SourcePillKind.QUALITY, SourcePillKind.AUDIO_MODE),
+            row.pills.map { it.kind },
+        )
+        assertEquals("Sub", row.pills[1].text)
+        assertNull("no tracker cue on streams", row.tracker)
+    }
+
+    @Test
+    fun v3_layoutPolicyData_noBlanksNoNewlines() {
+        // Header-row policy data: every pill label is single-line and
+        // non-blank so the single clipped Flexbox line never breaks.
+        val f = SourceRowClassifier.parseRelease(
+            "[Rapta] Title S01E01 [1080p][HEVC][10bit][DUAL AAC2.0][Multi-Subs][VARYG].mkv",
+        )
+        val row = SourceRowSummarizer.build(
+            displayLabel = f.releaseName,
+            qualityText = f.releaseName,
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        )
+        assertTrue(row.pills.isNotEmpty())
+        for (pill in row.pills) {
+            assertTrue("blank pill label", pill.text.isNotBlank())
+            assertFalse("newline in pill", pill.text.contains("\n"))
+        }
+        assertFalse("header must not be blank", row.header.isNullOrBlank())
+        assertFalse("header must be single-line", row.header!!.contains("\n"))
+    }
+
+
+    // ---- v3.1 aggressive clean title + critical/optional seam ----
+
+    @Test
+    fun cleanTitleV31_stripsUnbracketedCodecDepthRes() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "[EMBER] Kaijuu 8 Gou S02E05 V3 2160p HEVC 10-bit AAC",
+            releaseGroup = "EMBER",
+            resolution = "2160p",
+            codec = "HEVC",
+            bitDepth = "10-bit",
+            sourceService = null,
+            audioFormat = "AAC",
+        )
+        assertEquals("Kaijuu 8 Gou S02E05 V3", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_strips4kAliasFor2160p() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Title 4K 2160p S01E01",
+            releaseGroup = null,
+            resolution = "2160p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+        )
+        assertEquals("Title S01E01", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_stripsAudioFormatUniverseAndMarker() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "[GJM] Frieren S01E01 [TrueHD] [Audio 5.1] [FLAC] [1080p]",
+            releaseGroup = "GJM",
+            resolution = "1080p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            audioFormat = "TrueHD",
+        )
+        assertEquals("Frieren S01E01", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_stripsAudioCompoundChannels() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Isekai S01 (480p AAC 2.0 x264)",
+            releaseGroup = null,
+            resolution = "480p",
+            codec = "AVC",
+            bitDepth = null,
+            sourceService = null,
+            audioFormat = "AAC",
+        )
+        assertEquals("Isekai S01", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_stripsHdrUnbracketed() {
+        val plus = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Title HDR10+ 1080p S01E01",
+            releaseGroup = null,
+            resolution = "1080p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            hdrVariant = "HDR10+",
+        )
+        assertEquals("Title S01E01", plus)
+        val dv = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Title DV 1080p S01E01",
+            releaseGroup = null,
+            resolution = "1080p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            hdrVariant = "Dolby Vision",
+        )
+        assertEquals("Title S01E01", dv)
+    }
+
+    @Test
+    fun cleanTitleV31_dubNonLeadingStripsButLeadingStays() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Dub Chronicles S01E01 DUBBED",
+            releaseGroup = null,
+            resolution = null,
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            audioSummary = "Dub",
+        )
+        assertEquals("Dub Chronicles S01E01", cleaned)
+        val mid = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Show DUB S01E01",
+            releaseGroup = null,
+            resolution = null,
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            audioSummary = "Dub",
+        )
+        assertEquals("Show S01E01", mid)
+    }
+
+    @Test
+    fun cleanTitleV31_stripsSubMarkersButKeepsSingleCode() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Sousou no Frieren - 12 [1080p] [Multi-Subs] ENG+JPN",
+            releaseGroup = null,
+            resolution = "1080p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            subtitleSummary = "Multi-subs",
+            subtitleLanguages = listOf("ENG", "JPN"),
+        )
+        assertEquals("Sousou no Frieren - 12", cleaned)
+        // A lone code is never a cluster/bracket strip target.
+        val kept = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Title ENG 1080p S01E01",
+            releaseGroup = null,
+            resolution = "1080p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            subtitleLanguages = listOf("ENG"),
+        )
+        assertTrue("lone ENG code must stay", kept.contains("ENG"))
+    }
+
+    @Test
+    fun cleanTitleV31_stripsEpisodeGluedVostfr() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Frieren S02 E01VOSTFR VOSTFR",
+            releaseGroup = null,
+            resolution = null,
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            subtitleSummary = "Multi-subs",
+        )
+        assertEquals("Frieren S02 E01", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_stripsBatchPackPhrase() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Re:Creators - Batch - Complete Series + Movies (1080p)",
+            releaseGroup = null,
+            resolution = "1080p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            batch = true,
+        )
+        assertEquals("Re:Creators", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_bareCompleteTitleWordStays() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Complete Monster S01 1080p",
+            releaseGroup = null,
+            resolution = "1080p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            batch = true,
+        )
+        assertEquals("Complete Monster S01", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_dottedTitleRespaced() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Kaijuu.8.Gou.S02E05.V3.1080p.FLAC",
+            releaseGroup = null,
+            resolution = "1080p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            audioFormat = "FLAC",
+        )
+        assertEquals("Kaijuu 8 Gou S02E05 V3", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_keepsEpisodeIdentityAndCompounds() {
+        // S01/E01/EP-shapes, version tags, glued quality+fps and
+        // single-letter-adjacent codec lookalikes are never stripped.
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Title S01E01 EP12 01v2 AVC1 2160p60",
+            releaseGroup = null,
+            resolution = "2160p",
+            codec = "AVC",
+            bitDepth = null,
+            sourceService = null,
+        )
+        assertEquals("Title S01E01 EP12 01v2 AVC1 2160p60", cleaned)
+        val subsKept = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "HorribleSubs Title S01E01",
+            releaseGroup = null,
+            resolution = null,
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            subtitleSummary = "Multi-subs",
+        )
+        assertTrue("HorribleSubs must stay", subsKept.contains("HorribleSubs"))
+    }
+
+    @Test
+    fun cleanTitleV31_stripsTrailingSuffixGroup() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Link Click S2 -Psaro",
+            releaseGroup = "Psaro",
+            resolution = null,
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+        )
+        assertEquals("Link Click S2", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_stripsWxHAndParenTechBlock() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Kaijuu 8-gou S2 - 05 (CR 1920x1080 x264 AAC) [5D17D446]",
+            releaseGroup = null,
+            resolution = "1080p",
+            codec = "AVC",
+            bitDepth = null,
+            sourceService = "Crunchyroll",
+            audioFormat = "AAC",
+        )
+        assertEquals("Kaijuu 8-gou S2 - 05", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_stripsFpsChapterTtmlAndDualAudio() {
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "[GJM] Sousou no Frieren S01E28 V2 (23.976FPS) " +
+                "[TrueHD] [Audio 5.1] [TTML] Multi-Sub [FLAC] [Chapter] [1080p]",
+            releaseGroup = "GJM",
+            resolution = "1080p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+            audioFormat = "TrueHD",
+            subtitleSummary = "Multi-subs",
+        )
+        assertEquals("Sousou no Frieren S01E28 V2", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_pipelineDolbyRemuxEndToEnd() {
+        // Full parseRelease -> cleanDisplayTitle pipeline, mirroring
+        // buildRelease: every expectation is parser-driven, no
+        // hand-passed values.
+        val raw = "[RAEVN] Kaijuu 8 Gou S02E05 V3 BluRay REMUX " +
+            "1080p DTS-HD MA 5.1, FLAC 2.0 x265 10-Bit -RAEVN"
+        val f = SourceRowClassifier.parseRelease(raw)
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = f.releaseName,
+            releaseGroup = f.releaseGroup,
+            resolution = f.resolution,
+            codec = f.codec,
+            bitDepth = f.bitDepth,
+            sourceService = f.sourceService,
+            hdrVariant = f.hdrVariant,
+            audioSummary = f.audioSummary,
+            batch = f.batch,
+            audioFormat = f.audioFormat,
+            subtitleSummary = f.subtitleSummary,
+            subtitleLanguages = f.subtitleLanguages,
+            sourceClass = f.sourceClass,
+        )
+        assertEquals("Kaijuu 8 Gou S02E05 V3", cleaned)
+        // Raw is preserved for identity/selection.
+        assertEquals(raw, f.releaseName)
+    }
+
+    @Test
+    fun cleanTitleV31_pipelineWebDualAudioEndToEnd() {
+        val raw = "[ToonsHub] Isekai Shikaku S01 (CR WEB 480p AAC 2.0 x264) [Dual-Audio]"
+        val f = SourceRowClassifier.parseRelease(raw)
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = f.releaseName,
+            releaseGroup = f.releaseGroup,
+            resolution = f.resolution,
+            codec = f.codec,
+            bitDepth = f.bitDepth,
+            sourceService = f.sourceService,
+            hdrVariant = f.hdrVariant,
+            audioSummary = f.audioSummary,
+            batch = f.batch,
+            audioFormat = f.audioFormat,
+            subtitleSummary = f.subtitleSummary,
+            subtitleLanguages = f.subtitleLanguages,
+            sourceClass = f.sourceClass,
+        )
+        assertEquals("Isekai Shikaku S01", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_detectsParenTechBlockServiceAlias() {
+        // v3.1 parser extension: the standalone-alias delimiters
+        // include parens/brackets, so `(CR WEB …)` detects. Previously
+        // detected forms are unchanged (guarded by the v2-era tests).
+        assertEquals(
+            "Crunchyroll",
+            SourceRowClassifier.detectSourceService(
+                "[ToonsHub] Isekai Shikaku S01 (CR WEB 480p AAC 2.0 x264) [Dual-Audio]"),
+        )
+    }
+
+    @Test
+    fun cleanTitleV31_withSubtitlesContentWordStays() {
+        // Reviewer fixture: `with Subtitles.` is title content even
+        // though a subs summary parsed (from the word itself). Only
+        // abbreviated/marker sub forms strip.
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "[ToonsHub] True Remembrance with Subtitles. DUAL-AUDIO 576p x264 AAC",
+            releaseGroup = "ToonsHub",
+            resolution = "576p",
+            codec = "AVC",
+            bitDepth = null,
+            sourceService = null,
+            audioSummary = "Dual",
+            audioFormat = "AAC",
+            subtitleSummary = "Multi-subs",
+        )
+        assertEquals("True Remembrance with Subtitles.", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_webDlWholeAndCodecSceneSuffix() {
+        // `WEB-DL` strips whole (never a `DL` residue) and the scene
+        // `codec-GROUP` tail goes with its codec. `MAX` stays: it is
+        // an English word too, left for the reviewer (open item).
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Smiling Friends S02E05 1080p MAX WEB-DL DDP2.0 x264-PCW",
+            releaseGroup = null,
+            resolution = "1080p",
+            codec = "AVC",
+            bitDepth = null,
+            sourceService = null,
+            audioFormat = "E-AC-3 / DDP",
+            sourceClass = "WEB-DL",
+        )
+        assertEquals("Smiling Friends S02E05 MAX", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_codecUniverseStripsForeignFamily() {
+        // An HEVC row carrying a stray H.264 token still strips it
+        // (codec tokens are never title content); compounds like
+        // `AVC1` stay protected by boundaries.
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = "Show S01E01 HEVC H.264 1080p AVC1",
+            releaseGroup = null,
+            resolution = "1080p",
+            codec = "HEVC",
+            bitDepth = null,
+            sourceService = null,
+        )
+        assertEquals("Show S01E01 AVC1", cleaned)
+    }
+
+    @Test
+    fun cleanTitleV31_trailingTagStripsOnlyGroupShapes() {
+        fun trailing(input: String) = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = input,
+            releaseGroup = null,
+            resolution = "1080p",
+            codec = null,
+            bitDepth = null,
+            sourceService = null,
+        )
+        assertEquals("Sousou no Frieren - 12",
+            trailing("Sousou no Frieren - 12 [1080p] [Kira-Fansub].mkv"))
+        // Language codes, episode shapes and versions are not tags.
+        assertTrue(trailing("Title [1080p] [ENG]").contains("[ENG]"))
+        assertTrue(trailing("Title [1080p] [S01]").contains("[S01]"))
+        assertTrue(trailing("Title [1080p] [V2]").contains("[V2]"))
+    }
+
+    // ---- v3.2 audio-universe closure (source of truth) ----
+
+    @Test
+    fun cleanTitleV32_pcmShapesStripParserDriven() {
+        // Mandatory shapes, each through parser-driven values: parse
+        // first, then clean with exactly what the parser produced.
+        val cases = listOf(
+            "Title S01E01 [PCM]" to "PCM",
+            "Title S01E01 [PCM 2.0]" to "PCM",
+            "Title S01E01 [PCM 5.1]" to "PCM 5.1",
+            "Title S01E01 [LPCM]" to "LPCM",
+            // Parser quirk (pre-existing, out of scope): the generic
+            // letters+digit rewrite emits `MP 2`, exactly as it emits
+            // `MP 3` for bare MP3. The clean title still strips the raw
+            // `MP2` token via the universe.
+            "Title S01E01 [MP2]" to "MP 2",
+        )
+        for ((raw, expectedFormat) in cases) {
+            val f = SourceRowClassifier.parseRelease(raw)
+            assertEquals("format for $raw", expectedFormat, f.audioFormat)
+            val cleaned = SourceRowClassifier.cleanDisplayTitle(
+                releaseName = f.releaseName,
+                releaseGroup = f.releaseGroup,
+                resolution = f.resolution,
+                codec = f.codec,
+                bitDepth = f.bitDepth,
+                sourceService = f.sourceService,
+                hdrVariant = f.hdrVariant,
+                audioSummary = f.audioSummary,
+                batch = f.batch,
+                audioFormat = f.audioFormat,
+                subtitleSummary = f.subtitleSummary,
+                subtitleLanguages = f.subtitleLanguages,
+                sourceClass = f.sourceClass,
+            )
+            assertEquals("clean for $raw", "Title S01E01", cleaned)
+        }
+    }
+
+    @Test
+    fun cleanTitleV32_datasetPcmRowsStrip() {
+        // Exact frozen-corpus PCM shapes (dataset file lines 583, 593:
+        // JJK `PCM 2.0` / bare `PCM`; line 716: smashed `PCM20`).
+        val row583 = """
+            [JP-EN] Jujutsu Kaisen : Season 01 S01 [2020-2021] COMPLETE 1080p Hybrid ITA BDRip x265 PCM 2.0 Kira [SEV]
+            Jujutsu Kaisen - Episode 01 - Ryōmen Sukuna 1080p Hybrid ITA BDRip x265 PCM 2.0 Kira [SEV].mkv
+            👤 9 💾 2.42 GB ⚙️ NyaaSi
+            🇬🇧 / 🇮🇹
+        """.trimIndent()
+        val f583 = SourceRowClassifier.parseRelease(row583)
+        assertEquals("PCM", f583.audioFormat)
+        val c583 = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = f583.releaseName,
+            releaseGroup = f583.releaseGroup,
+            resolution = f583.resolution,
+            codec = f583.codec,
+            bitDepth = f583.bitDepth,
+            sourceService = f583.sourceService,
+            hdrVariant = f583.hdrVariant,
+            audioSummary = f583.audioSummary,
+            batch = f583.batch,
+            audioFormat = f583.audioFormat,
+            subtitleSummary = f583.subtitleSummary,
+            subtitleLanguages = f583.subtitleLanguages,
+            sourceClass = f583.sourceClass,
+        )
+        assertFalse("PCM 2.0 must strip (row 583)", c583.contains("PCM"))
+
+        val row593 = """
+            Jujutsu Kaisen [BD Remux][Part -1] [1080p Dual Audio PCM AVC]
+            S01E01-Ryomen Sukuna.mkv
+            👤 3 💾 6.74 GB ⚙️ NyaaSi
+            Dubbed / Dual Audio
+        """.trimIndent()
+        val f593 = SourceRowClassifier.parseRelease(row593)
+        assertEquals("PCM", f593.audioFormat)
+        val c593 = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = f593.releaseName,
+            releaseGroup = f593.releaseGroup,
+            resolution = f593.resolution,
+            codec = f593.codec,
+            bitDepth = f593.bitDepth,
+            sourceService = f593.sourceService,
+            hdrVariant = f593.hdrVariant,
+            audioSummary = f593.audioSummary,
+            batch = f593.batch,
+            audioFormat = f593.audioFormat,
+            subtitleSummary = f593.subtitleSummary,
+            subtitleLanguages = f593.subtitleLanguages,
+            sourceClass = f593.sourceClass,
+        )
+        assertFalse("bare PCM must strip (row 593)", c593.contains("PCM"))
+
+        val row716 = """
+            Attack.on.Titan.S01.Bluray.REMUX.1080p.TRUHD.51.AC351.TRUHD20.AC320.PCM20.Eng+Jap.EngSubs
+            Shingeki no Kyojin - E01 [BD 1080p Hybrid REMUX].mkv
+            👤 33 💾 7.71 GB ⚙️ NyaaSi
+        """.trimIndent()
+        val f716 = SourceRowClassifier.parseRelease(row716)
+        val c716 = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = f716.releaseName,
+            releaseGroup = f716.releaseGroup,
+            resolution = f716.resolution,
+            codec = f716.codec,
+            bitDepth = f716.bitDepth,
+            sourceService = f716.sourceService,
+            hdrVariant = f716.hdrVariant,
+            audioSummary = f716.audioSummary,
+            batch = f716.batch,
+            audioFormat = f716.audioFormat,
+            subtitleSummary = f716.subtitleSummary,
+            subtitleLanguages = f716.subtitleLanguages,
+            sourceClass = f716.sourceClass,
+        )
+        assertFalse("smashed PCM20 must strip (row 716)", c716.contains("PCM20"))
+        assertFalse("smashed AC351 must strip (row 716)", c716.contains("AC351"))
+    }
+
+    @Test
+    fun cleanTitleV32_audioUniverseCoversEveryParserFamily() {
+        // Guarantee: for every normalized base the parser can emit,
+        // the clean-title universe holds a removable raw spelling.
+        // Each row is parser-driven (format asserted from parseRelease)
+        // and must reduce to the bare title.
+        val families = listOf(
+            "DDP2.0" to "E-AC-3 / DDP",
+            "DD 5.1" to "DD 5.1",
+            "EAC3" to "E-AC-3",
+            "AC3" to "AC-3",
+            "AAC" to "AAC",
+            "FLAC 5.1" to "FLAC 5.1",
+            "Dolby TrueHD 7.1" to "TrueHD 7.1",
+            "DTS" to "DTS",
+            "DTS-HD MA" to "DTS-HD MA",
+            "Dolby Atmos" to "Atmos",
+            // Same pre-existing letters+digit quirk as MP2.
+            "MP3" to "MP 3",
+            "OPUS" to "OPUS",
+            "MP2" to "MP 2",
+            "LPCM" to "LPCM",
+            "PCM" to "PCM",
+            "Dolby Digital Plus" to "E-AC-3 / DDP",
+            "Dolby Digital" to "DD",
+        )
+        for ((token, expectedFormat) in families) {
+            val raw = "Title S01E01 [$token]"
+            val f = SourceRowClassifier.parseRelease(raw)
+            assertEquals("format for $token", expectedFormat, f.audioFormat)
+            val cleaned = SourceRowClassifier.cleanDisplayTitle(
+                releaseName = f.releaseName,
+                releaseGroup = f.releaseGroup,
+                resolution = f.resolution,
+                codec = f.codec,
+                bitDepth = f.bitDepth,
+                sourceService = f.sourceService,
+                hdrVariant = f.hdrVariant,
+                audioSummary = f.audioSummary,
+                batch = f.batch,
+                audioFormat = f.audioFormat,
+                subtitleSummary = f.subtitleSummary,
+                subtitleLanguages = f.subtitleLanguages,
+                sourceClass = f.sourceClass,
+            )
+            assertEquals("clean for $token", "Title S01E01", cleaned)
+        }
+    }
+
+    @Test
+    fun cleanTitleV32_brokenChannelTailStripsWhole() {
+        // General-provider junk `DDP2 0` (broken `DDP 2.0`) must strip
+        // whole — never leave a stray `0` behind.
+        val f = SourceRowClassifier.parseRelease("Title S01E01 [DDP2 0]")
+        assertEquals("E-AC-3 / DDP", f.audioFormat)
+        val cleaned = SourceRowClassifier.cleanDisplayTitle(
+            releaseName = f.releaseName,
+            releaseGroup = f.releaseGroup,
+            resolution = f.resolution,
+            codec = f.codec,
+            bitDepth = f.bitDepth,
+            sourceService = f.sourceService,
+            hdrVariant = f.hdrVariant,
+            audioSummary = f.audioSummary,
+            batch = f.batch,
+            audioFormat = f.audioFormat,
+            subtitleSummary = f.subtitleSummary,
+            subtitleLanguages = f.subtitleLanguages,
+            sourceClass = f.sourceClass,
+        )
+        assertEquals("Title S01E01", cleaned)
+    }
+
+    // ---- v3.1 critical/optional pill seam ----
+
+    @Test
+    fun seam_denseRowSplitsCriticalFirst() {
+        val row = SourceRowSummarizer.build(
+            displayLabel = "1080p [Group] Title S01E01 [HEVC] [10bit] " +
+                "[HDR10] [DUAL] [AAC] [Multi-Subs].mkv",
+            qualityText = "1080p [Group] Title S01E01 [HEVC] [10bit] " +
+                "[HDR10] [DUAL] [AAC] [Multi-Subs].mkv",
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        )
+        assertEquals(
+            listOf(SourcePillKind.QUALITY, SourcePillKind.SUB_LANG),
+            row.criticalPills.map { it.kind },
+        )
+        assertEquals(
+            listOf(
+                SourcePillKind.HDR10,
+                SourcePillKind.AUDIO_MODE,
+                SourcePillKind.CODEC,
+                SourcePillKind.AUDIO_FMT,
+            ),
+            row.optionalPills.map { it.kind },
+        )
+    }
+
+    @Test
+    fun seam_splitIsCompleteAndOrderPreserving() {
+        // No take(N) cap anywhere: critical + optional is exactly the
+        // full model, each in pill order.
+        val row = SourceRowSummarizer.build(
+            displayLabel = "1080p [Group] Title S01E01 [HEVC] [10bit] " +
+                "[HDR10] [DUAL] [AAC] [Multi-Subs].mkv",
+            qualityText = "1080p [Group] Title S01E01 [HEVC] [10bit] " +
+                "[HDR10] [DUAL] [AAC] [Multi-Subs].mkv",
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        )
+        assertEquals(row.pills.size,
+            row.criticalPills.size + row.optionalPills.size)
+        assertEquals(
+            row.pills.filter { it.kind != SourcePillKind.QUALITY && it.kind != SourcePillKind.SUB_LANG },
+            row.optionalPills,
+        )
+    }
+
+    @Test
+    fun seam_resOnlyRowHasQualityCriticalOnly() {
+        // RELEASE path needs a release filename (extension) or marker
+        // line; a bare title with no group is STREAM by design.
+        val row = SourceRowSummarizer.build(
+            displayLabel = "[Group] Title S01E01 [720p].mkv",
+            qualityText = "[Group] Title S01E01 [720p].mkv",
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        )
+        assertEquals(SourcePresentationKind.RELEASE, row.presentation)
+        assertEquals(
+            listOf(SourcePillKind.QUALITY),
+            row.criticalPills.map { it.kind },
+        )
+        assertTrue(row.optionalPills.isEmpty())
+    }
+
+    @Test
+    fun seam_streamRowsHaveNoCriticalSplit() {
+        // STREAM inline card renders its own compact pills; the
+        // header critical/optional seam does not apply.
+        val row = SourceRowSummarizer.build(
+            displayLabel = "Vidstream - Sub - 1080p",
+            qualityText = "Vidstream - Sub - 1080p",
+            formatName = "M3U8",
+            url = "https://example.com/vidstream/playlist.m3u8",
+        )
+        assertEquals(SourcePresentationKind.STREAM, row.presentation)
+        assertTrue(row.criticalPills.isEmpty())
+        assertTrue(row.optionalPills.isEmpty())
+        assertTrue("inline pills stay", row.pills.isNotEmpty())
+    }
+
+
+    // ---- v3.3 bounded correction ------------------------------------
+
+    private val deviceFeibanyamaRaw =
+        "4k [Feibanyama] Frieren Beyond Journeys End Season 1 [IQIYI WebRip 2160p HEVC OPUS Multi-Subs] (Sousou no Frieren) [Feibanyama] Frieren Beyond Journeys End - 01 [IQIYI WebRip 2160p HEVC OPUS Multi-Subs].mkv Multi Subs"
+    private val deviceSalieriRaw =
+        "1080p HDR [Salieri] Frieren - Beyond Journey's End S1 - BD (1080p) (HDR) [Dual Audio] [Salieri] Frieren - Beyond Journey's End - 01 (1080p) (HDR) [Dual Audio].mkv Dubbed / Dual Audio"
+
+    /**
+     * RELEASE-shaped quality text for summarizer end-to-end tests: the
+     * bare device raws do not end in a release filename (trailing
+     * `… Dual Audio` / `… Multi Subs`), so they classify STREAM on
+     * their own. The Torrentio wrapper carries the 📂 provenance line
+     * exactly like the live payloads.
+     */
+    private fun releaseQuality(raw: String): String = "Torrentio\n📂 NyaaSi\n$raw"
+
+    private fun releaseRow(raw: String): SourceRowViewModel =
+        SourceRowSummarizer.build(
+            displayLabel = releaseQuality(raw),
+            qualityText = releaseQuality(raw),
+            formatName = "CONTAINER",
+            url = magnetUrl,
+        )
+
+    private fun cleanOf(raw: String): String {
+        val f = SourceRowClassifier.parseRelease(raw)
+        return SourceRowClassifier.cleanDisplayTitle(
+            releaseName = f.releaseName,
+            releaseGroup = f.releaseGroup,
+            resolution = f.resolution,
+            codec = f.codec,
+            bitDepth = f.bitDepth,
+            sourceService = f.sourceService,
+            hdrVariant = f.hdrVariant,
+            audioSummary = f.audioSummary,
+            batch = f.batch,
+            audioFormat = f.audioFormat,
+            subtitleSummary = f.subtitleSummary,
+            subtitleLanguages = f.subtitleLanguages,
+            sourceClass = f.sourceClass,
+        )
+    }
+
+    @Test
+    fun v33_feibanyamaIqiyiServiceDetected() {
+        // Finding 1: the Feibanyama device row carries raw `[IQIYI …]`
+        // blocks; the additive alias resolves the canonical service.
+        val f = SourceRowClassifier.parseRelease(deviceFeibanyamaRaw)
+        assertEquals("iQIYI", f.sourceService)
+        assertEquals(
+            "iQIYI",
+            SourceRowClassifier.detectSourceService("[x] Show [IQIYI] 1080p"),
+        )
+        assertEquals(
+            "iQIYI",
+            SourceRowClassifier.detectSourceService("[x] Show (IQIYI WEB 1080p)"),
+        )
+    }
+
+    @Test
+    fun v33_feibanyamaCleanTitleHasNoIqiyiResidual() {
+        // Finding 1: no `IQIYI` (any case) and no empty bracket
+        // remnant survive in the exact device title.
+        val cleaned = cleanOf(deviceFeibanyamaRaw)
+        assertFalse(cleaned.contains("iqiyi", ignoreCase = true))
+        assertFalse(cleaned.contains("[]"))
+        assertEquals(
+            "Frieren Beyond Journeys End Season 1 (Sousou no Frieren) Frieren Beyond Journeys End - 01 .mkv",
+            cleaned,
+        )
+    }
+
+    @Test
+    fun v33_iqiyiNeverBecomesReleaseGroup() {
+        // Additive alias must not conflate: a lone IQIYI bracket is a
+        // service, never a group.
+        val f = SourceRowClassifier.parseRelease("[IQIYI] Some Show S01 1080p WEBRip")
+        assertEquals("iQIYI", f.sourceService)
+        assertFalse(f.releaseGroup.equals("IQIYI", ignoreCase = true))
+    }
+
+    @Test
+    fun v33_salieriBareBdDetectedAsSourceType() {
+        // Finding 2: the Salieri device row's bare `BD` parses
+        // deterministically as source type `BD`.
+        val f = SourceRowClassifier.parseRelease(deviceSalieriRaw)
+        assertEquals("BD", f.sourceClass)
+        assertEquals("Salieri", f.releaseGroup)
+    }
+
+    @Test
+    fun v33_salieriCleanTitleHasNoBdResidual() {
+        // Finding 2: the represented bare-BD token is removed.
+        val cleaned = cleanOf(deviceSalieriRaw)
+        assertFalse(cleaned.contains("BD", ignoreCase = false))
+        assertEquals(
+            "Frieren - Beyond Journey's End S1 - Frieren - Beyond Journey's End - 01 .mkv Dubbed /",
+            cleaned,
+        )
+    }
+
+    @Test
+    fun v33_bareBdBoundaryShapes() {
+        // Finding 2: delimited shapes detect; compounds keep labels.
+        assertEquals("BD", SourceRowClassifier.detectSourceClass("Show Title S01 - BD (1080p)"))
+        assertEquals("BD", SourceRowClassifier.detectSourceClass("Show Title [BD] 1080p"))
+        assertEquals("BD", SourceRowClassifier.detectSourceClass("Show Title (BD) 1080p"))
+        assertEquals("BD", SourceRowClassifier.detectSourceClass("Show Title BD"))
+        assertEquals("BD", SourceRowClassifier.detectSourceClass("BD Show Title 1080p"))
+        assertEquals("BDRIP", SourceRowClassifier.detectSourceClass("Show Title S01 BDRip 1080p"))
+        assertEquals("BLURAY", SourceRowClassifier.detectSourceClass("Show Title BluRay 1080p"))
+    }
+
+    @Test
+    fun v33_bareBdWordBoundaryCounterexamples() {
+        // Finding 2: ordinary words containing `bd` never detect.
+        assertNull(SourceRowClassifier.detectSourceClass("Abducted S01 1080p"))
+        assertNull(SourceRowClassifier.detectSourceClass("Bdubs Show 1080p"))
+        assertNull(SourceRowClassifier.detectSourceClass("Show Title S01 1080p"))
+    }
+
+    @Test
+    fun v33_detailsSourceTypeLabelAndHdrPresence() {
+        // Findings 5+6: `Source type` label; plain HDR reads as a
+        // presence marker, never `HDR: HDR`.
+        val row = releaseRow(deviceSalieriRaw)
+        val labels = row.details.map { it.label }
+        assertTrue(labels.contains("Source type"))
+        assertFalse(labels.contains("Source class"))
+        val hdr = row.details.first { it.label == "HDR" }
+        assertEquals("Yes", hdr.value)
+        val svc = row.details.first { it.label == "Source type" }
+        assertEquals("BD", svc.value)
+    }
+
+    @Test
+    fun v33_detailsPreciseHdrVariantKeepsValue() {
+        // Finding 5: precise variants are unaffected by the echo fix.
+        val row = releaseRow("[G] Show S01 1080p HDR10 DTS 5.1")
+        val hdr = row.details.firstOrNull { it.label == "HDR" }
+        assertNotNull(hdr)
+        assertEquals("HDR10", hdr!!.value)
+    }
+
+    @Test
+    fun v33_detailsNeverEchoesLabelAsValue() {
+        // Finding 5: no detail line anywhere repeats its label.
+        val raws = listOf(deviceFeibanyamaRaw, deviceSalieriRaw, "[G] Show S01 1080p HDR10 DTS 5.1")
+        for (raw in raws) {
+            val row = releaseRow(raw)
+            for (line in row.details) {
+                val label = line.label ?: continue
+                assertFalse(
+                    "echo ${label}=${line.value} in $raw",
+                    line.value.equals(label, ignoreCase = true),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun v33_criticalPillsStayAheadOfOptional() {
+        // Findings 3+4: critical set is exactly QUALITY + SUB_LANG,
+        // always split ahead of the optional set.
+        val row = releaseRow(deviceSalieriRaw)
+        assertTrue(row.criticalPills.isNotEmpty())
+        assertTrue(row.criticalPills.all {
+            it.kind == SourcePillKind.QUALITY || it.kind == SourcePillKind.SUB_LANG
+        })
+        assertTrue(row.optionalPills.none {
+            it.kind == SourcePillKind.QUALITY || it.kind == SourcePillKind.SUB_LANG
+        })
+        assertEquals("1080p HDR", row.criticalPills.first().text)
+    }
+
+    @Test
+    fun v33_denseOptionalSetNotSemanticallyTruncated() {
+        // Finding 3: no hard take(N) cap — a dense row keeps every
+        // optional pill in the model; the scrollable strip (not a cap)
+        // handles overflow.
+        val raw = "[EMBER] Frieren S01 [1080p][HEVC][10-bit][E-AC-3][Dual-Audio][Multi-Subs]"
+        val row = releaseRow(raw)
+        val optionalKinds = row.optionalPills.map { it.kind }
+        assertTrue(optionalKinds.contains(SourcePillKind.AUDIO_MODE))
+        assertTrue(optionalKinds.contains(SourcePillKind.CODEC))
+        assertTrue(optionalKinds.contains(SourcePillKind.BIT_DEPTH))
+        assertTrue(optionalKinds.contains(SourcePillKind.AUDIO_FMT))
+        // Critical quality + sub-lang still lead in the full list.
+        assertEquals(SourcePillKind.QUALITY, row.pills.first().kind)
+    }
+
+    @Test
+    fun v33_rawReleaseNameRemainsExact() {
+        // Raw preservation is untouched by the details cleanup.
+        for (raw in listOf(deviceFeibanyamaRaw, deviceSalieriRaw)) {
+            val row = releaseRow(raw)
+            assertEquals(raw, row.subtitle)
+            val rawLine = row.details.first { it.label == "Raw release name" }
+            assertEquals(raw, rawLine.value)
+        }
+    }
+
+    @Test
+    fun v33_pcmLpcmMp2UniverseStillGreen() {
+        // v3.2 correction stays green under the v3.3 alias/BD delta.
+        val cleaned = cleanOf("[G] Show S01 PCM 2.0 FLAC LPCM MP2 AAC")
+        assertFalse(cleaned.contains("PCM", ignoreCase = true))
+        assertFalse(cleaned.contains("LPCM", ignoreCase = true))
+        assertFalse(cleaned.contains("MP2", ignoreCase = true))
     }
 
 
