@@ -119,11 +119,10 @@ abstract class BaseImageAdapter(
         }
         val subsamplingView = holder.itemView.findViewById<com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView>(R.id.imgProgImageNoGestures)
         subsamplingView?.recycle()
-        val oldBitmap = holder.itemView.getTag(R.id.imgProgImageNoGestures) as? Bitmap
+        // Upstream daf293d1/f1225429: the tagged bitmap was handed to SSIV via
+        // ImageSource.cachedBitmap, which recycles it itself; recycling it here
+        // too raced the view and crashed on reader exit ("recycled bitmap").
         holder.itemView.setTag(R.id.imgProgImageNoGestures, null)
-        if (oldBitmap != null && !oldBitmap.isRecycled) {
-            oldBitmap.recycle()
-        }
         super.onViewRecycled(holder)
     }
 

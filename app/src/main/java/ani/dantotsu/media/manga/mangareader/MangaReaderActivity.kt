@@ -218,11 +218,7 @@ class MangaReaderActivity : AppCompatActivity() {
                     val child = binding.mangaReaderRecycler.getChildAt(i)
                     val subsamplingView = child.findViewById<SubsamplingScaleImageView>(R.id.imgProgImageNoGestures)
                     subsamplingView?.recycle()
-                    val oldBitmap = child.getTag(R.id.imgProgImageNoGestures) as? Bitmap
                     child.setTag(R.id.imgProgImageNoGestures, null)
-                    if (oldBitmap != null && !oldBitmap.isRecycled) {
-                        oldBitmap.recycle()
-                    }
                 }
                 binding.mangaReaderRecycler.adapter = null
                 binding.mangaReaderRecycler.recycledViewPool.clear()

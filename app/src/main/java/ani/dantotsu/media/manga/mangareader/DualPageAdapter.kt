@@ -157,8 +157,6 @@ class DualPageAdapter(
             val merged = if (settings.direction != LEFT_TO_RIGHT)
                 mergeBitmap(bitmap2, bitmap1)
             else mergeBitmap(bitmap1, bitmap2)
-            if (bitmap1 != merged && !bitmap1.isRecycled) bitmap1.recycle()
-            if (bitmap2 != merged && !bitmap2.isRecycled) bitmap2.recycle()
             merged
         } else bitmap1
     }
