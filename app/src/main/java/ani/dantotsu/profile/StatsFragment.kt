@@ -780,16 +780,11 @@ class StatsFragment :
         }
     }
 
-    private fun convertScore(score: Int, type: String?): Int {
-        return when (type) {
-            "POINT_100" -> score
-            "POINT_10_DECIMAL" -> score
-            "POINT_10" -> score * 10
-            "POINT_5" -> score * 20
-            "POINT_3" -> score * 33
-            else -> score
-        }
-    }
+    private fun convertScore(score: Int, type: String?): Int =
+        ani.dantotsu.connections.anilist.ScoreFormats.statsBucketToRaw(
+            score,
+            ani.dantotsu.connections.anilist.ScoreFormats.parse(type)
+        )
 
     companion object {
         fun newInstance(user: Query.UserProfile): StatsFragment {
