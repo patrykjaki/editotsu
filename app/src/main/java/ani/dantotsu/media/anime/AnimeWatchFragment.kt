@@ -625,6 +625,31 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         }
     }
 
+    /**
+     * Watch-tab torrent button. Anchors Editotsu's manual torrent sheet to
+     * the Continue episode; with no such episode the sheet opens unanchored
+     * (plays, never syncs) rather than guessing an episode.
+     */
+    fun openManualTorrent(continueKey: String?) {
+        if (!this::media.isInitialized) return
+        val clipboard =
+            ContextCompat.getSystemService(requireContext(), android.content.ClipboardManager::class.java)
+        val clipText = runCatching {
+            clipboard?.primaryClip?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)?.coerceToText(requireContext())?.toString()
+        }.getOrNull()
+        val prefill = ani.dantotsu.torrent.TorrentWatchEntry.clipboardPrefill(clipText)
+        val episode = ani.dantotsu.torrent.TorrentWatchEntry.anchorEpisode(
+            continueKey, media.anime?.episodes
+        ) { it.number }
+        val sheet = if (episode != null) {
+            ani.dantotsu.torrent.ManualTorrentBottomSheet.newInstance(media, episode, prefill)
+        } else {
+            ani.dantotsu.torrent.ManualTorrentBottomSheet.newInstance(prefill)
+        }
+        sheet.show(parentFragmentManager, "manualTorrentEntry")
+    }
+
     fun onEpisodeClick(i: String) {
         model.continueMedia = false
         model.saveSelected(media.id, media.selected!!)
@@ -889,6 +914,11 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         binding.mediaSourceRecycler.layoutManager?.onRestoreInstanceState(state)
 
         requireActivity().setNavigationTheme()
+
+        if (this::headerAdapter.isInitialized) {
+            // Torrent add-on may have been toggled in Settings meanwhile.
+            headerAdapter.updateTorrentButton()
+        }
 
         if (this::media.isInitialized && this::headerAdapter.isInitialized) {
             val isCurrentlySubscribed = SubscriptionHelper.getSubscriptions().containsKey(media.id)
