@@ -91,9 +91,12 @@ object TorrentBenchHook {
                     "event=added hash=$hash index=$index len=${file.length} files=${files.size} " +
                         "metaMs=$metaMs url=${manager.getLink(hash, index)}"
                 )
+                startStatusLog(manager, hash, t0)
             }
             "remove" -> {
                 val hash = intent.getStringExtra("hash") ?: return
+                statusTask?.cancel(false)
+                statusTask = null
                 manager.removeTorrent(hash)
                 val deleted = runBlocking {
                     TorrentCacheManager.getInstance(app).deleteTorrentPayload(hash)
@@ -102,5 +105,23 @@ object TorrentBenchHook {
             }
             else -> Log.i(TAG, "event=error msg=unknown_cmd")
         }
+    }
+
+    private val statusTimer = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "TorrentBenchStatus") }
+    @Volatile private var statusTask: java.util.concurrent.ScheduledFuture<*>? = null
+
+    /** Logs an engine snapshot every 2 s until the torrent is removed or gone. */
+    private fun startStatusLog(manager: TorrentServerManager, hash: String, t0: Long) {
+        statusTask?.cancel(false)
+        statusTask = statusTimer.scheduleWithFixedDelay({
+            val snapshot = manager.benchStatus(hash)
+            val ms = SystemClock.elapsedRealtime() - t0
+            if (snapshot == null) {
+                Log.i(TAG, "event=status ms=$ms gone=true")
+                statusTask?.cancel(false)
+            } else {
+                Log.i(TAG, "event=status ms=$ms $snapshot")
+            }
+        }, 0, 2, java.util.concurrent.TimeUnit.SECONDS)
     }
 }
