@@ -36,6 +36,7 @@ require(workstreamId == "local-debug" || workstreamIdPattern.matches(workstreamI
     "editotsu.workstreamId must match <workstream>-<revision>@<base8>+<diff8>"
 }
 val shortWorkstreamId = workstreamId.substringBefore("@")
+val torrentBench = providers.gradleProperty("editotsu.torrentBench").orNull == "true"
 
 val malClientId: String = (project.findProperty("malClientId") as? String)
     ?.takeIf { it.isNotBlank() }
@@ -70,6 +71,8 @@ android {
         // the explicit workstream ID, official beta/release stay blank.
         buildConfigField("String", "EDITOTSU_BUILD_ID", "\"\"")
         resValue("string", "app_build_label", "Editotsu")
+        // Torrent bench hook (task 7 rig): off unless -Peditotsu.torrentBench=true.
+        buildConfigField("boolean", "TORRENT_BENCH", torrentBench.toString())
     }
 
     // ------------------------------------------------------------------

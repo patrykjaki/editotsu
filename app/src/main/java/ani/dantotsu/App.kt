@@ -68,6 +68,9 @@ class App : Application() {
         crashlytics.initialize(this)
         Logger.init(this)
         Thread.setDefaultUncaughtExceptionHandler(FinalExceptionHandler())
+        if (BuildConfig.TORRENT_BENCH) {
+            ani.dantotsu.torrent.bench.TorrentBenchHook.install(this)
+        }
         Logger.log(Log.WARN, "App: Logging started")
 
         Injekt.importModule(AppModule(this))
