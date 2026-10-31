@@ -8,13 +8,18 @@ import kotlin.math.roundToInt
  * reads with `score(format:POINT_100)` and writes with `scoreRaw`) and the
  * user's chosen AniList score format.
  *
- * Rules:
- * - 0 always means "not scored", in every format.
- * - Any raw score above 0 shows as at least the lowest non-zero step, so a
- *   scored entry never looks unscored.
- * - Read rounding is half-up. POINT_5 and POINT_3 read rules match Mihon's
- *   AniList tracker (stars = round(raw / 20); smileys: <=35, <=60, above).
- * - Write values: stars n -> n * 20, smileys 1/2/3 -> 35/60/85.
+ * Read rules match what AniList itself returns for `score(format: X)`
+ * (sampled from public lists on 2026-10-31, raw 0-100):
+ * - POINT_10: floor(raw / 10). Raw 1-9 shows as 0, as on AniList.
+ * - POINT_5: round(raw / 20) half-up, at least 1 when scored (raw 1 -> 1).
+ * - POINT_3: <=35 -> 1, <=60 -> 2, above -> 3. 30->1, 40->2, 60->2, 61->3
+ *   were observed; the 31-39 edge is not (35 is Mihon's cutoff).
+ * - 0 means "not scored" in every format.
+ * Write values: stars n -> n * 20, smileys 1/2/3 -> 35/60/85.
+ *
+ * AniList user statistics: `meanScore` is always on the raw 0-100 scale;
+ * `scores[].score` buckets are in the user's format, with POINT_10_DECIMAL
+ * buckets as tenths (75 = 7.5). See [statsBucketToRaw].
  */
 object ScoreFormats {
 
@@ -43,7 +48,7 @@ object ScoreFormats {
         return when (format) {
             ScoreFormat.POINT_100 -> r.toDouble()
             ScoreFormat.POINT_10_DECIMAL -> r / 10.0
-            ScoreFormat.POINT_10 -> halfUp(r, 10).coerceAtLeast(1).toDouble()
+            ScoreFormat.POINT_10 -> (r / 10).toDouble()
             ScoreFormat.POINT_5 -> halfUp(r, 20).coerceAtLeast(1).toDouble()
             ScoreFormat.POINT_3 -> when {
                 r <= 35 -> 1.0
@@ -86,13 +91,23 @@ object ScoreFormats {
     }
 
     /**
-     * Raw AniList score -> MAL 0-10 integer. Half-up rounding; any scored
-     * entry maps to at least 1, because MAL score 0 clears the score.
+     * Raw AniList score -> MAL 0-10 integer: AniList's own POINT_10 value
+     * (floor), but at least 1 when scored, because MAL score 0 clears it.
      */
     fun toMal(raw: Int): Int {
         val r = raw.coerceIn(0, 100)
         if (r == 0) return 0
-        return halfUp(r, 10).coerceIn(1, 10)
+        return (r / 10).coerceIn(1, 10)
+    }
+
+    /**
+     * A user-statistics score bucket (`scores[].score`, in that user's
+     * format) -> raw 0-100, so charts of users with different formats share
+     * one axis. POINT_10_DECIMAL buckets are already tenths.
+     */
+    fun statsBucketToRaw(bucket: Int, format: ScoreFormat): Int = when (format) {
+        ScoreFormat.POINT_100, ScoreFormat.POINT_10_DECIMAL -> bucket.coerceIn(0, 100)
+        else -> toRaw(bucket.toDouble(), format)
     }
 
     private val SMILEYS = listOf("", "🙁", "😐", "🙂") // 🙁 😐 🙂

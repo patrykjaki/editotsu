@@ -18,19 +18,37 @@ Status: converter + tests + MAL mirror done. **UI changes (steps 2-4) need owner
 
 ## Conversion rules (`connections/anilist/ScoreFormats.kt`)
 
-| Format | Shown from raw | Saved as raw |
+Read rules are checked against AniList itself: the public API returns the same
+list entry in any format (`score(format: X)`). Sampled 2026-10-31 from 22 public
+lists with 100-point scores plus 12 other users; 55 distinct raw values are in
+`ScoreFormatsTest` as a fixture.
+
+| Format | Shown from raw (AniList's rule) | Saved as raw |
 |---|---|---|
 | POINT_100 | raw | value |
-| POINT_10_DECIMAL | raw / 10 (one decimal) | round(value × 10) |
-| POINT_10 | round(raw / 10) | value × 10 |
-| POINT_5 | round(raw / 20) | stars × 20 |
+| POINT_10_DECIMAL | raw / 10 | round(value × 10) |
+| POINT_10 | floor(raw / 10); raw 1-9 shows 0 | value × 10 |
+| POINT_5 | round(raw / 20) half-up, min 1 when scored | stars × 20 |
 | POINT_3 | ≤35 🙁, ≤60 😐, else 🙂 | 35 / 60 / 85 |
-| MAL mirror | round(raw / 10), clamped 1-10 when scored | — |
+| MAL mirror | floor(raw / 10), min 1 when scored | — |
 
-- Rounding is half-up. 0 always means unscored; a scored entry never shows as 0.
-- The POINT_5 and POINT_3 read rules match Mihon's AniList tracker. AniList doesn't
-  document its own cutoffs, so these are not checked against the live site.
-- Examples: 7.5 decimal → 4 stars → 🙂 → MAL 8.
+- Observed edges: POINT_5 1→1, 25→1, 30→2, 69→3, 70→4, 90→5. POINT_3 30→1,
+  40→2, 60→2, 61→3. The 31-39 smiley edge was not in the sample; 35 is Mihon's.
+- MAL gets the same value AniList shows in 10-point, except a scored entry never
+  sends 0 (MAL 0 clears the score).
+- Examples: 7.5 decimal → 7 (10-point) → 4 stars → 🙂 → MAL 7.
+
+## AniList statistics
+
+- `statistics.*.meanScore` is always on the raw 0-100 scale, whatever the format
+  (10-point user: stats 80.46 = mean raw 80.46).
+- `statistics.*.scores[].score` buckets are in the user's format: 10-point user
+  5..10; 10-point decimal user 30, 35 … 100 (tenths, since the field is Int).
+  No star/smiley user in the sample had computed stats (AniList leaves many
+  accounts at 0), so those bucket scales are inferred, not observed.
+- Stats charts now use `ScoreFormats.statsBucketToRaw` instead of the old
+  `×10 / ×20 / ×33` guess. Change: smiley buckets plot at 35/60/85, not 33/66/99.
+- The profile header shows `meanScore` as-is (0-100). Unchanged.
 
 ## Proposed UI (needs OK)
 
