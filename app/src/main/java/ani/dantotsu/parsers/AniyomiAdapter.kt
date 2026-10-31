@@ -795,6 +795,10 @@ class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtrac
                 format = resolveProxiedFormat(videoUrl, query, ::getVideoType)
             }
 
+            if (format == null) {
+                format = StreamTypeDetector.fallbackFormat(urlObj, aniVideo.videoTitle, aniVideo.quality)
+            }
+
             // If the format is still undetermined, log an error
             if (format == null) {
                 Logger.log("Unknown video format: $videoUrl")
@@ -827,28 +831,8 @@ class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtrac
         )
     }
 
-    private fun getVideoType(fileName: String): VideoType? {
-        val type = when {
-            fileName.endsWith(".mp4", ignoreCase = true) || fileName.endsWith(
-                ".mkv",
-                ignoreCase = true
-            ) || fileName.endsWith(
-                ".webm",
-                ignoreCase = true
-            ) -> VideoType.CONTAINER
-
-            fileName.endsWith(".m3u8", ignoreCase = true) ||
-                    fileName.contains(".m3u8", ignoreCase = true) ||
-                    fileName.contains("/m3u8", ignoreCase = true) ||
-                    fileName.equals("m3u8", ignoreCase = true) -> VideoType.M3U8
-            fileName.endsWith(".mpd", ignoreCase = true) ||
-                    fileName.contains(".mpd", ignoreCase = true) ||
-                    fileName.contains("/mpd", ignoreCase = true) -> VideoType.DASH
-            else -> null
-        }
-
-        return type
-    }
+    private fun getVideoType(fileName: String): VideoType? =
+        StreamTypeDetector.videoTypeFromPath(fileName)
 
     @Suppress("unused")
     private fun headRequest(fileName: String, networkHelper: NetworkHelper): VideoType? {
