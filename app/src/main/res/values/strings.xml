@@ -1409,7 +1409,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="manual_torrent_received_toast">Torrent received — open an anime to attach it</string>
     <string name="manual_torrent_receive_failed">Couldn\'t read the shared torrent</string>
     <string name="manual_torrent_server_name">Manual torrent</string>
-    <string name="selector_manual_torrent">Add torrent manually</string>
+    <string name="play_via_torrent_magnet">Play via Torrent / Magnet</string>
     <string name="open_torrent_in_editotsu">Open torrent in Editotsu</string>
     <string name="add_magnet_to_editotsu">Add magnet to Editotsu</string>
 
