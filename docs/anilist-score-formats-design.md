@@ -1,6 +1,6 @@
 # AniList score formats — design note
 
-Status: converter + tests + MAL mirror done. **UI changes (steps 2-4) need owner OK.**
+Status: implemented (owner approved the UI 2026-10-31). Not yet checked on the phone.
 
 ## How scores work today (checked in code)
 
@@ -50,7 +50,7 @@ lists with 100-point scores plus 12 other users; 55 distinct raw values are in
   `×10 / ×20 / ×33` guess. Change: smiley buckets plot at 35/60/85, not 33/66/99.
 - The profile header shows `meanScore` as-is (0-100). Unchanged.
 
-## Proposed UI (needs OK)
+## UI (approved, implemented)
 
 1. **List editor** (both dialogs): the field uses the user's format.
    - POINT_100: whole number 0-100. POINT_10_DECIMAL: 0.0-10.0. POINT_10: 0-10.
@@ -62,13 +62,13 @@ lists with 100-point scores plus 12 other users; 55 distinct raw values are in
    `4`, 🙂). Mean score stays as now (`7.7`, AniList average /10).
 3. **Other users' scores** (followers on the details page) and review scores stay /10.
    Their API values are already raw 0-100, so this stays consistent.
-4. **Format change in settings:** already saves to AniList; after the change, refresh
-   lists so cards use the new format.
+4. **Format change in settings:** already saves to AniList and restarts the app,
+   so cards pick up the new format. No change needed.
 
-Not changed: rescue-mode pending updates (they already store raw), stats charts.
+Implementation: `media/ScoreFieldBinder.kt` (editor), `ScoreFormats.editedRaw`
+(send only if changed; clearing a scored entry sends 0), `cardScoreText`
+(cards and offline lists). When the format is unknown (MAL-only, or not loaded),
+the editor and cards fall back to the old "x / 10" display.
 
-## Questions for the owner
-
-- OK with the UI above?
-- Stars and smileys: number field or a picker (dropdown)? Default: number for stars,
-  dropdown for smileys.
+Not changed: rescue-mode pending updates (they already store raw; an unchanged
+score is stored as null and not sent).

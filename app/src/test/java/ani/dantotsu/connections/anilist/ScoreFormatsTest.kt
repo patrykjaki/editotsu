@@ -146,6 +146,50 @@ class ScoreFormatsTest {
         assertEquals(0, ScoreFormats.statsBucketToRaw(0, POINT_5))
     }
 
+    @Test
+    fun `editor leaves an untouched score alone`() {
+        // raw 77 in 5-star mode shows "4"; saving it unchanged must not write 80.
+        assertEquals(null, ScoreFormats.editedRaw(77, "4", POINT_5))
+        assertEquals(null, ScoreFormats.editedRaw(75, "7.5", POINT_10_DECIMAL))
+        assertEquals(null, ScoreFormats.editedRaw(5, "0", POINT_10)) // AniList shows raw 5 as 0
+        assertEquals(null, ScoreFormats.editedRaw(85, ScoreFormats.SMILEYS[3], POINT_3))
+        assertEquals(null, ScoreFormats.editedRaw(0, "", POINT_100))
+        assertEquals(null, ScoreFormats.editedRaw(0, "0", POINT_100)) // no-op on unscored
+    }
+
+    @Test
+    fun `editor writes changed scores in the user format`() {
+        assertEquals(100, ScoreFormats.editedRaw(77, "5", POINT_5))
+        assertEquals(77, ScoreFormats.editedRaw(70, "7.7", POINT_10_DECIMAL))
+        assertEquals(77, ScoreFormats.editedRaw(70, "7,7", POINT_10_DECIMAL))
+        assertEquals(88, ScoreFormats.editedRaw(0, "88", POINT_100))
+        assertEquals(60, ScoreFormats.editedRaw(85, ScoreFormats.SMILEYS[2], POINT_3))
+        assertEquals(35, ScoreFormats.editedRaw(0, ScoreFormats.SMILEYS[1], POINT_3))
+        assertEquals(0, ScoreFormats.editedRaw(77, "", POINT_5)) // cleared = unscore
+        assertEquals(0, ScoreFormats.editedRaw(85, "", POINT_3))
+        assertEquals(null, ScoreFormats.editedRaw(77, "abc", POINT_100)) // unreadable = keep
+    }
+
+    @Test
+    fun `editor text and input length`() {
+        assertEquals("77", ScoreFormats.display(77, POINT_100))
+        assertEquals("7.0", ScoreFormats.display(70, POINT_10_DECIMAL))
+        assertEquals("7", ScoreFormats.display(79, POINT_10))
+        // The max value must fit the length filter (smileys use a dropdown).
+        ScoreFormat.entries.filter { it != POINT_3 }.forEach { f ->
+            assertEquals(f.name, ScoreFormats.display(100, f).length, ScoreFormats.inputLength(f))
+        }
+    }
+
+    @Test
+    fun `card text uses own format or mean score`() {
+        assertEquals("4", ScoreFormats.cardText(77, 81, POINT_5))
+        assertEquals("77", ScoreFormats.cardText(77, 81, POINT_100))
+        assertEquals("7.7", ScoreFormats.cardText(77, 81, POINT_10_DECIMAL))
+        assertEquals("8.1", ScoreFormats.cardText(0, 81, POINT_5)) // unscored: AniList mean /10, as before
+        assertEquals("0.0", ScoreFormats.cardText(0, null, POINT_100))
+    }
+
     /** raw, POINT_10, POINT_5, POINT_3 as returned by AniList's API (public lists, 2026-10-31). */
     private val aniListObserved = listOf(
         intArrayOf(0, 0, 0, 0),
