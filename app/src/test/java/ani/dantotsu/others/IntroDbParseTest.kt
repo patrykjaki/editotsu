@@ -40,7 +40,7 @@ class IntroDbParseTest {
     @Test
     fun `credits with null end use known duration`() {
         val root = Json.parseToJsonElement("{\"credits\":[{\"start_ms\":1200000,\"end_ms\":null}]}").jsonObject
-        val out = IntroDbService.parseTheIntroDbSegments(root, 5, 2, 1_400_000L)
+        val out = IntroDbService.parseTheIntroDbSegments(root, IntroDbService.TheIntroDbId.Tmdb(5), 2, 1_400_000L)
         assertEquals(1, out.size)
         assertEquals("ed", out.first().skipType)
         assertEquals(1400.0, out.first().interval.endTime, 0.001)
@@ -49,14 +49,14 @@ class IntroDbParseTest {
     @Test
     fun `credits with null end and unknown duration are omitted`() {
         val root = Json.parseToJsonElement("{\"credits\":[{\"start_ms\":1200000,\"end_ms\":null}]}").jsonObject
-        assertTrue(IntroDbService.parseTheIntroDbSegments(root, 5, 2, null).isEmpty())
-        assertTrue(IntroDbService.parseTheIntroDbSegments(root, 5, 2, 0L).isEmpty())
+        assertTrue(IntroDbService.parseTheIntroDbSegments(root, IntroDbService.TheIntroDbId.Tmdb(5), 2, null).isEmpty())
+        assertTrue(IntroDbService.parseTheIntroDbSegments(root, IntroDbService.TheIntroDbId.Tmdb(5), 2, 0L).isEmpty())
     }
 
     @Test
     fun `bounded credits preserved with ms conversion`() {
         val root = Json.parseToJsonElement("{\"credits\":[{\"start_ms\":1000,\"end_ms\":90000}]}").jsonObject
-        val out = IntroDbService.parseTheIntroDbSegments(root, 5, 2, null)
+        val out = IntroDbService.parseTheIntroDbSegments(root, IntroDbService.TheIntroDbId.Tmdb(5), 2, null)
         assertEquals(1, out.size)
         assertEquals(1.0, out.first().interval.startTime, 0.001)
         assertEquals(90.0, out.first().interval.endTime, 0.001)
@@ -64,16 +64,49 @@ class IntroDbParseTest {
 
     @Test
     fun `request carries mapped season episode and duration`() {
-        val url = IntroDbService.theIntroDbUrl(42, "2", "1", 1_400_000L)
+        val url = IntroDbService.theIntroDbUrl(IntroDbService.TheIntroDbId.Tmdb(42), "2", "1", 1_400_000L)
         assertTrue(url.contains("tmdb_id=42"))
         assertTrue(url.contains("season=2"))
         assertTrue(url.contains("episode=1"))
         assertTrue(url.contains("duration_ms=1400000"))
-        val noDur = IntroDbService.theIntroDbUrl(42, "1", "13", null)
+        val noDur = IntroDbService.theIntroDbUrl(IntroDbService.TheIntroDbId.Tmdb(42), "1", "13", null)
         assertTrue(noDur.contains("episode=13"))
         assertFalse(noDur.contains("duration_ms"))
         val app = IntroDbService.introDbAppUrl("tt123", "2", "1")
         assertTrue(app.contains("season=2") && app.contains("episode=1"))
+    }
+
+    @Test
+    fun `v4 request uses v4 path, tv type and the chosen id kind`() {
+        val tvdb = IntroDbService.theIntroDbUrl(IntroDbService.TheIntroDbId.Tvdb(267440), "1", "1", null)
+        assertTrue(tvdb.startsWith("https://api.theintrodb.org/v4/media?"))
+        assertTrue(tvdb.contains("tvdb_id=267440"))
+        assertFalse(tvdb.contains("tmdb_id"))
+        assertTrue(tvdb.contains("type=tv"))
+        val tmdb = IntroDbService.theIntroDbUrl(IntroDbService.TheIntroDbId.Tmdb(1429), "1", "1", null)
+        assertTrue(tmdb.contains("tmdb_id=1429") && !tmdb.contains("tvdb_id"))
+    }
+
+    @Test
+    fun `v4 stamps are keyed by body tvdb_id whichever id was requested`() {
+        // Live v4 shape (2026-10-31, tmdb_id=1429 resolves to tvdb_id 267440).
+        val root = Json.parseToJsonElement(
+            "{\"tvdb_id\":267440,\"type\":\"tv\",\"intro\":[{\"start_ms\":123532,\"end_ms\":215559}]," +
+                "\"preview\":[{\"start_ms\":1432000,\"end_ms\":null}]}"
+        ).jsonObject
+        val viaTmdb = IntroDbService.parseTheIntroDbSegments(root, IntroDbService.TheIntroDbId.Tmdb(1429), 1, null)
+        val viaTvdb = IntroDbService.parseTheIntroDbSegments(root, IntroDbService.TheIntroDbId.Tvdb(267440), 1, null)
+        assertEquals(1, viaTmdb.size) // preview is not a skip type here
+        assertEquals("theintrodb_op_267440_1", viaTmdb.first().skipId)
+        assertEquals(viaTmdb.first().skipId, viaTvdb.first().skipId)
+        assertEquals(123.532, viaTmdb.first().interval.startTime, 0.001)
+    }
+
+    @Test
+    fun `body without tvdb_id falls back to the requested id`() {
+        val root = Json.parseToJsonElement("{\"intro\":[{\"start_ms\":0,\"end_ms\":90000}]}").jsonObject
+        val out = IntroDbService.parseTheIntroDbSegments(root, IntroDbService.TheIntroDbId.Tmdb(42), 3, null)
+        assertEquals("theintrodb_op_42_3", out.first().skipId)
     }
 }
 

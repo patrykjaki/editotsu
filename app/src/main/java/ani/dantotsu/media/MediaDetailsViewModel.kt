@@ -870,8 +870,10 @@ class MediaDetailsViewModel : ViewModel() {
                 val mediaVal = media.value
                 val imdbId = mediaVal?.idIMDB
                     ?: mediaVal?.id?.let { suspendNullOnError { IdMappers.getImdbId(it) } }
-                val tmdbId = mediaVal?.idTMDB?.toIntOrNull()
-                    ?: mediaVal?.id?.let { suspendNullOnError { IdMappers.getIds(it)?.tmdbId } }
+                // One mapper lookup serves both ids (TVDB is TheIntroDB v4's key).
+                val mappedIds = mediaVal?.id?.let { suspendNullOnError { IdMappers.getIds(it) } }
+                val tmdbId = mediaVal?.idTMDB?.toIntOrNull() ?: mappedIds?.tmdbId
+                val tvdbId = mappedIds?.tvdbId
                 // External season/episode via the existing mapper seam;
                 // S1 + local number is the documented fallback when the
                 // mapper cannot resolve (previous behavior).
@@ -887,6 +889,7 @@ class MediaDetailsViewModel : ViewModel() {
                 IntroDbService.getSkipTimes(
                     imdbId = imdbId,
                     tmdbId = tmdbId,
+                    tvdbId = tvdbId,
                     season = season,
                     episode = ep,
                     durationMs = durationMs
