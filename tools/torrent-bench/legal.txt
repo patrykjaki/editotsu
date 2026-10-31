@@ -1,0 +1,5 @@
+# Legal benchmark torrents (public domain / CC). archive.org torrents carry an
+# HTTP webseed, so they always have a source; the plain magnet is swarm-only.
+https://archive.org/download/BigBuckBunny_124/BigBuckBunny_124_archive.torrent
+https://archive.org/download/Sintel/Sintel_archive.torrent
+magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce
