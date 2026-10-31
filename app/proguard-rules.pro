@@ -130,6 +130,11 @@
 
 -keep class rx.internal.util.unsafe.** { *; }
 
+# mpv-android-lib ships no consumer rules. libplayer.so looks up the
+# private callbacks (MPV.event/eventProperty/logMessage) and MPVNode by
+# JNI name, so R8 must not strip or rename anything in is.xyz.mpv.
+-keep class is.xyz.mpv.** { *; }
+
 -dontwarn sun.misc.Unsafe
 -dontwarn org.graalvm.nativeimage.**
 -dontwarn com.oracle.svm.core.annotate.**
