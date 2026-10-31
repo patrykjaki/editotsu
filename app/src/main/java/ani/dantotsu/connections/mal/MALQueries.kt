@@ -201,7 +201,7 @@ class MALQueries {
             data[if (isAnime) "num_watched_episodes" else "num_chapters_read"] = progress.toString()
         data[if (isAnime) "is_rewatching" else "is_rereading"] = (status == "REPEATING").toString()
         if (score != null)
-            data["score"] = Math.round(score / 10.0).coerceIn(0L, 10L).toString()
+            data["score"] = ani.dantotsu.connections.anilist.ScoreFormats.toMal(score).toString()
         if (rewatch != null)
             data[if (isAnime) "num_times_rewatched" else "num_times_reread"] = rewatch.toString()
         if (start != null && !start.isEmpty())
