@@ -115,8 +115,6 @@ import ani.dantotsu.download.anime.AnimeDownloader
 import ani.dantotsu.download.video.Helper
 import ani.dantotsu.download.video.findBestVideoForDownload
 import ani.dantotsu.media.MediaType
-import java.util.Timer
-import java.util.TimerTask
 import kotlin.math.max
 import kotlin.math.min
 
@@ -210,7 +208,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     // that could exhaust Discord's ~5 updates / 20 seconds rate limit.
     private val discordThrottle = DiscordPresenceThrottle()
     private var changingServer = false
-    private var interacted = false
+    // True while the viewer touched the player within AutoplayPolicy.IDLE_TIMEOUT_MS.
+    private var interacted = true
+    private val autoplayIdleHandler = Handler(Looper.getMainLooper())
+    private val autoplayIdleReset = Runnable { interacted = false }
+    private val autoplayEndGate = AutoplayEndGate()
     private var pipEnabled = false
     private var aspectRatio = Rational(16, 9)
     private var isBuffering = true
@@ -770,22 +772,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             }
         }
 
-        // AutoPlay Interacted Tracking
-        if (PrefManager.getVal(PrefName.AutoPlay)) {
-            var touchTimer = Timer()
-            fun touched() {
-                interacted = true
-                touchTimer.cancel()
-                touchTimer.purge()
-                touchTimer = Timer()
-                touchTimer.schedule(object : TimerTask() {
-                    override fun run() { interacted = false }
-                }, 1000 * 60 * 60)
-            }
-            playerView.findViewById<View>(R.id.exo_touch_view).setOnTouchListener { _, _ ->
-                touched()
-                false
-            }
+        // AutoPlay Interacted Tracking: opening the player counts as interaction,
+        // every touch restarts the 1-hour idle window.
+        markAutoplayInteraction()
+        playerView.findViewById<View>(R.id.exo_touch_view).setOnTouchListener { _, _ ->
+            markAutoplayInteraction()
+            false
         }
 
         // Progress Dialog & Initial Episode
@@ -1284,10 +1276,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     PrefManager.setCustomVal("${media.id}_${media.anime?.selectedEpisode}_max", engine.durationMs)
                 }
                 checkAndLoadTimestamps()
+                autoplayEndGate.rearm()
             }
             is PlaybackState.Buffering -> {
                 exoBufferingIndicator.visibility = View.VISIBLE
                 isBuffering = true
+                autoplayEndGate.rearm()
             }
             is PlaybackState.Ended -> {
                 exoBufferingIndicator.visibility = View.GONE
@@ -1303,9 +1297,18 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 if (watchThresholdMet) {
                     progressManager.updateAniProgress(forceComplete = true)
                 }
-                if (nearPhysicalEnd && PrefManager.getVal<Boolean>(PrefName.AutoPlay) && !interacted) {
-                    progressManager.nextEpisode { i ->
-                        changeEpisode(currentEpisodeIndex + i)
+                val decision = AutoplayPolicy.decide(
+                    autoPlayOn = PrefManager.getVal<Boolean>(PrefName.AutoPlay),
+                    nearPhysicalEnd = nearPhysicalEnd,
+                    interactedRecently = interacted
+                )
+                if (decision != AutoplayPolicy.Decision.NONE && autoplayEndGate.tryConsume()) {
+                    if (decision == AutoplayPolicy.Decision.ADVANCE) {
+                        progressManager.nextEpisode { i ->
+                            changeEpisode(currentEpisodeIndex + i)
+                        }
+                    } else {
+                        toast(getString(R.string.autoplay_cancelled))
                     }
                 }
             }
@@ -1817,7 +1820,14 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         startActivity(intent)
     }
 
+    private fun markAutoplayInteraction() {
+        interacted = true
+        autoplayIdleHandler.removeCallbacks(autoplayIdleReset)
+        autoplayIdleHandler.postDelayed(autoplayIdleReset, AutoplayPolicy.IDLE_TIMEOUT_MS)
+    }
+
     override fun onDestroy() {
+        autoplayIdleHandler.removeCallbacks(autoplayIdleReset)
         unregisterPipReceiver()
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         orientationListener?.disable()
