@@ -545,7 +545,7 @@ class SettingsCommonActivity : AppCompatActivity() {
         // Inflate the dialog layout
         val dialogView = DialogUserAgentBinding.inflate(layoutInflater)
         val box = dialogView.userAgentTextBox
-        box.hint = getString(R.string.password)
+        box.hint = getString(R.string.label_password)
         box.setSingleLine()
 
         val dialog =

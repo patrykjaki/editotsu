@@ -7,7 +7,7 @@
     <string name="slogan">The MPV-powered Anime &amp; Manga client for Android.</string>
 
 
-    <string name="login">Login</string>
+    <string name="account_login">Login</string>
     <string name="logout">Logout</string>
 
     <string name="dantotsu" translatable="false">https://github.com/patrykjaki/editotsu</string>
@@ -125,7 +125,7 @@
     <string name="delete">Delete</string>
     <string name="remove">Remove</string>
 
-    <string name="name">Name</string>
+    <string name="label_name">Name</string>
     <string name="name_romaji">Name Romaji</string>
     <string name="mean_score">Mean Score</string>
     <string name="format">Format</string>
@@ -667,7 +667,7 @@
         <item>Continuous</item>
     </string-array>
 
-    <string name="selected">Selected</string>
+    <string name="source_selected">Selected</string>
     <string name="found">Found</string>
 
     <string name="age">Age:</string>
@@ -940,7 +940,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="you_be_rich">That\'s alright, you\'ll be a rich man soon :prayge:</string>
     <string name="donate">donate :)</string>
     <string name="do_it">Do it!</string>
-    <string name="password">Password</string>
+    <string name="label_password">Password</string>
 
     <string name="profile_stats_widget">Track progress directly from your home screen</string>
     <string name="anime_watched">Anime\nWatched</string>

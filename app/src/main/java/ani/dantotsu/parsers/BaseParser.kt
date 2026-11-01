@@ -282,7 +282,7 @@ abstract class BaseParser {
             checkIfVariablesAreEmpty()
             setUserText(
                 "${
-                    if (selected) currContext()!!.getString(R.string.selected) else currContext()!!.getString(
+                    if (selected) currContext()!!.getString(R.string.source_selected) else currContext()!!.getString(
                         R.string.found
                     )
                 } : ${response.name}"
