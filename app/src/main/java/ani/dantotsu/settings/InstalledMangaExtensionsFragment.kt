@@ -56,16 +56,7 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
         { pkg ->
             val name = pkg.name
             val changeUIVisibility: (Boolean) -> Unit = { show ->
-                val activity = activity as? ExtensionsActivity
-                if (activity != null && !activity.isFinishing && !activity.isDestroyed) {
-                    activity.findViewById<ViewPager2>(R.id.viewPager).isVisible = show
-                    activity.findViewById<TabLayout>(R.id.tabLayout).isVisible = show
-                    activity.findViewById<TextInputLayout>(R.id.searchView).isVisible = show
-                    activity.findViewById<ImageView>(R.id.languageselect).isVisible = show
-                    activity.findViewById<TextView>(R.id.extensions).text =
-                        if (show) activity.getString(R.string.extensions) else name
-                    activity.findViewById<FrameLayout>(R.id.fragmentExtensionsContainer).isGone = show
-                }
+                (activity as? ExtensionsActivity)?.showSourcePreferences(!show, name)
             }
             var itemSelected = false
             val allSettings = pkg.sources.filterIsInstance<ConfigurableSource>()
@@ -86,7 +77,7 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
                     val names = allSettings.map { getLanguageName(it.lang) }.toTypedArray()
                     var selectedIndex = 0
                     requireContext().customAlertDialog().apply {
-                        setTitle("Select a Source")
+                        setTitle(getString(R.string.extensions_select_source))
                         singleChoiceItems(names, selectedIndex) { which ->
                             itemSelected = true
                             openPrefFragment(allSettings[which])
@@ -102,14 +93,15 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
                     openPrefFragment(allSettings[0])
                 }
             } else {
-                Toast.makeText(requireContext(), "Source is not configurable", Toast.LENGTH_SHORT)
+                Toast.makeText(requireContext(), getString(R.string.extensions_not_configurable), Toast.LENGTH_SHORT)
                     .show()
             }
         },
         { pkg: MangaExtension.Installed ->
             if (isAdded) {
-                mangaExtensionManager.uninstallExtension(pkg.pkgName)
-                snackString("Extension uninstalled")
+                ExtensionRowMenu.uninstall(requireContext(), pkg.name, pkg.pkgName) {
+                    mangaExtensionManager.uninstallExtension(pkg.pkgName)
+                }
             }
         }, { pkg ->
             if (isAdded) {
@@ -298,14 +290,21 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
             } else {
                 holder.updateView.isVisible = false
             }
-            holder.deleteView.setOnClickListener {
-                onUninstallClicked(extension)
-            }
+            // Redesign: uninstall lives in the row's ⋮ menu with settings.
+            holder.deleteView.isVisible = false
+            holder.updateView.contentDescription =
+                holder.itemView.context.getString(R.string.extensions_row_update)
             holder.updateView.setOnClickListener {
                 onUpdateClicked(extension)
             }
+            holder.settingsImageView.contentDescription =
+                holder.itemView.context.getString(R.string.extensions_more_options)
             holder.settingsImageView.setOnClickListener {
-                onSettingsClicked(extension)
+                ExtensionRowMenu.show(
+                    it,
+                    onSettings = { onSettingsClicked(extension) },
+                    onUninstall = { onUninstallClicked(extension) }
+                )
             }
         }
 

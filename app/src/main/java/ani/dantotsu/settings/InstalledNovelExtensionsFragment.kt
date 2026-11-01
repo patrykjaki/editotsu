@@ -57,16 +57,7 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
         { ext ->
             val name = ext.name
             val changeUIVisibility: (Boolean) -> Unit = { show ->
-                val activity = activity as? ExtensionsActivity
-                if (activity != null && !activity.isFinishing && !activity.isDestroyed) {
-                    activity.findViewById<ViewPager2>(R.id.viewPager).isVisible = show
-                    activity.findViewById<TabLayout>(R.id.tabLayout).isVisible = show
-                    activity.findViewById<TextInputLayout>(R.id.searchView).isVisible = show
-                    activity.findViewById<ImageView>(R.id.languageselect).isVisible = show
-                    activity.findViewById<TextView>(R.id.extensions).text =
-                        if (show) activity.getString(R.string.extensions) else name
-                    activity.findViewById<FrameLayout>(R.id.fragmentExtensionsContainer).isGone = show
-                }
+                (activity as? ExtensionsActivity)?.showSourcePreferences(!show, name)
             }
 
             when (ext) {
@@ -99,12 +90,16 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
             if (isAdded) {
                 when (ext) {
                     is NovelExtension.Installed -> {
-                        novelExtensionManager.uninstallExtension(ext.pkgName)
-                        snackString("Extension uninstalled")
+                        ExtensionRowMenu.uninstall(requireContext(), ext.name, ext.pkgName) {
+                            novelExtensionManager.uninstallExtension(ext.pkgName)
+                        }
                     }
                     is NovelExtension.JsPlugin -> {
-                        novelExtensionManager.uninstallLnReaderPlugin(ext.pkgName)
-                        snackString("Extension uninstalled")
+                        ExtensionRowMenu.uninstall(
+                            requireContext(), ext.name, ext.pkgName, privateOnly = true
+                        ) {
+                            novelExtensionManager.uninstallLnReaderPlugin(ext.pkgName)
+                        }
                     }
                     else -> {}
                 }
@@ -347,14 +342,21 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
                 else -> {}
             }
 
-            holder.deleteView.setOnClickListener {
-                onUninstallClicked(extension)
-            }
+            // Redesign: uninstall lives in the row's ⋮ menu with settings.
+            holder.deleteView.isVisible = false
+            holder.updateView.contentDescription =
+                holder.itemView.context.getString(R.string.extensions_row_update)
             holder.updateView.setOnClickListener {
                 onUpdateClicked(extension)
             }
+            holder.settingsImageView.contentDescription =
+                holder.itemView.context.getString(R.string.extensions_more_options)
             holder.settingsImageView.setOnClickListener {
-                onSettingsClicked(extension)
+                ExtensionRowMenu.show(
+                    it,
+                    onSettings = { onSettingsClicked(extension) },
+                    onUninstall = { onUninstallClicked(extension) }
+                )
             }
         }
 
