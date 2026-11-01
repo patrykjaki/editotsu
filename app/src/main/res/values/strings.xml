@@ -1437,6 +1437,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
 
     <!-- MAX MERGE M3: spoiler tags (upstream e954d9f1, masked by default) -->
     <string name="hide_spoiler_tags">Hide Spoiler Tags</string>
+    <string name="hide_episode_spoilers">Hide titles, thumbnails and synopses of unwatched episodes</string>
     <string name="hide_spoiler_tags_desc">Mask spoiler tags on anime and manga details until tapped</string>
     <string name="spoiler_tag_placeholder">Spoiler</string>
     <string name="show_spoilers">Show Spoilers</string>
