@@ -57,7 +57,7 @@ class ThemeManager(private val context: Activity) {
             "LAVENDER" -> if (useOLED) R.style.Theme_Dantotsu_LavenderOLED else R.style.Theme_Dantotsu_Lavender
             "OCEAN" -> if (useOLED) R.style.Theme_Dantotsu_OceanOLED else R.style.Theme_Dantotsu_Ocean
             "MONOCHROME (BETA)" -> if (useOLED) R.style.Theme_Dantotsu_MonochromeOLED else R.style.Theme_Dantotsu_Monochrome
-            else -> if (useOLED) R.style.Theme_Dantotsu_PurpleOLED else R.style.Theme_Dantotsu_Purple
+            else -> if (useOLED) R.style.Theme_Dantotsu_OceanOLED else R.style.Theme_Dantotsu_Ocean
         }
 
         val window = context.window
@@ -148,7 +148,7 @@ class ThemeManager(private val context: Activity) {
 
             companion object {
                 fun fromString(value: String): Theme {
-                    return entries.find { it.theme == value } ?: PURPLE
+                    return entries.find { it.theme == value } ?: OCEAN
                 }
             }
         }
