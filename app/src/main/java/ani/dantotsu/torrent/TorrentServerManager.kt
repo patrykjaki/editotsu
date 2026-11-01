@@ -377,7 +377,17 @@ class TorrentServerManager(private val context: Context) {
                 settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.proxy_type.swigValue(), org.libtorrent4j.swig.settings_pack.proxy_type_t.none.swigValue())
             }
 
-            val params = SessionParams(settings)
+            // Resume the saved DHT state when there is one; our settings always win.
+            val savedState = sessionStateStore.load()
+            val params = savedState?.let {
+                try {
+                    SessionParams(it).also { p -> p.setSettings(settings) }
+                } catch (e: Exception) {
+                    Logger.log("TorrentServerManager: saved session state unusable, starting clean: ${e.message}")
+                    sessionStateStore.discard()
+                    null
+                }
+            } ?: SessionParams(settings)
             sessionManager.start(params)
             sessionManager.startDht()
 
@@ -477,7 +487,21 @@ class TorrentServerManager(private val context: Context) {
         scheduledTtls.values.forEach { ttlHandler.removeCallbacks(it) }
         scheduledTtls.clear()
         if (sessionManager.isRunning) {
+            saveSessionState()
             sessionManager.stop()
+        }
+    }
+
+    private val sessionStateStore by lazy {
+        SessionStateStore(java.io.File(context.filesDir, "torrent/session.state"))
+    }
+
+    /** Persist the DHT state; cheap (a few KB), so it also runs after each metadata fetch. */
+    private fun saveSessionState() {
+        try {
+            if (sessionManager.isRunning) sessionStateStore.save(sessionManager.saveState())
+        } catch (e: Exception) {
+            Logger.log("TorrentServerManager: saving session state failed: ${e.message}")
         }
     }
 
@@ -631,6 +655,7 @@ class TorrentServerManager(private val context: Context) {
                 }
                 try { liveHandle.forceReannounce() } catch (_: Exception) {}
 
+                saveSessionState()
                 val finalInfoHash = liveHandle.infoHash().toHex()
                 val name = liveHandle.getName() ?: title
                 val size = liveHandle.torrentFile()?.totalSize() ?: 0L
