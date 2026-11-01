@@ -150,7 +150,7 @@ class SettingsAccountActivity : AppCompatActivity() {
                             MAL.loginIntent(context)
                         }
                         settingsMALUsername.visibility = View.GONE
-                        settingsMALLogin.setText(R.string.login)
+                        settingsMALLogin.setText(R.string.account_login)
                         settingsMALLogin.setOnClickListener {
                             MAL.loginIntent(context)
                         }
@@ -162,7 +162,7 @@ class SettingsAccountActivity : AppCompatActivity() {
                     settingsAnilistBanner.visibility = View.GONE
                     settingsAnilistScrim.visibility = View.GONE
                     settingsRecyclerView.visibility = View.GONE
-                    settingsAnilistLogin.setText(R.string.login)
+                    settingsAnilistLogin.setText(R.string.account_login)
                     settingsAnilistLogin.setOnClickListener {
                         Anilist.loginIntent(context)
                     }
