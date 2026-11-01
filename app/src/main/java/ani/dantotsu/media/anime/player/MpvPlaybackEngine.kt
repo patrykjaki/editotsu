@@ -1179,6 +1179,16 @@ class MpvPlaybackEngine(
             resolved.syncProperties.forEach { (k, v) ->
                 mpvClient.setPropertyString(k, v)
             }
+            // 5. Audio night mode: always drop the labelled filter, re-add when on, so a
+            // live toggle never stacks two copies.
+            try {
+                mpvClient.command("af", "remove", VideoPipelineResolver.NIGHT_MODE_FILTER_NAME)
+            } catch (_: Exception) {}
+            resolved.nightModeAudioFilter?.let { filter ->
+                try {
+                    mpvClient.command("af", "add", filter)
+                } catch (_: Exception) {}
+            }
         } catch (e: Exception) {
             ani.dantotsu.util.Logger.log("MpvPlaybackEngine: applyVideoPipelineInternal error: ${e.message}")
         }
