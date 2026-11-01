@@ -377,7 +377,17 @@ class TorrentServerManager(private val context: Context) {
                 settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.proxy_type.swigValue(), org.libtorrent4j.swig.settings_pack.proxy_type_t.none.swigValue())
             }
 
-            val params = SessionParams(settings)
+            // Resume the saved DHT state when there is one; our settings always win.
+            val savedState = sessionStateStore.load()
+            val params = savedState?.let {
+                try {
+                    SessionParams(it).also { p -> p.setSettings(settings) }
+                } catch (e: Exception) {
+                    Logger.log("TorrentServerManager: saved session state unusable, starting clean: ${e.message}")
+                    sessionStateStore.discard()
+                    null
+                }
+            } ?: SessionParams(settings)
             sessionManager.start(params)
             sessionManager.startDht()
 
@@ -477,7 +487,21 @@ class TorrentServerManager(private val context: Context) {
         scheduledTtls.values.forEach { ttlHandler.removeCallbacks(it) }
         scheduledTtls.clear()
         if (sessionManager.isRunning) {
+            saveSessionState()
             sessionManager.stop()
+        }
+    }
+
+    private val sessionStateStore by lazy {
+        SessionStateStore(java.io.File(context.filesDir, "torrent/session.state"))
+    }
+
+    /** Persist the DHT state; cheap (a few KB), so it also runs after each metadata fetch. */
+    private fun saveSessionState() {
+        try {
+            if (sessionManager.isRunning) sessionStateStore.save(sessionManager.saveState())
+        } catch (e: Exception) {
+            Logger.log("TorrentServerManager: saving session state failed: ${e.message}")
         }
     }
 
@@ -573,13 +597,15 @@ class TorrentServerManager(private val context: Context) {
                 if (resolvedTorrentInfo != null) {
                     val ti = resolvedTorrentInfo
                     val p = Priority.array(Priority.IGNORE, ti.numFiles())
-                    sessionManager.download(ti, saveDir, null, p, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                    // Not sequential: the relay's deadline window keeps playback in order and
+                    // follows seeks; the rest of the file downloads rarest-first.
+                    sessionManager.download(ti, saveDir, null, p, null, TorrentFlags.AUTO_MANAGED)
                     handle = sessionManager.find(sha1)
                 } else {
                     handle = sessionManager.find(sha1)
                     if (handle == null) {
                         val enrichedUrl = buildEnrichedMagnetUri(url, TORRENT_DEFAULT_TRACKERS)
-                        sessionManager.download(enrichedUrl, saveDir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                        sessionManager.download(enrichedUrl, saveDir, TorrentFlags.AUTO_MANAGED)
                         handle = sessionManager.find(sha1)
                     }
 
@@ -597,7 +623,8 @@ class TorrentServerManager(private val context: Context) {
                         Thread.sleep(50)
                         handle = sessionManager.find(sha1)
                         val polled = handle
-                        if (polled != null && waitTime % 15 == 0) {
+                        // Every 5 s, not every 0.75 s: trackers throttle rapid re-announces.
+                        if (polled != null && waitTime > 0 && waitTime % 100 == 0) {
                             try { polled.forceReannounce() } catch (_: Exception) {}
                         }
                         waitTime++
@@ -628,6 +655,7 @@ class TorrentServerManager(private val context: Context) {
                 }
                 try { liveHandle.forceReannounce() } catch (_: Exception) {}
 
+                saveSessionState()
                 val finalInfoHash = liveHandle.infoHash().toHex()
                 val name = liveHandle.getName() ?: title
                 val size = liveHandle.torrentFile()?.totalSize() ?: 0L
