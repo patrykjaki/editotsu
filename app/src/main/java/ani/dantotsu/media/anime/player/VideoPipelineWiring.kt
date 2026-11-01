@@ -34,7 +34,8 @@ object VideoPipelinePrefsMapper {
         subtitleSpeed = PrefManager.getVal<Float>(PrefName.SubtitleSpeed),
         volumeBoostCap = PrefManager.getVal<Int>(PrefName.VolumeBoostCap),
         upscalerProviderId = PrefManager.getVal<String>(PrefName.UpscalerProviderId),
-        upscalerProfileId = PrefManager.getVal<String>(PrefName.UpscalerProfileId)
+        upscalerProfileId = PrefManager.getVal<String>(PrefName.UpscalerProfileId),
+        audioNightMode = PrefManager.getVal<Boolean>(PrefName.AudioNightMode)
     )
 
     /** Pure mapping — unit-testable without Android preferences (CP2 amendment tests). */
@@ -55,7 +56,8 @@ object VideoPipelinePrefsMapper {
         subtitleSpeed: Float,
         volumeBoostCap: Int,
         upscalerProviderId: String,
-        upscalerProfileId: String
+        upscalerProfileId: String,
+        audioNightMode: Boolean = false
     ): VideoPipelineConfig = VideoPipelineConfig(
         colorFilter = ColorFilterConfig(brightness, contrast, saturation, gamma, hue, sharpen),
         deband = DebandConfig(
@@ -70,7 +72,8 @@ object VideoPipelinePrefsMapper {
             grain = debandGrain
         ),
         upscaler = UpscalerConfig(upscalerProviderId, upscalerProfileId),
-        sync = AudioSubtitleSyncConfig(audioDelayMs, subtitleDelayMs, subtitleSpeed, volumeBoostCap)
+        sync = AudioSubtitleSyncConfig(audioDelayMs, subtitleDelayMs, subtitleSpeed, volumeBoostCap),
+        audioNightMode = audioNightMode
     )
 }
 

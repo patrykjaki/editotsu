@@ -61,7 +61,9 @@ data class VideoPipelineConfig(
     val deband: DebandConfig = DebandConfig(),
     val upscaler: UpscalerConfig = UpscalerConfig(),
     val sync: AudioSubtitleSyncConfig = AudioSubtitleSyncConfig(),
-    val userHwdec: String = "auto"
+    val userHwdec: String = "auto",
+    /** Audio night mode: dynamic loudness levelling (quiet dialogue up, loud effects down). */
+    val audioNightMode: Boolean = false
 )
 
 enum class VideoFilterTheme(
