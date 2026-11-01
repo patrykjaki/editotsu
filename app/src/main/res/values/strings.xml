@@ -1477,4 +1477,10 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <!-- MAX MERGE M3: outdated indicator (upstream e1476cc7, own repo only) -->
     <string name="version_current_outdated">Version %1$s (Outdated)</string>
 
+    <!-- CuNNy upscaler (experimental) -->
+    <string name="upscaler_button">Upscaler: %1$s</string>
+    <string name="upscaler_dialog_title">Upscaler (experimental)</string>
+    <string name="upscaler_off">Off</string>
+    <string name="upscaler_profile">CuNNy %1$s</string>
+    <string name="upscaler_unavailable">Upscaler files are missing or damaged</string>
 </resources>

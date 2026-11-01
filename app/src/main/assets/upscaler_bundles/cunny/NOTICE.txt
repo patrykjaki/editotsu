@@ -1,0 +1,15 @@
+CuNNy (Convolutional upscaling Neural Network)
+Copyright (c) 2024 funnyplanter
+Source: https://github.com/funnyplanter/CuNNy
+Revision: 906031bb00c15dd6a6bbbaa21c0eb0b724ca8437 (2025-08-29)
+License: GNU Lesser General Public License v3.0 or later
+         (LICENSE-LGPL-3.0.txt, which supplements LICENSE-GPL-3.0.txt)
+
+Files, copied unmodified from mpv/soft/ at that revision:
+  CuNNy-veryfast-SOFT.glsl
+  CuNNy-faster-SOFT.glsl
+  CuNNy-fast-SOFT.glsl
+
+These files are the complete source of the shaders. Editotsu loads them
+into libmpv through the glsl-shaders option; nothing is compiled or
+changed before that.
