@@ -91,6 +91,17 @@ object SourceRowClassifier {
         // `[IQIYI ...]` blocks. Additive alias only; the delimited
         // clean-title strip reuses the existing alias-key path.
         "IQIYI" to "iQIYI",
+        // Anime simulcast services seen in nekoBT/Nyaa titles (owner
+        // screenshot 2026-11-01: ToonsHub ADN/BILI/AMZN/CR variants).
+        "ADN" to "ADN",
+        "BILI" to "Bilibili",
+        "B-GLOBAL" to "Bilibili",
+        "HIDI" to "HIDIVE",
+        "HIDIVE" to "HIDIVE",
+        "ABEMA" to "ABEMA",
+        "UNEXT" to "U-NEXT",
+        "U-NEXT" to "U-NEXT",
+        "DSNY" to "Disney+",
     )
 
     // ---- Regexes ----------------------------------------------------------
@@ -223,6 +234,7 @@ object SourceRowClassifier {
     // they are matched against the release title only, never against
     // the provider/tracker name.
     private val REGEX_DUAL_WORD = Regex("""(?i)\bdual\b""")
+    private val REGEX_MULTI_AUDIO = Regex("""(?i)\bmulti[\s._-]?audio\b""")
     private val REGEX_DUBBED_WORD = Regex("""(?i)\bdubbed\b""")
     private val REGEX_ENG_DUB =
         Regex("""(?i)\beng(?:lish)?[\s._\-]*dubs?\b""")
@@ -499,6 +511,13 @@ object SourceRowClassifier {
 
     private fun isMetadataMarkerLine(line: String): Boolean {
         if (line == "Torrentio") return true
+        // Torrentio Anime prepends "<tracker> - <quality>" (its hoster
+        // name + Torrentio's quality label) as a line of its own, e.g.
+        // "nekoBT - 1080p" or "NyaaSi - 4k DV | HDR". It is provenance:
+        // the tracker is parsed from the ⚙ line, the resolution from the
+        // title, so it must not become part of the release name.
+        if (line.matches(REGEX_PROVIDER_QUALITY_LINE)) return true
+        if (isTorrentioLanguageLine(line)) return true
         if (line.firstOrNull()?.let { MARKER_EMOJIS.any { e -> line.startsWith(e) } } == true) return true
         if (line.matches(REGEX_METADATA_MARKER_LINE)) return true
         return false
@@ -1074,6 +1093,12 @@ object SourceRowClassifier {
         val sourceService: String?,
         val sourceClass: String?,
         val batch: Boolean = false,
+        /** "Uncensored" / "Censored" when the title says so. */
+        val censorship: String? = null,
+        /** "REPACK", "v2", ... when the release is a re-release. */
+        val revision: String? = null,
+        /** True for "OV" (original video, often English-subs-only) releases. */
+        val originalVideo: Boolean = false,
     )
 
     fun parseRelease(qualityText: String): ReleaseFields {
@@ -1099,10 +1124,12 @@ object SourceRowClassifier {
         // title.
         val audioSummaryExplicit =
             REGEX_AUDIO.find(qualityText)?.groupValues?.getOrNull(1)?.trim()
+        val langLine = languageLineText(qualityText)
+        val audioText = if (langLine.isEmpty()) releaseName else "$releaseName $langLine"
         val allowBareMulti =
-            !REGEX_MULTI_SUBS_WORD.containsMatchIn(releaseName)
+            !REGEX_MULTI_SUBS_WORD.containsMatchIn(audioText)
         val audioSummary = audioSummaryExplicit
-            ?: detectAudioTrackKind(releaseName, allowBareMulti)
+            ?: detectAudioTrackKind(audioText, allowBareMulti)
         val audioFormat = extractAudioFormat(qualityText, releaseName, audioSummary)
         val codec = extractCodec(qualityText, releaseName)
         val bitDepth = extractBitDepth(qualityText, releaseName)
@@ -1126,7 +1153,7 @@ object SourceRowClassifier {
         // Bare title markers (VOSTFR / Multi-Subs / ...) beat the group
         // default below.
         val markedSubs = if (!hasExplicitSubs) {
-            detectMultiSubsSummary(releaseName)
+            detectMultiSubsSummary(audioText)
         } else {
             null
         }
@@ -1154,8 +1181,32 @@ object SourceRowClassifier {
             subtitleSummary, subtitleFlags, flagSets.audioFlags,
             subtitleLanguages, flagSets.audioLanguages,
             sourceService, sourceClass, batch,
+            censorship = detectCensorship(releaseName),
+            revision = detectRevision(releaseName),
+            originalVideo = REGEX_OV.containsMatchIn(releaseName),
         )
     }
+
+    /** "Uncensored" wins when both words appear (e.g. "Censored ... Uncensored" lists). */
+    fun detectCensorship(releaseName: String): String? = when {
+        REGEX_UNCENSORED.containsMatchIn(releaseName) -> "Uncensored"
+        REGEX_CENSORED.containsMatchIn(releaseName) -> "Censored"
+        else -> null
+    }
+
+    /** REPACK / PROPER / vN (episode version) markers, or null. */
+    fun detectRevision(releaseName: String): String? {
+        REGEX_REPACK.find(releaseName)?.let { return it.groupValues[1].uppercase() }
+        REGEX_EPISODE_VERSION.find(releaseName)?.let { return "v" + it.groupValues[1] }
+        return null
+    }
+
+    private val REGEX_UNCENSORED = Regex("""(?i)\buncensored\b""")
+    private val REGEX_CENSORED = Regex("""(?i)\bcensored\b""")
+    private val REGEX_REPACK = Regex("""(?i)\b(repack\d?|proper)\b""")
+    /** "S01E01v2", "- 01v2", "E05 v3": a version digit glued to an episode number. */
+    private val REGEX_EPISODE_VERSION = Regex("""(?i)(?:e\d{1,4}|\s-\s\d{1,4}|\b\d{2,4})\s?v([2-9])\b""")
+    private val REGEX_OV = Regex("""\bOV\b""")
 
     private fun buildSubtitleSummary(
         flags: List<String>,
@@ -1193,6 +1244,9 @@ object SourceRowClassifier {
     private fun detectAudioTrackKind(releaseName: String, allowBareMulti: Boolean = true): String? {
         if (REGEX_DUAL_WORD.containsMatchIn(releaseName)) return "Dual"
         if (REGEX_DUAL_AUDIO_SEP.containsMatchIn(releaseName)) return "Dual"
+        // Torrentio's language line says "Dubbed / Multi Audio" for
+        // multi-audio releases: that is dual audio, not a dub-only file.
+        if (REGEX_MULTI_AUDIO.containsMatchIn(releaseName)) return "Dual"
         if (REGEX_LANG_PAIR_DUAL.containsMatchIn(releaseName)) return "Dual"
         if (REGEX_LANG_PAIR_WORDS_DUAL.containsMatchIn(releaseName)) return "Dual"
         if (REGEX_DUBBED_WORD.containsMatchIn(releaseName)) return "Dub"
@@ -1488,6 +1542,26 @@ object SourceRowClassifier {
     private val REGEX_WS_RUN = Regex("""\s+""")
     private val REGEX_WS_DOT = Regex("""[\s.]""")
     private val REGEX_WS_SINGLE = Regex("""\s""")
+    /**
+     * Torrentio's language line: " / "-separated audio/sub words and flag
+     * emoji, e.g. "Dubbed / Multi Subs / Dual Audio / 🇬🇧 / 🇷🇺". Its flags are
+     * read from the whole text and its audio words are fed to audio
+     * detection separately, so it is never part of the release name.
+     */
+    fun isTorrentioLanguageLine(line: String): Boolean {
+        val parts = line.split(" / ").map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return false
+        return parts.all { p -> p.matches(REGEX_LANG_LINE_WORD) || p.all { c -> !c.isLetterOrDigit() } }
+    }
+    private val REGEX_LANG_LINE_WORD = Regex(
+        """(?i)(dubbed|dual audio|multi audio|multi subs?|subbed|subs?|raw)"""
+    )
+    /** Audio/sub words of the Torrentio language line(s), or "" when there is none. */
+    fun languageLineText(qualityText: String): String =
+        qualityText.lines().map { it.trim() }.filter { it.isNotEmpty() && isTorrentioLanguageLine(it) }
+            .joinToString(" ")
+    private val REGEX_PROVIDER_QUALITY_LINE =
+        Regex("""^[A-Za-z0-9][\w.+-]{1,24} - (?:4k|\d{3,4}p|sd|hd|unknown)\b[^\[\]]*$""", RegexOption.IGNORE_CASE)
     private val REGEX_METADATA_MARKER_LINE =
         Regex("""^(seeders?|size|indexer|provider|language|audio)\s*[:=].+""", RegexOption.IGNORE_CASE)
     private val REGEX_LANG_PAIR_TOKEN = Regex("""[A-Za-z]{2,3}-[A-Za-z0-9]{2,4}""")
@@ -2314,6 +2388,30 @@ object SourceRowClassifier {
             .replace(CLEAN_EDGE_TRAIL, "")
             .replace(CLEAN_DIGIT_DOT_TRAIL, "")
             .replace(CLEAN_DOT_TRAIL, "")
-        return cleaned.trim()
+        return stripReleaseTagWords(cleaned.trim())
     }
+
+    /**
+     * Words now shown as their own tags (censorship, re-release, OV) and
+     * container leftovers, removed from the visible title. The raw release
+     * name in details keeps them.
+     */
+    fun stripReleaseTagWords(title: String): String = title
+        .replace(TAG_CENSOR_PHRASE, " ")
+        .replace(TAG_REVISION_WORD, " ")
+        .replace(TAG_OV_WORD, " ")
+        .replace(TAG_CONTAINER_WORD, " ")
+        .replace(CLEAN_EMPTY_PAREN_LOOSE, " ")
+        .replace(CLEAN_EMPTY_BRACKET_LOOSE, " ")
+        .replace(REGEX_WS_RUN, " ")
+        .replace(TAG_DANGLING_SEP, "")
+        .trim()
+
+    private val TAG_CENSOR_PHRASE = Regex("""(?i)\b(un)?censored(\s+version)?\b""")
+    private val TAG_REVISION_WORD = Regex("""(?i)\b(repack\d?|proper)\b""")
+    private val TAG_OV_WORD = Regex("""\bOV\b""")
+    private val TAG_CONTAINER_WORD = Regex("""(?i)\.?\b(mkv|mp4)\b""")
+    private val CLEAN_EMPTY_PAREN_LOOSE = Regex("""\(\s*\)""")
+    private val CLEAN_EMPTY_BRACKET_LOOSE = Regex("""\[\s*]""")
+    private val TAG_DANGLING_SEP = Regex("""[\s|/-]+$""")
 }

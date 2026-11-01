@@ -280,7 +280,14 @@ object SourceRowSummarizer {
         // 6. Audio format.
         fields.audioFormat?.let { out += SourceRowPill(it, SourcePillKind.AUDIO_FMT) }
 
-        // 7. Batch marker (P3, last).
+        // 7. What tells otherwise identical releases apart (one group often
+        //    ships several of the same episode): censorship, re-release,
+        //    original-video and the streaming source.
+        fields.censorship?.let { out += SourceRowPill(it, SourcePillKind.CENSOR) }
+        fields.revision?.let { out += SourceRowPill(it, SourcePillKind.REVISION) }
+        if (fields.originalVideo) out += SourceRowPill("OV", SourcePillKind.SERVICE)
+        fields.sourceService?.let { out += SourceRowPill(it, SourcePillKind.SERVICE) }
+        // 8. Batch marker (P3, last).
         if (fields.batch) {
             out += SourceRowPill("Batch", SourcePillKind.BATCH)
         }
