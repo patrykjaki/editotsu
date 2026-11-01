@@ -58,28 +58,54 @@ data class StableReleaseMetadata(
      * exact-name behavior.
      */
     val isReleaseShaped: Boolean = false,
+    /**
+     * Ranking-only spellings for the remembered family (glued channel
+     * counts, "Dual-Audio", sub-only releases). [audioFormat] and
+     * [audioMode] keep the old spellings because exact direct keys use them.
+     */
+    val softAudioFormat: String? = audioFormat,
+    val softAudioMode: String? = audioMode,
 )
 
 object StableReleaseMetadataExtractor {
     private val BRACKETED = Regex("""\[([^\[\]]+)]""")
     private val TRACKER_FOLD = Regex("""📂\s*([A-Za-z0-9 .+\-]+)""")
+    /** Torrentio's "👤 … 💾 … ⚙ <tracker>" marker (used when no 📂 marker exists). */
+    private val TRACKER_COG = Regex("""⚙\uFE0F?\s*([A-Za-z0-9 .+\-]+)""")
     private val RES_PX = Regex("""\b(\d{3,4}p)\b""")
     private val RES_WXH = Regex("""\b(\d{3,4}x\d{3,4})\b""")
     private val RES_4K = Regex("""\b(4k|2k)\b""", RegexOption.IGNORE_CASE)
-    private val AFMT = Regex(
+    // Exact-key spellings (unchanged, so stored direct-release keys stay valid).
+    private val AFMT_KEY = Regex(
         """\b(AAC|AC3|DTS(?:-?HD)?|EAC3|DDP|FLAC|OPUS|MP3|TRUEHD|ATMOS)\b""",
         RegexOption.IGNORE_CASE,
     )
-    private val AMODE = Regex(
+    private val AMODE_KEY = Regex(
         """\b(DUAL|DSUB|JPN(?:\.DUB)?|ENG(?:\.DUB)?|JP)?\s*(AUDIO|CHANS?|CH)\b""",
         RegexOption.IGNORE_CASE,
     )
+    // Ranking spellings. Channel counts may be glued on: "AAC2.0", "DDP5.1", "Opus2.0".
+    private val AFMT = Regex(
+        """\b(AAC|AC3|DTS(?:-?HD)?|EAC3|DDP|FLAC|OPUS|MP3|TRUEHD|ATMOS)(?=\d|\b)""",
+        RegexOption.IGNORE_CASE,
+    )
+    // "Dual Audio", "Dual-Audio", "Dual.Audio" are one mode.
+    private val AMODE = Regex(
+        """\b(DUAL|DSUB|JPN(?:\.DUB)?|ENG(?:\.DUB)?|JP)?[\s._-]*(AUDIO|CHANS?|CH)\b""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val AMODE_SEPARATORS = Regex("""[\s._-]+""")
     private val CODEC = Regex(
         """\b(HEVC|AVC|H\.?264|H\.?265|AV1|VP9|X\.?264|X\.?265|10-?BITS?)\b""",
         RegexOption.IGNORE_CASE,
     )
     private val HDR = Regex(
-        """\b(HDR10\+?|DOLBY(?:\.?VISION)?|DV)\b""",
+        """\b(HDR10(?:\+|PLUS|P)?|HDR|DOLBY(?:\.?VISION)?|DV)(?=$|[^A-Za-z0-9])""",
+        RegexOption.IGNORE_CASE,
+    )
+    /** Subtitle markers: a release with no audio mode but these is the "sub" release. */
+    private val SUB_MARK = Regex(
+        """\b(multi[\s._-]?subs?|msubs|subs?|subbed|english[\s._-]?subs?)\b""",
         RegexOption.IGNORE_CASE,
     )
     private val SOURCE_CLASS = Regex(
@@ -144,13 +170,22 @@ object StableReleaseMetadataExtractor {
 
     fun extract(rawDescription: String?): StableReleaseMetadata {
         val raw = rawDescription?.trim() ?: ""
-        val tracker = TRACKER_FOLD.find(raw)?.groupValues?.get(1)?.trim()
+        val tracker = (TRACKER_FOLD.find(raw) ?: TRACKER_COG.find(raw))
+            ?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
         val resolution = pickResolution(raw)
-        val afmt = AFMT.find(raw)?.groupValues?.get(1)
-        val amode = AMODE.find(raw)?.groupValues?.get(0)
+        val afmt = AFMT_KEY.find(raw)?.groupValues?.get(1)
+        val softAfmt = AFMT.find(raw)?.groupValues?.get(1)
+        // Audio mode tells the dual-audio and the sub-only release of one
+        // group apart: "dual audio" when named, else "sub" when only
+        // subtitles are named.
+        val amodeKey = AMODE_KEY.find(raw)?.groupValues?.get(0)
+        val softAmode = AMODE.find(raw)?.groupValues?.get(0)?.replace(AMODE_SEPARATORS, " ")?.trim()
+            ?: if (SUB_MARK.containsMatchIn(raw)) "sub" else null
         val svc = SVC_BRACKET.find(raw)?.groupValues?.get(1)
         val codec = CODEC.find(raw)?.groupValues?.get(1)
-        val hdr = HDR.find(raw)?.groupValues?.get(1)
+        // Every HDR format named, in order ("DV HDR" and "DV" are different releases).
+        val hdr = HDR.findAll(raw).map { it.groupValues[1].uppercase(Locale.ROOT) }
+            .distinct().joinToString(" ").takeIf { it.isNotEmpty() }
         val srcClass = SOURCE_CLASS.containsMatchIn(raw)
         val group = pickGroup(raw, tracker)
         val isRelease = group != null
@@ -160,7 +195,9 @@ object StableReleaseMetadataExtractor {
             tracker = tracker,
             resolution = resolution,
             audioFormat = afmt,
-            audioMode = amode,
+            audioMode = amodeKey,
+            softAudioFormat = softAfmt,
+            softAudioMode = softAmode,
             sourceService = svc,
             codec = codec,
             hdr = hdr,
@@ -197,8 +234,73 @@ object StableReleaseMetadataExtractor {
             if (!isGroupPositionPrefix(prefix, parsedTracker)) continue
             return token
         }
+        return suffixGroup(raw)
+    }
+
+    /**
+     * Fallback when no bracket group qualifies: a trailing `-GROUP` on the
+     * release name or the pack file name (`...HEVC-NTb`, `...S02E01-NTb.mp4`).
+     * Metadata lines (👤/💾/⚙/📂, "Torrentio", "<tracker> - <quality>",
+     * language lines) are skipped. Same guards as the card parser's suffix
+     * rule, kept here as a separate copy so persistence has no UI dependency.
+     */
+    private fun suffixGroup(raw: String): String? {
+        // Only release-shaped text (a resolution or codec token): plain
+        // server labels like "Vidstream-Main" never get a group.
+        if (pickResolution(raw) == null && !CODEC.containsMatchIn(raw)) return null
+        for (rawLine in raw.lines()) {
+            val line = rawLine.trim()
+            if (line.isEmpty() || isMetadataLine(line)) continue
+            val noExt = MEDIA_EXTENSION.replace(line, "")
+            val token = TRAILING_SUFFIX_GROUP.find(noExt)?.groupValues?.getOrNull(1) ?: continue
+            if (isSuffixGroupCandidate(token)) return token
+        }
         return null
     }
+
+    private fun isMetadataLine(line: String): Boolean {
+        if (line == "Torrentio") return true
+        if (METADATA_MARKERS.any { line.contains(it) }) return true
+        if (PROVIDER_QUALITY_LINE.matches(line)) return true
+        if (line.contains(" / ") || LANGUAGE_LINE_WORD.matches(line)) {
+            val parts = line.split(" / ").map { it.trim() }.filter { it.isNotEmpty() }
+            if (parts.all { p -> LANGUAGE_LINE_WORD.matches(p) || p.none { it.isLetterOrDigit() } }) return true
+        }
+        return false
+    }
+
+    private fun isSuffixGroupCandidate(token: String): Boolean {
+        if (token.length !in 2..12) return false
+        if (EPISODE_SHAPE.matches(token) || VERSION_SHAPE.matches(token) || RES_SHAPE.matches(token)) return false
+        val upper = token.uppercase(Locale.ROOT)
+        if (upper in SUFFIX_DENY || upper in KNOWN_NON_GROUP_BRACKETS) return false
+        if (upper in SOURCE_SERVICE_ALIASES) return false
+        if (KNOWN_LANG_CODES.any { it.equals(upper, ignoreCase = true) }) return false
+        return true
+    }
+
+    private val METADATA_MARKERS = listOf("👤", "💾", "⚙", "📂", "🎬")
+    private val PROVIDER_QUALITY_LINE =
+        Regex("""^[A-Za-z0-9][\w.+-]{1,24} - (?:4k|\d{3,4}p|sd|hd|unknown)\b[^\[\]]*$""", RegexOption.IGNORE_CASE)
+    private val LANGUAGE_LINE_WORD =
+        Regex("""(?i)(dubbed|dual audio|multi audio|multi subs?|subbed|subs?|raw)""")
+    private val MEDIA_EXTENSION =
+        Regex("""\.(mkv|mp4|avi|webm|ts|m4v|m2ts|mov|flv|rmvb)$""", RegexOption.IGNORE_CASE)
+    private val TRAILING_SUFFIX_GROUP = Regex("""-([A-Za-z][A-Za-z0-9]{1,11})\s*$""")
+    private val EPISODE_SHAPE = Regex("""(?i)^([se]?\d+)+[a-z]?$""")
+    private val VERSION_SHAPE = Regex("""(?i)^v\d+[a-z]?$""")
+    private val RES_SHAPE = Regex("""(?i)^\d+p$""")
+    private val SUFFIX_DENY: Set<String> = setOf(
+        "X264", "X265", "H264", "H265", "HEVC", "AVC", "AV1", "VP9", "XVID", "DIVX",
+        "8BIT", "10BIT", "HI10P", "BIT", "BITS", "DL", "RIP",
+        "AAC", "AC3", "DTS", "EAC3", "DDP", "DD", "FLAC", "OPUS", "MP3", "TRUEHD", "ATMOS",
+        "DUAL", "DUB", "DUBS", "DUBBED", "SUB", "SUBS", "SUBBED", "AUDIO",
+        "UHD", "FHD", "HD", "SD", "HDMA", "HRA",
+        "WEBDL", "WEBRIP", "BLURAY", "BDRIP", "HDTV", "DVDRIP", "REMUX", "WEB",
+        "COMPLETE", "BATCH", "UNCENSORED", "REPACK", "PROPER", "RERIP", "UNRATED",
+        "INTERNAL", "RETAIL", "REAL", "FINAL", "REMASTERED", "EXTENDED", "UNCUT",
+        "SDR", "HQ", "NFO", "MKV", "MP4", "AVI", "WEBM", "TS", "M4V", "M2TS", "MOV",
+    )
 
     /**
      * Group-position prefix rule. Mirrors

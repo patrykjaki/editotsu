@@ -436,10 +436,9 @@ class IdentityContinuityTest {
 
     /**
      * Required counterexample for true lexicographic ranking
-     * (reviewer blocker 2). A's match on the FIRST priority
-     * (trackerKey) must outrank B's match on the SECOND priority
-     * (resolution), even though the legacy weighted-sum approach
-     * would have preferred B.
+     * (reviewer blocker 2). A match on the FIRST priority
+     * (resolution: "same group, same quality") must outrank a match on
+     * the SECOND priority (trackerKey).
      */
     @Test
     fun family_lex_first_priority_dominates() {
@@ -448,16 +447,16 @@ class IdentityContinuityTest {
             mapOf("trackerKey" to "nyaasi", "resolution" to "1080p"),
         )
         val cands = listOf(
-            // A: tracker matches (priority 0), resolution mismatches.
+            // A: tracker matches (priority 1), resolution mismatches (priority 0).
             FamilyCandidate("A", "com.nyaa.sub", "subsplease",
                 mapOf("trackerKey" to "nyaasi", "resolution" to "720p")),
-            // B: tracker mismatches (priority 0), resolution matches.
+            // B: tracker mismatches, resolution matches (priority 0).
             FamilyCandidate("B", "com.nyaa.sub", "subsplease",
                 mapOf("trackerKey" to "nekobt", "resolution" to "1080p")),
         )
         val r = FamilyAutoSelector.select(stored, cands)
         assertTrue(r is FamilyAutoResult.Chosen)
-        assertEquals("A", (r as FamilyAutoResult.Chosen).exactKey)
+        assertEquals("B", (r as FamilyAutoResult.Chosen).exactKey)
     }
 
     /**
@@ -473,12 +472,13 @@ class IdentityContinuityTest {
             "com.nyaa.sub", "subsplease",
             mapOf("trackerKey" to "nyaasi", "resolution" to "1080p"),
         )
+        // Resolution is priority 0, tracker priority 1.
         val xBad = FamilyCandidate("X", "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nekobt", "resolution" to "1080p"))
-        val xGood = FamilyCandidate("X", "com.nyaa.sub", "subsplease",
             mapOf("trackerKey" to "nyaasi", "resolution" to "720p"))
-        val y = FamilyCandidate("Y", "com.nyaa.sub", "subsplease",
+        val xGood = FamilyCandidate("X", "com.nyaa.sub", "subsplease",
             mapOf("trackerKey" to "nekobt", "resolution" to "1080p"))
+        val y = FamilyCandidate("Y", "com.nyaa.sub", "subsplease",
+            mapOf("trackerKey" to "nyaasi", "resolution" to "720p"))
         val forward = FamilyAutoSelector.select(stored, listOf(xBad, xGood, y))
         val reversed = FamilyAutoSelector.select(stored, listOf(xGood, xBad, y))
         assertTrue(forward is FamilyAutoResult.Chosen)

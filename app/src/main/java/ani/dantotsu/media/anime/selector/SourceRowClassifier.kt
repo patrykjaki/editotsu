@@ -148,7 +148,7 @@ object SourceRowClassifier {
     private val HDR_END = """(?=$|[\s.\-_\])])"""
     private val REGEX_HDR10P_BARE = Regex(HDR_DELIM + """HDR10\+""" + HDR_END, RegexOption.IGNORE_CASE)
     private val REGEX_HDR10PLUS_BARE =
-        Regex(HDR_DELIM + """HDR10PLUS""" + HDR_END, RegexOption.IGNORE_CASE)
+        Regex(HDR_DELIM + """HDR10(?:PLUS|P)""" + HDR_END, RegexOption.IGNORE_CASE)
     private val REGEX_HDR10_BARE =
         Regex(HDR_DELIM + """HDR10(?!\+)""" + HDR_END, RegexOption.IGNORE_CASE)
     private val REGEX_DV_BARE =
@@ -502,12 +502,44 @@ object SourceRowClassifier {
 
     // ---- Release-name extraction ----------------------------------------
 
+    /**
+     * The release (torrent) name: all non-metadata lines except the
+     * file-name line of a pack ([fileNameLine]), which is parsed
+     * separately and never shown in the title.
+     */
     fun extractReleaseName(qualityText: String): String {
-        val lines = qualityText.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        val titleLines = lines.filterNot { isMetadataMarkerLine(it) }
-        return if (titleLines.isNotEmpty()) titleLines.joinToString(" ")
-        else qualityText.trim()
+        val titleLines = titleLines(qualityText)
+        if (titleLines.isEmpty()) return qualityText.trim()
+        val fileIdx = fileNameLineIndex(titleLines)
+        val kept = if (fileIdx > 0) titleLines.filterIndexed { i, _ -> i != fileIdx } else titleLines
+        return kept.joinToString(" ")
     }
+
+    /**
+     * File-name line of a multi-file (pack) row: a non-metadata line after
+     * the release name that ends in a video extension. Torrentio adds it
+     * only for packs. Returned as written (a path inside the torrent is
+     * kept; [parseRelease] drops it before parsing). Null when absent.
+     */
+    fun fileNameLine(qualityText: String): String? {
+        val titleLines = titleLines(qualityText)
+        val idx = fileNameLineIndex(titleLines)
+        if (idx <= 0) return null
+        return titleLines[idx]
+    }
+
+    private fun titleLines(qualityText: String): List<String> =
+        qualityText.lines().map { it.trim() }.filter { it.isNotEmpty() && !isMetadataMarkerLine(it) }
+
+    private fun fileNameLineIndex(titleLines: List<String>): Int {
+        if (titleLines.size < 2) return -1
+        for (i in 1 until titleLines.size) {
+            if (REGEX_VIDEO_FILE_LINE.containsMatchIn(titleLines[i])) return i
+        }
+        return -1
+    }
+
+    private val REGEX_VIDEO_FILE_LINE = Regex("""(?i)\.(mkv|mp4|avi|m2ts|ts|webm|m4v|mov)\s*$""")
 
     private fun isMetadataMarkerLine(line: String): Boolean {
         if (line == "Torrentio") return true
@@ -1101,7 +1133,60 @@ object SourceRowClassifier {
         val originalVideo: Boolean = false,
     )
 
-    fun parseRelease(qualityText: String): ReleaseFields {
+    /**
+     * Parse a row. The release (torrent) name and the file name are parsed
+     * separately and merged ([mergeReleaseFields]): the release name wins
+     * for single values, the file name fills gaps, lists are combined.
+     * [fileName] is an explicit file name (e.g. from a source's
+     * internalData); otherwise the pack file-name line of [qualityText] is
+     * used. Without a usable file name the result is the text-only parse.
+     */
+    fun parseRelease(qualityText: String, fileName: String? = null): ReleaseFields {
+        val primary = parseReleaseText(qualityText)
+        val file = (fileName?.takeIf { it.isNotBlank() } ?: fileNameLine(qualityText))?.let { cleanFileName(it) }
+            ?.takeIf { isUsableFileName(it, primary.releaseName) }
+            ?: return primary
+        return mergeReleaseFields(primary, parseReleaseText(file))
+    }
+
+    private fun cleanFileName(raw: String): String? =
+        raw.substringAfterLast('/').substringAfterLast('\\').trim().takeIf { it.isNotEmpty() }
+
+    private fun isUsableFileName(file: String, releaseName: String): Boolean {
+        fun norm(s: String) = REGEX_STRIP_MEDIA_EXTENSION.replace(s.trim(), "")
+            .replace(REGEX_NAME_SEPARATORS, " ").trim().lowercase()
+        return file.isNotBlank() && norm(file) != norm(releaseName)
+    }
+
+    private val REGEX_NAME_SEPARATORS = Regex("""[\s._]+""")
+
+    /** Release name wins for single values; file name fills gaps; lists are combined in order. */
+    fun mergeReleaseFields(primary: ReleaseFields, file: ReleaseFields): ReleaseFields {
+        fun <T> union(a: List<T>, b: List<T>): List<T> = (a + b).distinct()
+        return primary.copy(
+            resolution = primary.resolution ?: file.resolution,
+            hdr = primary.hdr || file.hdr,
+            releaseGroup = primary.releaseGroup ?: file.releaseGroup,
+            audioSummary = primary.audioSummary ?: file.audioSummary,
+            audioFormat = primary.audioFormat ?: file.audioFormat,
+            codec = primary.codec ?: file.codec,
+            bitDepth = primary.bitDepth ?: file.bitDepth,
+            hdrVariant = primary.hdrVariant ?: file.hdrVariant,
+            subtitleSummary = primary.subtitleSummary ?: file.subtitleSummary,
+            subtitleFlags = union(primary.subtitleFlags, file.subtitleFlags),
+            audioFlags = union(primary.audioFlags, file.audioFlags),
+            subtitleLanguages = union(primary.subtitleLanguages, file.subtitleLanguages),
+            audioLanguages = union(primary.audioLanguages, file.audioLanguages),
+            sourceService = primary.sourceService ?: file.sourceService,
+            sourceClass = primary.sourceClass ?: file.sourceClass,
+            batch = primary.batch || file.batch,
+            censorship = primary.censorship ?: file.censorship,
+            revision = primary.revision ?: file.revision,
+            originalVideo = primary.originalVideo || file.originalVideo,
+        )
+    }
+
+    private fun parseReleaseText(qualityText: String): ReleaseFields {
         val resolution = parseResolution(qualityText)
         val hdr = REGEX_HDR_SIMPLE.containsMatchIn(qualityText) ||
             REGEX_HDR_BARE.containsMatchIn(qualityText)
@@ -1204,8 +1289,8 @@ object SourceRowClassifier {
     private val REGEX_UNCENSORED = Regex("""(?i)\buncensored\b""")
     private val REGEX_CENSORED = Regex("""(?i)\bcensored\b""")
     private val REGEX_REPACK = Regex("""(?i)\b(repack\d?|proper)\b""")
-    /** "S01E01v2", "- 01v2", "E05 v3": a version digit glued to an episode number. */
-    private val REGEX_EPISODE_VERSION = Regex("""(?i)(?:e\d{1,4}|\s-\s\d{1,4}|\b\d{2,4})\s?v([2-9])\b""")
+    /** "S01E01v2", "- 01v2", "E05 v3", "S02 v2" (batch): a version digit after an episode/season number. */
+    private val REGEX_EPISODE_VERSION = Regex("""(?i)(?:e\d{1,4}|\bs\d{1,4}|\s-\s\d{1,4}|\b\d{2,4})\s?v([2-9])\b""")
     private val REGEX_OV = Regex("""\bOV\b""")
 
     private fun buildSubtitleSummary(
@@ -2388,8 +2473,17 @@ object SourceRowClassifier {
             .replace(CLEAN_EDGE_TRAIL, "")
             .replace(CLEAN_DIGIT_DOT_TRAIL, "")
             .replace(CLEAN_DOT_TRAIL, "")
-        return stripReleaseTagWords(cleaned.trim())
+        var out = stripReleaseTagWords(cleaned.trim())
+        // Any HDR/DV spelling left over once an HDR variant is shown as a
+        // pill (e.g. "DV HDR" where only DV became the variant, "HDR10P").
+        if (hdrVariant != null) out = out.replace(CLEAN_HDR_ANY_TOKEN, " ")
+        return ReleaseTitleNormalizer.normalize(out)
     }
+
+    private val CLEAN_HDR_ANY_TOKEN = Regex(
+        """(?<=^|[\s.\-_\[(])(?:HDR10\+|HDR10PLUS|HDR10P|HDR10|HDR|DV|DOVI|DOLBY[\s.\-_]*VISION)(?=$|[\s.\-_\])])""",
+        RegexOption.IGNORE_CASE,
+    )
 
     /**
      * Words now shown as their own tags (censorship, re-release, OV) and

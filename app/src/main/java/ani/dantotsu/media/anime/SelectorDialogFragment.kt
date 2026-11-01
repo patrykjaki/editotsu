@@ -68,6 +68,7 @@ import ani.dantotsu.media.anime.selector.AudioKindDetector
 import ani.dantotsu.media.anime.selector.AudioKindFilter
 import ani.dantotsu.media.anime.selector.BestReason
 import ani.dantotsu.media.anime.selector.CompactDetails
+import ani.dantotsu.media.anime.selector.EditotsuInternalData
 import ani.dantotsu.media.anime.selector.PickerEntry
 import ani.dantotsu.media.anime.selector.PickerList
 import ani.dantotsu.media.anime.selector.PickerListBuilder
@@ -969,6 +970,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 qualityText = extractor.server.name,
                 format = video.format,
                 url = video.file.url,
+                fileName = EditotsuInternalData.parse(extractor.server.video?.internalData)?.fileName,
             )
 
         private fun onListChanged(showFilter: Boolean) {
@@ -1079,8 +1081,10 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             if (topExtractor != null) actionsFor(topExtractor).setupRowSubtitleButton(b.streamSub, subtitles)
 
             b.streamQualities.removeAllViews()
-            entry.primary.forEachIndexed { i, variant ->
-                b.streamQualities.addView(qualityButton(b.streamQualities, entry, variant, filled = i == 0))
+            entry.primary.forEach { variant ->
+                b.streamQualities.addView(
+                    qualityButton(b.streamQualities, entry, variant, filled = list.isRememberedQuality(variant.ref)),
+                )
             }
             b.streamAlternates.removeAllViews()
             b.streamAlternates.isVisible = entry.alternates.isNotEmpty()
@@ -1094,7 +1098,10 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 }
                 b.streamAlternates.addView(label, flexParams(b.root.context, endDp = 8, bottomDp = 0))
                 entry.alternates.forEach { variant ->
-                    b.streamAlternates.addView(qualityButton(b.streamAlternates, entry, variant, filled = false, compact = true))
+                    b.streamAlternates.addView(qualityButton(
+                        b.streamAlternates, entry, variant,
+                        filled = list.isRememberedQuality(variant.ref), compact = true,
+                    ))
                 }
             }
             bindExpand(b.streamExpand, b.streamDetails, entry) {
@@ -1218,7 +1225,10 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
             bindExpand(b.sourceExpand, b.sourceDetails, entry) {
                 val qualityText = extractor.server.name
-                val fields = SourceRowClassifier.parseRelease(qualityText)
+                val fields = SourceRowClassifier.parseRelease(
+                    qualityText,
+                    EditotsuInternalData.parse(extractor.server.video?.internalData)?.fileName,
+                )
                 val tags = viewModel.pills.joinToString(" · ") { it.text }
                 (CompactDetails.lines(
                     group = fields.releaseGroup,

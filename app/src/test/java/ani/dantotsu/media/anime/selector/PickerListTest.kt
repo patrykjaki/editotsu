@@ -341,4 +341,47 @@ class PickerListTest {
         val text = "$shiniori $shinioriFile\n👤 6 💾 2.24 GB ⚙️ ExtTo"
         assertEquals("Shiniori-Raws", SourceRowClassifier.parseRelease(text).releaseGroup)
     }
+
+    // ---- quality highlight: only the remembered row is filled ----
+
+    private fun filled(list: PickerList): List<RowRef> =
+        list.entries.flatMap { it.refs }.filter { list.isRememberedQuality(it) }
+
+    @Test
+    fun highestQualityIsNotFilledWithoutMemory() {
+        val list = PickerListBuilder.build(listOf(stream(0, "MTBB", 1080), stream(1, "MTBB", 720)))
+        assertTrue(filled(list).isEmpty())
+    }
+
+    @Test
+    fun rememberedLowerQualityIsTheOnlyFilledButton() {
+        val rows = listOf(stream(0, "MTBB", 1080), stream(1, "MTBB", 720).copy(rememberedExact = true))
+        assertEquals(listOf(RowRef(1, 0)), filled(PickerListBuilder.build(rows)))
+    }
+
+    @Test
+    fun rememberedFamilyRowIsFilled() {
+        val rows = listOf(stream(0, "MTBB", 1080), stream(1, "MTBB", 720).copy(rememberedFamily = true))
+        assertEquals(listOf(RowRef(1, 0)), filled(PickerListBuilder.build(rows)))
+    }
+
+    @Test
+    fun exactBeatsFamilyForTheFilledButton() {
+        val rows = listOf(
+            stream(0, "MTBB", 1080).copy(rememberedFamily = true),
+            stream(1, "MTBB", 720).copy(rememberedExact = true),
+        )
+        assertEquals(listOf(RowRef(1, 0)), filled(PickerListBuilder.build(rows)))
+    }
+
+    @Test
+    fun tiesAndExtensionPreferredFillNothing() {
+        val tie = listOf(
+            stream(0, "MTBB", 1080).copy(rememberedFamily = true),
+            stream(1, "MTBB", 720).copy(rememberedFamily = true),
+        )
+        assertTrue(filled(PickerListBuilder.build(tie)).isEmpty())
+        val preferred = listOf(stream(0, "MTBB", 1080), stream(1, "MTBB", 720, preferred = true))
+        assertTrue(filled(PickerListBuilder.build(preferred)).isEmpty())
+    }
 }
