@@ -91,4 +91,15 @@ class StreamWindowPlannerTest {
         assertFalse(StreamWindowPlanner.isTailSideRead(size4k / 2, size4k, 325, tail4k, streamHasOwner = true))
         assertFalse(StreamWindowPlanner.isTailSideRead(1_363_008_878L, size4k, 649, tail4k, streamHasOwner = false))
     }
+
+    @Test
+    fun `head-first raises only the first pieces and no tail, then widens`() {
+        val p = StreamWindowPlanner(0, 700, 2 * mb, protectedPieces = setOf(698, 699, 700))
+        val narrow = p.plan(0, headFirst = true)
+        assertEquals((0 until StreamWindowPlanner.HEAD_FIRST_PIECES).toList(), narrow.raise.map { it.first })
+        assertEquals(0, narrow.raise.first().second)
+        val wide = p.plan(0)
+        assertEquals((0..31).toList() + listOf(698, 699, 700), wide.raise.map { it.first })
+        assertTrue(wide.demote.isEmpty())
+    }
 }

@@ -37,18 +37,27 @@ class StreamWindowPlanner(
 
     private val raised = LinkedHashSet<Int>()
 
-    /** Currently raised pieces (for tests and status lines). */
+    /** Currently raised pieces (other relay threads read this; hence synchronized). */
+    @Synchronized
     fun raisedPieces(): Set<Int> = raised.toSet()
 
-    /** Window for a read position at [playheadPiece] (clamped into the file). */
-    fun plan(playheadPiece: Int): Plan {
+    /**
+     * Window for a read position at [playheadPiece] (clamped into the file).
+     *
+     * [headFirst]: the read is still waiting for its first piece. Peers unchoke us slowly
+     * and the first seconds bring only a few hundred KB/s, so only the playhead piece and
+     * the next [HEAD_FIRST_PIECES] - 1 are raised (no tail, no full window) until it lands.
+     */
+    @Synchronized
+    fun plan(playheadPiece: Int, headFirst: Boolean = false): Plan {
         val start = playheadPiece.coerceIn(fileFirstPiece, fileLastPiece)
-        val end = minOf(start + windowPieces - 1, fileLastPiece)
+        val span = if (headFirst) minOf(HEAD_FIRST_PIECES, windowPieces) else windowPieces
+        val end = minOf(start + span - 1, fileLastPiece)
         val raise = ArrayList<Pair<Int, Int>>(end - start + 1 + protectedPieces.size)
         for ((i, piece) in (start..end).withIndex()) {
             raise += piece to deadlineFor(i)
         }
-        for (piece in protectedPieces) {
+        if (!headFirst) for (piece in protectedPieces) {
             if (piece in fileFirstPiece..fileLastPiece && piece !in start..end) {
                 raise += piece to PROTECTED_DEADLINE_MS
             }
@@ -61,6 +70,7 @@ class StreamWindowPlanner(
     }
 
     /** Forget all raised pieces (owner released); returns the pieces to demote. */
+    @Synchronized
     fun release(): List<Int> {
         val out = raised.toList()
         raised.clear()
@@ -89,6 +99,9 @@ class StreamWindowPlanner(
             if (firstPiece in protectedPieces) return true
             return rangeStart >= fileSize - TAIL_SIDE_READ_BYTES && rangeStart > 0
         }
+
+        /** Pieces raised while a read waits for its first piece. */
+        const val HEAD_FIRST_PIECES = 3
 
         const val MIN_PIECES = 8
         const val MAX_PIECES = 128
