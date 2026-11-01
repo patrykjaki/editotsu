@@ -28,8 +28,7 @@ import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.util.customAlertDialog
-import com.google.android.material.tabs.TabLayout
-import com.google.android.material.tabs.TabLayoutMediator
+import androidx.appcompat.widget.PopupMenu
 import java.util.Locale
 
 class ExtensionsActivity : AppCompatActivity() {
@@ -60,30 +59,17 @@ class ExtensionsActivity : AppCompatActivity() {
 
         supportFragmentManager.addOnBackStackChangedListener {
             val hasPrefFragment = supportFragmentManager.findFragmentById(R.id.fragmentExtensionsContainer) != null
-            findViewById<ViewPager2>(R.id.viewPager).isVisible = !hasPrefFragment
-            findViewById<TabLayout>(R.id.tabLayout).isVisible = !hasPrefFragment
-            findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.searchView).isVisible = !hasPrefFragment
-            binding.languageselect.isVisible = !hasPrefFragment
-            findViewById<android.widget.FrameLayout>(R.id.fragmentExtensionsContainer).isGone = !hasPrefFragment
-            if (!hasPrefFragment) {
-                findViewById<android.widget.TextView>(R.id.extensions).text = getString(R.string.extensions)
-            }
+            if (!hasPrefFragment) showSourcePreferences(false, null)
         }
 
-        binding.testButton.setOnClickListener {
-            ContextCompat.startActivity(
-                this,
-                Intent(this, ParserTestActivity::class.java),
-                null
-            )
-        }
-
-        val tabLayout = findViewById<TabLayout>(R.id.tabLayout)
-        val viewPager = findViewById<ViewPager2>(R.id.viewPager)
+        val viewPager = binding.viewPager
         viewPager.offscreenPageLimit = 1
+        // Type and status are chosen with the controls; swiping between six
+        // pages would skip across types and fight the drag-to-reorder lists.
+        viewPager.isUserInputEnabled = false
 
         viewPager.adapter = object : FragmentStateAdapter(this) {
-            override fun getItemCount(): Int = 6
+            override fun getItemCount(): Int = ExtensionPages.PAGE_COUNT
 
             override fun createFragment(position: Int): Fragment {
                 return when (position) {
@@ -96,63 +82,40 @@ class ExtensionsActivity : AppCompatActivity() {
                     else -> AnimeExtensionsFragment()
                 }
             }
-
         }
 
         val searchView: AutoCompleteTextView = findViewById(R.id.searchViewText)
 
-        tabLayout.addOnTabSelectedListener(
-            object : TabLayout.OnTabSelectedListener {
-                override fun onTabSelected(tab: TabLayout.Tab) {
-                    searchView.setText("")
-                    searchView.clearFocus()
-                    tabLayout.clearFocus()
-                    if (tab.text?.contains("Installed") == true) binding.languageselect.visibility =
-                        View.GONE
-                    else binding.languageselect.visibility = View.VISIBLE
-                    viewPager.updateLayoutParams<ViewGroup.LayoutParams> {
-                        height = ViewGroup.LayoutParams.MATCH_PARENT
-                    }
-
-                    if (tab.text?.contains("Anime") == true) {
-                        generateRepositoryButton(MediaType.ANIME)
-                    }
-                    if (tab.text?.contains("Manga") == true) {
-                        generateRepositoryButton(MediaType.MANGA)
-                    }
-                    if (tab.text?.contains("Novels") == true) {
-                        generateRepositoryButton(MediaType.NOVEL)
-                    }
-                }
-
-                override fun onTabUnselected(tab: TabLayout.Tab) {
-                    viewPager.updateLayoutParams<ViewGroup.LayoutParams> {
-                        height = ViewGroup.LayoutParams.MATCH_PARENT
-                    }
-                    tabLayout.clearFocus()
-                }
-
-                override fun onTabReselected(tab: TabLayout.Tab) {
-                    viewPager.updateLayoutParams<ViewGroup.LayoutParams> {
-                        height = ViewGroup.LayoutParams.MATCH_PARENT
-                    }
-                    // Do nothing
-                }
-            }
+        val typeButtons = mapOf(
+            MediaType.ANIME to R.id.extensionsTypeAnime,
+            MediaType.MANGA to R.id.extensionsTypeManga,
+            MediaType.NOVEL to R.id.extensionsTypeNovel,
         )
-
-        TabLayoutMediator(tabLayout, viewPager) { tab, position ->
-            tab.text = when (position) {
-                0 -> "Installed Anime"
-                1 -> "Available Anime"
-                2 -> "Installed Manga"
-                3 -> "Available Manga"
-                4 -> "Installed Novels"
-                5 -> "Available Novels"
-                else -> null
+        val startPage = savedInstanceState?.getInt(KEY_PAGE) ?: 0
+        binding.extensionsTypeToggle.check(typeButtons.getValue(ExtensionPages.typeOf(startPage)))
+        binding.extensionsStatusChips.check(
+            if (ExtensionPages.isInstalled(startPage)) R.id.extensionsChipInstalled
+            else R.id.extensionsChipAvailable
+        )
+        fun selectPage() {
+            val type = typeButtons.entries.firstOrNull {
+                it.value == binding.extensionsTypeToggle.checkedButtonId
+            }?.key ?: MediaType.ANIME
+            val installed =
+                binding.extensionsStatusChips.checkedChipId != R.id.extensionsChipAvailable
+            val page = ExtensionPages.pageOf(type, installed)
+            if (viewPager.currentItem != page) {
+                searchView.setText("")
+                searchView.clearFocus()
+                viewPager.setCurrentItem(page, false)
             }
-        }.attach()
-
+        }
+        viewPager.setCurrentItem(startPage, false)
+        binding.extensionsTypeToggle.addOnButtonCheckedListener { _, _, isChecked ->
+            if (isChecked) selectPage()
+        }
+        binding.extensionsStatusChips.setOnCheckedStateChangeListener { _, _ -> selectPage() }
+        binding.extensionsMenuButton.setOnClickListener { showMenu(it) }
 
         searchView.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
@@ -170,61 +133,99 @@ class ExtensionsActivity : AppCompatActivity() {
             }
         })
 
-        initActivity(this)
-        binding.languageselect.setOnClickListener {
-            val languageOptions =
-                LanguageMapper.Companion.Language.entries.map { entry ->
-                    entry.name.lowercase().replace("_", " ")
-                        .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
-                }.toTypedArray()
-            val listOrder: String = PrefManager.getVal(PrefName.LangSort)
-            val index = LanguageMapper.Companion.Language.entries.toTypedArray()
-                .indexOfFirst { it.code == listOrder }
-            customAlertDialog().apply {
-                setTitle("Language")
-                singleChoiceItems(languageOptions, index) { selected ->
-                    PrefManager.setVal(
-                        PrefName.LangSort,
-                        LanguageMapper.Companion.Language.entries[selected].code
-                    )
-                    val currentFragment =
-                        supportFragmentManager.findFragmentByTag("f${viewPager.currentItem}")
-                    if (currentFragment is SearchQueryHandler) {
-                        currentFragment.notifyDataChanged()
-                    }
-                }
-                show()
-            }
-        }
         binding.settingsContainer.updateLayoutParams<ViewGroup.MarginLayoutParams> {
             topMargin = statusBarHeight
             bottomMargin = navBarHeight
         }
     }
 
-    private fun generateRepositoryButton(type: MediaType) {
-        binding.openSettingsButton.setOnClickListener {
-            val repos: Set<String> = when (type) {
-                MediaType.ANIME -> {
-                    PrefManager.getVal(PrefName.AnimeExtensionRepos)
-                }
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(KEY_PAGE, binding.viewPager.currentItem)
+    }
 
-                MediaType.MANGA -> {
-                    PrefManager.getVal(PrefName.MangaExtensionRepos)
-                }
+    private fun currentPageFragment(): Fragment? =
+        supportFragmentManager.findFragmentByTag("f${binding.viewPager.currentItem}")
 
-                MediaType.NOVEL -> {
-                    PrefManager.getVal(PrefName.NovelExtensionRepos)
-                }
+    private fun showMenu(anchor: View) {
+        val page = binding.viewPager.currentItem
+        PopupMenu(this, anchor).apply {
+            menu.add(0, MENU_REPOS, 0, R.string.extensions_menu_repositories)
+            if (!ExtensionPages.isInstalled(page)) {
+                menu.add(0, MENU_LANGUAGE, 1, R.string.extensions_menu_language)
             }
-            AddRepositoryBottomSheet.newInstance(
-                type,
-                repos.toList(),
-                AddRepositoryBottomSheet::addRepo,
-                AddRepositoryBottomSheet::removeRepo
-
-            ).show(supportFragmentManager, "add_repo")
+            menu.add(0, MENU_TEST, 2, R.string.extensions_menu_test)
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    MENU_REPOS -> openRepositories(ExtensionPages.typeOf(page))
+                    MENU_LANGUAGE -> chooseLanguage()
+                    MENU_TEST -> ContextCompat.startActivity(
+                        this@ExtensionsActivity,
+                        Intent(this@ExtensionsActivity, ParserTestActivity::class.java),
+                        null
+                    )
+                }
+                true
+            }
+            show()
         }
+    }
+
+    private fun chooseLanguage() {
+        val languageOptions =
+            LanguageMapper.Companion.Language.entries.map { entry ->
+                entry.name.lowercase().replace("_", " ")
+                    .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+            }.toTypedArray()
+        val listOrder: String = PrefManager.getVal(PrefName.LangSort)
+        val index = LanguageMapper.Companion.Language.entries.toTypedArray()
+            .indexOfFirst { it.code == listOrder }
+        customAlertDialog().apply {
+            setTitle(getString(R.string.extensions_menu_language))
+            singleChoiceItems(languageOptions, index) { selected ->
+                PrefManager.setVal(
+                    PrefName.LangSort,
+                    LanguageMapper.Companion.Language.entries[selected].code
+                )
+                (currentPageFragment() as? SearchQueryHandler)?.notifyDataChanged()
+            }
+            show()
+        }
+    }
+
+    private fun openRepositories(type: MediaType) {
+        val repos: Set<String> = when (type) {
+            MediaType.ANIME -> PrefManager.getVal(PrefName.AnimeExtensionRepos)
+            MediaType.MANGA -> PrefManager.getVal(PrefName.MangaExtensionRepos)
+            MediaType.NOVEL -> PrefManager.getVal(PrefName.NovelExtensionRepos)
+        }
+        AddRepositoryBottomSheet.newInstance(
+            type,
+            repos.toList(),
+            AddRepositoryBottomSheet::addRepo,
+            AddRepositoryBottomSheet::removeRepo
+        ).show(supportFragmentManager, "add_repo")
+    }
+
+    /**
+     * Shows a source's preference screen in place of the lists (or restores
+     * the lists). Called by the installed-extension fragments.
+     */
+    fun showSourcePreferences(show: Boolean, title: String?) {
+        if (isFinishing || isDestroyed) return
+        binding.viewPager.isVisible = !show
+        binding.extensionsFilterBar.isVisible = !show
+        binding.extensionsMenuButton.isVisible = !show
+        binding.searchView.isVisible = !show
+        binding.fragmentExtensionsContainer.isGone = !show
+        binding.extensions.text = if (show && title != null) title else getString(R.string.extensions)
+    }
+
+    private companion object {
+        const val KEY_PAGE = "extensions_page"
+        const val MENU_REPOS = 1
+        const val MENU_LANGUAGE = 2
+        const val MENU_TEST = 3
     }
 }
 
