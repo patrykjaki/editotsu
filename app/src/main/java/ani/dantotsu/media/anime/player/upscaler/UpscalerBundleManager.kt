@@ -6,12 +6,8 @@ import java.io.File
 /**
  * Android-side registry of installed upscaler providers.
  *
- * v0.2.4-alpha ships with NO bundled upscaler assets: APK assets contain no
- * `upscaler_bundles/` directory, so [availableProviders] is empty and the only valid
- * `UpscalerConfig` is `off`. A future CuNNy integration ships:
- *  1. APK assets `upscaler_bundles/cunny/manifest.json` + shader files,
- *  2. a provider implementation registered via [register],
- * and requires NO changes to the engine, resolver, or config model.
+ * Bundles ship as APK assets `upscaler_bundles/<provider>/manifest.json` + files and are
+ * installed into `filesDir/upscaler/<provider>`. [getInstance] registers the CuNNy provider.
  *
  * Unit-testable: construct directly with temp [filesDir]/[cacheDir] and a fake [AssetReader].
  */
@@ -58,8 +54,7 @@ class UpscalerBundleManager internal constructor(
         // Legacy Anime4K placeholder migration (CP2 amendment): never an active provider.
         try { UpscalerBundleInstaller.migrateLegacyAnime4KInstall(filesDir) } catch (_: Exception) {}
 
-        // Discover any APK-shipped bundles. With none packaged (v0.2.4-alpha) this is a no-op and
-        // the registry stays empty ⇒ shipped upscaler state is OFF.
+        // Install/refresh APK-shipped bundles (validated; failures leave the provider unavailable).
         try { refreshFromAssets() } catch (_: Exception) {}
     }
 
@@ -72,15 +67,17 @@ class UpscalerBundleManager internal constructor(
                     filesDir = context.applicationContext.filesDir,
                     cacheDir = context.applicationContext.cacheDir,
                     assets = AndroidAssetReader(context.applicationContext)
-                ).also { instance = it }
+                ).also { manager ->
+                    manager.register(CunnyUpscalerProvider(manager::installedBundleDir))
+                    instance = manager
+                }
             }
     }
 
     /**
      * Register a provider implementation. Canonical-id contract: only providers whose
      * [UpscalerProvider.id] is already in strict canonical form are accepted — non-canonical
-     * registrations are ignored fail-closed so the registry never holds a non-canonical id
-     * (none exist in v0.2.4-alpha).
+     * registrations are ignored fail-closed so the registry never holds a non-canonical id.
      */
     fun register(provider: UpscalerProvider) {
         if (UpscalerBundleInstaller.canonicalProviderId(provider.id) == null) {

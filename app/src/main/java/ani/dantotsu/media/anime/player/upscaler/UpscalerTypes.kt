@@ -10,8 +10,8 @@ import java.io.File
  * knows which provider produced them. CuNNy (or any future provider) plugs in by implementing
  * [UpscalerProvider] and registering a validated shader bundle — no further engine changes.
  *
- * v0.2.4-alpha ships with NO bundled upscaler: the registry is empty, `UpscalerConfig` defaults
- * to `off`, and any non-off selection resolves fail-closed to "no shaders".
+ * The only bundled provider is [CunnyUpscalerProvider]. `UpscalerConfig` defaults to `off`, and
+ * any selection that can't be resolved falls back fail-closed to "no shaders".
  */
 interface UpscalerProvider {
     /** Stable provider id used by settings/prefs (e.g. "cunny"). */
