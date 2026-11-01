@@ -185,6 +185,15 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
         refreshPendingRow()
         showInput(null)
 
+        // Watch-tab button: clipboard magnet/.torrent URL prefilled on first
+        // open only (the EditText restores itself after rotation). Never
+        // auto-resolved; the user still taps Add.
+        if (savedInstanceState == null) {
+            arguments?.getString(ARG_PREFILL)?.let {
+                binding.manualTorrentMagnetInput.setText(it)
+            }
+        }
+
         // r2: re-resolve a typed/pasted magnet or http(s) .torrent after
         // recreation. The engine still holds the handle (addTorrent finds it
         // by info-hash), so this is cheap. Staged files are deleted with the
@@ -851,11 +860,17 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
         private const val STATE_ANCHORED = "manualTorrent.anchored"
         private const val STATE_RESOLVED_URL = "manualTorrent.resolvedUrl"
         private const val STATE_SELECTED_FILE_ID = "manualTorrent.selectedFileId"
+        private const val ARG_PREFILL = "manualTorrent.prefill"
 
-        fun newInstance(media: Media, episode: Episode): ManualTorrentBottomSheet {
+        fun newInstance(
+            media: Media,
+            episode: Episode,
+            prefill: String? = null,
+        ): ManualTorrentBottomSheet {
             return ManualTorrentBottomSheet().apply {
                 this.media = media
                 this.episode = episode
+                withPrefill(prefill)
             }
         }
 
@@ -864,8 +879,12 @@ class ManualTorrentBottomSheet : BottomSheetDialogFragment() {
          * Play builds a synthetic entry ([buildUnlinkedPlayback]); nothing
          * here can sync, persist, or link to a catalog anime.
          */
-        fun newInstance(): ManualTorrentBottomSheet {
-            return ManualTorrentBottomSheet()
+        fun newInstance(prefill: String? = null): ManualTorrentBottomSheet {
+            return ManualTorrentBottomSheet().apply { withPrefill(prefill) }
+        }
+
+        private fun ManualTorrentBottomSheet.withPrefill(prefill: String?) {
+            if (prefill != null) arguments = Bundle().apply { putString(ARG_PREFILL, prefill) }
         }
     }
 }
