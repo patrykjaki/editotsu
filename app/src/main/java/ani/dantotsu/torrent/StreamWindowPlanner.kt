@@ -28,7 +28,17 @@ class StreamWindowPlanner(
         val raise: List<Pair<Int, Int>>,
         /** Pieces raised earlier that the window no longer covers. */
         val demote: List<Int>,
-    )
+    ) {
+        /**
+         * The pieces that get a libtorrent deadline: the nearest [CRITICAL_PIECES] and the
+         * protected tail. libtorrent serves deadline pieces through its time-critical path
+         * (mostly its fastest peers); the rest of the window stays TOP priority without a
+         * deadline so the normal picker spreads it over every peer, like the read-ahead of
+         * WebTorrent and anacrolix/torrent (TorrServer pulled 2x our sustained rate).
+         */
+        fun deadlined(protectedPieces: Set<Int>): List<Pair<Int, Int>> =
+            raise.filterIndexed { i, (piece, _) -> i < CRITICAL_PIECES || piece in protectedPieces }
+    }
 
     val windowPieces: Int = run {
         val byBytes = if (pieceLength > 0) ((windowBytes + pieceLength - 1) / pieceLength).toInt() else MIN_PIECES
@@ -99,6 +109,9 @@ class StreamWindowPlanner(
             if (firstPiece in protectedPieces) return true
             return rangeStart >= fileSize - TAIL_SIDE_READ_BYTES && rangeStart > 0
         }
+
+        /** Nearest window pieces that get a deadline (see [Plan.deadlined]). */
+        const val CRITICAL_PIECES = 8
 
         /** Pieces raised while a read waits for its first piece. */
         const val HEAD_FIRST_PIECES = 3

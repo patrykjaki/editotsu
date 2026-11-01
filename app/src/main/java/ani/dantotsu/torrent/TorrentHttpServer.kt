@@ -290,7 +290,7 @@ class TorrentHttpServer(
                     clientSessionId, planner.raisedPieces().minOrNull() ?: playhead,
                     planner.windowPieces, totalPieces, protectedTail
                 )
-                plan.raise.forEach { (piece, deadline) ->
+                plan.deadlined(protectedTail).forEach { (piece, deadline) ->
                     deadlineRegistry?.registerDeadline(piece, clientSessionId, deadline.toLong())
                 }
             }
