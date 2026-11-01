@@ -54,12 +54,13 @@ enum class SourcePillKind {
     CODEC,      // e.g. "HEVC", "AVC", "AV1"
     BIT_DEPTH,  // e.g. "10-bit", "8-bit"
     AUDIO_FMT,  // e.g. "AAC", "FLAC", "DDP2.0"
-    SUB_LANG,   // e.g. "ENG", "Multi-subs", "🇬🇧 🇵🇱 🇪🇸"
+    SUB_LANG,   // flags ("🇬🇧") or fallback text ("Multi-subs")
     AUDIO_MODE, // e.g. "Sub", "Dub", "Dual Audio"
     HDR,        // plain "HDR"
     HDR10,      // "HDR10"
     HDR10_PLUS, // "HDR10+"
     DOLBY_VISION, // "Dolby Vision"
+    BATCH,      // "Batch" pack marker (P3, last)
 }
 
 /**
@@ -81,6 +82,13 @@ enum class SourcePillKind {
  *              row. Null for STREAM rows. Full name lives in [details].
  * @param pills right-aligned pills rendered at the end of the header row.
  *              Quality pill (e.g. "1080p") is always first when present.
+ *              Complete uncapped model; the layout constrains display.
+ * @param criticalPills P0 pills the layout MUST keep visible
+ *              (resolution + subtitle/language). Rendered in fixed
+ *              wrap_content slots ahead of the flexible strip, so they
+ *              can never be displaced by optional pills.
+ * @param optionalPills remaining pills in priority order, rendered in
+ *              the flexible single-line strip (clipped, never wrapped).
  * @param meta meta chips rendered on the third line of the collapsed row
  *              (e.g. "545 seeders · 1.48 GB · NyaaSi").
  * @param details lines rendered in the expandable Details panel.
@@ -93,6 +101,8 @@ data class SourceRowViewModel(
     val cleanSubtitle: String?,
     val subtitle: String?,
     val pills: List<SourceRowPill>,
+    val criticalPills: List<SourceRowPill>,
+    val optionalPills: List<SourceRowPill>,
     val audioSummary: String?,
     val subtitleSummary: String?,
     val subtitleLanguages: List<String> = emptyList(),
