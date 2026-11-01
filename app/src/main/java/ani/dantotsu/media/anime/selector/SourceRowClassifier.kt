@@ -448,6 +448,10 @@ object SourceRowClassifier {
 
     // ---- Presentation -----------------------------------------------------
 
+    /** A row carrying Editotsu internalData is always a release (it has a torrent name). */
+    fun classifyPresentation(qualityText: String, data: EditotsuInternalData?): SourcePresentationKind =
+        if (data?.torrentName != null) SourcePresentationKind.RELEASE else classifyPresentation(qualityText)
+
     fun classifyPresentation(qualityText: String): SourcePresentationKind {
         val lines = qualityText.lines()
             .map { it.trim() }
@@ -1141,12 +1145,106 @@ object SourceRowClassifier {
      * internalData); otherwise the pack file-name line of [qualityText] is
      * used. Without a usable file name the result is the text-only parse.
      */
-    fun parseRelease(qualityText: String, fileName: String? = null): ReleaseFields {
+    fun parseRelease(
+        qualityText: String,
+        fileName: String? = null,
+        data: EditotsuInternalData? = null,
+    ): ReleaseFields {
+        if (data != null) return parseReleaseData(qualityText, data)
         val primary = parseReleaseText(qualityText)
         val file = (fileName?.takeIf { it.isNotBlank() } ?: fileNameLine(qualityText))?.let { cleanFileName(it) }
             ?.takeIf { isUsableFileName(it, primary.releaseName) }
             ?: return primary
         return mergeReleaseFields(primary, parseReleaseText(file))
+    }
+
+    /**
+     * A row with Editotsu internalData: numbers come from the data (seeders, size, tracker,
+     * resolution, pack), tags are parsed from the data's torrent and file names only, never
+     * from the display text (which may carry a hoster prefix or a 👤/💾/⚙️ line). Fields the
+     * data leaves out fall back to the text parse.
+     */
+    private fun parseReleaseData(qualityText: String, data: EditotsuInternalData): ReleaseFields {
+        val text = parseRelease(qualityText, data.fileName)
+        val names = data.torrentName?.let { torrent ->
+            val primary = parseReleaseText(torrent)
+            val file = data.fileName?.let { cleanFileName(it) }?.takeIf { isUsableFileName(it, primary.releaseName) }
+            if (file == null) primary else mergeReleaseFields(primary, parseReleaseText(file))
+        } ?: text
+        val tracker = data.trackerLabel() ?: names.tracker ?: text.tracker
+        val base = names.copy(
+            releaseName = data.torrentName ?: names.releaseName,
+            resolution = data.resolutionText() ?: names.resolution ?: text.resolution,
+            seeders = data.seeders ?: text.seeders,
+            sizeText = data.sizeText() ?: text.sizeText,
+            tracker = tracker,
+            indexer = tracker,
+            batch = data.isPack || names.batch,
+        )
+        return withTags(withMedia(base, data), data.tags)
+    }
+
+    /**
+     * Chip fields from the source's media data. MediaInfo (the file itself) replaces the name
+     * parse outright, including "no HDR" and the track languages; name-stated media only fills
+     * what the local name parse left empty.
+     */
+    private fun withMedia(f: ReleaseFields, data: EditotsuInternalData): ReleaseFields {
+        val m = data.media ?: return f
+        val kindSummary = when (data.audioKind()) {
+            AudioKind.DUAL -> "Dual"
+            AudioKind.DUB -> "Dub"
+            else -> null
+        }
+        val hdrVariant = m.hdr?.let { if (it == "HLG") "HDR" else it }
+        if (!m.fromFile) {
+            return f.copy(
+                codec = f.codec ?: m.codec,
+                bitDepth = f.bitDepth ?: m.bitDepth?.let { "$it-bit" },
+                hdrVariant = f.hdrVariant ?: hdrVariant,
+                hdr = f.hdr || hdrVariant != null,
+                audioSummary = f.audioSummary ?: kindSummary,
+                subtitleSummary = f.subtitleSummary ?: if (m.multiSubs) "Multi-subs" else null,
+            )
+        }
+        val audioLangs = m.audio.mapNotNull { it.lang }.map(data::pickerLang).distinct()
+        // signs/songs tracks are forced; they don't make a release "subbed" in a language
+        val fullSubs = m.subtitles.filter { !it.forced }.ifEmpty { m.subtitles }
+        val subLangs = fullSubs.mapNotNull { it.lang }.map(data::pickerLang).distinct()
+        // every distinct codec, in track order: "FLAC + AAC" for a FLAC Japanese + AAC English release
+        val audioFormats = m.audio.mapNotNull { a -> a.codec?.let { audioFormatText(it, a.channels) } }.distinct()
+        return f.copy(
+            codec = m.codec ?: f.codec,
+            bitDepth = m.bitDepth?.let { "$it-bit" } ?: f.bitDepth,
+            hdrVariant = hdrVariant,
+            hdr = hdrVariant != null,
+            audioLanguages = audioLangs,
+            audioFlags = emptyList(),
+            audioSummary = kindSummary,
+            audioFormat = audioFormats.takeIf { it.isNotEmpty() }?.joinToString(" + ") ?: f.audioFormat,
+            subtitleLanguages = subLangs,
+            subtitleFlags = emptyList(),
+            subtitleSummary = buildSubtitleSummary(emptyList(), subLangs),
+        )
+    }
+
+    /** "AAC" (stereo implied, as the text parser shows it), "EAC3 5.1", "TrueHD 7.1" */
+    private fun audioFormatText(codec: String, channels: Int?): String = when (channels) {
+        null, 1, 2 -> codec
+        6 -> "$codec 5.1"
+        8 -> "$codec 7.1"
+        else -> "$codec ${channels}ch"
+    }
+
+    private fun withTags(f: ReleaseFields, t: EditotsuInternalData.Tags?): ReleaseFields {
+        t ?: return f
+        return f.copy(
+            releaseGroup = t.group ?: f.releaseGroup,
+            sourceClass = t.source ?: f.sourceClass,
+            sourceService = t.service?.let { SOURCE_SERVICE_ALIASES[it.uppercase()] ?: it } ?: f.sourceService,
+            revision = t.revision ?: f.revision,
+            censorship = t.censorship ?: f.censorship,
+        )
     }
 
     private fun cleanFileName(raw: String): String? =
