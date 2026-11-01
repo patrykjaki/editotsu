@@ -94,6 +94,54 @@ class PickerListTest {
         assertEquals(AudioKind.DUB, entries[1].audioKind)
     }
 
+    // Phone data 2026-10-31: AnimePahe names its servers by audio language.
+    @Test
+    fun mtbbLanguageParenSplitsSubFromEnglishDub() {
+        val rows = listOf(
+            stream(0, "MTBB (English) - 1080p BD (HLS)", 1080),
+            stream(1, "MTBB (Sub) - 1080p BD (HLS)", 1080),
+            stream(2, "MTBB (English) - 720p BD (HLS)", 720),
+            stream(3, "MTBB (Sub) - 720p BD (HLS)", 720),
+        )
+        val entries = PickerListBuilder.group(rows).map { it as PickerEntry.StreamGroup }
+        assertEquals(2, entries.size)
+        assertEquals(AudioKind.SUB, entries[0].audioKind)
+        assertEquals("Sub", entries[0].audioTag)
+        assertEquals(AudioKind.DUB, entries[1].audioKind)
+        assertEquals("Dub · English", entries[1].audioTag)
+        assertEquals(entries[0].name, entries[1].name)
+        assertFalse(entries[0].name.contains("Sub", ignoreCase = true))
+        assertFalse(entries[1].name.contains("English", ignoreCase = true))
+        assertEquals(listOf(1080, 720), entries[0].primary.map { it.resolution })
+        assertEquals(listOf(1080, 720), entries[1].primary.map { it.resolution })
+    }
+
+    @Test
+    fun streamCardOrderDoesNotDependOnServerOrder() {
+        val a = listOf(
+            stream(0, "MTBB (English) - 1080p BD (HLS)", 1080),
+            stream(1, "MTBB (Sub) - 360p BD (HLS)", 360),
+            stream(2, "MTBB (Sub) - 1080p BD (HLS)", 1080),
+            stream(3, "MTBB (English) - 360p BD (HLS)", 360),
+        )
+        val b = listOf(a[2], a[3], a[1], a[0])
+        fun shape(rows: List<PickerRow>) = PickerListBuilder.group(rows)
+            .map { it as PickerEntry.StreamGroup }
+            .map { g -> g.audioKind to g.primary.map { it.ref } }
+        assertEquals(shape(a), shape(b))
+        assertEquals(AudioKind.SUB, shape(a).first().first)
+    }
+
+    @Test
+    fun languageParenDetection() {
+        assertEquals(AudioKind.DUB, AudioKindDetector.detect("MTBB (English) - 1080p BD (HLS)"))
+        assertEquals(AudioKind.SUB, AudioKindDetector.detect("MTBB (Sub) - 1080p BD (HLS)"))
+        assertEquals(AudioKind.SUB, AudioKindDetector.detect("Kwik (Japanese) 720p"))
+        // English subtitles on a sub release stay Sub.
+        assertEquals(AudioKind.SUB, AudioKindDetector.detect("MTBB (Sub/English)"))
+        assertNull(AudioKindDetector.detect("English Title 1080p"))
+    }
+
     @Test
     fun differentProvidersNeverMerge() {
         val rows = listOf(

@@ -83,12 +83,22 @@ object AudioKindDetector {
     private val DUB = Regex("""(?i)\b(dub|dubbed|english[\s._-]?dub)\b""")
     private val SUB = Regex("""(?i)\b(sub|subs|subbed|softsub|hardsub|raw[\s._-]?sub)\b""")
 
-    /** Dual wins over Dub, Dub over Sub. Null when the text names none. */
+    // A paren holding only an audio language, as AnimePahe names its
+    // servers: "MTBB (English) - 1080p" is the dub, "(Japanese)" the sub.
+    private val LANG_PAREN = Regex("""(?i)\(\s*(english|eng|japanese|jpn|jp)\s*\)""")
+
+    /**
+     * Dual wins over Dub, Dub over Sub. A bare language paren is the last
+     * fallback: English audio is a dub, Japanese audio is the sub.
+     * Null when the text names none.
+     */
     fun detect(text: String): AudioKind? = when {
         DUAL.containsMatchIn(text) -> AudioKind.DUAL
         DUB.containsMatchIn(text) -> AudioKind.DUB
         SUB.containsMatchIn(text) -> AudioKind.SUB
-        else -> null
+        else -> LANG_PAREN.find(text)?.groupValues?.get(1)?.lowercase()?.let {
+            if (it.startsWith("j")) AudioKind.SUB else AudioKind.DUB
+        }
     }
 
     fun label(kind: AudioKind): String = when (kind) {
@@ -102,7 +112,8 @@ object StreamNameCleaner {
     private val RESOLUTION = Regex("""(?i)(\b\d{3,4}\s?p\b|\b[48]k\b|\b\d{3,4}x\d{3,4}\b)""")
     private val SIZE = Regex("""(?i)\(?\b\d+(?:[.,]\d+)?\s?(?:kb|mb|gb)\b\)?""")
     private val TRANSPORT = Regex("""(?i)\b(hls|m3u8|mp4|dash|mkv)\b""")
-    private val AUDIO_PAREN = Regex("""(?i)\(\s*((?:sub|dub|dual|softsub|hardsub)[^)]*)\)""")
+    private val AUDIO_PAREN =
+        Regex("""(?i)\(\s*((?:sub|dub|dual|softsub|hardsub)[^)]*|english|eng|japanese|jpn|jp)\s*\)""")
     private val EMPTY_PARENS = Regex("""\(\s*\)|\[\s*]""")
     private val EDGE_SEPARATORS = Regex("""^[\s\-–—·•|:,/]+|[\s\-–—·•|:,/]+$""")
     private val SPACES = Regex("""\s{2,}""")
@@ -127,7 +138,11 @@ object StreamNameCleaner {
 
     /** "MTBB (Sub/English)" -> "Sub · English"; null when there is no such tag. */
     fun audioTag(header: String): String? {
-        val inner = AUDIO_PAREN.find(header)?.groupValues?.get(1) ?: return null
+        val inner = AUDIO_PAREN.find(header)?.groupValues?.get(1)?.trim() ?: return null
+        when (inner.lowercase()) {
+            "english", "eng" -> return "Dub · English"
+            "japanese", "jpn", "jp" -> return "Sub"
+        }
         val parts = inner.split('/', ',', '|', '-').map { it.trim() }.filter { it.isNotEmpty() }
         if (parts.isEmpty()) return null
         return parts.joinToString(" · ") { p -> p.replaceFirstChar { it.uppercaseChar() } }
@@ -218,14 +233,33 @@ object PickerListBuilder {
         for ((key, index) in groupIndex) {
             out[index] = streamGroup(groupRows.getValue(key))
         }
-        return out
+        return sortStreamGroups(out)
+    }
+
+    /**
+     * Stream servers come back in a different order on each open, so stream
+     * cards take a fixed order: Sub, Dub, Dual, unknown, then name. They keep
+     * the slots stream cards held; releases stay where the source put them.
+     */
+    private fun sortStreamGroups(entries: MutableList<PickerEntry>): List<PickerEntry> {
+        val slots = entries.indices.filter { entries[it] is PickerEntry.StreamGroup }
+        val sorted = slots.map { entries[it] as PickerEntry.StreamGroup }
+            .sortedWith(
+                compareBy<PickerEntry.StreamGroup> { it.audioKind?.ordinal ?: Int.MAX_VALUE }
+                    .thenBy { it.name.lowercase() }
+            )
+        slots.forEachIndexed { i, slot -> entries[slot] = sorted[i] }
+        return entries
     }
 
     private fun streamGroup(rows: List<PickerRow>): PickerEntry.StreamGroup {
         val first = rows.first()
         // Highest first; unknown resolution last; stable within equal values.
         val sorted = rows.withIndex()
-            .sortedWith(compareByDescending<IndexedValue<PickerRow>> { it.value.resolution ?: -1 }.thenBy { it.index })
+            .sortedWith(compareByDescending<IndexedValue<PickerRow>> { it.value.resolution ?: -1 }
+                    .thenBy { it.value.transport.orEmpty() }
+                    .thenBy { it.index }
+            )
             .map { it.value }
         val primary = mutableListOf<QualityVariant>()
         val alternates = mutableListOf<QualityVariant>()
