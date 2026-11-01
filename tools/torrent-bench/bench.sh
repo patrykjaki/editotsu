@@ -46,9 +46,13 @@ wait_bench() { # $1 since-epoch, $2 regex, $3 timeout s -> prints matching line
 
 kv() { echo "$1" | tr ' ' '\n' | grep "^$2=" | head -1 | cut -d= -f2-; }
 
-range() { # $1 url, $2 start, $3 end -> "code ttfb total"
+range() { # $1 url, $2 start, $3 end -> "code ttfb total bytes"
   curl -s -o /dev/null -r "$2-$3" --max-time "$RANGE_TIMEOUT" \
-    -w '%{http_code} %{time_starttransfer} %{time_total}' "$1" 2>/dev/null || true
+    -w '%{http_code} %{time_starttransfer} %{time_total} %{size_download}' "$1" 2>/dev/null || true
+}
+# A 206 with a short body is a failed read, not a fast one: record it in the note.
+short() { # $1 name, $2 "code ttfb total bytes", $3 expected bytes
+  set -- "$1" $2 "$3"; [ "${5:-0}" = "$6" ] || echo "${1}_short=${5:-0}/$6"
 }
 
 aborted_since() { # $1 since-epoch
@@ -94,6 +98,11 @@ while IFS= read -r uri <&3; do
     $A logcat -d -b crash -v epoch -T "$since" > "$OUT/$label-run$run.crash.txt" 2>/dev/null
     abort=$([ -n "$ab" ] && echo yes || echo no)
     pidc=$([ "$pid0" != "$pid1" ] && echo yes || echo no)
+    if [ -n "$head" ]; then
+      for chk in "$(short head "$head" $MIB)" "$(short mid "$mid" $MIB)" "$(short tail "$tail" $((len - tstart)))"; do
+        [ -n "$chk" ] && note="${note:+$note;}$chk"
+      done
+    fi
     set -- $head; hc=${1:-}; ht=${2:-}; hT=${3:-}
     set -- $mid;  mc=${1:-}; mt=${2:-}; mT=${3:-}
     set -- $tail; tc=${1:-}; tt=${2:-}; tT=${3:-}
