@@ -211,9 +211,12 @@ class MpvPlaybackEngine(
     /**
      * The local Vulkan libmpv replaces only the arm64-v8a library; other ABIs keep the stock
      * (GLES-only) one, so Vulkan is only requested when this process runs the arm64 lib.
+     * mpv's Vulkan context needs Vulkan 1.1 entry points that Android's loader exports only
+     * from API 28 (weak references in that lib), so below 28 it stays on OpenGL.
      */
     private val vulkanLibmpv: Boolean =
         ani.dantotsu.BuildConfig.LIBMPV_VULKAN &&
+            android.os.Build.VERSION.SDK_INT >= 28 &&
             android.os.Build.SUPPORTED_ABIS.firstOrNull() == "arm64-v8a"
 
     /** Output to use while a surface is attached; see [VideoOutputPolicy]. Engine thread only. */
