@@ -97,11 +97,30 @@ object TorrentBenchHook {
                 val hash = intent.getStringExtra("hash") ?: return
                 statusTask?.cancel(false)
                 statusTask = null
+                // keepPayload=true mirrors the app (removeTorrent keeps the retained cache);
+                // false deletes it so the next add starts cold.
+                val keep = intent.getBooleanExtra("keepPayload", false)
+                val t0 = SystemClock.elapsedRealtime()
                 manager.removeTorrent(hash)
-                val deleted = runBlocking {
-                    TorrentCacheManager.getInstance(app).deleteTorrentPayload(hash)
+                val removeMs = SystemClock.elapsedRealtime() - t0
+                var deleted = false
+                var attempts = 0
+                if (!keep) {
+                    // removeTorrent releases the cache lease asynchronously; deletion is refused
+                    // while the entry is still ACTIVE, so retry for up to 30 s.
+                    val cache = TorrentCacheManager.getInstance(app)
+                    while (!deleted && attempts < 30) {
+                        attempts++
+                        deleted = runBlocking { cache.deleteTorrentPayload(hash) }
+                        if (!deleted) Thread.sleep(1000)
+                    }
                 }
-                Log.i(TAG, "event=removed hash=$hash payloadDeleted=$deleted")
+                Log.i(
+                    TAG,
+                    "event=removed hash=$hash removeMs=$removeMs keepPayload=$keep " +
+                        "payloadDeleted=$deleted deleteAttempts=$attempts " +
+                        "totalMs=${SystemClock.elapsedRealtime() - t0}"
+                )
             }
             else -> Log.i(TAG, "event=error msg=unknown_cmd")
         }

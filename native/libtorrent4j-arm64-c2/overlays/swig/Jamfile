@@ -1,0 +1,53 @@
+import os ;
+import feature : feature ;
+
+BOOST_ROOT = [ os.environ BOOST_ROOT ] ;
+if ! $(BOOST_ROOT) { EXIT "You need to define BOOST_ROOT" ; }
+
+OPENSSL_ROOT = [ os.environ OPENSSL_ROOT ] ;
+if ! $(OPENSSL_ROOT) { EXIT "You need to define OPENSSL_ROOT" ; }
+
+LIBTORRENT_ROOT = [ os.environ LIBTORRENT_ROOT ] ;
+if ! $(LIBTORRENT_ROOT) { EXIT "You need to define LIBTORRENT_ROOT" ; }
+
+use-project /torrent : $(LIBTORRENT_ROOT) ;
+
+rule libtorrent_linking ( properties * )
+{
+    local result ;
+    result += <deprecated-functions>off ;
+    result += <logging>on ;
+    # CP1.5-B exact release-candidate policy: use libtorrent's embedded SHA
+    # implementation so hasher/hasher256 do not own OpenSSL EVP contexts.
+    result += <crypto>built-in ;
+    # The Java wrapper exposes an OpenSSL version string. Headers are retained,
+    # but the built-in-crypto candidate does not link libssl or libcrypto.
+    result += <include>$(OPENSSL_ROOT)/include ;
+    result += <webtorrent>off ;
+    # The first productionization candidate intentionally preserves the
+    # validated C2 -O0 profile. Any optimization change creates a new native candidate.
+    result += <optimization>off ;
+    result += <cxxstd>17 ;
+    result += <library>/torrent//torrent/<link>static ;
+    return $(result) ;
+}
+
+feature iostream : off on : composite propagated link-incompatible ;
+feature.compose <iostream>off : <define>BOOST_NO_IOSTREAM ;
+
+feature ssl : on off : composite propagated link-incompatible ;
+feature.compose <ssl>on :
+    <openssl-include>$(OPENSSL_ROOT)/include
+    <openssl-lib>$(OPENSSL_ROOT)/lib
+    ;
+
+lib torrent4j
+    : libtorrent_jni.cpp
+    : <conditional>@libtorrent_linking
+      <include>.
+      <cxxflags>-O0
+      <cxxflags>-g0
+      <cxxflags>-w
+    : <link>shared
+    : <include>.
+    ;
