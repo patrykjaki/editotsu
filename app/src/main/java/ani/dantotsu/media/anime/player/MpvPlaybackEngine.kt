@@ -208,6 +208,8 @@ class MpvPlaybackEngine(
 
     // Stage A Pre-Ready Desired State Accumulators
     private var pendingSurface: Surface? = null
+    /** vo to use while a surface is attached; see [VideoOutputPolicy]. Engine thread only. */
+    private var desiredVo: String = VideoOutputPolicy.DEFAULT_VO
     private var pendingSurfaceWidth: Int = 0
     private var pendingSurfaceHeight: Int = 0
     private var pendingSpeed: Float? = null
@@ -530,7 +532,7 @@ class MpvPlaybackEngine(
             try {
                 mpvClient.attachSurface(surface)
                 mpvClient.setPropertyString("force-window", "yes")
-                mpvClient.setPropertyString("vo", "gpu")
+                mpvClient.setPropertyString("vo", desiredVo)
             } catch (_: Exception) {}
         } else {
             try {
@@ -1173,6 +1175,16 @@ class MpvPlaybackEngine(
 
             // 3. GLSL Shaders — setting an empty value CLEARS the shader list (Off / fail-closed),
             // guaranteeing a previously applied upscaler never outlives its selection.
+            // vo=gpu can't run compute shaders on Android GLES; switch to gpu-next while a
+            // shader chain is active (and back when it's cleared). mpv re-inits the VO.
+            val vo = VideoOutputPolicy.voFor(resolved.glslShaderChain)
+            if (vo != desiredVo) {
+                desiredVo = vo
+                if (pendingSurface?.isValid == true) {
+                    mpvClient.setPropertyString("vo", vo)
+                }
+                ani.dantotsu.util.Logger.log("MpvPlaybackEngine: vo -> $vo")
+            }
             mpvClient.setPropertyString("glsl-shaders", resolved.glslShaderChain)
 
             // 4. Sync & volume properties
