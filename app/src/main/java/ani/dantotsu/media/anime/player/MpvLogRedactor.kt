@@ -41,7 +41,7 @@ object MpvLogRedactor {
     private val SAFE_OPTION_NAMES = setOf(
         "config", "vo", "hwdec", "hwdec-codecs", "sub-auto",
         "keep-open", "ytdl", "force-window", "idle",
-        "gpu-context", "opengl-es", "slang", "alang",
+        "gpu-context", "gpu-api", "opengl-es", "slang", "alang",
         "sub-font-provider", "sub-font", "embeddedfonts"
     )
 

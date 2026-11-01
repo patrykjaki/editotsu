@@ -84,6 +84,19 @@ if (libtorrentArm64Jar != null) {
 }
 val libtorrentNativeLabel = libtorrentArm64Jar?.nameWithoutExtension ?: "maven"
 
+// libmpv: Maven mpv-android-lib by default. -Peditotsu.libmpvAar=/abs/path.aar swaps in a
+// local build of the same lib with Vulkan (libplacebo vulkan backend, needed for compute
+// shaders such as CuNNy; recipe: native/libmpv-vulkan). Its directory must hold
+// provenance.json next to the aar. LIBMPV_VULKAN tells the player it may use gpu-api=vulkan.
+val libmpvAar: File? = providers.gradleProperty("editotsu.libmpvAar").orNull?.let { File(it) }
+if (libmpvAar != null) {
+    require(libmpvAar.isFile) { "editotsu.libmpvAar not found: $libmpvAar" }
+    require(File(libmpvAar.parentFile, "provenance.json").isFile) {
+        "editotsu.libmpvAar needs provenance.json next to it: ${libmpvAar.parentFile}"
+    }
+}
+val libmpvLabel = libmpvAar?.nameWithoutExtension ?: "maven"
+
 val malClientId: String = (project.findProperty("malClientId") as? String)
     ?.takeIf { it.isNotBlank() }
     ?: System.getenv("MAL_CLIENT_ID")?.takeIf { it.isNotBlank() }
@@ -120,6 +133,8 @@ android {
         // Torrent bench hook (task 7 rig): off unless -Peditotsu.torrentBench=true.
         buildConfigField("boolean", "TORRENT_BENCH", torrentBench.toString())
         buildConfigField("String", "LIBTORRENT_ARM64", "\"$libtorrentNativeLabel\"")
+        buildConfigField("boolean", "LIBMPV_VULKAN", (libmpvAar != null).toString())
+        buildConfigField("String", "LIBMPV", "\"$libmpvLabel\"")
     }
 
     // ------------------------------------------------------------------
@@ -353,8 +368,8 @@ configurations.all {
 }
 
 dependencies {
-    // MPV Native Player
-    implementation(libs.mpv)
+    // MPV Native Player (see editotsu.libmpvAar above)
+    if (libmpvAar != null) implementation(files(libmpvAar)) else implementation(libs.mpv)
 
     // ffmpeg-kit
     implementation(libs.ffmpeg.kit)
