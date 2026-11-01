@@ -74,6 +74,7 @@ import ani.dantotsu.media.anime.selector.PickerList
 import ani.dantotsu.media.anime.selector.PickerListBuilder
 import ani.dantotsu.media.anime.selector.PickerRow
 import ani.dantotsu.media.anime.selector.PickerRowsBuilder
+import ani.dantotsu.media.anime.selector.CodecLabel
 import ani.dantotsu.media.anime.selector.FilterDimension
 import ani.dantotsu.media.anime.selector.FilterState
 import ani.dantotsu.media.anime.selector.FilteredEntries
@@ -1147,7 +1148,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 val chips = com.google.android.material.chip.ChipGroup(ctx)
                 values.forEach { value ->
                     chips.addView(com.google.android.material.chip.Chip(ctx).apply {
-                        text = value
+                        text = if (dim == FilterDimension.CODEC) CodecLabel.of(value) else value
                         isCheckable = true
                         isChecked = value in selected
                         setOnCheckedChangeListener { _, _ -> setFilterState(filterState.toggled(dim, value)) }
@@ -1431,16 +1432,14 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
             bindExpand(b.sourceExpand, b.sourceDetails, entry) {
                 val qualityText = extractor.server.name
-                val fields = SourceRowClassifier.parseRelease(
-                    qualityText,
-                    EditotsuInternalData.parse(extractor.server.video?.internalData)?.fileName,
-                )
+                val data = EditotsuInternalData.of(extractor.server.video)
+                val fields = SourceRowClassifier.parseRelease(qualityText, data = data)
                 val tags = viewModel.pills.joinToString(" · ") { it.text }
                 (CompactDetails.lines(
                     group = fields.releaseGroup,
                     tracker = viewModel.tracker ?: fields.indexer ?: fields.tracker,
-                    fileName = CompactDetails.fileLine(qualityText),
-                    rawName = SourceRowClassifier.extractReleaseName(qualityText),
+                    fileName = data?.fileName ?: CompactDetails.fileLine(qualityText),
+                    rawName = data?.torrentName ?: SourceRowClassifier.extractReleaseName(qualityText),
                     transport = entry.row.transport,
                 ) + listOfNotNull(tags.takeIf { it.isNotBlank() }?.let { "Tags" to it }))
                     .joinToString("\n") { (label, value) -> "$label: $value" }

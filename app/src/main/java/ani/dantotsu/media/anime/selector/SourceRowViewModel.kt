@@ -117,3 +117,10 @@ data class SourceRowViewModel(
     /** Tracker / provenance value (e.g. NyaaSi, 1337x, nekoBT). */
     val tracker: String? = null,
 )
+/**
+ * Display label of a normalized codec. The stored value stays "AVC" (title stripping,
+ * remembered choices and saved filters key on it); people know it as H.264.
+ */
+object CodecLabel {
+    fun of(codec: String): String = if (codec.equals("AVC", ignoreCase = true)) "H.264" else codec
+}
