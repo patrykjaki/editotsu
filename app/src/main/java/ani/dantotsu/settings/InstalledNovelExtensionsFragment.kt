@@ -53,59 +53,7 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
     private lateinit var extensionsRecyclerView: RecyclerView
     private val skipIcons: Boolean = PrefManager.getVal(PrefName.SkipExtensionIcons)
     private val novelExtensionManager: NovelExtensionManager = Injekt.get()
-    private val extensionsAdapter = NovelExtensionsAdapter(
-        { ext ->
-            val name = ext.name
-            val changeUIVisibility: (Boolean) -> Unit = { show ->
-                (activity as? ExtensionsActivity)?.showSourcePreferences(!show, name)
-            }
-
-            when (ext) {
-                is NovelExtension.Installed -> {
-                    val configurable = ext.sources.filterIsInstance<ConfigurableNovelSource>()
-                    val hasPrefMethod = ext.sources.any { src ->
-                        src.javaClass.methods.any { it.name == "setupPreferenceScreen" }
-                    }
-                    if (configurable.isNotEmpty() || hasPrefMethod) {
-                        changeUIVisibility(false)
-                        val fragment = NovelSourcePreferencesFragment().getInstance(ext.pkgName) {
-                            changeUIVisibility(true)
-                        }
-                        parentFragmentManager.beginTransaction()
-                            .setCustomAnimations(R.anim.slide_up, R.anim.slide_down)
-                            .replace(R.id.fragmentExtensionsContainer, fragment)
-                            .addToBackStack(null)
-                            .commit()
-                    } else {
-                        showExtensionInfoDialog(ext)
-                    }
-                }
-                is NovelExtension.JsPlugin -> {
-                    showExtensionInfoDialog(ext)
-                }
-                else -> {}
-            }
-        },
-        { ext ->
-            if (isAdded) {
-                when (ext) {
-                    is NovelExtension.Installed -> {
-                        ExtensionRowMenu.uninstall(requireContext(), ext.name, ext.pkgName) {
-                            novelExtensionManager.uninstallExtension(ext.pkgName)
-                        }
-                    }
-                    is NovelExtension.JsPlugin -> {
-                        ExtensionRowMenu.uninstall(
-                            requireContext(), ext.name, ext.pkgName, privateOnly = true
-                        ) {
-                            novelExtensionManager.uninstallLnReaderPlugin(ext.pkgName)
-                        }
-                    }
-                    else -> {}
-                }
-            }
-        },
-        { ext ->
+    private val updateOne: (NovelExtension) -> Unit = { ext ->
             if (isAdded) {
                 val context = requireContext()
                 val notificationManager =
@@ -175,7 +123,60 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
                     else -> snackString("No update available")
                 }
             }
-        }, skipIcons
+    }
+
+    private val extensionsAdapter = NovelExtensionsAdapter(
+        { ext ->
+            val name = ext.name
+            val changeUIVisibility: (Boolean) -> Unit = { show ->
+                (activity as? ExtensionsActivity)?.showSourcePreferences(!show, name)
+            }
+
+            when (ext) {
+                is NovelExtension.Installed -> {
+                    val configurable = ext.sources.filterIsInstance<ConfigurableNovelSource>()
+                    val hasPrefMethod = ext.sources.any { src ->
+                        src.javaClass.methods.any { it.name == "setupPreferenceScreen" }
+                    }
+                    if (configurable.isNotEmpty() || hasPrefMethod) {
+                        changeUIVisibility(false)
+                        val fragment = NovelSourcePreferencesFragment().getInstance(ext.pkgName) {
+                            changeUIVisibility(true)
+                        }
+                        parentFragmentManager.beginTransaction()
+                            .setCustomAnimations(R.anim.slide_up, R.anim.slide_down)
+                            .replace(R.id.fragmentExtensionsContainer, fragment)
+                            .addToBackStack(null)
+                            .commit()
+                    } else {
+                        showExtensionInfoDialog(ext)
+                    }
+                }
+                is NovelExtension.JsPlugin -> {
+                    showExtensionInfoDialog(ext)
+                }
+                else -> {}
+            }
+        },
+        { ext ->
+            if (isAdded) {
+                when (ext) {
+                    is NovelExtension.Installed -> {
+                        ExtensionRowMenu.uninstall(requireContext(), ext.name, ext.pkgName) {
+                            novelExtensionManager.uninstallExtension(ext.pkgName)
+                        }
+                    }
+                    is NovelExtension.JsPlugin -> {
+                        ExtensionRowMenu.uninstall(
+                            requireContext(), ext.name, ext.pkgName, privateOnly = true
+                        ) {
+                            novelExtensionManager.uninstallLnReaderPlugin(ext.pkgName)
+                        }
+                    }
+                    else -> {}
+                }
+            }
+        }, updateOne, skipIcons
     )
 
     override fun onCreateView(
@@ -232,6 +233,11 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
         lifecycleScope.launch {
             novelExtensionManager.allInstalledExtensionsFlow.collect { extensions ->
                 extensionsAdapter.updateData(sortToNovelSourcesList(extensions))
+                ExtensionUpdateAll.bind(
+                    _binding?.updateAllButton ?: return@collect,
+                    ExtensionUpdateAll.pending(extensions, ExtensionUpdateAll::novelHasUpdate),
+                    updateOne
+                )
             }
         }
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
