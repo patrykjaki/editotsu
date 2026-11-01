@@ -1,0 +1,22 @@
+diff --git a/src/glsl/meson.build b/src/glsl/meson.build
+index c9a85429..bf54a6ac 100644
+--- a/src/glsl/meson.build
++++ b/src/glsl/meson.build
+@@ -30,7 +30,7 @@ if glslang_req.auto() and shaderc.found()
+ elif not glslang_req.disabled()
+ 
+   glslang_deps = [
+-    cxx.find_library('glslang-default-resource-limits', required: false)
++    cxx.find_library('glslang-default-resource-limits', required: false, static: get_option('prefer_static'), dirs: get_option('vulkan-sdk') != '' ? [get_option('vulkan-sdk') / 'lib'] : [])
+   ]
+ 
+   # meson doesn't respect generator expressions in INTERFACE_LINK_LIBRARIES
+@@ -59,7 +59,7 @@ elif not glslang_req.disabled()
+ 
+     # Glslang 15.0.0 moved some code around, add also linking to glslang, while
+     # this is not needed for older versions, it will still work.
+-    glslang_deps += cxx.find_library('glslang', required: required, static: static)
++    glslang_deps += cxx.find_library('glslang', required: required, static: static, dirs: vulkan_lib_dirs)
+ 
+     if static
+       glslang_deps += [
