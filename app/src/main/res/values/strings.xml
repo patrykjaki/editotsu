@@ -664,6 +664,16 @@
     <string name="user_list">%1$s\'s %2$s List</string>
 
     <string name="speed">Speed</string>
+    <!-- Player sleep timer (feature/player-sleep-timer) -->
+    <string name="sleep_timer">Sleep timer</string>
+    <string name="sleep_timer_off">Off</string>
+    <string name="sleep_timer_minutes">%1$d minutes</string>
+    <string name="sleep_timer_end_of_episode">End of this episode</string>
+    <string name="sleep_timer_set_minutes">Pausing in %1$d minutes</string>
+    <string name="sleep_timer_set_episode">Stopping after this episode</string>
+    <string name="sleep_timer_cancelled">Sleep timer off</string>
+    <string name="sleep_timer_paused">Sleep timer: paused</string>
+    <string name="sleep_timer_stopped">Sleep timer: stopped after the episode</string>
     <string name="auto_update">Auto Update progress for %1$s?</string>
     <string name="continue_from">Continue from %1$s?</string>
     <string name="title_update_progress">Update progress on AniList?</string>
