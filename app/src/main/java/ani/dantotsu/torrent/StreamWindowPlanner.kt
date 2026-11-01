@@ -91,9 +91,12 @@ class StreamWindowPlanner(
         }
 
         const val MIN_PIECES = 8
-        const val MAX_PIECES = 64
-        /** ~32 MB ahead: several seconds of 1080p, a few pieces of a large-piece torrent. */
-        const val DEFAULT_WINDOW_BYTES = 32L * 1024 * 1024
+        const val MAX_PIECES = 128
+        /**
+         * ~64 MB ahead (about a minute of 1080p). The window is the only part of the file
+         * that downloads, so it is also the read-ahead buffer beyond mpv's cache.
+         */
+        const val DEFAULT_WINDOW_BYTES = 64L * 1024 * 1024
         const val PROTECTED_DEADLINE_MS = 1_500
 
         /** 0 ms for the playhead piece, then 120 ms steps for the next 8, then 250 ms steps. */

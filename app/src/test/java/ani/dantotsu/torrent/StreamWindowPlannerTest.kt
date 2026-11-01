@@ -10,7 +10,7 @@ class StreamWindowPlannerTest {
 
     @Test
     fun `window size follows bytes and is bounded`() {
-        assertEquals(16, StreamWindowPlanner(0, 999, 2 * mb).windowPieces)          // 32 MB / 2 MB
+        assertEquals(32, StreamWindowPlanner(0, 999, 2 * mb).windowPieces)          // 64 MB / 2 MB
         assertEquals(StreamWindowPlanner.MIN_PIECES, StreamWindowPlanner(0, 999, 16 * mb).windowPieces)
         assertEquals(StreamWindowPlanner.MAX_PIECES, StreamWindowPlanner(0, 999, 256 * 1024).windowPieces)
     }
@@ -19,7 +19,7 @@ class StreamWindowPlannerTest {
     fun `raise is ordered nearest first with rising deadlines`() {
         val p = StreamWindowPlanner(10, 500, 2 * mb)
         val plan = p.plan(10)
-        assertEquals((10..25).toList(), plan.raise.map { it.first })
+        assertEquals((10..41).toList(), plan.raise.map { it.first })
         val deadlines = plan.raise.map { it.second }
         assertEquals(0, deadlines.first())
         assertEquals(deadlines.sorted(), deadlines)
@@ -31,8 +31,8 @@ class StreamWindowPlannerTest {
         val p = StreamWindowPlanner(0, 1000, 2 * mb)
         p.plan(0)
         val seek = p.plan(500)
-        assertEquals((0..15).toList(), seek.demote.sorted())
-        assertEquals((500..515).toSet(), p.raisedPieces())
+        assertEquals((0..31).toList(), seek.demote.sorted())
+        assertEquals((500..531).toSet(), p.raisedPieces())
     }
 
     @Test
@@ -41,7 +41,7 @@ class StreamWindowPlannerTest {
         p.plan(0)
         val next = p.plan(1)
         assertEquals(listOf(0), next.demote)
-        assertEquals(16, next.raise.first { it.first == 16 }.let { it.first })
+        assertEquals(32, next.raise.first { it.first == 32 }.let { it.first })
     }
 
     @Test

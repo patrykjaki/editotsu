@@ -163,14 +163,16 @@ class TorrentHttpServer(
                 return
             }
 
-            // Only the requested file is wanted. Its pieces get NORMAL priority so the
-            // stream window (TOP + deadlines) stands out; re-prioritising files on every
-            // request made libtorrent rebuild its picker each time, so only do it on change.
+            // Window-only download: every file (the streamed one too) is IGNORE, and only
+            // the stream window and the container tail are raised to TOP with deadlines.
+            // Nothing else competes for peers' request queues, so the piece the player is
+            // waiting on comes first. Seeds stay connected while the window is complete
+            // (close_redundant_connections=false in the session settings).
+            // prioritizeFiles resets piece priorities, so only do it on a file change.
             val numFiles = fileStorage.numFiles()
             val fileKey = hash.uppercase()
             if (prioritizedFile[fileKey] != fileIndex) {
                 val filePriorities = Priority.array(Priority.IGNORE, numFiles)
-                if (fileIndex in 0 until numFiles) filePriorities[fileIndex] = Priority.DEFAULT
                 try { synchronized(lock) { if (handle.isValid) handle.prioritizeFiles(filePriorities) } } catch (_: Exception) {}
                 prioritizedFile[fileKey] = fileIndex
             }
@@ -284,7 +286,7 @@ class TorrentHttpServer(
                 try {
                     synchronized(lock) {
                         if (!handle.isValid) return
-                        plan.demote.forEach { handle.piecePriority(it, Priority.DEFAULT) }
+                        plan.demote.forEach { handle.piecePriority(it, Priority.IGNORE) }
                         plan.raise.forEach { (piece, _) -> handle.piecePriority(piece, Priority.TOP_PRIORITY) }
                     }
                 } catch (_: Exception) {}
@@ -334,6 +336,10 @@ class TorrentHttpServer(
                         if (waitedMs > 0 && waitedMs % CLIENT_CHECK_MS == 0L && clientGone(socket)) break
                         Thread.sleep(PIECE_POLL_MS)
                         waitedMs += PIECE_POLL_MS
+                        // Re-assert the window while waiting: a prioritizeFiles call for another
+                        // file of this torrent resets every piece priority, and this piece would
+                        // otherwise sit at IGNORE until the stall give-up.
+                        if (waitedMs % REASSERT_MS == 0L) applyWindow(p)
                         if (reannounceLimiter.shouldReannounce(fileKey, waitedMs, System.currentTimeMillis())) {
                             try { synchronized(lock) { if (handle.isValid) handle.forceReannounce() } } catch (_: Exception) {}
                         }
@@ -383,7 +389,7 @@ class TorrentHttpServer(
                     try {
                         synchronized(lock) {
                             if (handle.isValid) demote.filter { it !in protectedTail }.forEach {
-                                handle.piecePriority(it, Priority.DEFAULT)
+                                handle.piecePriority(it, Priority.IGNORE)
                             }
                         }
                     } catch (_: Exception) {}
@@ -421,6 +427,7 @@ class TorrentHttpServer(
     private companion object {
         const val PIECE_POLL_MS = 25L
         const val CLIENT_CHECK_MS = 500L
+        const val REASSERT_MS = 1_000L
         /** mpv gives up after network-timeout=30; stop well after that. */
         const val STALL_GIVE_UP_MS = 90_000L
     }
