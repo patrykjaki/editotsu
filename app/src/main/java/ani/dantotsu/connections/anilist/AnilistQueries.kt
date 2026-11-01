@@ -348,7 +348,11 @@ class AnilistQueries {
                                 media.userCompletedAt = completedAt ?: FuzzyDate()
                                 media.userStartedAt = startedAt ?: FuzzyDate()
                             }
-                        } else {
+                        } else if (Anilist.userid != null) {
+                            // A process can be recreated after a native crash before AniList auth
+                            // restoration completes. In that window an unauthenticated details
+                            // response has no mediaListEntry; preserve the status carried by the
+                            // restored Media instead of falsely rendering "Add to list".
                             media.isListPrivate = false
                             media.userStatus = null
                             media.userListId = null
