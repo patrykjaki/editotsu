@@ -426,6 +426,18 @@ class PlayerSettingsActivity :
                 show()
             }
         }
+        // ---- Audio night mode (live re-applied via ActiveVideoPipeline) ----
+        fun nightModeLabel() = getString(
+            if (PrefManager.getVal<Boolean>(PrefName.AudioNightMode)) R.string.audio_night_mode_on
+            else R.string.audio_night_mode_off
+        )
+        binding.playerSettingsNightMode.text = nightModeLabel()
+        binding.playerSettingsNightMode.setOnClickListener {
+            PrefManager.setVal(PrefName.AudioNightMode, !PrefManager.getVal<Boolean>(PrefName.AudioNightMode))
+            binding.playerSettingsNightMode.text = nightModeLabel()
+            snackString(getString(R.string.audio_night_mode_hint))
+            ani.dantotsu.media.anime.player.ActiveVideoPipeline.refreshFromPrefs()
+        }
         val colorThemes = arrayOf("Default", "Vivid (Punchy)", "Cinema (Contrast)", "Vintage (Warm)")
         binding.playerSettingsVideoTheme.text = "Color Profile: Default"
         binding.playerSettingsVideoTheme.setOnClickListener {
