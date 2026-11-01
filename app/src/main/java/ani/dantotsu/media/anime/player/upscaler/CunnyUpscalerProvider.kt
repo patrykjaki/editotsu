@@ -22,6 +22,22 @@ class CunnyUpscalerProvider(
     profileDefs = PROFILES,
     bundleDirLookup = bundleDirLookup
 ) {
+    /**
+     * Same chain as the base provider, but every shader is passed through [GlesShaderCompat]:
+     * mpv gets a derived copy (in a sibling `cunny-gles-compat` dir, outside the checksummed
+     * bundle) with the mid-body float16 `#extension` neutralised so `vo=gpu` on GLES compiles
+     * it. Fails closed (null = no shaders) if a copy can't be written.
+     */
+    override fun resolveShaderChain(profileId: String): String? {
+        val chain = super.resolveShaderChain(profileId) ?: return null
+        val dir = bundleDir() ?: return null
+        val compatDir = File(dir.parentFile, "$ID-gles-compat")
+        val paths = chain.split(":").map { path ->
+            GlesShaderCompat.derivedCopy(File(path), compatDir)?.absolutePath ?: return null
+        }
+        return paths.joinToString(":")
+    }
+
     companion object {
         const val ID = "cunny"
         val PROFILES = listOf(
