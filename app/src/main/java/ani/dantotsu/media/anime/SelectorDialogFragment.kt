@@ -608,6 +608,14 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                 }
                             }
 
+                            // The remembered pick was a release (only those store an
+                            // exact key). Release names change every episode ("ASW - 01"
+                            // -> "ASW - 02"), so when the name isn't there the next
+                            // episode is chosen by release family (group, quality, batch)
+                            // instead of the source's first/preferred row.
+                            val rememberedRelease = SelectedKeyStore.load(media!!.id) != null &&
+                                !model.watchSources!!.isDownloadedSource(media!!.selected!!.sourceIndex)
+
                             fun load() {
                                 // FINAL-PORT C4 correction (HOLD1-A): the
                                 // fallback chain below runs only after the
@@ -623,8 +631,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                         ep.extractors?.firstOrNull()
                                     } else {
                                         ep.extractors?.find { it.server.name == selected }
-                                            ?: preferredPlayableFallback(ep.extractors)
-                                            ?: ep.extractors?.firstOrNull()
+                                            ?: if (rememberedRelease) null
+                                            else preferredPlayableFallback(ep.extractors)
+                                                ?: ep.extractors?.firstOrNull()
                                     }
 
                                 val size = matchedExtractor?.videos?.size
@@ -651,7 +660,11 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             // load() only afterwards.
                             val hasExplicit = hasExplicitServer(ep.extractors, selected)
 
-                            if (!hasExplicit && selected != null) {
+                            if (!hasExplicit && selected != null && rememberedRelease) {
+                                // all rows are needed to pick the family; failToList
+                                // loads them and resolves exact key, then family
+                                failToList()
+                            } else if (!hasExplicit && selected != null) {
                                 scope.launch{
                                     val success = withContext(Dispatchers.IO){
                                         loadEpisodeSingleServer(ep.number, selected!!)
