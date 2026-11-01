@@ -573,13 +573,15 @@ class TorrentServerManager(private val context: Context) {
                 if (resolvedTorrentInfo != null) {
                     val ti = resolvedTorrentInfo
                     val p = Priority.array(Priority.IGNORE, ti.numFiles())
-                    sessionManager.download(ti, saveDir, null, p, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                    // Not sequential: the relay's deadline window keeps playback in order and
+                    // follows seeks; the rest of the file downloads rarest-first.
+                    sessionManager.download(ti, saveDir, null, p, null, TorrentFlags.AUTO_MANAGED)
                     handle = sessionManager.find(sha1)
                 } else {
                     handle = sessionManager.find(sha1)
                     if (handle == null) {
                         val enrichedUrl = buildEnrichedMagnetUri(url, TORRENT_DEFAULT_TRACKERS)
-                        sessionManager.download(enrichedUrl, saveDir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                        sessionManager.download(enrichedUrl, saveDir, TorrentFlags.AUTO_MANAGED)
                         handle = sessionManager.find(sha1)
                     }
 
@@ -597,7 +599,8 @@ class TorrentServerManager(private val context: Context) {
                         Thread.sleep(50)
                         handle = sessionManager.find(sha1)
                         val polled = handle
-                        if (polled != null && waitTime % 15 == 0) {
+                        // Every 5 s, not every 0.75 s: trackers throttle rapid re-announces.
+                        if (polled != null && waitTime > 0 && waitTime % 100 == 0) {
                             try { polled.forceReannounce() } catch (_: Exception) {}
                         }
                         waitTime++
