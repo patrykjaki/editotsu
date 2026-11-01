@@ -637,6 +637,8 @@
 
     <string name="yes">Yes</string>
     <string name="no">No</string>
+    <string name="allow_opening_links_title">Allow Editotsu to automatically open AniList &amp; MAL links?</string>
+    <string name="allow_opening_links_steps">Open settings, tap +Add links, and select the AniList and MAL URLs</string>
     <string name="ok">OK</string>
     <string name="reset">Reset</string>
     <string name="close">Close</string>

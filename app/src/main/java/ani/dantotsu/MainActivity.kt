@@ -398,8 +398,8 @@ class MainActivity : AppCompatActivity() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     if (!(PrefManager.getVal(PrefName.AllowOpeningLinks) as Boolean)) {
                         CustomBottomDialog.newInstance().apply {
-                            title = "Allow Dantotsu to automatically open Anilist & MAL Links?"
-                            val md = "Open settings & click +Add Links & select Anilist & Mal urls"
+                            title = this@MainActivity.getString(R.string.allow_opening_links_title)
+                            val md = this@MainActivity.getString(R.string.allow_opening_links_steps)
                             addView(TextView(this@MainActivity).apply {
                                 val markWon =
                                     Markwon.builder(this@MainActivity)
