@@ -83,6 +83,20 @@ class ExtensionInstallService : Service() {
         installer = null
     }
 
+    /**
+     * Android 15+ caps dataSync foreground services. When the cap is hit the
+     * system calls this and the app crashes with
+     * ForegroundServiceDidNotStopInTimeException unless the service stops
+     * within a few seconds. That happens when an install waits forever
+     * (an ignored system install prompt, or Shizuku never connecting).
+     * Stop: onDestroy marks queued installs as failed (Error step), and the
+     * extension can be installed again from the list.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Logger.log("ExtensionInstallService: foreground timeout (type $fgsType), stopping")
+        stopSelf()
+    }
+
     override fun onBind(i: Intent?): IBinder? = null
 
     companion object {
