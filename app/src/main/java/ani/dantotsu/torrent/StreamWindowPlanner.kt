@@ -68,6 +68,28 @@ class StreamWindowPlanner(
     }
 
     companion object {
+        /** Reads starting this close to the end of the file count as container-tail reads. */
+        const val TAIL_SIDE_READ_BYTES = 8L * 1024 * 1024
+
+        /**
+         * True when a GET is a side read: it starts in the container tail (the protected
+         * tail pieces or the last [TAIL_SIDE_READ_BYTES]) while another request already
+         * owns the stream. mpv/ffmpeg probes the mkv cues / mp4 moov this way right after
+         * reading the head and then seeks back; the probe must not take over the window.
+         * Without an owner, a tail read is an ordinary read (somebody has to own the stream).
+         */
+        fun isTailSideRead(
+            rangeStart: Long,
+            fileSize: Long,
+            firstPiece: Int,
+            protectedPieces: Set<Int>,
+            streamHasOwner: Boolean,
+        ): Boolean {
+            if (!streamHasOwner || fileSize <= 0) return false
+            if (firstPiece in protectedPieces) return true
+            return rangeStart >= fileSize - TAIL_SIDE_READ_BYTES && rangeStart > 0
+        }
+
         const val MIN_PIECES = 8
         const val MAX_PIECES = 64
         /** ~32 MB ahead: several seconds of 1080p, a few pieces of a large-piece torrent. */

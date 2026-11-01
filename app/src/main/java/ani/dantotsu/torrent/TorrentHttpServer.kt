@@ -235,16 +235,50 @@ class TorrentHttpServer(
                 socket.getOutputStream().flush()
                 return
             }
-            // A new GET for the same file supersedes the previous one (mpv reopens on seek).
+            // A new GET for the same file supersedes the previous one (mpv reopens on seek),
+            // except a container-tail read (mkv cues / mp4 moov) while another request owns
+            // the stream: that is a side read. It raises only its own pieces and never takes
+            // ownership, so the head window (and its deadlines) survives the cues probe.
             val streamKey = Pair(fileKey, fileIndex)
-            val oldOwnerId = activeStreamOwners.put(streamKey, clientSessionId)
-            if (oldOwnerId != null && oldOwnerId != clientSessionId) {
-                deadlineRegistry?.unregisterOwner(oldOwnerId)
+            val sideRead = StreamWindowPlanner.isTailSideRead(
+                rangeStart = rangeStart,
+                fileSize = fileSize,
+                firstPiece = firstPiece,
+                protectedPieces = protectedTail,
+                streamHasOwner = activeStreamOwners[streamKey] != null,
+            )
+            if (!sideRead) {
+                val oldOwnerId = activeStreamOwners.put(streamKey, clientSessionId)
+                if (oldOwnerId != null && oldOwnerId != clientSessionId) {
+                    deadlineRegistry?.unregisterOwner(oldOwnerId)
+                }
             }
-            fun isOwner() = activeStreamOwners[streamKey] == clientSessionId
+            fun isOwner() = !sideRead && activeStreamOwners[streamKey] == clientSessionId
+            fun superseded() = !sideRead && activeStreamOwners[streamKey] != clientSessionId
             try { synchronized(lock) { if (handle.isValid) handle.resume() } } catch (_: Exception) {}
             val planner = StreamWindowPlanner(fileFirstPiece, fileLastPiece, pieceLen, protectedPieces = protectedTail)
+            val sideRaised = HashSet<Int>()
+            fun applySideWindow(playhead: Int) {
+                // Tail pieces stay raised for the owner anyway, so a side read never demotes;
+                // its deadlines go with unregisterOwner(clientSessionId) when it ends.
+                val end = minOf(lastPiece, playhead + StreamWindowPlanner.MIN_PIECES - 1)
+                try {
+                    synchronized(lock) {
+                        if (!handle.isValid) return
+                        for (piece in playhead..end) {
+                            if (sideRaised.add(piece)) handle.piecePriority(piece, Priority.TOP_PRIORITY)
+                        }
+                    }
+                } catch (_: Exception) {}
+                for ((i, piece) in (playhead..end).withIndex()) {
+                    deadlineRegistry?.registerDeadline(piece, clientSessionId, StreamWindowPlanner.deadlineFor(i).toLong())
+                }
+            }
             fun applyWindow(playhead: Int) {
+                if (sideRead) {
+                    applySideWindow(playhead)
+                    return
+                }
                 if (!isOwner()) return
                 val plan = planner.plan(playhead)
                 try {
@@ -270,10 +304,13 @@ class TorrentHttpServer(
                 socket.sendBufferSize = 1024 * 1024
             } catch (_: Exception) {}
             val out = BufferedOutputStream(socket.getOutputStream(), 256 * 1024)
+            // Connection: close — the relay serves one request per socket. Without it ffmpeg
+            // reused the closed socket for the seek back from the cues ("Error reading HTTP
+            // response: End of file") and re-probed the file from 0.
             val headers = if (isPartial) {
-                "HTTP/1.1 206 Partial Content\r\nContent-Type: $contentType\r\nContent-Length: $contentLength\r\nContent-Range: bytes $rangeStart-$rangeEnd/$fileSize\r\nAccept-Ranges: bytes\r\n\r\n"
+                "HTTP/1.1 206 Partial Content\r\nContent-Type: $contentType\r\nContent-Length: $contentLength\r\nContent-Range: bytes $rangeStart-$rangeEnd/$fileSize\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n"
             } else {
-                "HTTP/1.1 200 OK\r\nContent-Type: $contentType\r\nContent-Length: $fileSize\r\nAccept-Ranges: bytes\r\n\r\n"
+                "HTTP/1.1 200 OK\r\nContent-Type: $contentType\r\nContent-Length: $fileSize\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n"
             }
             out.write(headers.toByteArray())
             out.flush()
@@ -292,7 +329,7 @@ class TorrentHttpServer(
                     while (!ready && isRunning && !socket.isClosed) {
                         // Superseded by a newer request (seek) or the player went away:
                         // stop instead of holding deadlines for a position nobody reads.
-                        if (!isOwner()) break
+                        if (superseded()) break
                         if (waitedMs >= STALL_GIVE_UP_MS) break
                         if (waitedMs > 0 && waitedMs % CLIENT_CHECK_MS == 0L && clientGone(socket)) break
                         Thread.sleep(PIECE_POLL_MS)

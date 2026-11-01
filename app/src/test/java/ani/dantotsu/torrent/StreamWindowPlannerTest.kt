@@ -72,4 +72,23 @@ class StreamWindowPlannerTest {
         assertTrue(r.shouldReannounce("b", stalledForMs = 6_000, nowMs = 20_000))
         assertTrue(r.shouldReannounce("a", stalledForMs = 40_000, nowMs = 40_001))
     }
+
+    // Sizes from the owner's 4K log: 1.36 GB mkv, cues probe at 1363008878, cluster at 24 MB.
+    private val size4k = 1_363_123_787L
+    private val tail4k = setOf(648, 649, 650)
+
+    @Test
+    fun `cues probe while the head owns the stream is a side read`() {
+        assertTrue(StreamWindowPlanner.isTailSideRead(1_363_008_878L, size4k, 649, tail4k, streamHasOwner = true))
+        // In the last 8 MB but before the protected pieces: still a side read.
+        assertTrue(StreamWindowPlanner.isTailSideRead(size4k - 7 * mb, size4k, 646, tail4k, streamHasOwner = true))
+    }
+
+    @Test
+    fun `head, mid-file seeks and ownerless tail reads are ordinary reads`() {
+        assertFalse(StreamWindowPlanner.isTailSideRead(0L, size4k, 0, tail4k, streamHasOwner = true))
+        assertFalse(StreamWindowPlanner.isTailSideRead(24_449_597L, size4k, 11, tail4k, streamHasOwner = true))
+        assertFalse(StreamWindowPlanner.isTailSideRead(size4k / 2, size4k, 325, tail4k, streamHasOwner = true))
+        assertFalse(StreamWindowPlanner.isTailSideRead(1_363_008_878L, size4k, 649, tail4k, streamHasOwner = false))
+    }
 }
