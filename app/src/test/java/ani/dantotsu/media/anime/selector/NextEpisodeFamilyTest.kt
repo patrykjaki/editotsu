@@ -88,6 +88,23 @@ class NextEpisodeFamilyTest {
     }
 
     @Test
+    fun scene_group_from_the_source_data() {
+        fun scene(ep: Int, seeders: Int, hash: String): VideoServer {
+            val name = "The Apothecary Diaries S03E0$ep 1080p NF WEB-DL AAC2.0 H.264-VARYG (Kusuriya no Hitorigoto 3rd Season, Multi-Subs)"
+            val base = row(name, seeders, hash)
+            val v = base.video!!
+            val data = v.internalData.dropLast(1) + ""","tags":{"from":"name","group":"VARYG","service":"NF"}}"""
+            return base.copy(video = v.copy(internalData = data))
+        }
+        val stored = remember(scene(1, 94, h1))
+        assertEquals("varyg", stored.second.groupKey.lowercase())
+        val ep2 = listOf(row("[ToonsHub] The Apothecary Diaries S03E02 1080p (Multi-Subs)", 1000, "e".repeat(40)), scene(2, 90, h2))
+        val r = resolve(stored, ep2)
+        assertTrue(r.toString(), r is RecoveryResult.Resolved)
+        assertEquals(ep2[1].name, (r as RecoveryResult.Resolved).server.name)
+    }
+
+    @Test
     fun other_group_only_is_no_match() {
         val stored = remember(row("[ASW] Oshi no Ko - 01 [1080p HEVC][11111111].mkv", 40, h1))
         val ep2 = listOf(row("[SubsPlease] Oshi no Ko - 02 (1080p) [22222222].mkv", 900, h2))

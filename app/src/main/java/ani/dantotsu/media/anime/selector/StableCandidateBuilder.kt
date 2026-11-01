@@ -20,7 +20,8 @@ object StableCandidateBuilder {
         provider: String?,
         server: VideoServer,
     ): String? {
-        val url = server.embed.url
+        // lib-16 extensions leave the embed (video page) url empty; the playable url is the video's
+        val url = server.embed.url.ifBlank { server.video?.videoUrl.orEmpty() }
         // Magnet?
         if (url.startsWith("magnet:?")) {
             return MagnetKeyBuilder.build(provider, url)
@@ -73,7 +74,9 @@ object StableCandidateBuilder {
         val provider = providerOf(server) ?: return null
         val exactKey = exactKey(provider, server) ?: return null
         val meta = StableReleaseMetadataExtractor.extract(server.name)
-        val groupKey = StableGroupCanonicalizer.canonicalKey(meta.group) ?: return null
+        // the source's own reading of the group wins (scene names like "H.264-VARYG (Show)")
+        val group = EditotsuInternalData.of(server.video)?.tags?.group ?: meta.group
+        val groupKey = StableGroupCanonicalizer.canonicalKey(group) ?: return null
         val soft = LinkedHashMap<String, String>()
         TrackerCanonicalizer.canonicalKey(meta.tracker)?.let { soft["trackerKey"] = it }
         StableSoftCanonicalizer.canonicalResolution(meta.resolution)?.let { soft["resolution"] = it }
