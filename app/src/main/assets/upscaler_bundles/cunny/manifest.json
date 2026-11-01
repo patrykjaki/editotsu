@@ -1,0 +1,18 @@
+{
+  "bundleRevision": 1,
+  "provider": "cunny",
+  "upstreamRevision": "906031bb00c15dd6a6bbbaa21c0eb0b724ca8437",
+  "files": {
+    "CuNNy-veryfast-SOFT.glsl": "9c63e86ef43322c31b6def499e937d79edd0d8311fc318b76769d14235ccac63",
+    "CuNNy-faster-SOFT.glsl": "6166d08af2fb256e7d3510ede1a427c23e0580055ada4d9c835ae8bced3f9613",
+    "CuNNy-fast-SOFT.glsl": "7f5077ebe18ac599f088e8d8c0401a195132bcc1b078c9f3bb2f1baf16a92c8c",
+    "LICENSE-LGPL-3.0.txt": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+    "LICENSE-GPL-3.0.txt": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "NOTICE.txt": "6394c33aa35d75a4913b87b660e1b89212ceb71d879d8a174efee39ae3c6f115"
+  },
+  "profiles": {
+    "fast": ["CuNNy-veryfast-SOFT.glsl"],
+    "balanced": ["CuNNy-faster-SOFT.glsl"],
+    "quality": ["CuNNy-fast-SOFT.glsl"]
+  }
+}

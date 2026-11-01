@@ -18,6 +18,9 @@ import ani.dantotsu.databinding.ActivityPlayerSettingsBinding
 import ani.dantotsu.initActivity
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.anime.VideoCache
+import ani.dantotsu.media.anime.player.upscaler.CunnyUpscalerProvider
+import ani.dantotsu.media.anime.player.upscaler.UpscalerBundleManager
+import ani.dantotsu.media.anime.player.upscaler.UpscalerChoices
 import ani.dantotsu.navBarHeight
 import ani.dantotsu.others.Xpandable
 import ani.dantotsu.others.getSerialized
@@ -393,6 +396,36 @@ class PlayerSettingsActivity :
             }
         }
 
+        // ---- Upscaler (CuNNy, experimental; live re-applied via ActiveVideoPipeline) ----
+        val upscalerProvider = UpscalerBundleManager.getInstance(this)
+            .providerFor(CunnyUpscalerProvider.ID)
+        val upscalerChoices = UpscalerChoices.choices(upscalerProvider)
+        val upscalerLabels = upscalerChoices.map { choice ->
+            choice.profileName?.let { getString(R.string.upscaler_profile, it) }
+                ?: getString(R.string.upscaler_off)
+        }.toTypedArray()
+        fun savedUpscalerIndex() = UpscalerChoices.selectedIndex(
+            upscalerChoices,
+            PrefManager.getVal(PrefName.UpscalerProviderId),
+            PrefManager.getVal(PrefName.UpscalerProfileId)
+        )
+        binding.playerSettingsUpscaler.text =
+            getString(R.string.upscaler_button, upscalerLabels[savedUpscalerIndex()])
+        binding.playerSettingsUpscaler.setOnClickListener {
+            if (upscalerProvider == null) snackString(getString(R.string.upscaler_unavailable))
+            customAlertDialog().apply {
+                setTitle(getString(R.string.upscaler_dialog_title))
+                singleChoiceItems(upscalerLabels, savedUpscalerIndex()) { index ->
+                    val choice = upscalerChoices[index]
+                    PrefManager.setVal(PrefName.UpscalerProviderId, choice.providerId)
+                    PrefManager.setVal(PrefName.UpscalerProfileId, choice.profileId)
+                    binding.playerSettingsUpscaler.text =
+                        getString(R.string.upscaler_button, upscalerLabels[index])
+                    ani.dantotsu.media.anime.player.ActiveVideoPipeline.refreshFromPrefs()
+                }
+                show()
+            }
+        }
         val colorThemes = arrayOf("Default", "Vivid (Punchy)", "Cinema (Contrast)", "Vintage (Warm)")
         binding.playerSettingsVideoTheme.text = "Color Profile: Default"
         binding.playerSettingsVideoTheme.setOnClickListener {
