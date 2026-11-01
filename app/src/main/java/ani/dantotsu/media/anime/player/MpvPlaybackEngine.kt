@@ -208,8 +208,19 @@ class MpvPlaybackEngine(
 
     // Stage A Pre-Ready Desired State Accumulators
     private var pendingSurface: Surface? = null
-    /** vo to use while a surface is attached; see [VideoOutputPolicy]. Engine thread only. */
-    private var desiredVo: String = VideoOutputPolicy.DEFAULT_VO
+    /**
+     * The local Vulkan libmpv replaces only the arm64-v8a library; other ABIs keep the stock
+     * (GLES-only) one, so Vulkan is only requested when this process runs the arm64 lib.
+     * mpv's Vulkan context needs Vulkan 1.1 entry points that Android's loader exports only
+     * from API 28 (weak references in that lib), so below 28 it stays on OpenGL.
+     */
+    private val vulkanLibmpv: Boolean =
+        ani.dantotsu.BuildConfig.LIBMPV_VULKAN &&
+            android.os.Build.VERSION.SDK_INT >= 28 &&
+            android.os.Build.SUPPORTED_ABIS.firstOrNull() == "arm64-v8a"
+
+    /** Output to use while a surface is attached; see [VideoOutputPolicy]. Engine thread only. */
+    private var desiredOutput: VideoOutputPolicy.Output = VideoOutputPolicy.outputFor("", vulkanLibmpv)
     private var pendingSurfaceWidth: Int = 0
     private var pendingSurfaceHeight: Int = 0
     private var pendingSpeed: Float? = null
@@ -526,13 +537,20 @@ class MpvPlaybackEngine(
         }
     }
 
+    /** gpu-api/gpu-context first, then vo, so the VO re-init picks the new context. */
+    private fun applyOutput(output: VideoOutputPolicy.Output) {
+        output.gpuApi?.let { mpvClient.setPropertyString("gpu-api", it) }
+        output.gpuContext?.let { mpvClient.setPropertyString("gpu-context", it) }
+        mpvClient.setPropertyString("vo", output.vo)
+    }
+
     private fun setVideoSurfaceInternal(surface: Surface?) {
         ani.dantotsu.util.Logger.log("MPVSTEP 30 before setVideoSurface (isValid=${surface?.isValid})")
         if (surface != null && surface.isValid) {
             try {
                 mpvClient.attachSurface(surface)
                 mpvClient.setPropertyString("force-window", "yes")
-                mpvClient.setPropertyString("vo", desiredVo)
+                applyOutput(desiredOutput)
             } catch (_: Exception) {}
         } else {
             try {
@@ -1175,15 +1193,15 @@ class MpvPlaybackEngine(
 
             // 3. GLSL Shaders — setting an empty value CLEARS the shader list (Off / fail-closed),
             // guaranteeing a previously applied upscaler never outlives its selection.
-            // vo=gpu can't run compute shaders on Android GLES; switch to gpu-next while a
-            // shader chain is active (and back when it's cleared). mpv re-inits the VO.
-            val vo = VideoOutputPolicy.voFor(resolved.glslShaderChain)
-            if (vo != desiredVo) {
-                desiredVo = vo
+            // Compute shaders can't run on Android GLES; while a shader chain is active use
+            // gpu-next (on Vulkan when the libmpv has it), back when it's cleared. mpv re-inits the VO.
+            val output = VideoOutputPolicy.outputFor(resolved.glslShaderChain, vulkanLibmpv)
+            if (output != desiredOutput) {
+                desiredOutput = output
                 if (pendingSurface?.isValid == true) {
-                    mpvClient.setPropertyString("vo", vo)
+                    applyOutput(output)
                 }
-                ani.dantotsu.util.Logger.log("MpvPlaybackEngine: vo -> $vo")
+                ani.dantotsu.util.Logger.log("MpvPlaybackEngine: output -> $output")
             }
             mpvClient.setPropertyString("glsl-shaders", resolved.glslShaderChain)
 

@@ -31,6 +31,9 @@ class TorrentHttpServer(
     private val streamSessionCounter = AtomicLong(0L)
     private val activeSockets = ConcurrentHashMap.newKeySet<Socket>()
     private val activeStreamOwners = ConcurrentHashMap<Pair<String, Int>, String>()
+    /** Last file prioritised per torrent, so prioritizeFiles runs only on change. */
+    private val prioritizedFile = ConcurrentHashMap<String, Int>()
+    private val reannounceLimiter = ReannounceLimiter()
     private val executor = ThreadPoolExecutor(
         8, 32, 60L, TimeUnit.SECONDS,
         ArrayBlockingQueue(64),
@@ -144,7 +147,7 @@ class TorrentHttpServer(
                     }
                     Thread.sleep(50)
                     waitMeta++
-                    if (waitMeta % 10 == 0) {
+                    if (reannounceLimiter.shouldReannounce(hash.uppercase(), waitMeta * 50L, System.currentTimeMillis())) {
                         try { synchronized(lock) { if (handle.isValid) { handle.resume(); handle.forceReannounce() } } } catch (_: Exception) {}
                     }
                 }
@@ -160,40 +163,29 @@ class TorrentHttpServer(
                 return
             }
 
-            // Prioritize active file and ignore all other files in multi-file torrents
+            // Only the requested file is wanted. Its pieces get NORMAL priority so the
+            // stream window (TOP + deadlines) stands out; re-prioritising files on every
+            // request made libtorrent rebuild its picker each time, so only do it on change.
             val numFiles = fileStorage.numFiles()
-            val filePriorities = Priority.array(Priority.IGNORE, numFiles)
-            if (fileIndex in 0 until numFiles) {
-                filePriorities[fileIndex] = Priority.TOP_PRIORITY
+            val fileKey = hash.uppercase()
+            if (prioritizedFile[fileKey] != fileIndex) {
+                val filePriorities = Priority.array(Priority.IGNORE, numFiles)
+                if (fileIndex in 0 until numFiles) filePriorities[fileIndex] = Priority.DEFAULT
+                try { synchronized(lock) { if (handle.isValid) handle.prioritizeFiles(filePriorities) } } catch (_: Exception) {}
+                prioritizedFile[fileKey] = fileIndex
             }
-            try { synchronized(lock) { if (handle.isValid) handle.prioritizeFiles(filePriorities) } } catch (_: Exception) {}
-
             val fileSize = fileStorage.fileSize(fileIndex)
             val fileOffset = fileStorage.fileOffset(fileIndex)
             val pieceLen = torrentInfo.pieceLength().toLong()
             val totalPieces = torrentInfo.numPieces()
-
             val fileFirstPiece = (fileOffset / pieceLen).toInt()
             val fileLastPiece = ((fileOffset + fileSize - 1) / pieceLen).toInt()
-
-            // Pre-seed Head pieces (0..5) and Tail pieces (lastPiece-3..lastPiece for MKV Cues / MP4 Moov)
-            val tailStart = maxOf(fileFirstPiece, fileLastPiece - 3)
-            val protectedTail = (tailStart..fileLastPiece).filter { it > fileFirstPiece + 5 }.toSet()
-
-            for (i in fileFirstPiece..minOf(fileFirstPiece + 3, fileLastPiece)) {
-                try { synchronized(lock) { if (handle.isValid) handle.piecePriority(i, Priority.TOP_PRIORITY) } } catch (_: Exception) {}
-                deadlineRegistry?.registerDeadline(i, clientSessionId, if (i == fileFirstPiece) 0L else 100L)
-            }
-
-            protectedTail.forEach { tailPiece ->
-                try { synchronized(lock) { if (handle.isValid) handle.piecePriority(tailPiece, Priority.TOP_PRIORITY) } } catch (_: Exception) {}
-                deadlineRegistry?.registerDeadline(tailPiece, clientSessionId, 0L)
-            }
-
+            // Container tail (MKV Cues / MP4 moov) stays raised for every window.
+            val tailStart = maxOf(fileFirstPiece, fileLastPiece - 2)
+            val protectedTail = (tailStart..fileLastPiece).filter { it > fileFirstPiece + 3 }.toSet()
             var rangeStart = 0L
             var rangeEnd = fileSize - 1
             var isPartial = false
-
             if (!rangeHeader.isNullOrBlank() && rangeHeader.startsWith("bytes=")) {
                 val rangeSpec = rangeHeader.removePrefix("bytes=").trim()
                 if (rangeSpec.contains(",")) {
@@ -207,12 +199,10 @@ class TorrentHttpServer(
                 }
                 val startStr = rangeSpec.substring(0, dashIdx).trim()
                 val endStr = rangeSpec.substring(dashIdx + 1).trim()
-
                 if (startStr.isEmpty() && endStr.isEmpty()) {
                     send416(socket, fileSize)
                     return
                 }
-
                 if (startStr.isEmpty()) {
                     val suffixLen = endStr.toLongOrNull() ?: run { send416(socket, fileSize); return }
                     if (suffixLen <= 0) { send416(socket, fileSize); return }
@@ -225,20 +215,16 @@ class TorrentHttpServer(
                     rangeStart = startStr.toLongOrNull() ?: run { send416(socket, fileSize); return }
                     rangeEnd = endStr.toLongOrNull() ?: run { send416(socket, fileSize); return }
                 }
-
                 if (rangeStart < 0 || rangeStart >= fileSize || rangeEnd < rangeStart || rangeEnd >= fileSize) {
                     send416(socket, fileSize)
                     return
                 }
                 isPartial = true
             }
-
             val contentLength = rangeEnd - rangeStart + 1
             val firstPiece = ((fileOffset + rangeStart) / pieceLen).toInt()
             val lastPiece = ((fileOffset + rangeEnd) / pieceLen).toInt()
-
             val contentType = getMimeType(fileStorage.filePath(fileIndex))
-
             if (method == "HEAD") {
                 val headResp = if (isPartial) {
                     "HTTP/1.1 206 Partial Content\r\nContent-Type: $contentType\r\nContent-Length: $contentLength\r\nContent-Range: bytes $rangeStart-$rangeEnd/$fileSize\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n"
@@ -249,66 +235,40 @@ class TorrentHttpServer(
                 socket.getOutputStream().flush()
                 return
             }
-
-            val streamKey = Pair(hash.uppercase(), fileIndex)
-            if (method == "GET") {
-                val oldOwnerId = activeStreamOwners.put(streamKey, clientSessionId)
-                if (oldOwnerId != null && oldOwnerId != clientSessionId) {
-                    deadlineRegistry?.unregisterOwner(oldOwnerId)
+            // A new GET for the same file supersedes the previous one (mpv reopens on seek).
+            val streamKey = Pair(fileKey, fileIndex)
+            val oldOwnerId = activeStreamOwners.put(streamKey, clientSessionId)
+            if (oldOwnerId != null && oldOwnerId != clientSessionId) {
+                deadlineRegistry?.unregisterOwner(oldOwnerId)
+            }
+            fun isOwner() = activeStreamOwners[streamKey] == clientSessionId
+            try { synchronized(lock) { if (handle.isValid) handle.resume() } } catch (_: Exception) {}
+            val planner = StreamWindowPlanner(fileFirstPiece, fileLastPiece, pieceLen, protectedPieces = protectedTail)
+            fun applyWindow(playhead: Int) {
+                if (!isOwner()) return
+                val plan = planner.plan(playhead)
+                try {
+                    synchronized(lock) {
+                        if (!handle.isValid) return
+                        plan.demote.forEach { handle.piecePriority(it, Priority.DEFAULT) }
+                        plan.raise.forEach { (piece, _) -> handle.piecePriority(piece, Priority.TOP_PRIORITY) }
+                    }
+                } catch (_: Exception) {}
+                deadlineRegistry?.focusPieceWindow(
+                    clientSessionId, planner.raisedPieces().minOrNull() ?: playhead,
+                    planner.windowPieces, totalPieces, protectedTail
+                )
+                plan.raise.forEach { (piece, deadline) ->
+                    deadlineRegistry?.registerDeadline(piece, clientSessionId, deadline.toLong())
                 }
             }
-
-            // Immediate seek & range priority scheduling: wipe out-of-window deadlines and prioritize immediate runway
-            try { synchronized(lock) { if (handle.isValid) { handle.resume(); handle.forceReannounce() } } } catch (_: Exception) {}
-            deadlineRegistry?.focusPieceWindow(clientSessionId, firstPiece, 30, totalPieces, protectedTail)
-
-            val initialLookahead = minOf(firstPiece + 30, fileLastPiece)
-            for (lp in firstPiece..initialLookahead) {
-                val prio: Priority
-                val deadline: Long
-                if (lp == firstPiece) {
-                    prio = Priority.TOP_PRIORITY
-                    deadline = 0L
-                } else if (lp <= firstPiece + 2) {
-                    prio = Priority.TOP_PRIORITY
-                    deadline = 100L
-                } else if (lp <= firstPiece + 5) {
-                    prio = Priority.TOP_PRIORITY
-                    deadline = 250L
-                } else if (lp <= firstPiece + 15) {
-                    prio = Priority.SIX
-                    deadline = 800L
-                } else {
-                    prio = Priority.DEFAULT
-                    deadline = 2000L
-                }
-                try { synchronized(lock) { if (handle.isValid) handle.piecePriority(lp, prio) } } catch (_: Exception) {}
-                deadlineRegistry?.registerDeadline(lp, clientSessionId, deadline)
-            }
-
-            // Pre-header wait on first requested piece (up to 15s) with 504 on timeout before sending 200/206 headers
-            var firstPieceWaitMs = 0
-            var firstPieceReady = synchronized(lock) { if (handle.isValid) handle.havePiece(firstPiece) else false }
-            while (!firstPieceReady && firstPieceWaitMs < 15_000 && isRunning && !socket.isClosed) {
-                Thread.sleep(30)
-                firstPieceWaitMs += 30
-                if (firstPieceWaitMs % 2000 == 0) {
-                    try { synchronized(lock) { if (handle.isValid) handle.forceReannounce() } } catch (_: Exception) {}
-                }
-                firstPieceReady = synchronized(lock) { if (handle.isValid) handle.havePiece(firstPiece) else false }
-            }
-
-            if (!firstPieceReady) {
-                send504(socket)
-                return
-            }
-
-            // Socket tuning & buffered output stream
+            applyWindow(firstPiece)
+            // Headers go out at once: mpv waits on the body (network-timeout) instead of
+            // getting a 504 after a silent 15 s wait. Bytes stream as pieces arrive.
             try {
                 socket.tcpNoDelay = true
                 socket.sendBufferSize = 1024 * 1024
             } catch (_: Exception) {}
-
             val out = BufferedOutputStream(socket.getOutputStream(), 256 * 1024)
             val headers = if (isPartial) {
                 "HTTP/1.1 206 Partial Content\r\nContent-Type: $contentType\r\nContent-Length: $contentLength\r\nContent-Range: bytes $rangeStart-$rangeEnd/$fileSize\r\nAccept-Ranges: bytes\r\n\r\n"
@@ -317,60 +277,37 @@ class TorrentHttpServer(
             }
             out.write(headers.toByteArray())
             out.flush()
-
-            val savePath = getSavePath(hash.uppercase())
+            val savePath = getSavePath(fileKey)
             val diskFile = File(fileStorage.filePath(fileIndex, savePath))
             var fileChannel: RandomAccessFile? = null
             var currentPosition = rangeStart
             var bytesRemaining = contentLength
             val buffer = ByteArray(256 * 1024)
-
             try {
                 for (p in firstPiece..lastPiece) {
                     if (!isRunning || socket.isClosed || bytesRemaining <= 0) break
-
-                    // Stremio-grade 30-piece sliding priority window
-                    val lookaheadEnd = minOf(p + 30, fileLastPiece)
-                    for (lp in p..lookaheadEnd) {
-                        val prio: Priority
-                        val deadline: Long
-                        if (lp == p) {
-                            prio = Priority.TOP_PRIORITY
-                            deadline = 0L
-                        } else if (lp <= p + 5) {
-                            prio = Priority.TOP_PRIORITY
-                            deadline = 200L
-                        } else if (lp <= p + 15) {
-                            prio = Priority.SIX
-                            deadline = 800L
-                        } else {
-                            prio = Priority.DEFAULT
-                            deadline = 2000L
-                        }
-                        try { synchronized(lock) { if (handle.isValid) handle.piecePriority(lp, prio) } } catch (_: Exception) {}
-                        deadlineRegistry?.registerDeadline(lp, clientSessionId, deadline)
-                    }
-                    deadlineRegistry?.focusPieceWindow(clientSessionId, p, 30, totalPieces, protectedTail)
-
-                    var pieceWaitMs = 0
-                    var currentPieceReady = synchronized(lock) { if (handle.isValid) handle.havePiece(p) else false }
-                    while (!currentPieceReady && isRunning && !socket.isClosed) {
-                        Thread.sleep(30)
-                        pieceWaitMs += 30
-                        if (pieceWaitMs % 2000 == 0) {
+                    if (p != firstPiece) applyWindow(p)
+                    var waitedMs = 0L
+                    var ready = synchronized(lock) { if (handle.isValid) handle.havePiece(p) else false }
+                    while (!ready && isRunning && !socket.isClosed) {
+                        // Superseded by a newer request (seek) or the player went away:
+                        // stop instead of holding deadlines for a position nobody reads.
+                        if (!isOwner()) break
+                        if (waitedMs >= STALL_GIVE_UP_MS) break
+                        if (waitedMs > 0 && waitedMs % CLIENT_CHECK_MS == 0L && clientGone(socket)) break
+                        Thread.sleep(PIECE_POLL_MS)
+                        waitedMs += PIECE_POLL_MS
+                        if (reannounceLimiter.shouldReannounce(fileKey, waitedMs, System.currentTimeMillis())) {
                             try { synchronized(lock) { if (handle.isValid) handle.forceReannounce() } } catch (_: Exception) {}
                         }
-                        currentPieceReady = synchronized(lock) { if (handle.isValid) handle.havePiece(p) else false }
+                        ready = synchronized(lock) { if (handle.isValid) handle.havePiece(p) else false }
                     }
-                    if (!currentPieceReady) break
-
+                    if (!ready) break
                     val pieceStartOffset = maxOf(rangeStart, p * pieceLen - fileOffset)
                     val pieceEndOffset = minOf(rangeEnd, (p + 1) * pieceLen - 1 - fileOffset)
                     var pieceBytesToRead = pieceEndOffset - pieceStartOffset + 1
-
                     while (pieceBytesToRead > 0 && bytesRemaining > 0 && isRunning && !socket.isClosed) {
                         val toRead = minOf(buffer.size.toLong(), minOf(pieceBytesToRead, bytesRemaining)).toInt()
-
                         // Defensive disk read with bounded retry loop
                         var bytesRead = -1
                         var readAttempts = 0
@@ -391,12 +328,10 @@ class TorrentHttpServer(
                             Thread.sleep(20)
                             readAttempts++
                         }
-
                         if (bytesRead <= 0) {
                             Logger.log("TorrentHttpServer: Failed to read from disk at position $currentPosition after $readAttempts attempts")
                             break
                         }
-
                         out.write(buffer, 0, bytesRead)
                         pieceBytesToRead -= bytesRead
                         bytesRemaining -= bytesRead
@@ -406,6 +341,16 @@ class TorrentHttpServer(
                 }
             } finally {
                 try { fileChannel?.close() } catch (_: Exception) {}
+                if (isOwner()) {
+                    val demote = planner.release()
+                    try {
+                        synchronized(lock) {
+                            if (handle.isValid) demote.filter { it !in protectedTail }.forEach {
+                                handle.piecePriority(it, Priority.DEFAULT)
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
             }
         } catch (_: Exception) {
         } finally {
@@ -416,6 +361,31 @@ class TorrentHttpServer(
             deadlineRegistry?.unregisterOwner(clientSessionId)
             try { socket.close() } catch (_: Exception) {}
         }
+    }
+
+    /**
+     * True when the client closed its side. mpv sends nothing after the request,
+     * so a 1 ms read either times out (still connected) or returns -1 (closed).
+     */
+    private fun clientGone(socket: Socket): Boolean {
+        val previous = try { socket.soTimeout } catch (_: Exception) { return true }
+        return try {
+            socket.soTimeout = 1
+            socket.getInputStream().read() == -1
+        } catch (_: java.net.SocketTimeoutException) {
+            false
+        } catch (_: Exception) {
+            true
+        } finally {
+            try { socket.soTimeout = previous } catch (_: Exception) {}
+        }
+    }
+
+    private companion object {
+        const val PIECE_POLL_MS = 25L
+        const val CLIENT_CHECK_MS = 500L
+        /** mpv gives up after network-timeout=30; stop well after that. */
+        const val STALL_GIVE_UP_MS = 90_000L
     }
 
     private fun send503(socket: Socket) {
