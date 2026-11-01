@@ -52,58 +52,7 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
     private lateinit var extensionsRecyclerView: RecyclerView
     private val skipIcons: Boolean = PrefManager.getVal(PrefName.SkipExtensionIcons)
     private val animeExtensionManager: AnimeExtensionManager = Injekt.get()
-    private val extensionsAdapter = AnimeExtensionsAdapter(
-        { pkg ->
-            val name = pkg.name
-            val changeUIVisibility: (Boolean) -> Unit = { show ->
-                (activity as? ExtensionsActivity)?.showSourcePreferences(!show, name)
-            }
-            var itemSelected = false
-            val allSettings = pkg.sources.filterIsInstance<ConfigurableAnimeSource>()
-            if (allSettings.isNotEmpty()) {
-                val openPrefFragment: (ConfigurableAnimeSource) -> Unit = { source ->
-                    changeUIVisibility(false)
-                    val fragment = AnimeSourcePreferencesFragment().getInstance(source.id) {
-                        changeUIVisibility(true)
-                    }
-                    parentFragmentManager.beginTransaction()
-                        .setCustomAnimations(R.anim.slide_up, R.anim.slide_down)
-                        .replace(R.id.fragmentExtensionsContainer, fragment)
-                        .addToBackStack(null)
-                        .commit()
-                }
-
-                if (allSettings.size > 1) {
-                    val names = allSettings.map { getLanguageName(it.lang) }.toTypedArray()
-                    var selectedIndex = 0
-                    requireContext().customAlertDialog().apply {
-                        setTitle(getString(R.string.extensions_select_source))
-                        singleChoiceItems(names, selectedIndex) { which ->
-                            itemSelected = true
-                            openPrefFragment(allSettings[which])
-                        }
-                        onDismiss {
-                            if (!itemSelected) {
-                                changeUIVisibility(true)
-                            }
-                        }
-                        show()
-                    }
-                } else {
-                    openPrefFragment(allSettings[0])
-                }
-            } else {
-                Toast.makeText(requireContext(), getString(R.string.extensions_not_configurable), Toast.LENGTH_SHORT)
-                    .show()
-            }
-        },
-        { pkg ->
-            if (isAdded) {
-                ExtensionRowMenu.uninstall(requireContext(), pkg.name, pkg.pkgName) {
-                    animeExtensionManager.uninstallExtension(pkg.pkgName)
-                }
-            }
-        }, { pkg ->
+    private val updateOne: (AnimeExtension.Installed) -> Unit = { pkg ->
             if (isAdded) {
                 val context = requireContext()
                 val notificationManager =
@@ -156,7 +105,60 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
                 }
 
             }
-        }, skipIcons
+    }
+
+    private val extensionsAdapter = AnimeExtensionsAdapter(
+        { pkg ->
+            val name = pkg.name
+            val changeUIVisibility: (Boolean) -> Unit = { show ->
+                (activity as? ExtensionsActivity)?.showSourcePreferences(!show, name)
+            }
+            var itemSelected = false
+            val allSettings = pkg.sources.filterIsInstance<ConfigurableAnimeSource>()
+            if (allSettings.isNotEmpty()) {
+                val openPrefFragment: (ConfigurableAnimeSource) -> Unit = { source ->
+                    changeUIVisibility(false)
+                    val fragment = AnimeSourcePreferencesFragment().getInstance(source.id) {
+                        changeUIVisibility(true)
+                    }
+                    parentFragmentManager.beginTransaction()
+                        .setCustomAnimations(R.anim.slide_up, R.anim.slide_down)
+                        .replace(R.id.fragmentExtensionsContainer, fragment)
+                        .addToBackStack(null)
+                        .commit()
+                }
+
+                if (allSettings.size > 1) {
+                    val names = allSettings.map { getLanguageName(it.lang) }.toTypedArray()
+                    var selectedIndex = 0
+                    requireContext().customAlertDialog().apply {
+                        setTitle(getString(R.string.extensions_select_source))
+                        singleChoiceItems(names, selectedIndex) { which ->
+                            itemSelected = true
+                            openPrefFragment(allSettings[which])
+                        }
+                        onDismiss {
+                            if (!itemSelected) {
+                                changeUIVisibility(true)
+                            }
+                        }
+                        show()
+                    }
+                } else {
+                    openPrefFragment(allSettings[0])
+                }
+            } else {
+                Toast.makeText(requireContext(), getString(R.string.extensions_not_configurable), Toast.LENGTH_SHORT)
+                    .show()
+            }
+        },
+        { pkg ->
+            if (isAdded) {
+                ExtensionRowMenu.uninstall(requireContext(), pkg.name, pkg.pkgName) {
+                    animeExtensionManager.uninstallExtension(pkg.pkgName)
+                }
+            }
+        }, updateOne, skipIcons
     )
 
     override fun onCreateView(
@@ -213,6 +215,11 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
         lifecycleScope.launch {
             animeExtensionManager.installedExtensionsFlow.collect { extensions ->
                 extensionsAdapter.updateData(sortToAnimeSourcesList(extensions))
+                ExtensionUpdateAll.bind(
+                    _binding?.updateAllButton ?: return@collect,
+                    ExtensionUpdateAll.pending(extensions) { it.hasUpdate },
+                    updateOne
+                )
             }
         }
         return binding.root

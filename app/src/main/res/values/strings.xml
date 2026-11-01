@@ -239,6 +239,7 @@
     <string name="extensions_uninstalled">Extension uninstalled</string>
     <string name="extensions_select_source">Select a source</string>
     <string name="extensions_not_configurable">This source has no settings</string>
+    <string name="extensions_update_all">Update all (%1$d)</string>
     <string name="extension_updates_available">Extension updates available</string>
     <string name="player_settings">Player Settings</string>
     <string name="recentlyListOnly">Only show my content in \"Recently Updated\"</string>
