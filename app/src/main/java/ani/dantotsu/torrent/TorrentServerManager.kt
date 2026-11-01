@@ -257,6 +257,13 @@ data class PrebufferProgress(
  */
 val TORRENT_DEFAULT_TRACKERS = listOf(
     "http://nyaa.tracker.wf:7777/announce",
+    // Anime trackers (nyaa's sister sites and anime indexers); same set other anime
+    // streaming clients announce to.
+    "http://anidex.moe:6969/announce",
+    "http://tracker.anirena.com:80/announce",
+    "https://tracker.nekobt.to/api/tracker/public/announce",
+    "http://open.acgnxtracker.com:80/announce",
+    "udp://exodus.desync.com:6969/announce",
     "udp://open.stealth.si:80/announce",
     "udp://tracker.opentrackr.org:1337/announce",
     "udp://tracker.torrent.eu.org:451/announce",
@@ -330,6 +337,9 @@ class TorrentServerManager(private val context: Context) {
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_allowed_in_request_queue.swigValue(), 500)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_peerlist_size.swigValue(), 500)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_paused_peerlist_size.swigValue(), 200)
+            // Shallow per-peer request queues (~1 s of data, default 3 s): a newly urgent
+            // piece (head, seek target) no longer waits behind seconds of queued blocks.
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.request_queue_time.swigValue(), 1)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.request_timeout.swigValue(), 10)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.peer_connect_timeout.swigValue(), 7)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.piece_timeout.swigValue(), 5)
@@ -527,6 +537,10 @@ class TorrentServerManager(private val context: Context) {
         }
     }
 
+    private val metadataCache by lazy {
+        TorrentMetadataCache(java.io.File(context.filesDir, "torrent/meta"))
+    }
+
     private val sessionStateStore by lazy {
         SessionStateStore(java.io.File(context.filesDir, "torrent/session.state"))
     }
@@ -589,7 +603,21 @@ class TorrentServerManager(private val context: Context) {
             var resolvedHash: String? = null
             var resolvedTorrentInfo: TorrentInfo? = null
             when {
-                url.startsWith("magnet:") -> resolvedHash = parseMagnetHash(url)
+                url.startsWith("magnet:") -> {
+                    resolvedHash = parseMagnetHash(url)
+                    // Played before: use the saved metadata and skip the fetch from peers.
+                    val cachedHash = resolvedHash
+                    if (cachedHash != null) {
+                        metadataCache.load(cachedHash)?.let { bytes ->
+                            val ti = try { TorrentInfo(bytes) } catch (_: Throwable) { null }
+                            if (ti != null && ti.infoHash().toHex().equals(cachedHash, ignoreCase = true)) {
+                                resolvedTorrentInfo = ti
+                            } else {
+                                metadataCache.discard(cachedHash)
+                            }
+                        }
+                    }
+                }
                 // HOLD1: case-insensitive dispatch ([isHttpFetchUrl]) so
                 // every URL the G6 entry gate accepts reaches this branch.
                 isHttpFetchUrl(url) -> {
@@ -697,6 +725,24 @@ class TorrentServerManager(private val context: Context) {
                 }
 
                 liveHandle.resume()
+                // Save the metadata for the next play of this release (magnets only; a cached
+                // or fetched .torrent is already on hand), and keep the magnet's own trackers,
+                // which a cached .torrent may not list.
+                if (url.startsWith("magnet:")) {
+                    TorrentMetadataCache.magnetTrackers(url).forEach { trk ->
+                        try { liveHandle.addTracker(AnnounceEntry(trk)) } catch (_: Exception) {}
+                    }
+                    if (metadataCache.load(infoHash) == null) {
+                        try {
+                            val span = liveHandle.torrentFile()?.swig()?.get_info_section()
+                            val n = span?.size()?.toInt() ?: 0
+                            if (span != null && n in 1..TorrentMetadataCache.MAX_BYTES.toInt()) {
+                                val info = ByteArray(n) { span.at(it.toLong()) }
+                                metadataCache.save(infoHash, TorrentMetadataCache.wrapInfoSection(info))
+                            }
+                        } catch (_: Throwable) {}
+                    }
+                }
                 TORRENT_DEFAULT_TRACKERS.forEach { trk ->
                     try { liveHandle.addTracker(AnnounceEntry(trk)) } catch (_: Exception) {}
                 }
