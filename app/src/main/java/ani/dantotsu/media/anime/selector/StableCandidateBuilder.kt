@@ -66,11 +66,13 @@ object StableCandidateBuilder {
         val soft = LinkedHashMap<String, String>()
         TrackerCanonicalizer.canonicalKey(meta.tracker)?.let { soft["trackerKey"] = it }
         StableSoftCanonicalizer.canonicalResolution(meta.resolution)?.let { soft["resolution"] = it }
-        StableSoftCanonicalizer.canonicalText(meta.audioMode)?.let { soft["audioMode"] = it }
-        StableSoftCanonicalizer.canonicalText(meta.audioFormat)?.let { soft["audioFormat"] = it }
+        StableSoftCanonicalizer.canonicalText(meta.softAudioMode)?.let { soft["audioMode"] = it }
+        StableSoftCanonicalizer.canonicalText(meta.softAudioFormat)?.let { soft["audioFormat"] = it }
         SourceServiceCanonicalizer.canonicalKey(meta.sourceService)?.let { soft["sourceService"] = it }
         StableSoftCanonicalizer.canonicalText(meta.codec)?.let { soft["codec"] = it }
-        StableSoftCanonicalizer.canonicalText(meta.hdr)?.let { soft["hdr"] = it }
+        // "sdr" when no HDR format is named, so the SDR and the HDR release
+        // of one group stay apart (a missing stored value is not ranked).
+        soft["hdr"] = StableSoftCanonicalizer.canonicalText(meta.hdr) ?: "sdr"
         return FamilyCandidate(
             exactKey = exactKey,
             providerPkg = provider,

@@ -8,8 +8,8 @@ package ani.dantotsu.media.anime.selector
  * ranking. The ranking is a strict lexicographic comparison in this
  * fixed order:
  *
+ *   resolution   (same quality first: "same group, same quality")
  *   trackerKey
- *   resolution
  *   audioMode
  *   audioFormat
  *   sourceService
@@ -39,9 +39,14 @@ sealed class FamilyAutoResult {
 
 object FamilyAutoSelector {
     private val SOFT_RANK_ORDER = listOf(
-        "trackerKey", "resolution", "audioMode",
+        "resolution", "trackerKey", "audioMode",
         "audioFormat", "sourceService", "codec", "hdr",
     )
+
+    /** Soft values in rank order; resolution compared canonically (stored "4k" == "2160p"). */
+    private fun vectorOf(soft: Map<String, String>): List<String?> = SOFT_RANK_ORDER.map { key ->
+        if (key == "resolution") StableSoftCanonicalizer.canonicalResolution(soft[key]) else soft[key]
+    }
 
     /**
      * Strict lexicographic comparison of two candidates against a
@@ -91,7 +96,7 @@ object FamilyAutoSelector {
         // fields, then the exact key, then the soft-map string
         // form. This guarantees a single deterministic pick per
         // exact-key group.
-        val storedVec = SOFT_RANK_ORDER.map { stored.soft[it] }
+        val storedVec = vectorOf(stored.soft)
         val collapsed = hardMatched
             .groupBy { it.exactKey }
             .map { (_, group) -> bestRepresentative(group, storedVec) }
@@ -109,8 +114,8 @@ object FamilyAutoSelector {
                 best = cand
                 continue
             }
-            val bestVec = SOFT_RANK_ORDER.map { best!!.soft[it] }
-            val candVec = SOFT_RANK_ORDER.map { cand.soft[it] }
+            val bestVec = vectorOf(best!!.soft)
+            val candVec = vectorOf(cand.soft)
             val cmp = compareLex(storedVec, bestVec, candVec)
             when {
                 cmp < 0 -> {
@@ -154,8 +159,8 @@ object FamilyAutoSelector {
         var best = group[0]
         for (i in 1 until group.size) {
             val cand = group[i]
-            val bestVec = SOFT_RANK_ORDER.map { best.soft[it] }
-            val candVec = SOFT_RANK_ORDER.map { cand.soft[it] }
+            val bestVec = vectorOf(best.soft)
+            val candVec = vectorOf(cand.soft)
             val cmp = compareLex(storedVec, bestVec, candVec)
             if (cmp < 0) {
                 best = cand

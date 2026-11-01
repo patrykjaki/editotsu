@@ -106,6 +106,7 @@ object SourceRowSummarizer {
         qualityText: String,
         format: VideoType?,
         url: String,
+        fileName: String? = null,
     ): SourceRowViewModel {
         val presentation = SourceRowClassifier.classifyPresentation(qualityText)
         val formatName = format?.name ?: ""
@@ -115,7 +116,7 @@ object SourceRowSummarizer {
             formatName = formatName,
         )
         return when (presentation) {
-            SourcePresentationKind.RELEASE -> buildRelease(displayLabel, transport, url)
+            SourcePresentationKind.RELEASE -> buildRelease(displayLabel, transport, url, fileName)
             SourcePresentationKind.STREAM -> buildStream(displayLabel, qualityText, transport, formatName)
         }
     }
@@ -125,6 +126,7 @@ object SourceRowSummarizer {
         qualityText: String,
         formatName: String?,
         url: String,
+        fileName: String? = null,
     ): SourceRowViewModel {
         val presentation = SourceRowClassifier.classifyPresentation(qualityText)
         val effectiveName = formatName ?: ""
@@ -134,7 +136,7 @@ object SourceRowSummarizer {
             formatName = effectiveName,
         )
         return when (presentation) {
-            SourcePresentationKind.RELEASE -> buildRelease(displayLabel, transport, url)
+            SourcePresentationKind.RELEASE -> buildRelease(displayLabel, transport, url, fileName)
             SourcePresentationKind.STREAM -> buildStream(displayLabel, qualityText, transport, effectiveName)
         }
     }
@@ -143,8 +145,9 @@ object SourceRowSummarizer {
         displayLabel: String,
         transport: SourceTransport,
         url: String,
+        fileName: String? = null,
     ): SourceRowViewModel {
-        val fields = SourceRowClassifier.parseRelease(displayLabel)
+        val fields = SourceRowClassifier.parseRelease(displayLabel, fileName)
         val pills = buildPills(fields)
         val meta = buildReleaseMeta(fields)
         val details = buildReleaseDetails(fields, transport)
@@ -280,7 +283,14 @@ object SourceRowSummarizer {
         // 6. Audio format.
         fields.audioFormat?.let { out += SourceRowPill(it, SourcePillKind.AUDIO_FMT) }
 
-        // 7. Batch marker (P3, last).
+        // 7. What tells otherwise identical releases apart (one group often
+        //    ships several of the same episode): censorship, re-release,
+        //    original-video and the streaming source.
+        fields.censorship?.let { out += SourceRowPill(it, SourcePillKind.CENSOR) }
+        fields.revision?.let { out += SourceRowPill(it, SourcePillKind.REVISION) }
+        if (fields.originalVideo) out += SourceRowPill("OV", SourcePillKind.SERVICE)
+        fields.sourceService?.let { out += SourceRowPill(it, SourcePillKind.SERVICE) }
+        // 8. Batch marker (P3, last).
         if (fields.batch) {
             out += SourceRowPill("Batch", SourcePillKind.BATCH)
         }
