@@ -292,15 +292,18 @@ class TorrentServerManager(private val context: Context) {
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.active_limit.swigValue(), 50)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.connections_limit.swigValue(), 80)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.unchoke_slots_limit.swigValue(), 32)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.connection_speed.swigValue(), 30)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.torrent_connect_boost.swigValue(), 30)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.connection_speed.swigValue(), 60)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.torrent_connect_boost.swigValue(), 60)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_out_request_queue.swigValue(), 1000)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_allowed_in_request_queue.swigValue(), 500)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_peerlist_size.swigValue(), 500)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_paused_peerlist_size.swigValue(), 200)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.request_timeout.swigValue(), 10)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.peer_connect_timeout.swigValue(), 15)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.peer_connect_timeout.swigValue(), 7)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.piece_timeout.swigValue(), 5)
+            // Window-only streaming makes the torrent "finished" whenever the window is
+            // complete; by default libtorrent then drops every seed. Keep them.
+            settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.close_redundant_connections.swigValue(), false)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.aio_threads.swigValue(), 4)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.hashing_threads.swigValue(), 2)
 
@@ -603,6 +606,7 @@ class TorrentServerManager(private val context: Context) {
                     handle = sessionManager.find(sha1)
                 } else {
                     handle = sessionManager.find(sha1)
+                    val createdHere = handle == null
                     if (handle == null) {
                         val enrichedUrl = buildEnrichedMagnetUri(url, TORRENT_DEFAULT_TRACKERS)
                         sessionManager.download(enrichedUrl, saveDir, TorrentFlags.AUTO_MANAGED)
@@ -628,6 +632,21 @@ class TorrentServerManager(private val context: Context) {
                             try { polled.forceReannounce() } catch (_: Exception) {}
                         }
                         waitTime++
+                    }
+                    // A new magnet would download every file rarest-first as soon as the
+                    // metadata lands, filling peers' queues before the player's first read.
+                    // Start with nothing wanted; the relay/prebuffer raise what they need.
+                    // Only for handles created here: re-adding a torrent that is streaming
+                    // (next-episode prebuffer) must not reset the live window.
+                    val fresh = handle
+                    if (createdHere && fresh != null && fresh.torrentFile() != null) {
+                        try {
+                            synchronized(getHandleLock(infoHash)) {
+                                if (fresh.isValid) {
+                                    fresh.prioritizeFiles(Priority.array(Priority.IGNORE, fresh.torrentFile().numFiles()))
+                                }
+                            }
+                        } catch (_: Exception) {}
                     }
                 }
 
@@ -766,12 +785,11 @@ class TorrentServerManager(private val context: Context) {
             val pieceLength = torrentInfo.pieceLength().toLong()
             val totalPieces = torrentInfo.numPieces()
 
-            val numFiles = fileStorage.numFiles()
-            val filePriorities = Priority.array(Priority.IGNORE, numFiles)
-            if (fileIndex in 0 until numFiles) {
-                filePriorities[fileIndex] = Priority.TOP_PRIORITY
-            }
-            try { synchronized(lock) { if (handle.isValid) handle.prioritizeFiles(filePriorities) } } catch (_: Exception) {}
+            // Window-only, like the relay: no file-level priority here. The whole file at
+            // TOP made every piece compete with the head pieces below, and prioritizeFiles
+            // resets all piece priorities, which wiped a live stream's window when the next
+            // episode of the same torrent was prebuffered. New torrents start all-IGNORE
+            // (addTorrent); only the startup and tail pieces are raised here.
 
             val plan = computeStreamingPiecePlan(fileOffset, fileSize, pieceLength, totalPieces)
             if (plan.startupPieces.isEmpty()) return PrebufferResult(false, null)
