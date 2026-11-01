@@ -94,7 +94,8 @@ enum class PrefName(val data: Pref) {
     // (upstream 3dbce385/e954d9f1; both OFF/masked by default per table).
     UseSystemFont(Pref(Location.UI, Boolean::class, false)),
     HideSpoilerTags(Pref(Location.UI, Boolean::class, true)),
-    Theme(Pref(Location.UI, String::class, "PURPLE")),
+    // Editotsu default is Ocean (teal, closest to the launcher icon); Purple stays selectable.
+    Theme(Pref(Location.UI, String::class, "OCEAN")),
     SkipExtensionIcons(Pref(Location.UI, Boolean::class, false)),
     DarkMode(Pref(Location.UI, Int::class, 0)),
     ShowYtButton(Pref(Location.UI, Boolean::class, true)),
