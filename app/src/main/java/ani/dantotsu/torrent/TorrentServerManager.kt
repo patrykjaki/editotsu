@@ -18,6 +18,38 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * Window-only download is done with piece priorities only. Files keep a non-zero
+ * priority: libtorrent writes the data of an IGNORE file into its part file, where the
+ * relay (which reads the real file from disk) cannot see it.
+ */
+internal fun ignoreAllPieces(handle: TorrentHandle, lock: Any) {
+    try {
+        synchronized(lock) {
+            if (!handle.isValid) return
+            val n = handle.torrentFile()?.numPieces() ?: return
+            handle.prioritizePieces(Priority.array(Priority.IGNORE, n))
+        }
+    } catch (_: Exception) {}
+}
+
+/**
+ * Safety net for a handle whose file is at IGNORE (data would go to the part file):
+ * raise the file to DEFAULT and put its pieces back to IGNORE so only the windows
+ * raised afterwards download. Never lowers another file. Caller holds the handle lock.
+ * Returns true when it changed something.
+ */
+internal fun ensureFileStreamable(handle: TorrentHandle, fileIndex: Int, fileFirstPiece: Int, fileLastPiece: Int): Boolean {
+    val files = handle.filePriorities()
+    if (fileIndex !in files.indices || files[fileIndex] != Priority.IGNORE) return false
+    files[fileIndex] = Priority.DEFAULT
+    handle.prioritizeFiles(files)
+    val pieces = handle.piecePriorities()
+    for (p in fileFirstPiece..minOf(fileLastPiece, pieces.size - 1)) pieces[p] = Priority.IGNORE
+    handle.prioritizePieces(pieces)
+    return true
+}
+
 data class StreamingPiecePlan(
     val startupPieces: List<Int>,
     val opportunisticTail: Int?,
@@ -599,11 +631,13 @@ class TorrentServerManager(private val context: Context) {
 
                 if (resolvedTorrentInfo != null) {
                     val ti = resolvedTorrentInfo
-                    val p = Priority.array(Priority.IGNORE, ti.numFiles())
-                    // Not sequential: the relay's deadline window keeps playback in order and
-                    // follows seeks; the rest of the file downloads rarest-first.
+                    val existed = sessionManager.find(sha1) != null
+                    // Files stay at DEFAULT: a file at IGNORE has its data written to the
+                    // part file, which the relay cannot read. Pieces decide what downloads.
+                    val p = Priority.array(Priority.DEFAULT, ti.numFiles())
                     sessionManager.download(ti, saveDir, null, p, null, TorrentFlags.AUTO_MANAGED)
                     handle = sessionManager.find(sha1)
+                    if (!existed) handle?.let { ignoreAllPieces(it, getHandleLock(infoHash)) }
                 } else {
                     handle = sessionManager.find(sha1)
                     val createdHere = handle == null
@@ -635,18 +669,12 @@ class TorrentServerManager(private val context: Context) {
                     }
                     // A new magnet would download every file rarest-first as soon as the
                     // metadata lands, filling peers' queues before the player's first read.
-                    // Start with nothing wanted; the relay/prebuffer raise what they need.
+                    // Start with no piece wanted; the relay/prebuffer raise what they need.
                     // Only for handles created here: re-adding a torrent that is streaming
                     // (next-episode prebuffer) must not reset the live window.
                     val fresh = handle
                     if (createdHere && fresh != null && fresh.torrentFile() != null) {
-                        try {
-                            synchronized(getHandleLock(infoHash)) {
-                                if (fresh.isValid) {
-                                    fresh.prioritizeFiles(Priority.array(Priority.IGNORE, fresh.torrentFile().numFiles()))
-                                }
-                            }
-                        } catch (_: Exception) {}
+                        ignoreAllPieces(fresh, getHandleLock(infoHash))
                     }
                 }
 
@@ -785,6 +813,11 @@ class TorrentServerManager(private val context: Context) {
             val pieceLength = torrentInfo.pieceLength().toLong()
             val totalPieces = torrentInfo.numPieces()
 
+            run {
+                val ff = (fileOffset / pieceLength).toInt()
+                val fl = ((fileOffset + fileSize - 1) / pieceLength).toInt()
+                try { synchronized(lock) { if (handle.isValid) ensureFileStreamable(handle, fileIndex, ff, fl) } } catch (_: Exception) {}
+            }
             // Window-only, like the relay: no file-level priority here. The whole file at
             // TOP made every piece compete with the head pieces below, and prioritizeFiles
             // resets all piece priorities, which wiped a live stream's window when the next

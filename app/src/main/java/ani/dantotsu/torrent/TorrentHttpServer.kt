@@ -31,8 +31,6 @@ class TorrentHttpServer(
     private val streamSessionCounter = AtomicLong(0L)
     private val activeSockets = ConcurrentHashMap.newKeySet<Socket>()
     private val activeStreamOwners = ConcurrentHashMap<Pair<String, Int>, String>()
-    /** Last file prioritised per torrent, so prioritizeFiles runs only on change. */
-    private val prioritizedFile = ConcurrentHashMap<String, Int>()
     private val reannounceLimiter = ReannounceLimiter()
     private val executor = ThreadPoolExecutor(
         8, 32, 60L, TimeUnit.SECONDS,
@@ -163,25 +161,20 @@ class TorrentHttpServer(
                 return
             }
 
-            // Window-only download: every file (the streamed one too) is IGNORE, and only
-            // the stream window and the container tail are raised to TOP with deadlines.
-            // Nothing else competes for peers' request queues, so the piece the player is
-            // waiting on comes first. Seeds stay connected while the window is complete
-            // (close_redundant_connections=false in the session settings).
-            // prioritizeFiles resets piece priorities, so only do it on a file change.
-            val numFiles = fileStorage.numFiles()
+            // Window-only download: files keep their (non-zero) priority, every piece starts
+            // at IGNORE (addTorrent), and only the stream window and the container tail are
+            // raised to TOP with deadlines. Nothing else competes for peers' request queues,
+            // so the piece the player is waiting on comes first. Seeds stay connected while
+            // the window is complete (close_redundant_connections=false).
             val fileKey = hash.uppercase()
-            if (prioritizedFile[fileKey] != fileIndex) {
-                val filePriorities = Priority.array(Priority.IGNORE, numFiles)
-                try { synchronized(lock) { if (handle.isValid) handle.prioritizeFiles(filePriorities) } } catch (_: Exception) {}
-                prioritizedFile[fileKey] = fileIndex
-            }
             val fileSize = fileStorage.fileSize(fileIndex)
             val fileOffset = fileStorage.fileOffset(fileIndex)
             val pieceLen = torrentInfo.pieceLength().toLong()
             val totalPieces = torrentInfo.numPieces()
             val fileFirstPiece = (fileOffset / pieceLen).toInt()
             val fileLastPiece = ((fileOffset + fileSize - 1) / pieceLen).toInt()
+            // A file at IGNORE would get its data written to the part file, unreadable here.
+            try { synchronized(lock) { if (handle.isValid) ensureFileStreamable(handle, fileIndex, fileFirstPiece, fileLastPiece) } } catch (_: Exception) {}
             // Container tail (MKV Cues / MP4 moov) stays raised for every window.
             val tailStart = maxOf(fileFirstPiece, fileLastPiece - 2)
             val protectedTail = (tailStart..fileLastPiece).filter { it > fileFirstPiece + 3 }.toSet()
