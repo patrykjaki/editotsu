@@ -68,7 +68,7 @@
         tools:visibility="gone">
 
         <!-- Source Picker v3 Final: "Episode N" + source name, Sub/Dub filter,
-             remembered-family notice. The remember switch is in the footer. -->
+             remembered-family notice, then the remember switch. -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -129,6 +129,19 @@
             android:visibility="gone"
             tools:text="@string/picker_family_missing"
             tools:visibility="visible" />
+
+        <!-- above the list: below it, a long list pushed the switch off the sheet -->
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/selectorMakeDefault"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="16dp"
+            android:checked="true"
+            android:fontFamily="@font/poppins"
+            android:minHeight="48dp"
+            android:text="@string/picker_auto_play"
+            android:textSize="14sp" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/selectorRecyclerView"
@@ -195,18 +208,6 @@
                     android:text="@string/picker_change_source" />
             </LinearLayout>
         </LinearLayout>
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/selectorMakeDefault"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="20dp"
-            android:layout_marginEnd="16dp"
-            android:checked="true"
-            android:fontFamily="@font/poppins"
-            android:minHeight="48dp"
-            android:text="@string/picker_auto_play"
-            android:textSize="14sp" />
 
         <ProgressBar
             android:id="@+id/selectorProgressBar"
