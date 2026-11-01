@@ -39,7 +39,7 @@ object GlesShaderCompat {
                 ext != null && ext.groupValues[1] in OPTIONAL_EXTENSIONS ->
                     "// editotsu-gles: removed mid-body ${ext.groupValues[1]} directive"
                 ifdef != null && ifdef.groupValues[2] in OPTIONAL_EXTENSIONS ->
-                    "${ifdef.groupValues[1]}#if 0 // editotsu-gles: was #ifdef ${ifdef.groupValues[2]}"
+                    "${ifdef.groupValues[1]}#if 0 // editotsu-gles: replaces ifdef ${ifdef.groupValues[2]}"
                 else -> line
             }
         }
