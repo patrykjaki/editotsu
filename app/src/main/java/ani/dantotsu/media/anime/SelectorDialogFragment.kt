@@ -73,6 +73,16 @@ import ani.dantotsu.media.anime.selector.PickerEntry
 import ani.dantotsu.media.anime.selector.PickerList
 import ani.dantotsu.media.anime.selector.PickerListBuilder
 import ani.dantotsu.media.anime.selector.PickerRow
+import ani.dantotsu.media.anime.selector.PickerRowsBuilder
+import ani.dantotsu.media.anime.selector.FilterDimension
+import ani.dantotsu.media.anime.selector.FilterState
+import ani.dantotsu.media.anime.selector.FilteredEntries
+import ani.dantotsu.media.anime.selector.PickerFilter
+import ani.dantotsu.media.anime.selector.PickerFilterStore
+import ani.dantotsu.media.anime.selector.PickerSort
+import ani.dantotsu.media.anime.selector.RowFacets
+import ani.dantotsu.parsers.DynamicAnimeParser
+import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import ani.dantotsu.media.anime.selector.QualityVariant
 import ani.dantotsu.media.anime.selector.ResolutionLabel
 import ani.dantotsu.media.anime.selector.RowRef
@@ -113,6 +123,8 @@ import java.text.DecimalFormat
 
 
 class SelectorDialogFragment : BottomSheetDialogFragment() {
+    /** Loads this episode's sources again (set when the list is built; used after source settings change). */
+    private var reloadSources: (() -> Unit)? = null
     private var _binding: BottomSheetSelectorBinding? = null
     private val binding get() = _binding!!
     val model: MediaDetailsViewModel by activityViewModels()
@@ -243,6 +255,10 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                         )
                     val adapter = ExtractorAdapter(onEpisodeDownloadHandler)
                     binding.selectorRecyclerView.adapter = adapter
+                    reloadSources = {
+                        ep.allStreams = false
+                        initializeVideoServerSelector(ep, onEpisodeDownloadHandler)
+                    }
                     if (!ep.allStreams) {
                         ep.extractorCallback = { extractor ->
                             scope.launch(Dispatchers.Main) {
@@ -843,7 +859,22 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
      */
     private inner class ExtractorAdapter(private val onEpisodeDownloadHandler: EpisodeDownloadHandler? = null) :
         RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        /** Extractors received so far (newest state). */
         val links = mutableListOf<VideoExtractor>()
+        /** The snapshot of [links] that [list] and every [RowRef] on screen index into. */
+        private var shown: List<VideoExtractor> = emptyList()
+        private var shownViews: Map<RowRef, SourceRowViewModel> = emptyMap()
+        @Volatile private var generation = 0L
+        private var shownRows: List<PickerRow> = emptyList()
+        private var shownFacets: Map<RowRef, RowFacets> = emptyMap()
+        /** Filter and sort for this show, as stored (may name values no row has yet). */
+        private var filterState: FilterState = media?.id?.let { PickerFilterStore.load(it) } ?: FilterState()
+        private var filtered = FilteredEntries(emptyList(), 0)
+        /** The extension's settings were opened: offer a reload. */
+        private var sourcePrefsOpened = false
+        private val rowsBuilder = PickerRowsBuilder()
+        /** One pass at a time; [rowsBuilder] is only touched here. */
+        private val rowWorker = Dispatchers.Default.limitedParallelism(1)
         private val actions = java.util.IdentityHashMap<VideoExtractor, RowActions>()
         private var list = PickerList(emptyList(), null, -1, false)
         private var visible: List<PickerEntry> = emptyList()
@@ -918,60 +949,75 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
         // ---- list building ------------------------------------------------
 
-        @SuppressLint("NotifyDataSetChanged")
+        /**
+         * Rebuild the list from a snapshot of [links]. Rows are parsed on a
+         * single background worker with a per-row cache (only new rows are
+         * parsed), then applied on the main thread. Only the newest pass is
+         * applied; [shown] is the snapshot the applied list indexes into.
+         */
         fun rebuild() {
             val mediaId = media?.id
             val storedKey = mediaId?.let { SelectedKeyStore.load(it) }
             val storedFamily = mediaId?.let { SelectedFamilyStore.load(it) }
-            val rows = mutableListOf<PickerRow>()
-            links.forEachIndexed { ei, extractor ->
-                val server = extractor.server
-                val provider = StableCandidateBuilder.providerOf(server)
-                val exact = StableCandidateBuilder.exactKey(provider, server)
-                val family = StableCandidateBuilder.familyCandidate(server)
-                val aniVideo = server.video
-                extractor.videos.forEachIndexed { vi, video ->
-                    val viewModel = summarize(extractor, video)
-                    rows += PickerRow(
-                        ref = RowRef(ei, vi),
-                        provider = provider ?: sourceName(),
-                        presentation = viewModel.presentation,
-                        header = viewModel.header?.takeIf { it.isNotBlank() } ?: viewModel.displayLabel,
-                        resolution = ResolutionLabel.resolve(aniVideo?.resolution, server.name)
-                            ?: video.quality?.takeIf { it >= 144 },
-                        transport = TransportLabel.of(video.file.url, video.format?.name),
-                        audioKind = AudioKindDetector.detect(server.name),
-                        preferred = extractor.isPreferred || aniVideo?.preferred == true,
-                        rememberedExact = storedKey != null && exact == storedKey,
-                        rememberedFamily = storedFamily != null && family != null &&
-                            family.providerPkg == storedFamily.providerPkg &&
-                            family.groupKey == storedFamily.groupKey,
-                    )
+            val fallbackProvider = sourceName()
+            val snapshot = links.toList()
+            val gen = ++generation
+            scope.launch(rowWorker) {
+                if (gen != generation) return@launch
+                val result = rowsBuilder.buildWithViews(snapshot, storedKey, storedFamily, fallbackProvider)
+                val built = PickerListBuilder.build(result.rows, hasRememberedFamily = storedFamily != null)
+                withContext(Dispatchers.Main) {
+                    if (gen != generation || _binding == null || !isAdded) return@withContext
+                    val t0 = System.nanoTime()
+                    apply(snapshot, built, result.views, result.rows)
+                    if (ani.dantotsu.BuildConfig.DEBUG) {
+                        Log.d("PickerPerf", "apply rows=${result.rows.size} main=${(System.nanoTime() - t0) / 1000} us")
+                    }
                 }
             }
-            list = PickerListBuilder.build(rows, hasRememberedFamily = storedFamily != null)
+        }
+
+        @SuppressLint("NotifyDataSetChanged")
+        private fun apply(
+            snapshot: List<VideoExtractor>,
+            built: PickerList,
+            views: Map<RowRef, SourceRowViewModel>,
+            rows: List<PickerRow>,
+        ) {
+            shown = snapshot
+            shownViews = views
+            shownRows = rows
+            shownFacets = rows.associate { it.ref to it.facets }
+            list = built
             val showFilter = AudioKindFilter.shouldShow(list.entries)
             if (!showFilter) {
                 filter = null
             } else if (!filterChosenByUser) {
                 filter = list.bestIndex.takeIf { it >= 0 }?.let { list.entries[it].audioKind }
             }
-            visible = AudioKindFilter.apply(list.entries, filter)
-            notifyDataSetChanged()
+            recompute()
             onListChanged(showFilter)
+        }
+
+        /** Filters in effect: the stored ones that some current row has. */
+        private fun effectiveFilter(): FilterState = PickerFilter.sanitize(filterState, shownRows)
+
+        @SuppressLint("NotifyDataSetChanged")
+        private fun recompute() {
+            filtered = PickerFilter.apply(list.entries, shownFacets, filter, effectiveFilter())
+            visible = filtered.entries
+            notifyDataSetChanged()
+        }
+
+        private fun setFilterState(state: FilterState) {
+            filterState = state
+            media?.id?.let { PickerFilterStore.save(it, state) }
+            recompute()
+            onListChanged(AudioKindFilter.shouldShow(list.entries))
         }
 
         private fun sourceName(): String? =
             model.watchSources?.get(media?.selected?.sourceIndex ?: 0)?.name
-
-        private fun summarize(extractor: VideoExtractor, video: Video): SourceRowViewModel =
-            SourceRowSummarizer.build(
-                displayLabel = extractor.server.name,
-                qualityText = extractor.server.name,
-                format = video.format,
-                url = video.file.url,
-                fileName = EditotsuInternalData.parse(extractor.server.video?.internalData)?.fileName,
-            )
 
         private fun onListChanged(showFilter: Boolean) {
             if (_binding == null) return
@@ -979,11 +1025,25 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             val source = sourceName().orEmpty()
             binding.selectorHeaderMeta.text = when {
                 list.entries.isEmpty() -> getString(R.string.picker_meta_loading, source)
+                effectiveFilter().hasFilters ->
+                    getString(R.string.picker_filter_count, source, filtered.entries.size, filtered.total)
                 releases > 0 -> getString(R.string.picker_meta_releases, source, releases)
                 else -> getString(R.string.picker_meta_servers, source, list.entries.size)
             }
-            binding.selectorNotice.isVisible = makeDefault && list.rememberedFamilyMissing
-            binding.selectorNotice.setText(R.string.picker_family_missing)
+            val hiddenByFilters = effectiveFilter().hasFilters && filtered.entries.isEmpty() &&
+                AudioKindFilter.apply(list.entries, filter).isNotEmpty()
+            if (hiddenByFilters) {
+                binding.selectorNotice.isVisible = true
+                binding.selectorNotice.text = getString(
+                    R.string.picker_filter_hidden_all, AudioKindFilter.apply(list.entries, filter).size,
+                )
+                binding.selectorNotice.setOnClickListener { setFilterState(filterState.cleared()) }
+            } else {
+                binding.selectorNotice.isVisible = makeDefault && list.rememberedFamilyMissing
+                binding.selectorNotice.setText(R.string.picker_family_missing)
+                binding.selectorNotice.setOnClickListener(null)
+                binding.selectorNotice.isClickable = false
+            }
             bindFilters(showFilter)
         }
 
@@ -992,8 +1052,39 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             val group = binding.selectorFilters
             group.setOnCheckedStateChangeListener(null)
             group.removeAllViews()
-            group.isVisible = show
-            if (!show) return
+            val sourceSettings = configurableSource()
+            val showFilterChip = list.entries.isNotEmpty() &&
+                (PickerFilter.showButton(shownRows, effectiveFilter()) || sourceSettings != null)
+            group.isVisible = show || showFilterChip || sourcePrefsOpened
+            if (show) bindAudioChips(group)
+            if (showFilterChip) group.addView(actionChip(group, filterChipText()) { openFilterPanel() })
+            if (sourcePrefsOpened) {
+                group.addView(actionChip(group, getString(R.string.picker_reload_sources)) {
+                    sourcePrefsOpened = false
+                    reloadSources?.invoke()
+                })
+            }
+        }
+
+        private fun filterChipText(): String {
+            val n = effectiveFilter().let { f -> FilterDimension.values().sumOf { f.values(it).size } }
+            return if (n > 0) getString(R.string.picker_filter_active, n) else getString(R.string.picker_filter)
+        }
+
+        /** A plain tap chip in the audio ChipGroup; not checkable, so the audio selection is untouched. */
+        private fun actionChip(
+            group: ViewGroup,
+            label: String,
+            onTap: () -> Unit,
+        ) = com.google.android.material.chip.Chip(group.context).apply {
+            id = View.generateViewId()
+            text = label
+            isCheckable = false
+            setOnClickListener { onTap() }
+        }
+
+        @SuppressLint("NotifyDataSetChanged")
+        private fun bindAudioChips(group: com.google.android.material.chip.ChipGroup) {
             val options = listOf<AudioKind?>(null) + AudioKindFilter.kinds(list.entries)
             options.forEach { kind ->
                 val count = AudioKindFilter.count(list.entries, kind)
@@ -1018,8 +1109,123 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                     ?: return@setOnCheckedStateChangeListener
                 filter = chip.tag as? AudioKind
                 filterChosenByUser = true
-                visible = AudioKindFilter.apply(list.entries, filter)
-                notifyDataSetChanged()
+                recompute()
+                onListChanged(AudioKindFilter.shouldShow(list.entries))
+            }
+        }
+
+        // ---- filter panel ---------------------------------------------------
+
+        private fun openFilterPanel() {
+            val ctx = context ?: return
+            val dialog = BottomSheetDialog(ctx)
+            val d = ctx.resources.displayMetrics.density
+            val column = android.widget.LinearLayout(ctx).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                val pad = (20 * d).toInt()
+                setPadding(pad, pad, pad, pad)
+            }
+            fun title(text: String, top: Int = 16) = android.widget.TextView(ctx).apply {
+                this.text = text
+                textSize = 15f
+                typeface = ResourcesCompat.getFont(ctx, R.font.poppins_semi_bold)
+                setPadding(0, (top * d).toInt(), 0, (4 * d).toInt())
+            }
+            column.addView(title(getString(R.string.picker_filter_title), top = 0).apply { textSize = 18f })
+            val options = PickerFilter.options(shownRows)
+            val titles = mapOf(
+                FilterDimension.RESOLUTION to R.string.picker_filter_resolution,
+                FilterDimension.CODEC to R.string.picker_filter_codec,
+                FilterDimension.HDR to R.string.picker_filter_hdr,
+                FilterDimension.GROUP to R.string.picker_filter_group,
+            )
+            for (dim in FilterDimension.values()) {
+                val values = options.getValue(dim)
+                val selected = effectiveFilter().values(dim)
+                if (values.size < 2 && selected.isEmpty()) continue
+                column.addView(title(getString(titles.getValue(dim))))
+                val chips = com.google.android.material.chip.ChipGroup(ctx)
+                values.forEach { value ->
+                    chips.addView(com.google.android.material.chip.Chip(ctx).apply {
+                        text = value
+                        isCheckable = true
+                        isChecked = value in selected
+                        setOnCheckedChangeListener { _, _ -> setFilterState(filterState.toggled(dim, value)) }
+                    })
+                }
+                column.addView(chips)
+            }
+            column.addView(title(getString(R.string.picker_sort)))
+            val sorts = com.google.android.material.chip.ChipGroup(ctx).apply {
+                isSingleSelection = true
+                isSelectionRequired = true
+            }
+            val sortLabels = mapOf(
+                PickerSort.DEFAULT to R.string.picker_sort_default,
+                PickerSort.SEEDERS to R.string.picker_sort_seeders,
+                PickerSort.SIZE to R.string.picker_sort_size,
+                PickerSort.QUALITY to R.string.picker_sort_quality,
+            )
+            PickerSort.values().forEach { sort ->
+                sorts.addView(com.google.android.material.chip.Chip(ctx).apply {
+                    id = View.generateViewId()
+                    text = getString(sortLabels.getValue(sort))
+                    isCheckable = true
+                    isChecked = filterState.sort == sort
+                    setOnCheckedChangeListener { _, checked ->
+                        if (checked && filterState.sort != sort) setFilterState(filterState.copy(sort = sort))
+                    }
+                })
+            }
+            column.addView(sorts)
+            val buttons = android.widget.LinearLayout(ctx).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                setPadding(0, (16 * d).toInt(), 0, 0)
+            }
+            buttons.addView(com.google.android.material.button.MaterialButton(
+                ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle,
+            ).apply {
+                text = getString(R.string.picker_filter_clear)
+                setOnClickListener {
+                    setFilterState(filterState.cleared())
+                    dialog.dismiss()
+                }
+            })
+            configurableSource()?.let { sourceId ->
+                buttons.addView(com.google.android.material.button.MaterialButton(
+                    ctx, null, com.google.android.material.R.attr.borderlessButtonStyle,
+                ).apply {
+                    text = getString(R.string.picker_source_filters)
+                    setOnClickListener {
+                        dialog.dismiss()
+                        openSourceFilters(sourceId)
+                    }
+                })
+            }
+            column.addView(buttons)
+            dialog.setContentView(androidx.core.widget.NestedScrollView(ctx).apply { addView(column) })
+            dialog.show()
+        }
+
+        /** Source id of the current extension's settings screen, or null when it has none. */
+        private fun configurableSource(): Long? {
+            val parser = model.watchSources?.get(media?.selected?.sourceIndex ?: 0) as? DynamicAnimeParser
+                ?: return null
+            val sources = parser.extension.sources
+            val current = sources.getOrNull(parser.sourceLanguage) as? ConfigurableAnimeSource
+            return (current ?: sources.filterIsInstance<ConfigurableAnimeSource>().firstOrNull())?.id
+        }
+
+        private fun openSourceFilters(sourceId: Long) {
+            try {
+                SourceFiltersHostDialog.newInstance(sourceId) {
+                    if (_binding == null || !isAdded) return@newInstance
+                    sourcePrefsOpened = true
+                    onListChanged(AudioKindFilter.shouldShow(list.entries))
+                }.show(childFragmentManager, SourceFiltersHostDialog.TAG)
+            } catch (e: Exception) {
+                Logger.log(e)
+                toast(getString(R.string.picker_source_filters_failed))
             }
         }
 
@@ -1050,7 +1256,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
         private fun keyOf(entry: PickerEntry): String =
             entry.refs.firstOrNull()?.let { ref ->
-                "${links.getOrNull(ref.extractor)?.server?.name}#${ref.video}"
+                "${shown.getOrNull(ref.extractor)?.server?.name}#${ref.video}"
             }.orEmpty()
 
         private fun bindExpand(button: View, details: android.widget.TextView, entry: PickerEntry, text: () -> String) {
@@ -1075,7 +1281,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             markBest(b.sourceCard, b.streamWhy, entry)
 
             val top = entry.primary.firstOrNull()
-            val topExtractor = top?.let { links.getOrNull(it.ref.extractor) }
+            val topExtractor = top?.let { shown.getOrNull(it.ref.extractor) }
             val subtitles = topExtractor?.subtitles.orEmpty()
             b.streamSub.isVisible = subtitles.isNotEmpty()
             if (topExtractor != null) actionsFor(topExtractor).setupRowSubtitleButton(b.streamSub, subtitles)
@@ -1106,7 +1312,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             }
             bindExpand(b.streamExpand, b.streamDetails, entry) {
                 (entry.primary + entry.alternates).joinToString("\n") { v ->
-                    val raw = links.getOrNull(v.ref.extractor)?.server?.name?.lineSequence()?.firstOrNull().orEmpty()
+                    val raw = shown.getOrNull(v.ref.extractor)?.server?.name?.lineSequence()?.firstOrNull().orEmpty()
                     listOfNotNull(v.label, v.transport).joinToString(" · ") + ": " + raw
                 }
             }
@@ -1151,7 +1357,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 isClickable = true
                 isFocusable = true
             }
-            val extractor = links.getOrNull(variant.ref.extractor)
+            val extractor = shown.getOrNull(variant.ref.extractor)
             if (extractor != null) {
                 val rowActions = actionsFor(extractor)
                 tv.setSafeOnClickListener {
@@ -1169,9 +1375,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
         private fun bindRelease(b: ItemSourceReleaseBinding, entry: PickerEntry.Release) {
             val ref = entry.row.ref
-            val extractor = links.getOrNull(ref.extractor) ?: return
+            val extractor = shown.getOrNull(ref.extractor) ?: return
             val video = extractor.videos.getOrNull(ref.video) ?: return
-            val viewModel = summarize(extractor, video)
+            val viewModel = shownViews[ref] ?: PickerRowsBuilder.defaultSummarize(extractor, video)
             val rowActions = actionsFor(extractor)
 
             val header = viewModel.header?.takeIf { it.isNotBlank() } ?: viewModel.displayLabel
