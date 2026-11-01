@@ -58,6 +58,17 @@ object StableCandidateBuilder {
         )
     }
 
+    /**
+     * "single" for a one-file torrent, the batch's info hash (32 hex chars, the payload's value
+     * cap) for a file picked out of a batch, so the next episode comes from the same batch.
+     * Only sources that send Editotsu data state this; others get null (not ranked).
+     */
+    fun packKey(server: VideoServer): String? {
+        val data = EditotsuInternalData.of(server.video) ?: return null
+        if (!data.isPack) return "single"
+        return data.infoHash?.lowercase()?.takeIf { it.length >= 32 }?.take(32) ?: "batch"
+    }
+
     fun familyCandidate(server: VideoServer): FamilyCandidate? {
         val provider = providerOf(server) ?: return null
         val exactKey = exactKey(provider, server) ?: return null
@@ -66,6 +77,7 @@ object StableCandidateBuilder {
         val soft = LinkedHashMap<String, String>()
         TrackerCanonicalizer.canonicalKey(meta.tracker)?.let { soft["trackerKey"] = it }
         StableSoftCanonicalizer.canonicalResolution(meta.resolution)?.let { soft["resolution"] = it }
+        packKey(server)?.let { soft["pack"] = it }
         StableSoftCanonicalizer.canonicalText(meta.softAudioMode)?.let { soft["audioMode"] = it }
         StableSoftCanonicalizer.canonicalText(meta.softAudioFormat)?.let { soft["audioFormat"] = it }
         SourceServiceCanonicalizer.canonicalKey(meta.sourceService)?.let { soft["sourceService"] = it }
