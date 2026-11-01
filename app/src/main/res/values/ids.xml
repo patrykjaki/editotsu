@@ -6,4 +6,6 @@
     <!-- LANE-B P1 (#41c): one-shot guard for the Recommended rail
          auto-pagination scroll listener. -->
     <item name="recommended_rail_pagination" type="id" />
+    <!-- Source picker: host for an extension's settings (feature/picker-v3-fixes) -->
+    <item name="source_filters_host_container" type="id" />
 </resources>

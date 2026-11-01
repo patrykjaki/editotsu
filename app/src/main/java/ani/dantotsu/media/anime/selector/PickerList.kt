@@ -36,6 +36,8 @@ data class PickerRow(
     val rememberedExact: Boolean = false,
     /** Matches the remembered release family (provider + group) for this anime. */
     val rememberedFamily: Boolean = false,
+    /** What the Filter panel filters and sorts by. */
+    val facets: RowFacets = RowFacets(),
 )
 
 data class QualityVariant(val ref: RowRef, val label: String, val resolution: Int?, val transport: String?)
