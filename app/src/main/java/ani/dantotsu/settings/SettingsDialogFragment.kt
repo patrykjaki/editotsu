@@ -91,7 +91,7 @@ class SettingsDialogFragment : BottomSheetDialogFragment() {
             binding.settingsUserAvatar.loadImage(if (isRescueMode) MAL.avatar else Anilist.avatar)
         } else {
             binding.settingsUsername.visibility = View.GONE
-            binding.settingsLogin.setText(R.string.login)
+            binding.settingsLogin.setText(R.string.account_login)
             binding.settingsLogin.setOnClickListener {
                 dismiss()
                 Anilist.loginIntent(requireActivity())
