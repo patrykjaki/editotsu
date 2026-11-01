@@ -7,6 +7,7 @@ import android.view.animation.LinearInterpolator
 import android.widget.LinearLayout
 import androidx.annotation.OptIn
 import androidx.core.view.isVisible
+import ani.dantotsu.settings.saving.PrefName
 import androidx.lifecycle.coroutineScope
 import androidx.media3.common.util.UnstableApi
 import androidx.recyclerview.widget.RecyclerView
@@ -131,7 +132,15 @@ class EpisodeAdapter(
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val ep = arr[position]
-        val title = if (!ep.title.isNullOrEmpty() && ep.title != "null") {
+        val shielded = EpisodeSpoilerShield.shields(
+            PrefManager.getVal(PrefName.HideEpisodeSpoilers),
+            MediaNameAdapter.findEpisodeNumber(ep.number) ?: ep.number.toFloatOrNull() ?: 9999f,
+            media.userProgress
+        )
+        // Spoiler shield: no own title, thumbnail or synopsis for unwatched episodes.
+        val thumbSource = if (shielded) null else ep.thumb
+        val desc = if (shielded) null else ep.desc
+        val title = if (shielded) ep.number else if (!ep.title.isNullOrEmpty() && ep.title != "null") {
             ep.title?.let { MediaNameAdapter.removeEpisodeNumber(it) }
         } else {
             ep.number
@@ -142,7 +151,7 @@ class EpisodeAdapter(
                 val binding = holder.binding
                 setAnimation(fragment.requireContext(), holder.binding.root)
 
-                val thumb = ep.thumb?.let {
+                val thumb = thumbSource?.let {
                     if (it.url.isNotEmpty()) {
                         if (it.url.startsWith("content://") || it.url.startsWith("file://")) {
                             it.url
@@ -178,9 +187,9 @@ class EpisodeAdapter(
                     binding.itemEpisodeDate.visibility = View.GONE
                 }
 
-                binding.itemEpisodeDesc.isVisible = !ep.desc.isNullOrBlank()
-                binding.itemEpisodeDesc.text = ep.desc ?: ""
-                holder.bind(ep.number, ep.downloadProgress, ep.desc)
+                binding.itemEpisodeDesc.isVisible = !desc.isNullOrBlank()
+                binding.itemEpisodeDesc.text = desc ?: ""
+                holder.bind(ep.number, ep.downloadProgress, desc)
 
                 val epNum = MediaNameAdapter.findEpisodeNumber(ep.number) ?: ep.number.toFloatOrNull() ?: 9999f
                 if (media.userProgress != null) {
@@ -213,7 +222,7 @@ class EpisodeAdapter(
                 val binding = holder.binding
                 setAnimation(fragment.requireContext(), holder.binding.root)
 
-                val thumb = ep.thumb?.let {
+                val thumb = thumbSource?.let {
                     if (it.url.isNotEmpty()) {
                         if (it.url.startsWith("content://") || it.url.startsWith("file://")) {
                             it.url

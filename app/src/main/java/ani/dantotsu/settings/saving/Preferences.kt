@@ -98,6 +98,7 @@ enum class PrefName(val data: Pref) {
     SkipExtensionIcons(Pref(Location.UI, Boolean::class, false)),
     DarkMode(Pref(Location.UI, Int::class, 0)),
     ShowYtButton(Pref(Location.UI, Boolean::class, true)),
+    HideEpisodeSpoilers(Pref(Location.UI, Boolean::class, false)),
     AnimeDefaultView(Pref(Location.UI, Int::class, 0)),
     MangaDefaultView(Pref(Location.UI, Int::class, 0)),
     BlurBanners(Pref(Location.UI, Boolean::class, true)),

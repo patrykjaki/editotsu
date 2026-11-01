@@ -140,6 +140,10 @@ class UserInterfaceSettingsActivity : AppCompatActivity() {
         binding.uiSettingsHideSpoilerTags.setOnCheckedChangeListener { _, isChecked ->
             PrefManager.setVal(PrefName.HideSpoilerTags, isChecked)
         }
+        binding.uiSettingsHideEpisodeSpoilers.isChecked = PrefManager.getVal(PrefName.HideEpisodeSpoilers)
+        binding.uiSettingsHideEpisodeSpoilers.setOnCheckedChangeListener { _, isChecked ->
+            PrefManager.setVal(PrefName.HideEpisodeSpoilers, isChecked)
+        }
 
         binding.uiSettingsImmersive.isChecked = PrefManager.getVal(PrefName.ImmersiveMode)
         binding.uiSettingsImmersive.setOnCheckedChangeListener { _, isChecked ->
