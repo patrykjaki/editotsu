@@ -34,7 +34,7 @@ class GlesShaderCompatTest {
         val out = GlesShaderCompat.patch(pass)
         assertFalse(out.lines().any { it.trimStart().startsWith("#extension") })
         assertFalse(out.contains("#ifdef GL_EXT_shader_explicit_arithmetic_types_float16"))
-        assertTrue(out.contains("#if 0 // editotsu-gles: was #ifdef GL_EXT_shader_explicit_arithmetic_types_float16"))
+        assertTrue(out.contains("#if 0 // editotsu-gles: replaces ifdef GL_EXT_shader_explicit_arithmetic_types_float16"))
         assertTrue(out.contains("#\tdefine F float\n"))
         assertEquals(pass.lines().size, out.lines().size)
     }

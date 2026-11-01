@@ -104,7 +104,13 @@ class CunnyBundleTest {
         )
         for ((profile, file) in expected) {
             val chain = provider.resolveShaderChain(profile)
-            assertEquals(File(filesDir, "upscaler/cunny/$file").absolutePath, chain)
+            // mpv gets the GLES-compatible derived copy (GlesShaderCompat); the installed
+            // bundle file stays byte-identical to upstream.
+            assertEquals(File(filesDir, "upscaler/cunny-gles-compat/$file").absolutePath, chain)
+            assertEquals(
+                GlesShaderCompat.patch(File(filesDir, "upscaler/cunny/$file").readText()),
+                File(chain!!).readText()
+            )
         }
         assertNull(provider.resolveShaderChain("unknown"))
     }
