@@ -337,9 +337,9 @@ class TorrentServerManager(private val context: Context) {
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_allowed_in_request_queue.swigValue(), 500)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_peerlist_size.swigValue(), 500)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_paused_peerlist_size.swigValue(), 200)
-            // Shallow per-peer request queues (~1 s of data, default 3 s): a newly urgent
-            // piece (head, seek target) no longer waits behind seconds of queued blocks.
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.request_queue_time.swigValue(), 1)
+            // request_queue_time stays at libtorrent's default (3 s). 1 s (WebTorrent's value)
+            // was tried in 4a50318f but never benched cleanly; deep queues are what
+            // anacrolix/torrent (TorrServer, 2x our throughput) uses too.
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.request_timeout.swigValue(), 10)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.peer_connect_timeout.swigValue(), 7)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.piece_timeout.swigValue(), 5)

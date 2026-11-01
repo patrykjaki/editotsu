@@ -102,4 +102,14 @@ class StreamWindowPlannerTest {
         assertEquals((0..31).toList() + listOf(698, 699, 700), wide.raise.map { it.first })
         assertTrue(wide.demote.isEmpty())
     }
+
+    @Test
+    fun `only the nearest pieces and the tail get deadlines`() {
+        val tail = setOf(698, 699, 700)
+        val p = StreamWindowPlanner(0, 700, 2 * mb, protectedPieces = tail)
+        val plan = p.plan(100)
+        val withDeadline = plan.deadlined(tail).map { it.first }
+        assertEquals((100 until 100 + StreamWindowPlanner.CRITICAL_PIECES).toList() + tail.toList(), withDeadline)
+        assertEquals(32 + tail.size, plan.raise.size) // the whole window is still raised
+    }
 }
