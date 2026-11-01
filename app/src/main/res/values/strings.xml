@@ -197,6 +197,24 @@
     <string name="offline_mode">Offline Mode</string>
     <string name="settings">Settings</string>
     <string name="extensions">Extensions</string>
+    <!-- Extensions screen redesign (feature/extensions-redesign) -->
+    <string name="extensions_type_anime">Anime</string>
+    <string name="extensions_type_manga">Manga</string>
+    <string name="extensions_type_novel">Novel</string>
+    <string name="extensions_filter_installed">Installed</string>
+    <string name="extensions_filter_available">Available</string>
+    <string name="extensions_more_options">More options</string>
+    <string name="extensions_menu_repositories">Repositories</string>
+    <string name="extensions_menu_language">Language</string>
+    <string name="extensions_menu_test">Test extensions</string>
+    <string name="extensions_row_settings">Settings</string>
+    <string name="extensions_row_uninstall">Uninstall</string>
+    <string name="extensions_row_update">Update</string>
+    <string name="extensions_row_install">Install</string>
+    <string name="extensions_uninstall_title">Uninstall %1$s?</string>
+    <string name="extensions_uninstalled">Extension uninstalled</string>
+    <string name="extensions_select_source">Select a source</string>
+    <string name="extensions_not_configurable">This source has no settings</string>
     <string name="extension_updates_available">Extension updates available</string>
     <string name="player_settings">Player Settings</string>
     <string name="recentlyListOnly">Only show my content in \"Recently Updated\"</string>

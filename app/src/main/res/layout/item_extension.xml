@@ -28,7 +28,7 @@
         tools:ignore="ContentDescription" />
 
     <LinearLayout
-        android:layout_width="245dp"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_gravity="center_vertical"
         android:layout_weight="1"
@@ -47,9 +47,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:fontFamily="@font/poppins_semi_bold"
+            android:alpha="0.7"
             android:text="@string/extension_version"
-            android:textSize="10sp"
-            tools:ignore="SmallSp" />
+            android:textSize="12sp" />
     </LinearLayout>
 
     <TextView
@@ -74,30 +74,36 @@
 
     <ImageView
         android:id="@+id/updateTextView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:padding="10dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
         android:layout_gravity="center_vertical"
         android:layout_weight="0"
-        android:layout_marginEnd="10dp"
+        android:layout_marginEnd="4dp"
         android:src="@drawable/ic_round_sync_24"
         app:tint="?attr/colorOnBackground"
         tools:ignore="ContentDescription" />
 
     <ImageView
         android:id="@+id/deleteTextView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:padding="10dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
         android:layout_gravity="center_vertical"
         android:layout_weight="0"
-        android:layout_marginEnd="10dp"
+        android:layout_marginEnd="4dp"
         android:src="@drawable/ic_round_delete_24"
         app:tint="?attr/colorOnBackground"
         tools:ignore="ContentDescription" />
 
     <ImageView
         android:id="@+id/settingsImageView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:padding="10dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
         android:layout_gravity="center_vertical"
         android:layout_marginEnd="10dp"
         android:layout_weight="0"
