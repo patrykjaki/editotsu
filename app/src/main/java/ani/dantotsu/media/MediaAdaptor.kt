@@ -139,8 +139,7 @@ class MediaAdaptor(
                             media.status == b.root.context.getString(R.string.status_releasing)
                         b.itemCompactTitle.text = media.userPreferredName
                         b.itemCompactScore.text =
-                            ((if (media.userScore == 0) (media.meanScore
-                                ?: 0) else media.userScore) / 10.0).toString()
+                            ani.dantotsu.connections.anilist.cardScoreText(media.userScore, media.meanScore)
                         b.itemCompactScoreBG.background = ContextCompat.getDrawable(
                             b.root.context,
                             (if (media.userScore != 0) R.drawable.item_user_score else R.drawable.item_score)
@@ -201,8 +200,7 @@ class MediaAdaptor(
                         media.status == b.root.context.getString(R.string.status_releasing)
                     b.itemCompactTitle.text = media.userPreferredName
                     b.itemCompactScore.text =
-                        ((if (media.userScore == 0) (media.meanScore
-                            ?: 0) else media.userScore) / 10.0).toString()
+                        ani.dantotsu.connections.anilist.cardScoreText(media.userScore, media.meanScore)
                     b.itemCompactScoreBG.background = ContextCompat.getDrawable(
                         b.root.context,
                         (if (media.userScore != 0) R.drawable.item_user_score else R.drawable.item_score)
@@ -259,8 +257,7 @@ class MediaAdaptor(
                     b.itemCompactTitle.text = media.userPreferredName
                     bindCarouselLogo(media, b.itemCompactTitle, b.itemCompactLogo)
                     b.itemCompactScore.text =
-                        ((if (media.userScore == 0) (media.meanScore
-                            ?: 0) else media.userScore) / 10.0).toString()
+                        ani.dantotsu.connections.anilist.cardScoreText(media.userScore, media.meanScore)
                     b.itemCompactScoreBG.background = ContextCompat.getDrawable(
                         b.root.context,
                         (if (media.userScore != 0) R.drawable.item_user_score else R.drawable.item_score)
@@ -318,8 +315,7 @@ class MediaAdaptor(
                         b.itemCompactLogoContainer
                     )
                     b.itemCompactScore.text =
-                        ((if (media.userScore == 0) (media.meanScore
-                            ?: 0) else media.userScore) / 10.0).toString()
+                        ani.dantotsu.connections.anilist.cardScoreText(media.userScore, media.meanScore)
                     b.itemCompactScoreBG.background = ContextCompat.getDrawable(
                         b.root.context,
                         (if (media.userScore != 0) R.drawable.item_user_score else R.drawable.item_score)

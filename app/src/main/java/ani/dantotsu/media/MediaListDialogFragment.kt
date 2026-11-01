@@ -119,13 +119,11 @@ class MediaListDialogFragment : BottomSheetDialogFragment() {
                     binding.mediaListVolumeProgressLayout.visibility = View.GONE
                 }
 
-                binding.mediaListScore.setText(
-                    if (media!!.userScore != 0) media!!.userScore.div(
-                        10.0
-                    ).toString() else ""
-                )
-                binding.mediaListScore.filters =
-                    arrayOf(InputFilterMinMax(0.0, 10.0), LengthFilter(10.0.toString().length))
+                val scoreField = ScoreFieldBinder(
+                    binding.mediaListScore,
+                    binding.mediaListScoreLayout,
+                    media!!.userScore
+                ).also { it.bind() }
                 binding.mediaListScoreLayout.suffixTextView.updateLayoutParams {
                     height = ViewGroup.LayoutParams.MATCH_PARENT
                 }
@@ -257,7 +255,8 @@ class MediaListDialogFragment : BottomSheetDialogFragment() {
 
                 binding.mediaListSave.setOnClickListener {
                     val progressText = binding.mediaListProgress.text.toString()
-                    val scoreText = binding.mediaListScore.text.toString()
+                    val score = scoreField.rawToSave()
+                    val malScore = scoreField.rawForMal()
                     val statusText = binding.mediaListStatus.text.toString()
                     val rewatchText = binding.mediaListRewatch.text?.toString()
                     val notesText = binding.mediaListNotes.text?.toString()
@@ -266,9 +265,6 @@ class MediaListDialogFragment : BottomSheetDialogFragment() {
                             if (media != null) {
                                 val progress =
                                     _binding?.mediaListProgress?.text.toString().toIntOrNull()
-                                val score =
-                                    (_binding?.mediaListScore?.text.toString().toDoubleOrNull()
-                                        ?.times(10))?.toInt()
                                 val progressVolumes =
                                     _binding?.mediaListVolumeProgress?.text.toString().toIntOrNull()
                                 val status =
@@ -317,7 +313,7 @@ class MediaListDialogFragment : BottomSheetDialogFragment() {
                                     media!!.idMAL,
                                     media!!.anime != null,
                                     progress,
-                                    score,
+                                    malScore,
                                     status,
                                     rewatch,
                                     startD,
