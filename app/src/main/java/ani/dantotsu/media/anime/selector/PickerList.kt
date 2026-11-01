@@ -76,7 +76,15 @@ data class PickerList(
     val bestIndex: Int,
     /** A family is remembered for this anime, but no row belongs to it. */
     val rememberedFamilyMissing: Boolean,
-)
+) {
+    /**
+     * True only for the one row picked from memory (exact pick or the single
+     * row of the remembered group). Its quality button is the filled one;
+     * an extension-preferred best match or ties fill nothing.
+     */
+    fun isRememberedQuality(ref: RowRef): Boolean =
+        best != null && best.reason != BestReason.EXTENSION_PREFERRED && best.ref == ref
+}
 
 object AudioKindDetector {
     private val DUAL = Regex("""(?i)\b(dual[\s._-]?audio|dual|multi[\s._-]?audio)\b""")
@@ -390,15 +398,8 @@ object CompactDetails {
     }
 
     /**
-     * Torrentio-style text: line 1 is the release name; when a second,
-     * non-metadata line ends in a video extension it is the file to play.
+     * Torrentio-style text: the first non-metadata line is the release
+     * name; a later one ending in a video extension is the file to play.
      */
-    fun fileLine(qualityText: String): String? {
-        val lines = qualityText.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        if (lines.size < 2) return null
-        val candidate = lines[1]
-        return candidate.takeIf { VIDEO_EXT.containsMatchIn(it) }
-    }
-
-    private val VIDEO_EXT = Regex("""(?i)\.(mkv|mp4|avi|m2ts|ts|webm)\s*$""")
+    fun fileLine(qualityText: String): String? = SourceRowClassifier.fileNameLine(qualityText)
 }
