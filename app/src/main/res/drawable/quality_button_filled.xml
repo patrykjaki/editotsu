@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Highest quality in a stream card: filled primary container. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?attr/colorControlHighlight">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorPrimaryContainer" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+</ripple>
