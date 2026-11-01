@@ -130,19 +130,30 @@ object MediaNameAdapter {
     }
 
 
+    /**
+     * Strips the episode label from an episode title for display
+     * ("Episode 3 - Title" -> "- Title", "12. Title" -> "Title").
+     *
+     * The "e"/"ep" prefix must not follow a letter, so a word ending in "e"
+     * keeps its number ("Phase 2" stays "Phase 2", not "Phas").
+     * Without an episode label only a LEADING number is removed. The old
+     * fallback removed every standalone number, so "To You, in 2000 Years"
+     * and "The Fall of Shiganshina (1)" lost their numbers in the player.
+     */
     fun removeEpisodeNumberCompletely(text: String): String {
-        val regexPattern = Regex(REGEX_EPISODE, RegexOption.IGNORE_CASE)
-        val removedNumber = text.replace(regexPattern, "")
+        val removedNumber = text.replace(TITLE_EPISODE_LABEL, "")
         return if (removedNumber.equals(text, true)) {  // if nothing was removed
-            val failedEpisodeNumberPattern =
-                Regex(REGEX_PART_NUMBER, RegexOption.IGNORE_CASE)
-            failedEpisodeNumberPattern.replace(removedNumber) { mr ->
-                mr.value.replaceFirst(mr.groupValues[1], "")
-            }
+            text.replace(TITLE_LEADING_NUMBER, "")
         } else {
             removedNumber
         }
     }
+
+    private val TITLE_EPISODE_LABEL =
+        Regex("(?<![a-z])$REGEX_EPISODE", RegexOption.IGNORE_CASE)
+
+    /** A leading "12", "12.", "12 -", "12:" (also "12.5") before the title text. */
+    private val TITLE_LEADING_NUMBER = Regex("^\\s*\\d+(?:\\.\\d+)?(?:\\s*[:.\\-]\\s*|\\s+|$)")
 
     fun findChapterNumber(text: String): Float? {
         val pattern: Pattern = Pattern.compile(REGEX_CHAPTER, Pattern.CASE_INSENSITIVE)

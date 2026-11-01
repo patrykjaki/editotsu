@@ -1861,10 +1861,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
  * LANE-A P0 (slider snap): clamps a user-typed skip time into the dialog
  * range and snaps it to the slider step grid, so assigning
  * `Slider.value` can never throw IllegalArgumentException. Step/max mirror
- * `item_seekbar_dialog.xml` (stepSize 5, 0..120); player behavior otherwise
- * unchanged (long-press still writes the snapped value back to prefs).
+ * `item_seekbar_dialog.xml` (stepSize 1 since upstream 55501e6e, 0..120); player
+ * behavior otherwise unchanged (long-press still writes the snapped value back to prefs).
  */
-fun snapSkipSliderValue(skipTime: Int, step: Float = 5f, max: Float = 120f): Float {
+fun snapSkipSliderValue(skipTime: Int, step: Float = 1f, max: Float = 120f): Float {
     val clamped = skipTime.toFloat().coerceIn(0f, max)
     return kotlin.math.round(clamped / step) * step
 }
