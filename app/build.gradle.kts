@@ -38,6 +38,39 @@ require(workstreamId == "local-debug" || workstreamIdPattern.matches(workstreamI
 val shortWorkstreamId = workstreamId.substringBefore("@")
 val torrentBench = providers.gradleProperty("editotsu.torrentBench").orNull == "true"
 
+// Opt-in arm64 libtorrent4j override for torrent A/B tests (task 7/8 rig):
+// -Peditotsu.libtorrentArm64Jar=/abs/path/to/libtorrent4j-android-arm64-*.jar
+// The jar lives outside git (~/.editotsu/vendor/<name>/) next to its
+// provenance.json and verify_artifact.py; preBuild fails unless the verifier
+// accepts the exact jar. Unset (the default) keeps the Maven artifact.
+val libtorrentArm64JarOverride: File? = providers.gradleProperty("editotsu.libtorrentArm64Jar")
+    .orNull?.trim()?.takeIf { it.isNotEmpty() }?.let { file(it) }
+if (libtorrentArm64JarOverride != null) {
+    val vendorDir = libtorrentArm64JarOverride.parentFile
+    require(libtorrentArm64JarOverride.isFile) {
+        "editotsu.libtorrentArm64Jar: no such file: $libtorrentArm64JarOverride"
+    }
+    require(File(vendorDir, "provenance.json").isFile && File(vendorDir, "verify_artifact.py").isFile) {
+        "editotsu.libtorrentArm64Jar: provenance.json and verify_artifact.py must sit next to the jar"
+    }
+    val verifyLibtorrentArm64Override by tasks.registering(Exec::class) {
+        group = "verification"
+        description = "Fails unless the overriding arm64 libtorrent4j jar matches its provenance."
+        inputs.file(libtorrentArm64JarOverride)
+        inputs.file(File(vendorDir, "provenance.json"))
+        inputs.file(File(vendorDir, "verify_artifact.py"))
+        commandLine(
+            "python3", "-I", File(vendorDir, "verify_artifact.py").absolutePath,
+            "--manifest", File(vendorDir, "provenance.json").absolutePath,
+            "--jar", libtorrentArm64JarOverride.absolutePath
+        )
+    }
+    tasks.configureEach {
+        if (name == "preBuild") dependsOn(verifyLibtorrentArm64Override)
+    }
+}
+val libtorrentNativeLabel = libtorrentArm64JarOverride?.nameWithoutExtension ?: "maven"
+
 val malClientId: String = (project.findProperty("malClientId") as? String)
     ?.takeIf { it.isNotBlank() }
     ?: System.getenv("MAL_CLIENT_ID")?.takeIf { it.isNotBlank() }
@@ -73,6 +106,7 @@ android {
         resValue("string", "app_build_label", "Editotsu")
         // Torrent bench hook (task 7 rig): off unless -Peditotsu.torrentBench=true.
         buildConfigField("boolean", "TORRENT_BENCH", torrentBench.toString())
+        buildConfigField("String", "LIBTORRENT_ARM64", "\"$libtorrentNativeLabel\"")
     }
 
     // ------------------------------------------------------------------
@@ -372,7 +406,11 @@ dependencies {
     // libtorrent
     implementation(libs.libtorrent4j)
     implementation(libs.libtorrent4j.android.arm)
-    implementation(libs.libtorrent4j.android.arm64)
+    if (libtorrentArm64JarOverride != null) {
+        implementation(files(libtorrentArm64JarOverride))
+    } else {
+        implementation(libs.libtorrent4j.android.arm64)
+    }
     implementation(libs.libtorrent4j.android.x86)
     implementation(libs.libtorrent4j.android.x86.x64)
 

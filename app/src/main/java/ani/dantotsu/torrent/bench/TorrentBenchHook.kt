@@ -56,7 +56,7 @@ object TorrentBenchHook {
             null,
             ContextCompat.RECEIVER_EXPORTED
         )
-        Log.i(TAG, "event=installed")
+        Log.i(TAG, "event=installed libtorrentArm64=${ani.dantotsu.BuildConfig.LIBTORRENT_ARM64}")
     }
 
     private fun handle(app: Context, intent: Intent) {
