@@ -115,7 +115,7 @@ data class AnimeId(
     @SerialName("anilist_id") val anilistId: Int? = null,
     @SerialName("mal_id") val malIdElement: JsonElement? = null,
     @SerialName("simkl_id") val simklId: Int? = null,
-    @SerialName("themoviedb_id") val tmdbId: Int? = null,
+    @SerialName("themoviedb_id") val tmdbIdElement: JsonElement? = null,
     @SerialName("imdb_id") val imdbIdElement: JsonElement? = null,
     @SerialName("kitsu_id") val kitsuId: Int? = null,
     @SerialName("anidb_id") val anidbId: Int? = null,
@@ -132,6 +132,17 @@ data class AnimeId(
         get() = when (val el = malIdElement) {
             is JsonPrimitive -> el.intOrNull
             is JsonArray -> el.firstOrNull()?.jsonPrimitive?.intOrNull
+            else -> null
+        }
+    /**
+     * TMDB TV id. The mapper sends `{"tv": 1429}`; older payloads send a
+     * number or numeric string. A movie-only object yields null: every
+     * caller looks up a TV show (TheIntroDB type=tv, TMDB /tv/ episodes).
+     */
+    val tmdbId: Int?
+        get() = when (val el = tmdbIdElement) {
+            is JsonPrimitive -> el.intOrNull ?: el.contentOrNull?.toIntOrNull()
+            is JsonObject -> (el["tv"] as? JsonPrimitive)?.let { it.intOrNull ?: it.contentOrNull?.toIntOrNull() }
             else -> null
         }
     val imdbId: String?
