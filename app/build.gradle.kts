@@ -38,38 +38,51 @@ require(workstreamId == "local-debug" || workstreamIdPattern.matches(workstreamI
 val shortWorkstreamId = workstreamId.substringBefore("@")
 val torrentBench = providers.gradleProperty("editotsu.torrentBench").orNull == "true"
 
-// Opt-in arm64 libtorrent4j override for torrent A/B tests (task 7/8 rig):
-// -Peditotsu.libtorrentArm64Jar=/abs/path/to/libtorrent4j-android-arm64-*.jar
-// The jar lives outside git (~/.editotsu/vendor/<name>/) next to its
-// provenance.json and verify_artifact.py; preBuild fails unless the verifier
-// accepts the exact jar. Unset (the default) keeps the Maven artifact.
+// arm64 libtorrent4j native. Default: the CP1.5-B "c2" build checked in at
+// app/libs (built-in hashing, WebTorrent off; ELF build id d54b24f5...), which
+// doesn't hit the Scudo abort the Maven 2.1.0-39 native hits when a torrent
+// with files on disk is added again (state/_audit_2026-11-01/c2-ab/RESULT.md).
+// Its pinned source + rebuild recipe live in native/libtorrent4j-arm64-c2/.
+//   -Peditotsu.libtorrentArm64=maven             use the Maven artifact (A/B)
+//   -Peditotsu.libtorrentArm64Jar=/abs/path.jar  another jar; provenance.json and
+//                                                verify_artifact.py must sit next to it
+// Every jar build runs the verifier in preBuild and fails unless the jar matches
+// its recorded SHA-256, ELF build id and DT_NEEDED.
+val libtorrentArm64UseMaven = providers.gradleProperty("editotsu.libtorrentArm64").orNull == "maven"
 val libtorrentArm64JarOverride: File? = providers.gradleProperty("editotsu.libtorrentArm64Jar")
     .orNull?.trim()?.takeIf { it.isNotEmpty() }?.let { file(it) }
-if (libtorrentArm64JarOverride != null) {
-    val vendorDir = libtorrentArm64JarOverride.parentFile
-    require(libtorrentArm64JarOverride.isFile) {
-        "editotsu.libtorrentArm64Jar: no such file: $libtorrentArm64JarOverride"
+val libtorrentArm64Jar: File? = when {
+    libtorrentArm64UseMaven -> null
+    libtorrentArm64JarOverride != null -> libtorrentArm64JarOverride
+    else -> file("libs/libtorrent4j-android-arm64-2.1.0-39-cp1.5b-c2.jar")
+}
+if (libtorrentArm64Jar != null) {
+    val inRepo = libtorrentArm64JarOverride == null
+    val manifest = if (inRepo) rootProject.file("native/libtorrent4j-arm64-c2/provenance.json")
+        else File(libtorrentArm64Jar.parentFile, "provenance.json")
+    val verifier = if (inRepo) rootProject.file("native/libtorrent4j-arm64-c2/verify_artifact.py")
+        else File(libtorrentArm64Jar.parentFile, "verify_artifact.py")
+    require(libtorrentArm64Jar.isFile) { "arm64 libtorrent4j jar missing: $libtorrentArm64Jar" }
+    require(manifest.isFile && verifier.isFile) {
+        "arm64 libtorrent4j jar needs provenance.json and verify_artifact.py: $manifest, $verifier"
     }
-    require(File(vendorDir, "provenance.json").isFile && File(vendorDir, "verify_artifact.py").isFile) {
-        "editotsu.libtorrentArm64Jar: provenance.json and verify_artifact.py must sit next to the jar"
-    }
-    val verifyLibtorrentArm64Override by tasks.registering(Exec::class) {
+    val verifyLibtorrentArm64 by tasks.registering(Exec::class) {
         group = "verification"
-        description = "Fails unless the overriding arm64 libtorrent4j jar matches its provenance."
-        inputs.file(libtorrentArm64JarOverride)
-        inputs.file(File(vendorDir, "provenance.json"))
-        inputs.file(File(vendorDir, "verify_artifact.py"))
+        description = "Fails unless the arm64 libtorrent4j jar matches its provenance."
+        inputs.file(libtorrentArm64Jar)
+        inputs.file(manifest)
+        inputs.file(verifier)
         commandLine(
-            "python3", "-I", File(vendorDir, "verify_artifact.py").absolutePath,
-            "--manifest", File(vendorDir, "provenance.json").absolutePath,
-            "--jar", libtorrentArm64JarOverride.absolutePath
+            "python3", "-I", verifier.absolutePath,
+            "--manifest", manifest.absolutePath,
+            "--jar", libtorrentArm64Jar.absolutePath
         )
     }
     tasks.configureEach {
-        if (name == "preBuild") dependsOn(verifyLibtorrentArm64Override)
+        if (name == "preBuild") dependsOn(verifyLibtorrentArm64)
     }
 }
-val libtorrentNativeLabel = libtorrentArm64JarOverride?.nameWithoutExtension ?: "maven"
+val libtorrentNativeLabel = libtorrentArm64Jar?.nameWithoutExtension ?: "maven"
 
 val malClientId: String = (project.findProperty("malClientId") as? String)
     ?.takeIf { it.isNotBlank() }
@@ -406,8 +419,8 @@ dependencies {
     // libtorrent
     implementation(libs.libtorrent4j)
     implementation(libs.libtorrent4j.android.arm)
-    if (libtorrentArm64JarOverride != null) {
-        implementation(files(libtorrentArm64JarOverride))
+    if (libtorrentArm64Jar != null) {
+        implementation(files(libtorrentArm64Jar))
     } else {
         implementation(libs.libtorrent4j.android.arm64)
     }

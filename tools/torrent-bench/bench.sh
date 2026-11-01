@@ -2,6 +2,8 @@
 # Torrent bench driver (task 7 rig). Layer 1: engine + relay, no player UI.
 #
 # usage: tools/torrent-bench/bench.sh <list-file> <runs> <out-dir>
+#   KEEP_PAYLOAD=1 keeps downloaded files between runs (the app's normal path:
+#   re-adding a cached torrent); default deletes them so every run starts cold.
 #   list-file: one magnet or .torrent URL per line; '#' comments ignored.
 #   The app must be a build with -Peditotsu.torrentBench=true, installed as
 #   $PKG, and the caller must hold the device lease.
@@ -20,6 +22,7 @@ LIST=${1:?list file}; RUNS=${2:?runs}; OUT=${3:?out dir}
 PKG=${PKG:-ani.editotsu}
 SERIAL=${SERIAL:-192.168.1.76:44323}
 LOCAL_PORT=${LOCAL_PORT:-18765}
+KEEP_PAYLOAD=${KEEP_PAYLOAD:-0}
 ADD_TIMEOUT=${ADD_TIMEOUT:-90}
 RANGE_TIMEOUT=${RANGE_TIMEOUT:-120}
 MIB=1048576
@@ -27,7 +30,7 @@ A="adb -s $SERIAL"
 
 mkdir -p "$OUT"
 CSV="$OUT/results.csv"
-[ -f "$CSV" ] || echo "label,run,hash,files,len,metaMs,head_code,head_ttfb,head_total,tput_bytes,tput_secs,mid_code,mid_ttfb,mid_total,tail_code,tail_ttfb,tail_total,removed,native_abort,pid_changed,note" > "$CSV"
+[ -f "$CSV" ] || echo "label,run,keep,hash,files,len,metaMs,head_code,head_ttfb,head_total,tput_bytes,tput_secs,mid_code,mid_ttfb,mid_total,tail_code,tail_ttfb,tail_total,removed,native_abort,pid_changed,note" > "$CSV"
 
 phone_epoch() { $A shell date +%s.%3N | tr -d '\r'; }
 
@@ -81,8 +84,8 @@ while IFS= read -r uri <&3; do
       tstart=$((len > MIB ? len - MIB : 0)); tail=$(range "$L" $tstart $((len - 1)))
       $A forward --remove tcp:$LOCAL_PORT >/dev/null 2>&1
       rsince=$(phone_epoch)
-      $A shell am broadcast -a ani.editotsu.bench.TORRENT -p "$PKG" --es cmd remove --es hash "$hash" >/dev/null
-      r=$(wait_bench "$rsince" "event=removed" 60) && removed=$(kv "$r" payloadDeleted) || removed="timeout"
+      $A shell am broadcast -a ani.editotsu.bench.TORRENT -p "$PKG" --es cmd remove --es hash "$hash" --ez keepPayload $([ "$KEEP_PAYLOAD" = 1 ] && echo true || echo false) >/dev/null
+      r=$(wait_bench "$rsince" "event=removed" 90) && removed=$(kv "$r" payloadDeleted) || removed="timeout"
     else
       if [ -n "$added" ]; then note="${note:+$note;}$(kv "$added" event)"; else note="${note:+$note;}add_timeout"; fi
     fi
@@ -94,7 +97,7 @@ while IFS= read -r uri <&3; do
     set -- $head; hc=${1:-}; ht=${2:-}; hT=${3:-}
     set -- $mid;  mc=${1:-}; mt=${2:-}; mT=${3:-}
     set -- $tail; tc=${1:-}; tt=${2:-}; tT=${3:-}
-    echo "$label,$run,$hash,$files,$len,$meta,$hc,$ht,$hT,$tput_b,$tput_s,$mc,$mt,$mT,$tc,$tt,$tT,$removed,$abort,$pidc,$note" | tee -a "$CSV"
+    echo "$label,$run,$KEEP_PAYLOAD,$hash,$files,$len,$meta,$hc,$ht,$hT,$tput_b,$tput_s,$mc,$mt,$mT,$tc,$tt,$tT,$removed,$abort,$pidc,$note" | tee -a "$CSV"
     if [ "$abort" = yes ]; then
       echo "native abort on $label run $run; stopping this torrent's series" >&2
       break
