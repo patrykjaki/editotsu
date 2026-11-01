@@ -166,6 +166,19 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private lateinit var exoSkipOpEd: ImageButton
     private lateinit var exoPip: ImageButton
     private lateinit var exoScreenshot: ImageButton
+    private lateinit var exoSleepTimer: ImageButton
+    private val sleepTimer = SleepTimer()
+    private val sleepTimerHandler = Handler(Looper.getMainLooper())
+    private val sleepTimerFire = Runnable {
+        if (sleepTimer.onDeadline(java.lang.System.currentTimeMillis())) {
+            playerManager.playbackEngine?.let { engine ->
+                saveActivePosition()
+                engine.pause()
+            }
+            toast(getString(R.string.sleep_timer_paused))
+            exoSleepTimer.alpha = 1f
+        }
+    }
     private lateinit var exoBrightness: Slider
     private lateinit var exoVolume: Slider
     private lateinit var exoBrightnessCont: View
@@ -319,6 +332,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         exoVolumeCont = playerView.findViewById(R.id.exo_volume_cont)
         exoPip = playerView.findViewById(R.id.exo_pip)
         exoScreenshot = playerView.findViewById(R.id.exo_screenshot)
+        exoSleepTimer = playerView.findViewById(R.id.exo_sleep_timer)
         exoSkipOpEd = playerView.findViewById(R.id.exo_skip_op_ed)
         exoSkip = playerView.findViewById(R.id.exo_skip)
         skipTimeButton = playerView.findViewById(R.id.exo_skip_timestamp)
@@ -543,6 +557,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         exoScreenshot.setOnClickListener {
             takePlayerScreenshot()
         }
+        exoSleepTimer.setOnClickListener { showSleepTimerDialog() }
 
         // Lock button
         val container = playerView.findViewById<View>(R.id.exo_controller_cont)
@@ -1297,6 +1312,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 if (watchThresholdMet) {
                     progressManager.updateAniProgress(forceComplete = true)
                 }
+                if (nearPhysicalEnd && sleepTimer.onEpisodeEnded()) {
+                    exoSleepTimer.alpha = 1f
+                    toast(getString(R.string.sleep_timer_stopped))
+                    return
+                }
                 val decision = AutoplayPolicy.decide(
                     autoPlayOn = PrefManager.getVal<Boolean>(PrefName.AutoPlay),
                     nearPhysicalEnd = nearPhysicalEnd,
@@ -1826,7 +1846,48 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         autoplayIdleHandler.postDelayed(autoplayIdleReset, AutoplayPolicy.IDLE_TIMEOUT_MS)
     }
 
+    private fun showSleepTimerDialog() {
+        val choices = SleepTimer.CHOICES_MINUTES
+        val labels = choices.map {
+            when {
+                it == 0 -> getString(R.string.sleep_timer_off)
+                it < 0 -> getString(R.string.sleep_timer_end_of_episode)
+                else -> getString(R.string.sleep_timer_minutes, it)
+            }
+        }.toTypedArray()
+        val current = when (sleepTimer.mode) {
+            SleepTimer.Mode.Off -> 0
+            SleepTimer.Mode.EndOfEpisode -> choices.indexOf(-1)
+            is SleepTimer.Mode.At -> -1
+        }
+        customAlertDialog().apply {
+            setTitle(getString(R.string.sleep_timer))
+            singleChoiceItems(labels, current) { i ->
+                val minutes = choices[i]
+                sleepTimerHandler.removeCallbacks(sleepTimerFire)
+                when {
+                    minutes == 0 -> {
+                        sleepTimer.cancel()
+                        toast(getString(R.string.sleep_timer_cancelled))
+                    }
+                    minutes < 0 -> {
+                        sleepTimer.setEndOfEpisode()
+                        toast(getString(R.string.sleep_timer_set_episode))
+                    }
+                    else -> {
+                        sleepTimer.setMinutes(minutes, java.lang.System.currentTimeMillis())
+                        sleepTimerHandler.postDelayed(sleepTimerFire, minutes * 60_000L)
+                        toast(getString(R.string.sleep_timer_set_minutes, minutes))
+                    }
+                }
+                exoSleepTimer.alpha = if (sleepTimer.mode == SleepTimer.Mode.Off) 1f else 0.6f
+            }
+            show()
+        }
+    }
+
     override fun onDestroy() {
+        sleepTimerHandler.removeCallbacks(sleepTimerFire)
         autoplayIdleHandler.removeCallbacks(autoplayIdleReset)
         unregisterPipReceiver()
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
