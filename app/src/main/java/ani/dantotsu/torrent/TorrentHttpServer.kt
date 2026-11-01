@@ -31,6 +31,8 @@ class TorrentHttpServer(
     private val streamSessionCounter = AtomicLong(0L)
     private val activeSockets = ConcurrentHashMap.newKeySet<Socket>()
     private val activeStreamOwners = ConcurrentHashMap<Pair<String, Int>, String>()
+    /** Window planner of the current owner per stream, so a superseded owner keeps its pieces. */
+    private val activePlanners = ConcurrentHashMap<Pair<String, Int>, StreamWindowPlanner>()
     private val reannounceLimiter = ReannounceLimiter()
     private val executor = ThreadPoolExecutor(
         8, 32, 60L, TimeUnit.SECONDS,
@@ -269,13 +271,14 @@ class TorrentHttpServer(
                     deadlineRegistry?.registerDeadline(piece, clientSessionId, StreamWindowPlanner.deadlineFor(i).toLong())
                 }
             }
-            fun applyWindow(playhead: Int) {
+            if (!sideRead) activePlanners[streamKey] = planner
+            fun applyWindow(playhead: Int, headFirst: Boolean = false) {
                 if (sideRead) {
                     applySideWindow(playhead)
                     return
                 }
                 if (!isOwner()) return
-                val plan = planner.plan(playhead)
+                val plan = planner.plan(playhead, headFirst)
                 try {
                     synchronized(lock) {
                         if (!handle.isValid) return
@@ -291,7 +294,10 @@ class TorrentHttpServer(
                     deadlineRegistry?.registerDeadline(piece, clientSessionId, deadline.toLong())
                 }
             }
-            applyWindow(firstPiece)
+            // Head-first: until the read has its first piece, only that piece and the next
+            // two are raised; the full window and the tail follow once data flows.
+            var firstPieceIn = synchronized(lock) { if (handle.isValid) handle.havePiece(firstPiece) else false }
+            applyWindow(firstPiece, headFirst = !firstPieceIn)
             // Headers go out at once: mpv waits on the body (network-timeout) instead of
             // getting a 504 after a silent 15 s wait. Bytes stream as pieces arrive.
             try {
@@ -318,7 +324,7 @@ class TorrentHttpServer(
             try {
                 for (p in firstPiece..lastPiece) {
                     if (!isRunning || socket.isClosed || bytesRemaining <= 0) break
-                    if (p != firstPiece) applyWindow(p)
+                    if (p != firstPiece || firstPieceIn) applyWindow(p)
                     var waitedMs = 0L
                     var ready = synchronized(lock) { if (handle.isValid) handle.havePiece(p) else false }
                     while (!ready && isRunning && !socket.isClosed) {
@@ -332,13 +338,17 @@ class TorrentHttpServer(
                         // Re-assert the window while waiting: a prioritizeFiles call for another
                         // file of this torrent resets every piece priority, and this piece would
                         // otherwise sit at IGNORE until the stall give-up.
-                        if (waitedMs % REASSERT_MS == 0L) applyWindow(p)
+                        if (waitedMs % REASSERT_MS == 0L) applyWindow(p, headFirst = p == firstPiece && !firstPieceIn)
                         if (reannounceLimiter.shouldReannounce(fileKey, waitedMs, System.currentTimeMillis())) {
                             try { synchronized(lock) { if (handle.isValid) handle.forceReannounce() } } catch (_: Exception) {}
                         }
                         ready = synchronized(lock) { if (handle.isValid) handle.havePiece(p) else false }
                     }
                     if (!ready) break
+                    if (p == firstPiece && !firstPieceIn) {
+                        firstPieceIn = true
+                        applyWindow(p)
+                    }
                     val pieceStartOffset = maxOf(rangeStart, p * pieceLen - fileOffset)
                     val pieceEndOffset = minOf(rangeEnd, (p + 1) * pieceLen - 1 - fileOffset)
                     var pieceBytesToRead = pieceEndOffset - pieceStartOffset + 1
@@ -377,13 +387,16 @@ class TorrentHttpServer(
                 }
             } finally {
                 try { fileChannel?.close() } catch (_: Exception) {}
-                if (isOwner()) {
-                    val demote = planner.release()
+                // Drop this request's pieces, except the ones the current owner (a newer
+                // request after a seek) also covers. Before, a superseded owner left its
+                // whole window at TOP for good, competing with the new position.
+                if (!sideRead) {
+                    activePlanners.remove(streamKey, planner)
+                    val keep = activePlanners[streamKey]?.raisedPieces() ?: emptySet()
+                    val demote = planner.release().filter { it !in protectedTail && it !in keep }
                     try {
                         synchronized(lock) {
-                            if (handle.isValid) demote.filter { it !in protectedTail }.forEach {
-                                handle.piecePriority(it, Priority.IGNORE)
-                            }
+                            if (handle.isValid) demote.forEach { handle.piecePriority(it, Priority.IGNORE) }
                         }
                     } catch (_: Exception) {}
                 }
