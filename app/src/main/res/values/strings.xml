@@ -202,6 +202,25 @@
     <string name="picker_retry">Retry</string>
     <string name="picker_change_source">Change source</string>
     <string name="picker_play_quality">Play %1$s %2$s</string>
+    <!-- Source Picker v3 fixes: filter and sort (feature/picker-v3-fixes) -->
+    <string name="picker_filter">Filter</string>
+    <string name="picker_filter_active">Filter · %1$d</string>
+    <string name="picker_filter_title">Filter and sort</string>
+    <string name="picker_filter_resolution">Resolution</string>
+    <string name="picker_filter_codec">Codec</string>
+    <string name="picker_filter_hdr">HDR</string>
+    <string name="picker_filter_group">Release group</string>
+    <string name="picker_sort">Sort</string>
+    <string name="picker_sort_default">Default</string>
+    <string name="picker_sort_seeders">Seeders</string>
+    <string name="picker_sort_size">Size</string>
+    <string name="picker_sort_quality">Quality</string>
+    <string name="picker_filter_count">%1$s · %2$d of %3$d</string>
+    <string name="picker_filter_hidden_all">Filters hide all %1$d streams. Tap to clear filters.</string>
+    <string name="picker_filter_clear">Clear filters</string>
+    <string name="picker_source_filters">Source filters</string>
+    <string name="picker_source_filters_failed">Could not open the source settings</string>
+    <string name="picker_reload_sources">Reload sources</string>
     <string name="source_collapse">Collapse details</string>
     <string name="filler">Filler</string>
     <string name="adult">Adult</string>

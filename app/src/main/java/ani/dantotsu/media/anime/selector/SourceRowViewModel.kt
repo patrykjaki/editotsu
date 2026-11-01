@@ -61,6 +61,9 @@ enum class SourcePillKind {
     HDR10_PLUS, // "HDR10+"
     DOLBY_VISION, // "Dolby Vision"
     BATCH,      // "Batch" pack marker (P3, last)
+    CENSOR,     // "Uncensored" / "Censored"
+    REVISION,   // "REPACK" / "v2"
+    SERVICE,    // streaming source, e.g. "Amazon", "ADN", "Bilibili"
 }
 
 /**

@@ -1428,7 +1428,8 @@ class SourceRowClassifierTest {
         )
         assertEquals("Psaro", f.releaseGroup)
         assertEquals("Torrent9", f.tracker)
-        assertEquals("Dub", f.audioSummary)
+        // Torrentio "Multi Audio" = original + dub = Dual (picker-v3-fixes).
+        assertEquals("Dual", f.audioSummary)
     }
 
     @Test
@@ -3049,7 +3050,8 @@ class SourceRowClassifierTest {
         assertFalse(cleaned.contains("iqiyi", ignoreCase = true))
         assertFalse(cleaned.contains("[]"))
         assertEquals(
-            "Frieren Beyond Journeys End Season 1 (Sousou no Frieren) Frieren Beyond Journeys End - 01 .mkv",
+            // picker-v3-fixes: the ".mkv" container residue is gone.
+            "Frieren Beyond Journeys End Season 1 (Sousou no Frieren) Frieren Beyond Journeys End - 01",
             cleaned,
         )
     }
@@ -3078,7 +3080,8 @@ class SourceRowClassifierTest {
         val cleaned = cleanOf(deviceSalieriRaw)
         assertFalse(cleaned.contains("BD", ignoreCase = false))
         assertEquals(
-            "Frieren - Beyond Journey's End S1 - Frieren - Beyond Journey's End - 01 .mkv Dubbed /",
+            // picker-v3-fixes: ".mkv" and the dangling "/" residue are gone.
+            "Frieren - Beyond Journey's End S1 - Frieren - Beyond Journey's End - 01 Dubbed",
             cleaned,
         )
     }
