@@ -45,6 +45,7 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
 import ani.dantotsu.toast
+import ani.dantotsu.torrent.TorrentWatchEntry
 import ani.dantotsu.util.customAlertDialog
 import com.google.android.material.chip.Chip
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
@@ -218,6 +219,17 @@ class AnimeWatchAdapter(
 
         binding.mediaSourceSubscribe.setOnLongClickListener {
             openSettings(fragment.requireContext(), CHANNEL_SUBSCRIPTION_CHECK)
+        }
+
+        // Play via Torrent / Magnet (upstream placement). Opens Editotsu's
+        // ManualTorrentBottomSheet anchored to the Continue episode.
+        updateTorrentButton()
+        binding.mediaTorrentButton.setOnClickListener {
+            fragment.openManualTorrent(continueEpisodeKey)
+        }
+        binding.mediaTorrentButton.setOnLongClickListener {
+            toast(fragment.getString(R.string.play_via_torrent_magnet))
+            true
         }
 
         // Nested Button
@@ -471,12 +483,28 @@ class AnimeWatchAdapter(
         }
     }
 
+    /**
+     * Key of the episode the Continue card currently shows, or null when the
+     * card is hidden. The torrent button anchors to exactly this episode.
+     */
+    var continueEpisodeKey: String? = null
+        private set
+
+    /** Shows the torrent button only while the Torrent add-on is available. */
+    fun updateTorrentButton() {
+        _binding?.mediaTorrentButton?.isVisible = TorrentWatchEntry.isButtonVisible(
+            android.os.Build.VERSION.SDK_INT,
+            PrefManager.getVal(PrefName.TorrentEnabled)
+        )
+    }
+
     fun clearChips() {
         _binding?.mediaSourceChipGroup?.removeAllViews()
     }
 
     fun handleEpisodes() {
         val binding = _binding
+        continueEpisodeKey = null
         if (binding != null) {
             if (media.anime?.episodes != null && media.anime.episodes!!.isNotEmpty()) {
                 val episodes = media.anime.episodes!!.keys.toTypedArray()
@@ -541,6 +569,7 @@ class AnimeWatchAdapter(
                     }
 
                     if (continueEp != null && episodes.contains(continueEp)) {
+                        continueEpisodeKey = continueEp
                         binding.sourceContinue.visibility = View.VISIBLE
                         val ep = media.anime.episodes!![continueEp]!!
 
