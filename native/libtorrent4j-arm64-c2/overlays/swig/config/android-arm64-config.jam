@@ -1,0 +1,25 @@
+import os ;
+
+ANDROID_TOOLCHAIN = [ os.environ ANDROID_TOOLCHAIN ] ;
+
+using clang : arm64 : $(ANDROID_TOOLCHAIN)/bin/aarch64-linux-android28-clang++ :
+    <cxxflags>-fPIC
+    <cxxflags>-march=armv8-a+crc
+    <cxxflags>-DANDROID
+    <cxxflags>-fno-strict-aliasing
+    <cxxflags>-fvisibility=hidden
+    <cxxflags>-D_FORTIFY_SOURCE=2
+    <cxxflags>-fstack-protector-strong
+    <cxxflags>-fno-omit-frame-pointer
+    <cxxflags>-fno-lto
+    <linkflags>-static-libstdc++
+    <linkflags>-fuse-ld=lld
+    <linkflags>-fno-lto
+    <linkflags>-Wl,--build-id=sha1
+    # Required while the target API remains below 29.
+    <linkflags>-Wl,--no-rosegment
+    <cxxflags>-g
+    # Exact CP1.5-B C2 release-candidate codegen. Re-optimization requires a
+    # new artifact identifier and physical-device safety validation.
+    <cxxflags>-O0
+    ;
