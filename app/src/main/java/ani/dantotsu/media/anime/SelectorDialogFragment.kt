@@ -1268,6 +1268,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             SourcePillKind.HDR10_PLUS -> R.drawable.pill_hdr10_plus
             SourcePillKind.DOLBY_VISION -> R.drawable.pill_dolby_vision
             SourcePillKind.BATCH -> R.drawable.pill_batch
+            SourcePillKind.CENSOR -> R.drawable.pill_audio_mode
+            SourcePillKind.REVISION -> R.drawable.pill_batch
+            SourcePillKind.SERVICE -> R.drawable.pill_bit_depth
         }
 
         private fun pillTextColor(kind: SourcePillKind): Int {
@@ -1284,6 +1287,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 SourcePillKind.HDR10_PLUS -> com.google.android.material.R.attr.colorOnTertiaryContainer
                 SourcePillKind.DOLBY_VISION -> com.google.android.material.R.attr.colorOnTertiaryContainer
                 SourcePillKind.BATCH -> com.google.android.material.R.attr.colorOnSecondaryContainer
+                SourcePillKind.CENSOR -> com.google.android.material.R.attr.colorOnPrimaryContainer
+                SourcePillKind.REVISION -> com.google.android.material.R.attr.colorOnSecondaryContainer
+                SourcePillKind.SERVICE -> com.google.android.material.R.attr.colorOnSecondaryContainer
             }
             val typedValue = android.util.TypedValue()
             val resolved = context.theme.resolveAttribute(attr, typedValue, true)
