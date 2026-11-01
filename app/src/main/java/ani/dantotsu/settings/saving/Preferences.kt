@@ -336,4 +336,5 @@ enum class PrefName(val data: Pref) {
     SubtitleDelayMs(Pref(Location.Player, Int::class, 0)),
     SubtitleSpeed(Pref(Location.Player, Float::class, 1.0f)),
     VolumeBoostCap(Pref(Location.Player, Int::class, 30)),
+    AudioNightMode(Pref(Location.Player, Boolean::class, false)),
 }

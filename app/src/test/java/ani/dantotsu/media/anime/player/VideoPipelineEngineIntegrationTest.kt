@@ -92,4 +92,33 @@ class VideoPipelineEngineIntegrationTest {
         assertFalse(fakeA.stringProperties.containsKey("glsl-shaders"))
         assertFalse(fakeB.stringProperties.containsKey("glsl-shaders"))
     }
+
+    /** Audio night mode: on adds the labelled af filter once; off only removes it. */
+    @Test
+    fun testAudioNightModeTogglesLabelledAudioFilter() = runBlocking(Dispatchers.Unconfined) {
+        val (fake, engine) = newEngine(null)
+        val remove = listOf("af", "remove", VideoPipelineResolver.NIGHT_MODE_FILTER_NAME)
+        val add = listOf("af", "add", VideoPipelineResolver.NIGHT_MODE_FILTER)
+
+        engine.applyVideoPipeline(VideoPipelineConfig(audioNightMode = true))
+        engine.applyVideoPipeline(VideoPipelineConfig(audioNightMode = true))
+        // Re-applying never stacks: every add is preceded by a remove.
+        assertEquals(listOf(remove, add, remove, add), fake.executedCommands.filter { it.firstOrNull() == "af" })
+
+        fake.executedCommands.clear()
+        engine.applyVideoPipeline(VideoPipelineConfig(audioNightMode = false))
+        assertEquals(listOf(remove), fake.executedCommands.filter { it.firstOrNull() == "af" })
+    }
+
+    @Test
+    fun testNightModePrefMappingDefaultsOff() {
+        val off = VideoPipelinePrefsMapper.fromValues(
+            debandMode = "None", brightness = 0, contrast = 0, saturation = 0, gamma = 0, hue = 0,
+            sharpen = 0f, audioDelayMs = 0, subtitleDelayMs = 0, subtitleSpeed = 1f,
+            volumeBoostCap = 30, upscalerProviderId = "off", upscalerProfileId = ""
+        )
+        assertFalse(off.audioNightMode)
+        assertTrue(off.copy(audioNightMode = true).let { VideoPipelineResolver.resolve(it, null).nightModeAudioFilter != null })
+        assertEquals(null, VideoPipelineResolver.resolve(off, null).nightModeAudioFilter)
+    }
 }

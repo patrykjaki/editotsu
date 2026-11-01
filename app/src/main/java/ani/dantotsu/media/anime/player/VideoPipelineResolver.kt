@@ -13,11 +13,16 @@ data class ResolvedVideoPipeline(
     val recommendedHwdec: String,
     val wasClamped: Boolean,
     /** True when a non-off upscaler was actually applied (valid provider + validated bundle). */
-    val upscalerActive: Boolean
+    val upscalerActive: Boolean,
+    /** mpv `af` filter for night mode, or null when off (the labelled filter is removed). */
+    val nightModeAudioFilter: String? = null
 )
 
 object VideoPipelineResolver {
     const val DEBAND_FILTER_NAME = "@editotsu_deband"
+    const val NIGHT_MODE_FILTER_NAME = "@editotsu_night"
+    /** dynaudnorm via libavfilter: 250 ms frames, gaussian window 15, peak 0.9, max gain 10x. */
+    const val NIGHT_MODE_FILTER = "$NIGHT_MODE_FILTER_NAME:lavfi=[dynaudnorm=f=250:g=15:p=0.9:m=10]"
 
     /**
      * Resolve the full pipeline. Upscaler handling is fail-closed (CP2 amendment):
@@ -120,7 +125,8 @@ object VideoPipelineResolver {
             syncProperties = syncProps,
             recommendedHwdec = config.userHwdec,
             wasClamped = clamped,
-            upscalerActive = resolvedUpscaler.active
+            upscalerActive = resolvedUpscaler.active,
+            nightModeAudioFilter = if (config.audioNightMode) NIGHT_MODE_FILTER else null
         )
     }
 }
