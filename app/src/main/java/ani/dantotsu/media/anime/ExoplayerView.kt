@@ -41,6 +41,13 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.TimeBar
+import ani.dantotsu.Mapper
+import ani.dantotsu.defaultHeaders
+import ani.dantotsu.animethemes.ThemeQueue
+import ani.dantotsu.animethemes.ThemeTrack
+import ani.dantotsu.media.anime.player.PlaybackRequest
+import ani.dantotsu.media.anime.player.PlaybackSourceClass
+import kotlinx.serialization.builtins.ListSerializer
 import ani.dantotsu.NoPaddingArrayAdapter
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
@@ -216,6 +223,17 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private var playbackPosition: Long = 0
     private val playbackSession = EpisodePlaybackSession()
     private var isFullscreen: Int = 0
+
+    // Theme mode: AnimeThemes openings/endings in this player. No episode list, resume,
+    // AniList progress, AniSkip, Discord or source picker; only the themes queue.
+    private var themeMode = false
+    private var themeTracks: List<ThemeTrack> = emptyList()
+    private var themeIndex = 0
+    private var themeFailures = 0
+    private var themeLastPositionMs = 0L
+    private var themeAnime = ""
+    private val themeHandler = Handler(Looper.getMainLooper())
+    private var themeRetry: Runnable? = null
     private var isPlayerPlaying = true
     // Discontinuity-based throttle: publishes only on seeks, scrub stops, and play/pause —
     // NOT during ordinary linear playback. Replaces the previous 2-second periodic approach
@@ -282,6 +300,23 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         const val ACTION_PIP_PLAY_PAUSE = "ani.dantotsu.PIP_PLAY_PAUSE"
         const val ACTION_PIP_SKIP = "ani.dantotsu.PIP_SKIP"
         const val ACTION_PIP_NEXT_EP = "ani.dantotsu.PIP_NEXT_EP"
+
+        private const val EXTRA_THEME_MODE = "themeMode"
+        private const val EXTRA_THEMES = "themes"
+        private const val EXTRA_THEME_START = "themeStart"
+        private const val EXTRA_THEME_ANIME = "themeAnime"
+
+        /** Plays AnimeThemes openings/endings in this player, starting at [start]. */
+        fun openThemes(context: Context, tracks: List<ThemeTrack>, start: Int, animeTitle: String) {
+            if (tracks.isEmpty()) return
+            context.startActivity(
+                Intent(context, ExoplayerView::class.java)
+                    .putExtra(EXTRA_THEME_MODE, true)
+                    .putExtra(EXTRA_THEMES, Mapper.json.encodeToString(ListSerializer(ThemeTrack.serializer()), tracks))
+                    .putExtra(EXTRA_THEME_START, start)
+                    .putExtra(EXTRA_THEME_ANIME, animeTitle)
+            )
+        }
     }
 
     override fun onAttachedToWindow() {
@@ -302,8 +337,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        themeMode = intent.getBooleanExtra(EXTRA_THEME_MODE, false)
 
-        if (!initialized) {
+        if (!initialized && !themeMode) {
             startMainActivity(this)
             finish()
             return
@@ -614,6 +650,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
         // Initialize Gestures
         gestureManager.initGestures()
+
+        if (themeMode) {
+            setupThemeMode()
+            return
+        }
 
         // Handle Media
         if (!initialized) return startMainActivity(this)
@@ -1515,7 +1556,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 val coordinator = playerManager.playbackCoordinator
                 when (intent?.action) {
                     ACTION_PIP_PREV_EP -> {
-                        if (currentEpisodeIndex > 0) changeEpisode(currentEpisodeIndex - 1)
+                        if (themeMode) playTheme(themeIndex - 1)
+                        else if (currentEpisodeIndex > 0) changeEpisode(currentEpisodeIndex - 1)
                     }
                     ACTION_PIP_REWIND -> {
                         engine?.seekRelative(-pipSeekMs(PrefManager.getVal(PrefName.SeekTime)))
@@ -1532,7 +1574,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                         engine?.seekRelative(pipSeekMs(PrefManager.getVal(PrefName.SeekTime)))
                     }
                     ACTION_PIP_NEXT_EP -> {
-                        if (this@ExoplayerView::progressManager.isInitialized) {
+                        if (themeMode) playTheme(themeIndex + 1)
+                        else if (this@ExoplayerView::progressManager.isInitialized) {
                             progressManager.nextEpisode { i ->
                                 progressManager.updateAniProgress()
                                 changeEpisode(currentEpisodeIndex + i)
@@ -1806,10 +1849,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         } else {
             unregisterPipReceiver()
             hideSystemBars()
-            if (this::aniSkipManager.isInitialized && PrefManager.getVal(PrefName.TimeStampsEnabled)) {
+            if (!themeMode && this::aniSkipManager.isInitialized && PrefManager.getVal(PrefName.TimeStampsEnabled)) {
                 aniSkipManager.startTracking()
             }
-            if (this::progressManager.isInitialized) {
+            if (!themeMode && this::progressManager.isInitialized) {
                 progressManager.startTracking()
             }
         }
@@ -1821,6 +1864,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     override fun onStart() {
         super.onStart()
+        if (themeMode) return
         if (this::aniSkipManager.isInitialized) {
             aniSkipManager.startTracking()
         }
@@ -1854,7 +1898,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (this::playerManager.isInitialized && playerManager.isInitialized && !inPip) {
             playerManager.playbackCoordinator?.setLifecycleSuppressed(true)
         }
-        if (this::playerManager.isInitialized && playerManager.isInitialized) {
+        if (!themeMode && this::playerManager.isInitialized && playerManager.isInitialized) {
             saveActivePosition()
             if (this::progressManager.isInitialized) {
                 progressManager.updateAniProgress()
@@ -1941,7 +1985,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 stoppedExtractor?.onVideoStopped(stoppedVideo)
             } catch (_: Exception) {}
         }
-        if (this::playerManager.isInitialized && playerManager.isInitialized) {
+        themeRetry?.let { themeHandler.removeCallbacks(it) }
+        if (themeMode) {
+            if (this::playerManager.isInitialized && playerManager.isInitialized) playerManager.releasePlayer()
+        } else if (this::playerManager.isInitialized && playerManager.isInitialized) {
             if (this::progressManager.isInitialized) {
                 progressManager.updateAniProgress()
             }
@@ -1955,6 +2002,120 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             castManager.release()
         }
         super.onDestroy()
+    }
+
+    private fun setupThemeMode() {
+        themeTracks = intent.getStringExtra(EXTRA_THEMES)?.let { json ->
+            runCatching { Mapper.json.decodeFromString(ListSerializer(ThemeTrack.serializer()), json) }.getOrNull()
+        }.orEmpty()
+        if (themeTracks.isEmpty()) {
+            finish()
+            return
+        }
+        themeAnime = intent.getStringExtra(EXTRA_THEME_ANIME).orEmpty()
+        title = themeAnime
+        animeTitle.text = themeAnime
+        videoInfo = playerView.findViewById(R.id.exo_video_info)
+        // Episode-only controls.
+        listOf<View>(
+            exoSource, exoSubtitle, exoAudioTrack, exoSettings, exoSpeed, exoSleepTimer,
+            exoSkipOpEd, customCastButton, skipTimeButton
+        ).forEach { it.visibility = View.GONE }
+
+        episodeTitle.adapter = NoPaddingArrayAdapter(
+            this, R.layout.item_dropdown, ArrayList(themeTracks.map { ThemeQueue.label(it) })
+        )
+        episodeTitle.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, position: Int, p3: Long) {
+                if (position != themeIndex) playTheme(position)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>) {}
+        }
+        exoNext = playerView.findViewById(R.id.exo_next_ep)
+        exoNext.setOnClickListener { playTheme(themeIndex + 1) }
+        exoPrev = playerView.findViewById(R.id.exo_prev_ep)
+        exoPrev.setOnClickListener { playTheme(themeIndex - 1) }
+
+        isFullscreen = PrefManager.getVal(PrefName.Resize)
+        exoScreen.setOnClickListener {
+            isFullscreen = (isFullscreen + 1) % 3
+            applyResizeMode(isFullscreen)
+        }
+        playTheme(intent.getIntExtra(EXTRA_THEME_START, 0).coerceIn(0, themeTracks.lastIndex))
+    }
+
+    /** Starts theme [index]; [url] and [startMs] are set when retrying the same theme. */
+    private fun playTheme(index: Int, url: String? = null, startMs: Long = 0L) {
+        if (index !in themeTracks.indices) return
+        themeRetry?.let { themeHandler.removeCallbacks(it) }
+        themeRetry = null
+        if (url == null) {
+            themeFailures = 0
+            themeLastPositionMs = 0L
+        }
+        themeIndex = index
+        val track = themeTracks[index]
+        playerManager.releasePlayer()
+        val engine = playerManager.initPlayer(startMs, 1f, themeListener)
+        if (episodeTitle.selectedItemPosition != index) episodeTitle.setSelection(index)
+        videoInfo.text = ""
+        engine.loadMedia(
+            PlaybackRequest(
+                uri = url ?: track.url,
+                startPositionMs = startMs,
+                headers = defaultHeaders,
+                title = ThemeQueue.label(track),
+                seriesTitle = themeAnime,
+                mimeType = "video/webm",
+                sourceClass = PlaybackSourceClass.DIRECT_HTTP,
+            )
+        )
+        playerManager.playbackCoordinator?.play() ?: engine.play()
+        applyResizeMode(isFullscreen)
+    }
+
+    private fun onThemeFailed(reason: String?) {
+        val track = themeTracks.getOrNull(themeIndex) ?: return
+        themeFailures++
+        val next = ThemeQueue.nextAttempt(track, themeFailures)
+        Logger.log("AnimeThemes: ${track.tag} failed (${reason ?: "unknown"}), failure $themeFailures, next ${next?.url}")
+        if (next == null) {
+            toast(getString(R.string.theme_error_named, track.tag))
+            return
+        }
+        val index = themeIndex
+        val resumeAt = themeLastPositionMs
+        themeRetry = Runnable {
+            themeRetry = null
+            if (themeIndex == index && !isDestroyed) playTheme(index, next.url, resumeAt)
+        }.also { themeHandler.postDelayed(it, next.delayMs) }
+    }
+
+    private val themeListener = object : PlaybackListener {
+        override fun onPositionChanged(positionMs: Long, durationMs: Long) {
+            if (positionMs > 0L) themeLastPositionMs = positionMs
+            this@ExoplayerView.onPositionChanged(positionMs, durationMs)
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) = this@ExoplayerView.onIsPlayingChanged(isPlaying)
+
+        override fun onVideoSizeChanged(width: Int, height: Int) = this@ExoplayerView.onVideoSizeChanged(width, height)
+
+        override fun onPlaybackStateChanged(state: PlaybackState) {
+            exoBufferingIndicator.visibility = if (state is PlaybackState.Buffering) View.VISIBLE else View.GONE
+            isBuffering = state is PlaybackState.Buffering
+            when (state) {
+                is PlaybackState.Ended -> {
+                    val dur = state.durationMs.takeIf { it > 0L } ?: (playerManager.playbackEngine?.durationMs ?: 0L)
+                    val pos = maxOf(state.positionMs, themeLastPositionMs)
+                    // mpv reports a dropped connection as an early end of file.
+                    if (ThemeQueue.endedEarly(pos, dur)) onThemeFailed("ended at $pos of $dur ms")
+                    else playTheme(themeIndex + 1)
+                }
+                is PlaybackState.Error -> onThemeFailed(state.error.message)
+                else -> Unit
+            }
+        }
     }
 
     private fun formatTime(timeMs: Long): String {

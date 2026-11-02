@@ -82,16 +82,28 @@ object ThemeQueue {
     fun playQueue(all: List<ThemeTrack>, tapped: ThemeTrack, isShielded: (ThemeTrack) -> Boolean): List<ThemeTrack> =
         all.filter { it.themeId == tapped.themeId || !isShielded(it) }
 
-    const val MAX_RETRIES = 4
+    /** Player spinner / notification label: "OP 1 · Song". */
+    fun label(track: ThemeTrack): String =
+        if (track.songTitle.isBlank() || track.songTitle == track.tag) track.tag else "${track.tag} · ${track.songTitle}"
 
     /**
-     * Delay before retrying an HTTP error, or null to give up on this URL.
-     * 5xx and 429 retry after 1, 2, 4, 6 s (or the server's Retry-After, at most 6 s).
+     * True when playback stopped well before the end: mpv reports a dropped
+     * connection as end of file. Unknown duration counts as a normal end.
      */
-    fun retryDelayMs(responseCode: Int, errorCount: Int, retryAfter: String?): Long? {
-        if (responseCode != 429 && responseCode !in 500..599) return null
-        if (errorCount > MAX_RETRIES) return null
-        retryAfter?.trim()?.toLongOrNull()?.let { return (it * 1000).coerceIn(500, 6000) }
-        return minOf(1000L shl (errorCount - 1).coerceIn(0, 3), 6000L)
+    fun endedEarly(positionMs: Long, durationMs: Long): Boolean =
+        durationMs > 0L && positionMs < durationMs - 3_000L
+
+    data class Attempt(val url: String, val delayMs: Long)
+
+    /**
+     * What to load after the [failures]-th failure of [track]: the same video twice
+     * more (the CDN answers 503 under load), then each of the theme's other videos.
+     * Null when everything was tried.
+     */
+    fun nextAttempt(track: ThemeTrack, failures: Int): Attempt? = when {
+        failures <= 0 -> Attempt(track.url, 0L)
+        failures == 1 -> Attempt(track.url, 1_000L)
+        failures == 2 -> Attempt(track.url, 3_000L)
+        else -> track.fallbackUrls.getOrNull(failures - 3)?.let { Attempt(it, 500L) }
     }
 }
