@@ -742,17 +742,27 @@ class MediaInfoFragment : Fragment() {
                     // Index-parallel with media.tags via tagsIsSpoiler.
                     val hideSpoilerTags = PrefManager.getVal<Boolean>(PrefName.HideSpoilerTags)
                     val hasSpoilers = media.tagsIsSpoiler.any { it }
-                    var allSpoilersRevealed = false
                     val spoilerChipUpdaters = mutableListOf<(Boolean) -> Unit>()
+                    // Spoiler chips currently masked; the header button shows this state.
+                    val hiddenSpoilers = mutableSetOf<Int>()
+                    val spoilerAction = bind.itemTitleAction
+                    fun updateSpoilerAction() {
+                        if (hiddenSpoilers.isEmpty()) {
+                            spoilerAction.setText(R.string.hide_spoiler_tags)
+                            spoilerAction.setIconResource(R.drawable.ic_round_remove_red_eye_24)
+                        } else {
+                            spoilerAction.text = spoilerAction.resources.getQuantityString(
+                                R.plurals.show_spoiler_tags, hiddenSpoilers.size, hiddenSpoilers.size
+                            )
+                            spoilerAction.setIconResource(R.drawable.format_spoiler_24)
+                        }
+                    }
 
                     if (hasSpoilers && hideSpoilerTags) {
-                        bind.itemTitle.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.format_spoiler_24, 0)
-                        bind.itemTitle.compoundDrawablePadding = 8
-                        bind.itemTitle.setSafeOnClickListener {
-                            allSpoilersRevealed = !allSpoilersRevealed
-                            spoilerChipUpdaters.forEach { it(allSpoilersRevealed) }
-                            val msg = if (allSpoilersRevealed) R.string.show_spoilers else R.string.hide_spoilers
-                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        spoilerAction.visibility = View.VISIBLE
+                        spoilerAction.setSafeOnClickListener {
+                            val reveal = hiddenSpoilers.isNotEmpty()
+                            spoilerChipUpdaters.forEach { it(reveal) }
                         }
                     }
 
@@ -766,6 +776,10 @@ class MediaInfoFragment : Fragment() {
                         var isRevealed = spoilerChipRevealed(hideSpoilerTags, isSpoiler)
 
                         fun updateChipAppearance() {
+                            if (isSpoiler && hideSpoilerTags) {
+                                if (isRevealed) hiddenSpoilers.remove(position) else hiddenSpoilers.add(position)
+                                updateSpoilerAction()
+                            }
                             if (isSpoiler && !isRevealed) {
                                 chip.text = chip.context.getString(R.string.spoiler_tag_placeholder)
                                 chip.setChipIconResource(R.drawable.format_spoiler_24)
