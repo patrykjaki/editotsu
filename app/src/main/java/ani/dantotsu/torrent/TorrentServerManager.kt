@@ -302,6 +302,10 @@ class TorrentServerManager(private val context: Context) {
     private val registries = ConcurrentHashMap<String, TorrentDeadlineRegistry>()
     private val handleLocks = ConcurrentHashMap<String, Any>()
     private val activePrebufferLeases = ConcurrentHashMap<Pair<String, Int>, PrebufferLease>()
+    /** Torrents added this session -> last add time, for [removeIdleTorrents]. */
+    private val addedAt = ConcurrentHashMap<String, Long>()
+    /** The magnet / .torrent url each torrent was added from, to re-add it after removal. */
+    private val sources = ConcurrentHashMap<String, String>()
     private val scheduledTtls = ConcurrentHashMap<String, Runnable>()
     private val ttlHandler = Handler(Looper.getMainLooper())
     private val leaseCounter = AtomicLong(0L)
@@ -659,13 +663,19 @@ class TorrentServerManager(private val context: Context) {
 
                 if (resolvedTorrentInfo != null) {
                     val ti = resolvedTorrentInfo
-                    val existed = sessionManager.find(sha1) != null
-                    // Files stay at DEFAULT: a file at IGNORE has its data written to the
-                    // part file, which the relay cannot read. Pieces decide what downloads.
-                    val p = Priority.array(Priority.DEFAULT, ti.numFiles())
-                    sessionManager.download(ti, saveDir, null, p, null, TorrentFlags.AUTO_MANAGED)
-                    handle = sessionManager.find(sha1)
-                    if (!existed) handle?.let { ignoreAllPieces(it, getHandleLock(infoHash)) }
+                    handle = sessionManager.find(sha1)?.takeIf { it.isValid }
+                    if (handle == null) {
+                        // Files stay at DEFAULT: a file at IGNORE has its data written to the
+                        // part file, which the relay cannot read. Pieces decide what downloads.
+                        val p = Priority.array(Priority.DEFAULT, ti.numFiles())
+                        sessionManager.download(ti, saveDir, null, p, null, TorrentFlags.AUTO_MANAGED)
+                        handle = sessionManager.find(sha1)
+                        handle?.let { ignoreAllPieces(it, getHandleLock(infoHash)) }
+                    }
+                    // A torrent already in the session is not passed to download() again:
+                    // libtorrent4j then re-applies the file priorities, which sets every
+                    // piece back to DEFAULT and turns the stream window into a download of
+                    // the whole batch (next episode of a batch, replays, re-picks).
                 } else {
                     handle = sessionManager.find(sha1)
                     val createdHere = handle == null
@@ -707,6 +717,8 @@ class TorrentServerManager(private val context: Context) {
                 }
 
                 val liveHandle = handle ?: throw Exception("Failed to add torrent: $url")
+                addedAt[infoHash] = System.currentTimeMillis()
+                if (url.startsWith("magnet:") || isHttpFetchUrl(url)) sources[infoHash] = url
 
                 // Bind to the LIVE GENERATION owner (get-or-create; overlapping successful adds
                 // converge onto the same identity — CP1v7-02).
@@ -983,6 +995,34 @@ class TorrentServerManager(private val context: Context) {
 
     fun getLink(torrentHash: String, fileIndex: Int): String {
         return "http://127.0.0.1:$serverPort/stream?hash=$torrentHash&index=$fileIndex"
+    }
+
+    /** Where [hash] was added from this session, else a bare magnet (metadata comes from the cache). */
+    fun sourceFor(hash: String): String =
+        sources[hash.uppercase()] ?: "magnet:?xt=urn:btih:${hash.uppercase()}"
+
+    /**
+     * Removes the torrents nothing uses: no relay request (player or download), no
+     * prebuffer lease, and not added in the last [graceMs]. Called after the player
+     * closes, so watched torrents don't keep downloading and uploading in the
+     * background service. Their data stays in the retained cache.
+     */
+    fun removeIdleTorrents(graceMs: Long = 20_000L) {
+        if (!sessionManager.isRunning) return
+        val busy = (httpServer?.busyHashes() ?: emptySet()) +
+            activePrebufferLeases.keys.map { it.first }
+        val now = System.currentTimeMillis()
+        addedAt.entries.toList().forEach { (hash, at) ->
+            if (hash in busy || now - at < graceMs) return@forEach
+            try {
+                removeTorrent(hash)
+                addedAt.remove(hash, at)
+                if (activeTorrentHash.equals(hash, ignoreCase = true)) activeTorrentHash = null
+                Logger.log("TorrentServerManager: removed idle torrent ${hash.take(8)}")
+            } catch (e: Exception) {
+                Logger.log("TorrentServerManager: removing idle torrent failed: ${e.message}")
+            }
+        }
     }
 
     fun removeTorrent(torrentHash: String) {

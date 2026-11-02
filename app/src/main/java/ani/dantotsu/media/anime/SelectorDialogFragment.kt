@@ -580,6 +580,8 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                             )
                                         }
                                         withContext(Dispatchers.Main) {
+                                            // The sheet may be gone by now (cancel, back); its views are.
+                                            if (_binding == null || !isAdded) return@withContext
                                             val servers = ep.extractors?.map { it.server }
                                                 ?: emptyList()
                                             val recovery = RecoveryCoordinator.resolve(
@@ -841,18 +843,11 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                 url.substringAfter("index=").toIntOrNull() ?: 0
                             } else 0
 
-                            val hash = try {
-                                if (url.startsWith("magnet:")) torrentManager.parseMagnetHash(url) else ""
-                            } catch (_: Exception) { "" }
-
                             // Trigger immediate background pre-buffering on stream selection
                             torrentManager.prebufferTorrent(url, index, video.quality.toString())
 
-                            if (hash.isNotBlank()) {
-                                val link = torrentManager.getLink(hash, index)
-                                video.file.url = link
-                                targetEp.extractors?.find { it.server.name == targetEp.selectedExtractor }?.videos?.getOrNull(targetEp.selectedVideo)?.file?.url = link
-                            }
+                            // The magnet stays on the Video; the player plays it through the
+                            // relay (ExoplayerView.initPlayer), so a later play still has the source.
 
                             if (act != null && !act.isFinishing && !act.isDestroyed) {
                                 val intent = Intent(act, ExoplayerView::class.java).apply {

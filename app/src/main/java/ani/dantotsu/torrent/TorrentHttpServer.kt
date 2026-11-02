@@ -467,6 +467,9 @@ class TorrentHttpServer(
         } catch (_: Exception) {}
     }
 
+    /** Torrents with a request being served right now (player stream or download). */
+    fun busyHashes(): Set<String> = activeStreamOwners.keys.map { it.first }.toSet()
+
     fun stop() {
         isRunning = false
         try { serverSocket?.close() } catch (_: Exception) {}
