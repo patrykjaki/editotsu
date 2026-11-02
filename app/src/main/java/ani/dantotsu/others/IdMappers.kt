@@ -97,8 +97,7 @@ object IdMappers {
                     return@withContext null
                 }
                 val data = Mapper.json.decodeFromJsonElement<AniZipResponse>(jsonElement)
-                // Accessing the first mapping's imdb_id, if available
-                data.mappings.values.firstOrNull()?.imdbId
+                data.mappings.imdbId
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -155,7 +154,8 @@ data class AnimeId(
 
 @Serializable
 data class AniZipResponse(
-    val mappings: Map<String, AniZipMapping> = emptyMap()
+    // one flat object of ids ({"imdb_id": ..., "animeplanet_id": ...}), not a map of objects
+    val mappings: AniZipMapping = AniZipMapping()
 )
 
 @Serializable
