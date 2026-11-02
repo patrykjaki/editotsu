@@ -22,20 +22,43 @@ val gitCommitHash = if (rootProject.file(".git").exists()) {
     "nogit"
 }
 
-// Workstream build identity (modernized port of infra/build-identity).
-// Explicit -Peditotsu.workstreamId=<workstream>-<rev>@<base8>+<diff8>
-// marks development builds; official beta/release builds leave it blank.
-// The require() fails configuration fast on malformed IDs (never silently).
-val workstreamId = providers.gradleProperty("editotsu.workstreamId")
-    .orNull
-    ?.trim()
-    ?.takeIf { it.isNotEmpty() }
-    ?: "local-debug"
-val workstreamIdPattern = Regex("^[A-Za-z0-9][A-Za-z0-9._-]*-[A-Za-z0-9][A-Za-z0-9._-]*@[0-9a-fA-F]{8}\\+[0-9a-fA-F]{8}$")
-require(workstreamId == "local-debug" || workstreamIdPattern.matches(workstreamId)) {
-    "editotsu.workstreamId must match <workstream>-<revision>@<base8>+<diff8>"
+// Version: set once in gradle.properties (editotsu.version); versionCode follows the
+// agent policy "Versioning and releases":
+//   1_000_000 + MAJOR*10_000_000 + MINOR*100_000 + PATCH*1_000 + S
+//   S = alphaNN 1..19, betaNN 20+NN, rcNN 50+NN, stable 99.
+val editotsuVersion = providers.gradleProperty("editotsu.version").get().trim()
+val editotsuVersionCode = run {
+    val m = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)(\d{2}))?$""").matchEntire(editotsuVersion)
+        ?: error("editotsu.version '$editotsuVersion' must be MAJOR.MINOR.PATCH[-alphaNN|-betaNN|-rcNN]")
+    val (major, minor, patch, stage, nn) = m.destructured
+    require(minor.toInt() <= 99 && patch.toInt() <= 99) { "MINOR and PATCH must be <= 99" }
+    val n = nn.toIntOrNull() ?: 0
+    val stageCode = when (stage) {
+        "alpha" -> n.also { require(it in 1..19) { "alphaNN must be 01..19" } }
+        "beta" -> 20 + n.also { require(it in 1..29) { "betaNN must be 01..29" } }
+        "rc" -> 50 + n.also { require(it in 1..48) { "rcNN must be 01..48" } }
+        else -> 99
+    }
+    1_000_000 + major.toInt() * 10_000_000 + minor.toInt() * 100_000 + patch.toInt() * 1_000 + stageCode
 }
-val shortWorkstreamId = workstreamId.substringBefore("@")
+
+// Build identity of non-official builds: "<label>.<commit8>[.dirty]", e.g. r22.e1065b6e.
+// It goes into BuildConfig.EDITOTSU_BUILD_ID (shown in About) and after "+" in versionName.
+// -Peditotsu.buildLabel=<label> marks a test build of release/beta (test-slot builds);
+// debug and alpha always carry one ("dev" by default). Official builds pass no label.
+val buildLabel = providers.gradleProperty("editotsu.buildLabel").orNull?.trim()?.takeIf { it.isNotEmpty() }
+require(buildLabel == null || Regex("^[A-Za-z0-9][A-Za-z0-9_-]*$").matches(buildLabel)) {
+    "editotsu.buildLabel may only contain letters, digits, '-' and '_'"
+}
+val gitDirty = rootProject.file(".git").exists() && try {
+    providers.exec { commandLine("git", "status", "--porcelain", "--untracked-files=no") }
+        .standardOutput.asText.get().isNotBlank()
+} catch (e: Exception) {
+    false
+}
+fun buildId(label: String) = "$label.$gitCommitHash" + if (gitDirty) ".dirty" else ""
+val testBuildId = buildLabel?.let(::buildId) ?: ""
+val devBuildId = buildId(buildLabel ?: "dev")
 val torrentBench = providers.gradleProperty("editotsu.torrentBench").orNull == "true"
 
 // arm64 libtorrent4j native. Default: the CP1.5-B "c2" build checked in at
@@ -122,12 +145,10 @@ android {
         minSdk = 26
         targetSdk = 36
 
-        versionName = "0.5.0-beta01"
-        versionCode = 1000510
+        versionName = editotsuVersion
+        versionCode = editotsuVersionCode
 
         buildConfigField("String", "MAL_CLIENT_ID", "\"${malClientId.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
-        // Workstream identity: blank in defaultConfig; alpha/debug expose
-        // the explicit workstream ID, official beta/release stay blank.
         buildConfigField("String", "EDITOTSU_BUILD_ID", "\"\"")
         resValue("string", "app_build_label", "Editotsu")
         // Torrent bench hook (task 7 rig): off unless -Peditotsu.torrentBench=true.
@@ -213,8 +234,7 @@ android {
     flavorDimensions += "store"
 
     productFlavors {
-        // 0.5 release: NO versionNameSuffix on either flavor. Both release
-        // APKs badge versionName 0.5.0-beta01; the flavor distinction lives
+        // No versionNameSuffix on either flavor; the flavor distinction lives
         // in BuildConfig.FLAVOR, packaged features, and asset filenames.
         // The fdroid flavor is our internal degoogled build (built and
         // distributed by us, not official F-Droid infrastructure).
@@ -251,9 +271,9 @@ android {
     buildTypes {
         create("alpha") {
             applicationIdSuffix = ".beta"
-            versionNameSuffix = "-alpha01-$gitCommitHash"
-            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$workstreamId\"")
-            resValue("string", "app_build_label", "Editotsu [$shortWorkstreamId]")
+            versionNameSuffix = "+$devBuildId"
+            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$devBuildId\"")
+            resValue("string", "app_build_label", "Editotsu Beta")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_alpha"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_alpha_round"
             isDebuggable = true
@@ -264,18 +284,14 @@ android {
             signingConfig = releaseSigningConfig
         }
 
-        // 0.5 prerelease line: release-quality behavior with the beta
-        // application identity (ani.editotsu.beta), so betas coexist with
-        // stable Editotsu. Chosen over suffixing `release` (which would
-        // corrupt future stable semantics) and over `alpha` (debuggable,
-        // unoptimized). Stable `release` is untouched for 0.5.0+.
-        // No versionNameSuffix: inherits the exact public version.
-        // Official beta: blank build ID, normal label (provenance via
-        // version/package/signer, never a workstream tag).
+        // Public pre-releases: release-quality build with the beta application
+        // identity (ani.editotsu.beta), so betas coexist with stable Editotsu.
+        // Official beta builds pass no build label: plain versionName, no build ID.
         create("beta") {
             applicationIdSuffix = ".beta"
-            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"\"")
-            resValue("string", "app_build_label", "Editotsu")
+            if (testBuildId.isNotEmpty()) versionNameSuffix = "+$testBuildId"
+            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$testBuildId\"")
+            resValue("string", "app_build_label", "Editotsu Beta")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_beta"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_beta_round"
             isDebuggable = false
@@ -291,20 +307,18 @@ android {
 
         getByName("debug") {
             applicationIdSuffix = ".beta"
-            // Friend-test betaNN suffixes retired for the 0.5 release line:
-            // dev builds carry the commit hash so no betaNN identity can
-            // leak into the public release.
-            versionNameSuffix = "-dev-$gitCommitHash"
-            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$workstreamId\"")
-            resValue("string", "app_build_label", "Editotsu [$shortWorkstreamId]")
+            versionNameSuffix = "+$devBuildId"
+            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$devBuildId\"")
+            resValue("string", "app_build_label", "Editotsu Beta")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_beta"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_beta_round"
             isDebuggable = false
         }
 
         getByName("release") {
-            // Official stable: blank build ID, normal label.
-            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"\"")
+            // Stable package: no build ID unless -Peditotsu.buildLabel marks a test build.
+            if (testBuildId.isNotEmpty()) versionNameSuffix = "+$testBuildId"
+            buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$testBuildId\"")
             resValue("string", "app_build_label", "Editotsu")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_round"
