@@ -755,18 +755,18 @@ class MediaInfoFragment : Fragment() {
                     val hideSpoilerTags = PrefManager.getVal<Boolean>(PrefName.HideSpoilerTags)
                     val hasSpoilers = media.tagsIsSpoiler.any { it }
                     val spoilerChipUpdaters = mutableListOf<(Boolean) -> Unit>()
-                    // Spoiler chips currently masked; the header button shows this state.
+                    // Spoiler chips currently masked. The button names its action; the icon matches it.
                     val hiddenSpoilers = mutableSetOf<Int>()
                     val spoilerAction = bind.itemTitleAction
                     fun updateSpoilerAction() {
                         if (hiddenSpoilers.isEmpty()) {
                             spoilerAction.setText(R.string.tags_hide_spoilers)
-                            spoilerAction.setIconResource(R.drawable.ic_round_remove_red_eye_24)
+                            spoilerAction.setIconResource(R.drawable.format_spoiler_24)
                         } else {
                             spoilerAction.text = spoilerAction.resources.getQuantityString(
                                 R.plurals.tags_show_spoilers, hiddenSpoilers.size, hiddenSpoilers.size
                             )
-                            spoilerAction.setIconResource(R.drawable.format_spoiler_24)
+                            spoilerAction.setIconResource(R.drawable.ic_round_remove_red_eye_24)
                         }
                     }
 
