@@ -988,7 +988,8 @@ class MediaDetailsViewModel : ViewModel() {
         launch: Boolean = true,
         prevEp: String? = null,
         isDownload: Boolean = false,
-        episodes: ArrayList<String> = arrayListOf() // used for handling an array of episodes to download or to view a single episode
+        episodes: ArrayList<String> = arrayListOf(), // used for handling an array of episodes to download or to view a single episode
+        forcePicker: Boolean = false, // show the list even when a release is remembered
     ) {
         Handler(Looper.getMainLooper()).post {
             if (manager.findFragmentByTag("dialog") == null && !manager.isDestroyed) {
@@ -1008,7 +1009,8 @@ class MediaDetailsViewModel : ViewModel() {
                         launch,
                         prevEp,
                         isDownload,
-                        episodes
+                        episodes,
+                        forcePicker,
                     )
                 selector.show(manager, "dialog")
             }

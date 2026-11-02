@@ -153,4 +153,41 @@ object RememberedSelectionPolicy {
         return familySlotAction(makeDefault, familyCandidate) ==
             FamilySlotAction.PRESERVE
     }
+
+    /** How the selector dialog starts for one episode. */
+    enum class AutoplayEntry {
+        /** try the remembered server name first, then exact key / family */
+        NAMED,
+        /** no usable name: load every row and resolve exact key, then family */
+        RECOVER,
+        /** show the list */
+        PICKER,
+    }
+
+    data class AutoplayDecision(val entry: AutoplayEntry, val reason: String)
+
+    /**
+     * One decision for every way the dialog opens (episode list, resume, the player's next
+     * episode). A remembered exact key or family is enough to auto-play when "remember" is on;
+     * the legacy server name is not required. [forcePicker] is the player's source button or a
+     * playback error: the user gets the list, and nothing remembered is changed.
+     */
+    fun autoplayEntry(
+        forcePicker: Boolean,
+        isLocal: Boolean,
+        makeDefault: Boolean,
+        selectedName: String?,
+        hasStoredKey: Boolean,
+        hasStoredFamily: Boolean,
+        downloadedSource: Boolean,
+    ): AutoplayDecision = when {
+        forcePicker -> AutoplayDecision(AutoplayEntry.PICKER, "picker requested")
+        isLocal -> AutoplayDecision(AutoplayEntry.PICKER, "local media")
+        !selectedName.isNullOrBlank() -> AutoplayDecision(AutoplayEntry.NAMED, "remembered name")
+        downloadedSource -> AutoplayDecision(AutoplayEntry.PICKER, "downloaded source, no name")
+        !makeDefault -> AutoplayDecision(AutoplayEntry.PICKER, "remember off")
+        hasStoredKey -> AutoplayDecision(AutoplayEntry.RECOVER, "remembered exact key")
+        hasStoredFamily -> AutoplayDecision(AutoplayEntry.RECOVER, "remembered family")
+        else -> AutoplayDecision(AutoplayEntry.PICKER, "nothing remembered")
+    }
 }
