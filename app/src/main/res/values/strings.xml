@@ -191,8 +191,10 @@
     <string name="picker_best_same_group">Same release group as last played</string>
     <string name="picker_best_preferred">Preferred by the source</string>
     <string name="picker_family_missing">No release from the saved group for this episode</string>
-    <string name="picker_seeds">%1$d seeds</string>
-    <string name="picker_seeds_low">%1$d seeds</string>
+    <plurals name="picker_seeds">
+        <item quantity="one">%1$d seed</item>
+        <item quantity="other">%1$d seeds</item>
+    </plurals>
     <string name="picker_also_as">Also as %1$s</string>
     <string name="picker_also">Also</string>
     <string name="picker_auto_play">Remember and auto-play next time</string>

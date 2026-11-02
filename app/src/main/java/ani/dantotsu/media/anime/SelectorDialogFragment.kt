@@ -1576,32 +1576,15 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             val header = viewModel.header?.takeIf { it.isNotBlank() } ?: viewModel.displayLabel
             b.sourceHeader.text = header
 
-            // one release in several qualities: seeds and size move onto each quality's button
-            val qualities = entry.qualities
-            val grouped = qualities.isNotEmpty()
-            b.sourceQualities.isVisible = grouped
-            if (grouped) {
-                val main = qualities.firstOrNull { it.ref == entry.row.ref } ?: qualities.first()
-                bindQualityRow(
-                    b.sourceQualities, keyOf(entry), header,
-                    main.ref to releaseQualityLabel(main),
-                    qualities.filter { it !== main }.map { q ->
-                        Triple(q.ref, ResolutionLabel.label(q.resolution) ?: q.transport ?: "?", releaseQualityLabel(q))
-                    },
-                )
-            } else {
-                b.sourceQualities.removeAllViews()
-            }
+            // one release in several qualities: the card is the best one, like any other
+            // card; the rest are small buttons under the tags
+            val others = entry.qualities.filter { it.ref != entry.row.ref }
+            bindOtherQualities(b.sourceQualities, header, others)
 
             val seeders = SeederHealth.parse(viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SEEDERS }?.text)
-                ?.takeIf { !grouped }
             b.sourceSeeders.isVisible = seeders != null
             if (seeders != null) {
-                b.sourceSeeders.text = if (SeederHealth.isLow(seeders)) {
-                    getString(R.string.picker_seeds_low, seeders)
-                } else {
-                    getString(R.string.picker_seeds, seeders)
-                }
+                b.sourceSeeders.text = resources.getQuantityString(R.plurals.picker_seeds, seeders, seeders)
                 b.sourceSeeders.setTextColor(
                     b.root.context.getThemeColor(
                         if (SeederHealth.isLow(seeders)) com.google.android.material.R.attr.colorError
@@ -1617,7 +1600,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             markBest(b.sourceCard, b.sourceWhy, entry)
 
             b.sourceTags.removeAllViews()
-            viewModel.pills.filter { !grouped || it.kind != SourcePillKind.QUALITY }
+            viewModel.pills
                 .forEach { pill -> b.sourceTags.addView(makePillTextView(b.root.context, pill)) }
             b.sourceTags.overflowView = android.widget.TextView(b.root.context).apply {
                 setBackgroundResource(R.drawable.pill_more)
@@ -1641,7 +1624,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 b.sourceTags.isClickable = b.sourceTags.expanded || b.sourceTags.hasHidden
             }
 
-            val size = viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SIZE }?.text?.takeIf { !grouped }
+            val size = viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SIZE }?.text
             b.sourceSize.isVisible = !size.isNullOrBlank()
             b.sourceSize.text = size
 
@@ -1678,23 +1661,34 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             b.sourceCard.setOnLongClickListener { rowActions.onRowLongClicked(ref.video) }
         }
 
-        /** "1080p" over "174 seeds · 1.4 GB" */
-        private fun releaseQualityLabel(row: PickerRow): CharSequence {
-            val vm = shownViews[row.ref]
-            val seeds = SeederHealth.parse(vm?.meta?.firstOrNull { it.icon == SourceMetaIcon.SEEDERS }?.text)
-            val size = vm?.meta?.firstOrNull { it.icon == SourceMetaIcon.SIZE }?.text
-            val top = ResolutionLabel.label(row.resolution) ?: row.transport ?: "Play"
-            val sub = listOfNotNull(seeds?.let { SeederHealth.label(it) }, size).joinToString(" · ")
-            if (sub.isEmpty()) return top
-            return android.text.SpannableStringBuilder(top).append('\n').also { sb ->
-                val start = sb.length
-                sb.append(sub)
-                sb.setSpan(android.text.style.RelativeSizeSpan(0.78f), start, sb.length, 0)
-                sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.NORMAL), start, sb.length, 0)
+        /** "Also" then one small button per other quality: "720p · 640 MB · 40 seeds". */
+        private fun bindOtherQualities(
+            container: com.google.android.flexbox.FlexboxLayout,
+            name: String,
+            others: List<PickerRow>,
+        ) {
+            container.removeAllViews()
+            container.isVisible = others.isNotEmpty()
+            if (others.isEmpty()) return
+            val context = container.context
+            container.addView(android.widget.TextView(context).apply {
+                setText(R.string.picker_also)
+                alpha = 0.75f
+                textSize = 13f
+                typeface = ResourcesCompat.getFont(context, R.font.poppins)
+            }, flexParams(context, endDp = 8, bottomDp = 0))
+            others.sortedByDescending { it.resolution ?: -1 }.forEach { q ->
+                val vm = shownViews[q.ref]
+                val seeds = SeederHealth.parse(vm?.meta?.firstOrNull { it.icon == SourceMetaIcon.SEEDERS }?.text)
+                val size = vm?.meta?.firstOrNull { it.icon == SourceMetaIcon.SIZE }?.text
+                val label = listOfNotNull(
+                    ResolutionLabel.label(q.resolution) ?: q.transport ?: "?",
+                    size,
+                    seeds?.let { resources.getQuantityString(R.plurals.picker_seeds, it, it) },
+                ).joinToString(" · ")
+                container.addView(qualityButton(container, name, q.ref, label, filled = false, compact = true))
             }
         }
-
-        // ---- tags (unchanged look from v3) ---------------------------------
 
         private fun makePillTextView(
             context: android.content.Context,
