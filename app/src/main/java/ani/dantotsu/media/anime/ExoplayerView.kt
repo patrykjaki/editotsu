@@ -494,23 +494,20 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                                 }
                                 rotation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                             }
-                            in 315..360, in 0..45 -> {
-                                if (rotation != ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
-                                    exoRotate.visibility = View.VISIBLE
-                                }
-                                rotation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                            }
                         }
                     }
                 }
                 orientationListener?.enable()
             }
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             exoRotate.setOnClickListener {
                 requestedOrientation = rotation
                 it.visibility = View.GONE
             }
         }
+        // Landscape only (either side), with or without system auto-rotate: portrait
+        // squeezed the video and left the controls laid out for the wrong orientation.
+        // The manifest sets the same, so the player never opens in portrait first.
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
 
         if (savedInstanceState != null) {
             currentWindow = savedInstanceState.getInt(resumeWindow)
