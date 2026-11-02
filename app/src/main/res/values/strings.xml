@@ -187,12 +187,12 @@
     <string name="picker_filter_sub">Sub %1$d</string>
     <string name="picker_filter_dub">Dub %1$d</string>
     <string name="picker_filter_dual">Dual %1$d</string>
-    <string name="picker_best_remembered">Best match · you picked this last time</string>
-    <string name="picker_best_same_group">Best match · same release group as last time</string>
-    <string name="picker_best_preferred">Best match · preferred by the extension</string>
-    <string name="picker_family_missing">Your saved release group has nothing for this episode yet.</string>
+    <string name="picker_best_remembered">Last played</string>
+    <string name="picker_best_same_group">Same release group as last played</string>
+    <string name="picker_best_preferred">Preferred by the source</string>
+    <string name="picker_family_missing">No release from the saved group for this episode</string>
     <string name="picker_seeds">%1$d seeds</string>
-    <string name="picker_seeds_low">%1$d seeds · may be slow</string>
+    <string name="picker_seeds_low">%1$d seeds</string>
     <string name="picker_also_as">Also as %1$s</string>
     <string name="picker_also">Also</string>
     <string name="picker_auto_play">Remember and auto-play next time</string>
@@ -200,7 +200,7 @@
     <string name="picker_auto_resuming">Resuming episode %1$s at %2$s</string>
     <string name="picker_auto_starting">Playing episode %1$s</string>
     <string name="picker_empty_title">No streams for episode %1$s</string>
-    <string name="picker_empty_message">%1$s returned nothing. It may not have this episode yet, or the site may be down.</string>
+    <string name="picker_empty_message">%1$s returned no streams</string>
     <string name="picker_retry">Retry</string>
     <string name="picker_change_source">Change source</string>
     <string name="picker_play_quality">Play %1$s %2$s</string>
@@ -218,7 +218,7 @@
     <string name="picker_sort_size">Size</string>
     <string name="picker_sort_quality">Quality</string>
     <string name="picker_filter_count">%1$s · %2$d of %3$d</string>
-    <string name="picker_filter_hidden_all">Filters hide all %1$d streams. Tap to clear filters.</string>
+    <string name="picker_filter_hidden_all">Filters hide all %1$d streams</string>
     <string name="picker_filter_clear">Clear filters</string>
     <string name="picker_source_filters">Source filters</string>
     <string name="picker_source_filters_failed">Could not open the source settings</string>

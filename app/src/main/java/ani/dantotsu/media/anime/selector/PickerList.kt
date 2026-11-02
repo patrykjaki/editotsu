@@ -7,7 +7,10 @@ package ani.dantotsu.media.anime.selector
  * [PickerListBuilder] then:
  *  - merges STREAM rows that share provider + group name + audio kind
  *    into one [PickerEntry.StreamGroup] with one button per quality;
- *  - keeps every RELEASE (torrent) row as its own [PickerEntry.Release];
+ *  - keeps every RELEASE (torrent) row as its own [PickerEntry.Release], except
+ *    that one release offered in several qualities (SubsPlease 1080p/720p/480p:
+ *    same name apart from the resolution and CRC) becomes one card with a
+ *    button per quality;
  *  - picks a Best match with a visible reason ([BestMatch]);
  *  - moves the Best match, then other rows from the remembered release
  *    family, to the top. Everything else keeps the extension's order.
@@ -38,6 +41,8 @@ data class PickerRow(
     val rememberedFamily: Boolean = false,
     /** What the Filter panel filters and sorts by. */
     val facets: RowFacets = RowFacets(),
+    /** Release name without resolution/CRC ([ReleaseQualityKey]); rows sharing it are one release in several qualities. */
+    val qualityKey: String? = null,
 )
 
 data class QualityVariant(val ref: RowRef, val label: String, val resolution: Int?, val transport: String?)
@@ -61,9 +66,18 @@ sealed class PickerEntry {
         override val refs: List<RowRef> get() = primary.map { it.ref } + alternates.map { it.ref }
     }
 
-    data class Release(val row: PickerRow) : PickerEntry() {
+    /**
+     * One release. [row] is what the card shows and plays on a tap; [others] are the same
+     * release in other qualities (empty for most releases).
+     */
+    data class Release(val row: PickerRow, val others: List<PickerRow> = emptyList()) : PickerEntry() {
         override val audioKind: AudioKind? get() = row.audioKind
-        override val refs: List<RowRef> get() = listOf(row.ref)
+        override val refs: List<RowRef> get() = listOf(row.ref) + others.map { it.ref }
+
+        /** every quality, highest first; empty when there is only one */
+        val qualities: List<PickerRow>
+            get() = if (others.isEmpty()) emptyList()
+            else (listOf(row) + others).sortedByDescending { it.resolution ?: -1 }
     }
 }
 
@@ -86,6 +100,17 @@ data class PickerList(
      */
     fun isRememberedQuality(ref: RowRef): Boolean =
         best != null && best.reason != BestReason.EXTENSION_PREFERRED && best.ref == ref
+
+    /**
+     * The quality a tap on the card plays, and the one filled quality button on it: the
+     * remembered quality when it is on this card, otherwise the highest. Same rule on stream
+     * and release cards; every card with quality buttons fills exactly one.
+     */
+    fun defaultQuality(entry: PickerEntry): RowRef? = when (entry) {
+        is PickerEntry.StreamGroup ->
+            entry.refs.firstOrNull { isRememberedQuality(it) } ?: entry.primary.firstOrNull()?.ref
+        is PickerEntry.Release -> entry.row.ref
+    }
 }
 
 object AudioKindDetector {
@@ -159,6 +184,28 @@ object StreamNameCleaner {
     }
 }
 
+/**
+ * A release name with what differs between the qualities of one release taken out:
+ * resolution ("1080p", "(720p)", "1920x1080", "4K") and the CRC ("[A1B2C3D4]").
+ * "[SubsPlease] Show - 05 (1080p) [F2A1B3C4].mkv" and "... (720p) [0B9D7E21].mkv" share a key.
+ * Null when the name has no resolution (nothing to merge on).
+ */
+object ReleaseQualityKey {
+    private val RESOLUTION = Regex("""(?i)(?<![a-z0-9])(?:\d{3,4}[pi]|[48]k|uhd|\d{3,4}x\d{3,4})(?![a-z0-9])""")
+    private val CRC = Regex("""[\[(][0-9A-Fa-f]{8}[\])]""")
+    private val EXT = Regex("""(?i)\.(mkv|mp4|avi|webm|m4v|ts)$""")
+    private val NON_WORD = Regex("""[^\p{L}\p{N}]+""")
+
+    fun of(releaseName: String?, fileName: String? = null): String? {
+        if (releaseName.isNullOrBlank() || !RESOLUTION.containsMatchIn(releaseName)) return null
+        fun norm(s: String) = NON_WORD.replace(
+            CRC.replace(RESOLUTION.replace(EXT.replace(s.trim(), ""), " "), " ").lowercase(), " ",
+        ).trim()
+        val file = fileName?.substringAfterLast('/')?.takeIf { it.isNotBlank() && it.trim() != releaseName.trim() }
+        return listOfNotNull(norm(releaseName), file?.let(::norm)).joinToString("\u0000")
+    }
+}
+
 object ResolutionLabel {
     private val DIGITS = Regex("""(\d{3,4})\s?p""", RegexOption.IGNORE_CASE)
     private val FOUR_K = Regex("""(?i)\b4k\b""")
@@ -198,8 +245,9 @@ object BestMatch {
 
 object PickerListBuilder {
     fun build(rows: List<PickerRow>): PickerList {
-        val entries = group(rows)
         val best = if (rows.size > 1) BestMatch.pick(rows) else null
+        // a release card shows (and a tap plays) the remembered quality, otherwise the highest
+        val entries = group(rows, best?.takeIf { it.reason != BestReason.EXTENSION_PREFERRED }?.ref)
         val familyRefs = rows.filter { it.rememberedFamily }.map { it.ref }.toSet()
         val ordered = order(entries, best, familyRefs)
         val bestIndex = best?.let { b -> ordered.indexOfFirst { b.ref in it.refs } } ?: -1
@@ -219,13 +267,19 @@ object PickerListBuilder {
         )
     }
 
-    fun group(rows: List<PickerRow>): List<PickerEntry> {
+    fun group(rows: List<PickerRow>, best: RowRef? = null): List<PickerEntry> {
         val out = mutableListOf<PickerEntry>()
+        val releaseGroups = releaseQualityGroups(rows)
         val groupIndex = mutableMapOf<String, Int>()
         val groupRows = mutableMapOf<String, MutableList<PickerRow>>()
         for (row in rows) {
             if (row.presentation != SourcePresentationKind.STREAM) {
-                out += PickerEntry.Release(row)
+                val same = releaseGroups[row.ref]
+                when {
+                    same == null -> out += PickerEntry.Release(row)
+                    same.first().ref == row.ref -> out += releaseCard(same, best)
+                    else -> Unit // already in the card of its first quality
+                }
                 continue
             }
             val name = StreamNameCleaner.groupName(row.header)
@@ -299,6 +353,37 @@ object PickerListBuilder {
         )
     }
 
+    /**
+     * Rows of one release in two or more qualities, keyed by each member's ref, in source
+     * order. One row per resolution: a second row with the same resolution and key (a repost)
+     * keeps its own card, and so does a row whose resolution is unknown.
+     */
+    private fun releaseQualityGroups(rows: List<PickerRow>): Map<RowRef, List<PickerRow>> {
+        val buckets = LinkedHashMap<String, MutableList<PickerRow>>()
+        for (row in rows) {
+            if (row.presentation == SourcePresentationKind.STREAM) continue
+            val key = row.qualityKey ?: continue
+            val res = row.resolution ?: continue
+            val k = listOf(row.provider.orEmpty(), key, row.audioKind?.name.orEmpty()).joinToString("\u0000")
+            val bucket = buckets.getOrPut(k) { mutableListOf() }
+            if (bucket.none { it.resolution == res }) bucket += row
+        }
+        val out = HashMap<RowRef, List<PickerRow>>()
+        for (bucket in buckets.values) {
+            if (bucket.size < 2) continue
+            bucket.forEach { out[it.ref] = bucket }
+        }
+        return out
+    }
+
+    /** The card shows the remembered quality when it is one of them, else the highest. */
+    private fun releaseCard(rows: List<PickerRow>, best: RowRef?): PickerEntry.Release {
+        val main = rows.firstOrNull { it.ref == best }
+            ?: rows.singleOrNull { it.rememberedExact }
+            ?: rows.maxBy { it.resolution ?: -1 }
+        return PickerEntry.Release(main, rows.filter { it !== main })
+    }
+
     fun order(entries: List<PickerEntry>, best: BestPick?, familyRefs: Set<RowRef>): List<PickerEntry> {
         if (best == null && familyRefs.isEmpty()) return entries
         val bestEntries = entries.filter { e -> best != null && best.ref in e.refs }
@@ -333,8 +418,8 @@ object SeederHealth {
     fun parse(text: String?): Int? =
         text?.let { NUMBER.find(it)?.value?.filter(Char::isDigit)?.toIntOrNull() }
 
-    fun label(seeders: Int): String =
-        if (isLow(seeders)) "$seeders seeds · may be slow" else "$seeders seeds"
+    /** low counts are shown in the error colour, not with extra words */
+    fun label(seeders: Int): String = "$seeders seeds"
 }
 
 object TagLineBudget {
