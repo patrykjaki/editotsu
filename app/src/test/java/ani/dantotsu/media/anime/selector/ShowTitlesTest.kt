@@ -36,6 +36,32 @@ class ShowTitlesTest {
     }
 
     @Test
+    fun tsundere_raws_card_title() {
+        // feed name, 2026-11-02 (animetosho aid 19308)
+        val raw = "Even the Student Council Has Its Holes S01E03 UNCENSORED SUBFRENCH 1080p ADN WEB-DL AAC2.0 x264-Tsundere-Raws " +
+            "(VOSTFR, Multi Subs, Seitokai ni mo Ana wa Aru, There Is Also a Hole in the Student Organization)"
+        val text = "$raw\n👤 94 💾 572.1 MB ⚙️ nekoBT"
+        val vm = SourceRowSummarizer.build(
+            displayLabel = text, qualityText = text, format = ani.dantotsu.parsers.VideoType.CONTAINER,
+            url = "magnet:?xt=urn:btih:" + "a".repeat(40),
+        )
+        assertEquals("Tsundere-Raws", vm.header)
+        val clean = vm.cleanSubtitle!!
+        assertEquals(false, clean.contains("Tsundere"))
+        assertEquals(false, clean.contains("SUBFRENCH"))
+        assertEquals(false, clean.contains("VOSTFR"))
+        val titles = listOf("Even the Student Council Has Its Holes!", "Seitokai ni mo Ana wa Aru!", "NamaAnaru")
+        assertEquals("Even the Student Council Has Its Holes S01E03", ShowTitles("Even the Student Council Has Its Holes!", titles).localize(clean))
+        assertEquals("Seitokai ni mo Ana wa Aru! S01E03", ShowTitles("Seitokai ni mo Ana wa Aru!", titles).localize(clean))
+    }
+
+    @Test
+    fun trailing_notes_that_are_not_titles_stay() {
+        assertEquals("The Apothecary Diaries S03E01 (English Dub)", en.localize("The Apothecary Diaries S03E01 (English Dub)"))
+        assertEquals("Unknown Show S01E01 (Some Other Long Title)", en.localize("Unknown Show S01E01 (Some Other Long Title)"))
+    }
+
+    @Test
     fun base_names() {
         assertEquals("The Apothecary Diaries", ShowTitles.base(english))
         assertEquals("Kusuriya no Hitorigoto", ShowTitles.base(romaji))
