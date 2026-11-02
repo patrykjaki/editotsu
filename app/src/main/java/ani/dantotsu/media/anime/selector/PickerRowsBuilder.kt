@@ -25,7 +25,7 @@ class PickerRowsBuilder(
 
     private data class ServerKey(val serverName: String, val embedUrl: String, val provider: String?)
 
-    private class ServerFacts(val exact: String?, val family: FamilyCandidate?)
+    private class ServerFacts(val exact: String?, val family: FamilyCandidate?, val qualityKey: String? = null)
 
     private val views = HashMap<ViewKey, SourceRowViewModel>()
     private val fields = HashMap<ViewKey, SourceRowClassifier.ReleaseFields?>()
@@ -71,9 +71,14 @@ class PickerRowsBuilder(
             val provider = StableCandidateBuilder.providerOf(server)
             val facts = servers.getOrPut(ServerKey(server.name, server.embed.url, provider)) {
                 runCatching {
+                    val data = EditotsuInternalData.of(server.video)
                     ServerFacts(
                         exact = StableCandidateBuilder.exactKey(provider, server),
                         family = StableCandidateBuilder.familyCandidate(server),
+                        qualityKey = ReleaseQualityKey.of(
+                            data?.torrentName ?: SourceRowClassifier.extractReleaseName(server.name),
+                            data?.fileName,
+                        ),
                     )
                 }.getOrDefault(ServerFacts(null, null))
             }
@@ -102,6 +107,8 @@ class PickerRowsBuilder(
                         family.groupKey == storedFamily.groupKey,
                     facets = fieldsOf(extractor, video)?.let { RowFacets.of(it, height, data?.sizeBytes) }
                         ?: RowFacets(resolution = ResolutionLabel.label(height), height = height),
+                    qualityKey = if (viewModel.presentation == SourcePresentationKind.STREAM) null
+                    else facts.qualityKey,
                 )
             }
         }
