@@ -59,6 +59,13 @@ class MpvPlaybackEngineTest {
         assertTrue(perFileOptions.contains("Authorization: Bearer secret_token_123"))
         assertTrue(perFileOptions.contains("Custom-Key: Custom\\,Value"))
         assertTrue(perFileOptions.contains("start=15"))
+        // Torrent relay streams open at the position as well (no 0:00 frame before a seek).
+        val torrentOptions = MpvNetworkOptions.buildPerFilePerformanceOptions(
+            sourceClass = PlaybackSourceClass.TORRENT_LOCALHOST,
+            headers = emptyMap(),
+            startPositionMs = 68_000L,
+        )
+        assertTrue(torrentOptions, torrentOptions.contains("start=68"))
 
         // CRLF rejection
         try {

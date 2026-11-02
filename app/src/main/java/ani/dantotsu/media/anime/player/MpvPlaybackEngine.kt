@@ -699,7 +699,8 @@ class MpvPlaybackEngine(
             request = request,
             leases = opLeases,
             state = LoadOperationState.SUBMITTED,
-            pendingSeekMs = if (request.startPositionMs > 0L && request.sourceClass == PlaybackSourceClass.TORRENT_LOCALHOST) request.startPositionMs else null
+            // The start position goes into loadfile's start= option for every source.
+            pendingSeekMs = null
         )
         operationsByGen[genId] = operation
         activeOperation = operation
