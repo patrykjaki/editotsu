@@ -204,6 +204,9 @@
     <string name="picker_empty_message">%1$s returned no streams</string>
     <string name="picker_retry">Retry</string>
     <string name="picker_change_source">Change source</string>
+    <string name="picker_play_prefix">"Play "</string>
+    <string name="picker_show_qualities">Show other qualities: %1$s</string>
+    <string name="picker_hide_qualities">Hide other qualities: %1$s</string>
     <string name="picker_play_quality">Play %1$s %2$s</string>
     <!-- Source Picker v3 fixes: filter and sort (feature/picker-v3-fixes) -->
     <string name="picker_filter">Filter</string>
