@@ -93,14 +93,28 @@ class StreamWindowPlannerTest {
     }
 
     @Test
-    fun `head-first raises only the first pieces and no tail, then widens`() {
+    fun `head-first raises the first pieces and the last tail pieces, then widens`() {
         val p = StreamWindowPlanner(0, 700, 2 * mb, protectedPieces = setOf(698, 699, 700))
         val narrow = p.plan(0, headFirst = true)
-        assertEquals((0 until StreamWindowPlanner.HEAD_FIRST_PIECES).toList(), narrow.raise.map { it.first })
+        // 1 MiB of tail at 2 MB pieces: one piece, +1 for a short last piece
+        assertEquals((0 until StreamWindowPlanner.HEAD_FIRST_PIECES).toList() + listOf(699, 700), narrow.raise.map { it.first })
         assertEquals(0, narrow.raise.first().second)
+        val headDeadlines = narrow.raise.take(StreamWindowPlanner.HEAD_FIRST_PIECES).map { it.second }
+        // the tail comes right after the head, before anything else
+        assertTrue(narrow.raise.drop(StreamWindowPlanner.HEAD_FIRST_PIECES).all { (_, d) -> d > headDeadlines.max() })
+        assertEquals(listOf(0, 1, 2, 699, 700), narrow.deadlined(setOf(698, 699, 700)).map { it.first })
         val wide = p.plan(0)
         assertEquals((0..31).toList() + listOf(698, 699, 700), wide.raise.map { it.first })
         assertTrue(wide.demote.isEmpty())
+    }
+
+    @Test
+    fun `head-first tail is bounded by bytes and by the protected set`() {
+        val small = StreamWindowPlanner(0, 2000, 256 * 1024L, protectedPieces = setOf(1998, 1999, 2000))
+        // 1 MiB at 256 KiB pieces = 4, +1: more than the 3 protected, so all of them
+        assertEquals(listOf(0, 1, 2, 1998, 1999, 2000), small.plan(0, headFirst = true).raise.map { it.first })
+        val none = StreamWindowPlanner(0, 10, 2 * mb)
+        assertEquals(listOf(0, 1, 2), none.plan(0, headFirst = true).raise.map { it.first })
     }
 
     @Test
