@@ -196,7 +196,9 @@
     <string name="picker_also_as">Also as %1$s</string>
     <string name="picker_also">Also</string>
     <string name="picker_auto_play">Remember and auto-play next time</string>
-    <string name="picker_auto_title">Same release as last time</string>
+    <string name="picker_auto_title">Starting playback</string>
+    <string name="picker_auto_resuming">Resuming episode %1$s at %2$s</string>
+    <string name="picker_auto_starting">Playing episode %1$s</string>
     <string name="picker_empty_title">No streams for episode %1$s</string>
     <string name="picker_empty_message">%1$s returned nothing. It may not have this episode yet, or the site may be down.</string>
     <string name="picker_retry">Retry</string>
