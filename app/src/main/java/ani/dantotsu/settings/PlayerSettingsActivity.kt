@@ -772,6 +772,16 @@ class PlayerSettingsActivity :
             },
         )
 
+        val sourcePercent = (PrefManager.getVal<Float>(PrefName.SourceSubScale) * 100f / 5f).roundToInt() * 5
+        binding.videoSubSourceSize.value = sourcePercent.coerceIn(50, 200).toFloat()
+        binding.videoSubSourceSizeButton.text = getString(R.string.textview_sub_source_size, binding.videoSubSourceSize.value.toInt())
+        binding.videoSubSourceSize.addOnChangeListener(
+            OnChangeListener { _, value, fromUser ->
+                binding.videoSubSourceSizeButton.text = getString(R.string.textview_sub_source_size, value.toInt())
+                if (fromUser) PrefManager.setVal(PrefName.SourceSubScale, value / 100f)
+            },
+        )
+
         binding.videoSubBottomMargin.value = PrefManager.getVal(PrefName.SubBottomMargin)
         binding.videoSubBottomMargin.addOnChangeListener(
             OnChangeListener { _, value, fromUser ->

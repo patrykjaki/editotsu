@@ -704,6 +704,38 @@
 
                 </com.google.android.material.slider.Slider>
 
+                <!-- Size of the file's own styled subtitles (source styling); always enabled. -->
+                <Button
+                    android:id="@+id/videoSubSourceSizeButton"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:layout_marginBottom="8dp"
+                    android:clickable="false"
+                    android:fontFamily="@font/poppins_bold"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:paddingHorizontal="32dp"
+                    android:textAlignment="viewStart"
+                    android:textAllCaps="false"
+                    android:textColor="@color/bg_opp"
+                    app:cornerRadius="0dp"
+                    app:icon="@drawable/ic_round_color_24"
+                    app:iconPadding="16dp"
+                    app:iconSize="24dp"
+                    tools:text="Source Subtitle Size (100%)" />
+
+                <com.google.android.material.slider.Slider
+                    android:id="@+id/videoSubSourceSize"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="32dp"
+                    android:stepSize="5.0"
+                    android:valueFrom="50"
+                    android:valueTo="200">
+
+                </com.google.android.material.slider.Slider>
+
                 <Button
                     android:id="@+id/videoSubFont"
                     style="@style/Widget.Material3.Button.TextButton"
