@@ -760,11 +760,11 @@ class MediaInfoFragment : Fragment() {
                     val spoilerAction = bind.itemTitleAction
                     fun updateSpoilerAction() {
                         if (hiddenSpoilers.isEmpty()) {
-                            spoilerAction.setText(R.string.hide_spoiler_tags)
+                            spoilerAction.setText(R.string.tags_hide_spoilers)
                             spoilerAction.setIconResource(R.drawable.ic_round_remove_red_eye_24)
                         } else {
                             spoilerAction.text = spoilerAction.resources.getQuantityString(
-                                R.plurals.show_spoiler_tags, hiddenSpoilers.size, hiddenSpoilers.size
+                                R.plurals.tags_show_spoilers, hiddenSpoilers.size, hiddenSpoilers.size
                             )
                             spoilerAction.setIconResource(R.drawable.format_spoiler_24)
                         }
