@@ -28,6 +28,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import ani.dantotsu.media.anime.ExoplayerView
 import ani.dantotsu.animethemes.AnimeThemes
 import ani.dantotsu.animethemes.AnimeThemesStripAdapter
+import ani.dantotsu.animethemes.ThemeChoice
 import ani.dantotsu.animethemes.ThemeQueue
 import ani.dantotsu.animethemes.ThemeTrack
 import ani.dantotsu.R
@@ -697,7 +698,7 @@ class MediaInfoFragment : Fragment() {
                         loading.cancel()
                         if (_binding == null || slot.parent == null) return@launch
                         slot.removeAllViews()
-                        val tracks = data?.let { ThemeQueue.tracks(it) }.orEmpty()
+                        val tracks = data?.let { ThemeQueue.choices(it) }.orEmpty()
                         if (tracks.isEmpty()) showAniListText() else showThemeStrip(slot, media, tracks)
                     }
                 }
@@ -1163,15 +1164,15 @@ class MediaInfoFragment : Fragment() {
         super.onDestroy()
     }
 
-    private fun showThemeStrip(slot: ViewGroup, media: Media, tracks: List<ThemeTrack>) {
+    private fun showThemeStrip(slot: ViewGroup, media: Media, choices: List<ThemeChoice>) {
         val shieldOn: Boolean = PrefManager.getVal(PrefName.HideEpisodeSpoilers)
         val shielded = { t: ThemeTrack -> ThemeQueue.shielded(shieldOn, t.episodes, media.userProgress) }
         ItemTitleRecyclerBinding.inflate(layoutInflater, slot, false).apply {
             itemTitle.setText(R.string.anime_themes_title)
             itemRecycler.layoutManager =
                 LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-            itemRecycler.adapter = AnimeThemesStripAdapter(tracks, shielded) { tapped ->
-                val queue = ThemeQueue.playQueue(tracks, tapped, shielded)
+            itemRecycler.adapter = AnimeThemesStripAdapter(choices, shielded) { tapped, shown ->
+                val queue = ThemeQueue.playQueue(shown, tapped, shielded)
                 ExoplayerView.openThemes(
                     requireContext(),
                     queue,

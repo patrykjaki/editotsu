@@ -245,6 +245,11 @@
     <string name="theme_hidden_until">Hidden until episode %1$d</string>
     <string name="theme_flag_spoiler">Spoiler</string>
     <string name="theme_flag_nsfw">NSFW</string>
+    <plurals name="theme_versions">
+        <item quantity="one">%d version</item>
+        <item quantity="other">%d versions</item>
+    </plurals>
+    <string name="theme_versions_action">%1$s, %2$s, choose version</string>
     <string name="prequel">Prequel</string>
     <string name="sequel">Sequel</string>
 
