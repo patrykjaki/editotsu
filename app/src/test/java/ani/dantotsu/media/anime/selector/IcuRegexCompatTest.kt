@@ -24,6 +24,12 @@ class IcuRegexCompatTest {
             val c = p[i]
             when {
                 c == '\\' -> {
+                    // \p{L} / \P{Lu}: a property name, not a quantifier
+                    if (i + 2 < p.length && (p[i + 1] == 'p' || p[i + 1] == 'P') && p[i + 2] == '{') {
+                        val end = p.indexOf('}', i + 3)
+                        i = if (end < 0) p.length else end + 1
+                        continue
+                    }
                     if (i + 1 < p.length && p[i + 1] == 'Q') {
                         val end = p.indexOf("\\E", i + 2)
                         i = if (end < 0) p.length else end + 2
@@ -65,6 +71,7 @@ class IcuRegexCompatTest {
         assertEquals(device.length - 1, loneCloseBrace(device))
         assertEquals(-1, loneCloseBrace("""\[[\s._|\-]*\]|\([\s._|\-]*\)|\{[\s._|\-]*\}"""))
         assertEquals(-1, loneCloseBrace("""a{2,3}[}{]x{4}\Q}\E"""))
+        assertEquals(-1, loneCloseBrace("""[^\p{L}\p{N}]+(?![\p{L}])\P{Lu}"""))
     }
 
     @Test
