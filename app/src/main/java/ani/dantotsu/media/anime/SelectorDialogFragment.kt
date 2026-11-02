@@ -1411,16 +1411,10 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 entry.primary.filter { it !== main }.map { Triple(it.ref, it.label, it.label) },
             )
             b.streamAlternates.removeAllViews()
-            b.streamAlternates.isVisible = entry.alternates.isNotEmpty()
+            b.streamAlternatesRow.isVisible = entry.alternates.isNotEmpty()
             if (entry.alternates.isNotEmpty()) {
-                val label = android.widget.TextView(b.root.context).apply {
-                    text = entry.alternateLabel?.let { getString(R.string.picker_also_as, it) }
-                        ?: getString(R.string.picker_also)
-                    alpha = 0.75f
-                    textSize = 13f
-                    typeface = ResourcesCompat.getFont(context, R.font.poppins)
-                }
-                b.streamAlternates.addView(label, flexParams(b.root.context, endDp = 8, bottomDp = 0))
+                b.streamAlternatesLabel.text = entry.alternateLabel?.let { getString(R.string.picker_also_as, it) }
+                    ?: getString(R.string.picker_also)
                 entry.alternates.forEach { variant ->
                     b.streamAlternates.addView(qualityButton(
                         b.streamAlternates, entry.name, variant.ref, variant.label,
@@ -1560,7 +1554,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 }
                 tv.setOnLongClickListener { rowActions.onRowLongClicked(ref.video) }
             }
-            tv.layoutParams = flexParams(context, endDp = 8, bottomDp = if (compact) 0 else 8)
+            tv.layoutParams = flexParams(context, endDp = 8, bottomDp = if (compact) 6 else 8)
             return tv
         }
 
@@ -1579,7 +1573,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             // one release in several qualities: the card is the best one, like any other
             // card; the rest are small buttons under the tags
             val others = entry.qualities.filter { it.ref != entry.row.ref }
-            bindOtherQualities(b.sourceQualities, header, others)
+            bindOtherQualities(b.sourceQualitiesRow, b.sourceQualities, header, others)
 
             val seeders = SeederHealth.parse(viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SEEDERS }?.text)
             b.sourceSeeders.isVisible = seeders != null
@@ -1661,22 +1655,16 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             b.sourceCard.setOnLongClickListener { rowActions.onRowLongClicked(ref.video) }
         }
 
-        /** "Also" then one small button per other quality: "720p · 640 MB · 40 seeds". */
+        /** One small button per other quality ("720p · 640 MB · 40 seeds"), after the "Also" label. */
         private fun bindOtherQualities(
+            row: View,
             container: com.google.android.flexbox.FlexboxLayout,
             name: String,
             others: List<PickerRow>,
         ) {
             container.removeAllViews()
-            container.isVisible = others.isNotEmpty()
+            row.isVisible = others.isNotEmpty()
             if (others.isEmpty()) return
-            val context = container.context
-            container.addView(android.widget.TextView(context).apply {
-                setText(R.string.picker_also)
-                alpha = 0.75f
-                textSize = 13f
-                typeface = ResourcesCompat.getFont(context, R.font.poppins)
-            }, flexParams(context, endDp = 8, bottomDp = 0))
             others.sortedByDescending { it.resolution ?: -1 }.forEach { q ->
                 val vm = shownViews[q.ref]
                 val seeds = SeederHealth.parse(vm?.meta?.firstOrNull { it.icon == SourceMetaIcon.SEEDERS }?.text)
