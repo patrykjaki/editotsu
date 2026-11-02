@@ -20,7 +20,8 @@ object StableCandidateBuilder {
         provider: String?,
         server: VideoServer,
     ): String? {
-        val url = server.embed.url
+        // lib-16 extensions leave the embed (video page) url empty; the playable url is the video's
+        val url = server.embed.url.ifBlank { server.video?.videoUrl.orEmpty() }
         // Magnet?
         if (url.startsWith("magnet:?")) {
             return MagnetKeyBuilder.build(provider, url)
@@ -58,14 +59,28 @@ object StableCandidateBuilder {
         )
     }
 
+    /**
+     * "single" for a one-file torrent, the batch's info hash (32 hex chars, the payload's value
+     * cap) for a file picked out of a batch, so the next episode comes from the same batch.
+     * Only sources that send Editotsu data state this; others get null (not ranked).
+     */
+    fun packKey(server: VideoServer): String? {
+        val data = EditotsuInternalData.of(server.video) ?: return null
+        if (!data.isPack) return "single"
+        return data.infoHash?.lowercase()?.takeIf { it.length >= 32 }?.take(32) ?: "batch"
+    }
+
     fun familyCandidate(server: VideoServer): FamilyCandidate? {
         val provider = providerOf(server) ?: return null
         val exactKey = exactKey(provider, server) ?: return null
         val meta = StableReleaseMetadataExtractor.extract(server.name)
-        val groupKey = StableGroupCanonicalizer.canonicalKey(meta.group) ?: return null
+        // the source's own reading of the group wins (scene names like "H.264-VARYG (Show)")
+        val group = EditotsuInternalData.of(server.video)?.tags?.group ?: meta.group
+        val groupKey = StableGroupCanonicalizer.canonicalKey(group) ?: return null
         val soft = LinkedHashMap<String, String>()
         TrackerCanonicalizer.canonicalKey(meta.tracker)?.let { soft["trackerKey"] = it }
         StableSoftCanonicalizer.canonicalResolution(meta.resolution)?.let { soft["resolution"] = it }
+        packKey(server)?.let { soft["pack"] = it }
         StableSoftCanonicalizer.canonicalText(meta.softAudioMode)?.let { soft["audioMode"] = it }
         StableSoftCanonicalizer.canonicalText(meta.softAudioFormat)?.let { soft["audioFormat"] = it }
         SourceServiceCanonicalizer.canonicalKey(meta.sourceService)?.let { soft["sourceService"] = it }

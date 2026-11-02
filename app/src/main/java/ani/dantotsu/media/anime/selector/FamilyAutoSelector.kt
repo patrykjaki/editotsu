@@ -9,6 +9,7 @@ package ani.dantotsu.media.anime.selector
  * fixed order:
  *
  *   resolution   (same quality first: "same group, same quality")
+ *   pack         ("single", or the batch's info hash: keep playing the same batch)
  *   trackerKey
  *   audioMode
  *   audioFormat
@@ -39,7 +40,7 @@ sealed class FamilyAutoResult {
 
 object FamilyAutoSelector {
     private val SOFT_RANK_ORDER = listOf(
-        "resolution", "trackerKey", "audioMode",
+        "resolution", "pack", "trackerKey", "audioMode",
         "audioFormat", "sourceService", "codec", "hdr",
     )
 

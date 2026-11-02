@@ -326,9 +326,12 @@ class IdentityContinuityTest {
 
     @Test
     fun family_codec_too_many_soft_rejected() {
-        val soft = (1..8).associate { i -> "k$i" to "v" }
+        val soft = (1..SelectedFamilyCodec.SOFT_ENTRIES_LIMIT + 1).associate { i -> "k$i" to "v" }
         val p = FamilyPayload("a", "b", soft)
         assertNull(SelectedFamilyCodec.encode(p))
+        // the cap itself fits (8: the 7 ranked fields plus "pack")
+        assertEquals(8, SelectedFamilyCodec.SOFT_ENTRIES_LIMIT)
+        assertNotNull(SelectedFamilyCodec.encode(FamilyPayload("a", "b", soft.entries.take(8).associate { it.toPair() })))
     }
 
     // ===== Stable release canonicalizer (no cleanDisplayTitle) =====
