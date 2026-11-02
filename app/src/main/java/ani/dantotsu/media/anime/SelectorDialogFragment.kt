@@ -543,6 +543,18 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             binding.selectorAutoListContainer.visibility = View.VISIBLE
                             binding.selectorAutoText.text = selected?.lineSequence()?.firstOrNull { it.isNotBlank() }
                                 ?: entryFamily?.groupKey ?: ""
+                            // Same rule as the player: a saved position resumes unless the
+                            // episode was finished (92%), which starts again at 0:00.
+                            val resumeKey = actualKey ?: ep.number
+                            val savedMs = PrefManager.getCustomVal(resumePositionKey(media!!.id, resumeKey), 0L)
+                            val maxMs = PrefManager.getCustomVal("${media!!.id}_${resumeKey}_max", Long.MAX_VALUE)
+                                .takeIf { it != Long.MAX_VALUE }
+                            val resumeMs = ani.dantotsu.media.anime.player.ResumeStart.startPosition(savedMs, maxMs)
+                            binding.selectorTitle.text = if (resumeMs > 0L) {
+                                getString(R.string.picker_auto_resuming, ep.number, formatResumeTime(resumeMs))
+                            } else {
+                                getString(R.string.picker_auto_starting, ep.number)
+                            }
                             binding.selectorCancel.setOnClickListener {
                                 media!!.selected!!.server = null
                                 model.saveSelected(media!!.id, media!!.selected!!)
@@ -904,6 +916,14 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 model.setEpisode(targetEp, "startExo no launch")
             }
         }
+    }
+
+    private fun formatResumeTime(ms: Long): String {
+        val total = ms / 1000
+        val h = total / 3600
+        val m = (total / 60) % 60
+        val s = total % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
     }
 
     private fun stopAddingToList() {
