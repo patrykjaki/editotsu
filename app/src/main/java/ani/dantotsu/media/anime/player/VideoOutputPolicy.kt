@@ -8,8 +8,8 @@ package ani.dantotsu.media.anime.player
  * User GLSL shaders (the CuNNy upscaler) are compute shaders. Neither mpv renderer can run
  * compute on Android GLES: mpv's `vo=gpu` loads no glDispatchCompute there ("compute
  * shaders=0"), and libplacebo (`vo=gpu-next`) only enables compute on desktop GL 4.3+ with
- * GLSL >= 420 (libplacebo v7.360.0 src/opengl/gpu.c:161). Phone evidence 2026-11-01:
- * state/_audit_2026-11-01/cunny-phone/RESULT.md. Only libplacebo's Vulkan backend runs them,
+ * GLSL >= 420 (libplacebo v7.360.0 src/opengl/gpu.c:161); confirmed on a phone 2026-11-01.
+ * Only libplacebo's Vulkan backend runs them,
  * which needs a libmpv built with Vulkan (opt-in, `-Peditotsu.libmpvAar=...`).
  *
  * With a Vulkan-capable libmpv, mpv's `gpu-api=auto` could pick Vulkan for normal playback

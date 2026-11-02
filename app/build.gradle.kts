@@ -22,8 +22,7 @@ val gitCommitHash = if (rootProject.file(".git").exists()) {
     "nogit"
 }
 
-// Version: set once in gradle.properties (editotsu.version); versionCode follows the
-// agent policy "Versioning and releases":
+// Version: set once in gradle.properties (editotsu.version); versionCode:
 //   1_000_000 + MAJOR*10_000_000 + MINOR*100_000 + PATCH*1_000 + S
 //   S = alphaNN 1..19, betaNN 20+NN, rcNN 50+NN, stable 99.
 val editotsuVersion = providers.gradleProperty("editotsu.version").get().trim()
@@ -64,7 +63,7 @@ val torrentBench = providers.gradleProperty("editotsu.torrentBench").orNull == "
 // arm64 libtorrent4j native. Default: the CP1.5-B "c2" build checked in at
 // app/libs (built-in hashing, WebTorrent off; ELF build id d54b24f5...), which
 // doesn't hit the Scudo abort the Maven 2.1.0-39 native hits when a torrent
-// with files on disk is added again (state/_audit_2026-11-01/c2-ab/RESULT.md).
+// with files on disk is added again (A/B tested on a phone, 2026-11-01).
 // Its pinned source + rebuild recipe live in native/libtorrent4j-arm64-c2/.
 //   -Peditotsu.libtorrentArm64=maven             use the Maven artifact (A/B)
 //   -Peditotsu.libtorrentArm64Jar=/abs/path.jar  another jar; provenance.json and

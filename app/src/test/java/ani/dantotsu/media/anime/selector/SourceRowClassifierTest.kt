@@ -660,7 +660,7 @@ class SourceRowClassifierTest {
             formatName = "CONTAINER",
             url = "magnet:?xt=urn:btih:0123456789ABCDEF0123456789ABCDEF01234567",
         )
-        // v3 priority (intentional change, redesign handoff + addendum):
+        // v3 priority (intentional change):
         // resolution, subtitle/language visibility, HDR variant, audio
         // mode, codec, bit depth, audio format. Subtitle pills outrank
         // codec so dense rows never drop language visibility.

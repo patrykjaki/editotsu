@@ -11,8 +11,7 @@ import java.nio.file.Files
 
 /**
  * vo=gpu on GLES rejects `#extension` after non-preprocessor tokens; CuNNy declares the
- * optional float16 extension inside every pass body (device evidence 2026-11-01:
- * state/_audit_2026-11-01/cunny-phone/RESULT.md).
+ * optional float16 extension inside every pass body (seen on a device, 2026-11-01).
  */
 class GlesShaderCompatTest {
 
