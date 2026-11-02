@@ -9,8 +9,8 @@ import android.widget.TextView
 /**
  * One fixed line of tags. Children are tags in priority order; whatever
  * does not fit is hidden and a "+N" chip ([overflowView]) is shown at
- * the end instead. Nothing wraps and nothing scrolls sideways. The fit
- * itself is the pure [TagLineBudget].
+ * the end instead. Nothing scrolls sideways. The fit itself is the pure
+ * [TagLineBudget]. With [expanded] every tag shows, wrapping onto more lines.
  */
 class TagLineLayout @JvmOverloads constructor(
     context: Context,
@@ -27,6 +27,20 @@ class TagLineLayout @JvmOverloads constructor(
 
     var gapPx: Int = (4 * resources.displayMetrics.density).toInt()
 
+    /** All tags, wrapped onto as many lines as needed (the "+N" chip was tapped). */
+    var expanded: Boolean = false
+        set(value) {
+            if (field != value) {
+                field = value
+                requestLayout()
+            }
+        }
+
+    /** true when some tags are hidden behind "+N" (after the last measure) */
+    val hasHidden: Boolean get() = !expanded && visibleCount < tags().size
+
+    private var wrapped: List<IntArray> = emptyList() // x, y per tag when expanded
+
     /** Number of tags visible after the last measure. */
     var visibleCount: Int = 0
         private set
@@ -38,6 +52,31 @@ class TagLineLayout @JvmOverloads constructor(
         val unspecified = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
         val tags = tags()
         tags.forEach { it.measure(unspecified, unspecified) }
+        if (expanded && MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED) {
+            overflowView?.visibility = View.GONE
+            visibleCount = tags.size
+            val pos = ArrayList<IntArray>(tags.size)
+            var x = 0
+            var y = 0
+            var lineH = 0
+            for (v in tags) {
+                if (x > 0 && x + v.measuredWidth > available) {
+                    x = 0
+                    y += lineH + gapPx
+                    lineH = 0
+                }
+                pos += intArrayOf(x, y)
+                x += v.measuredWidth + gapPx
+                lineH = maxOf(lineH, v.measuredHeight)
+            }
+            wrapped = pos
+            setMeasuredDimension(
+                MeasureSpec.getSize(widthMeasureSpec),
+                resolveSize(y + lineH + paddingTop + paddingBottom, heightMeasureSpec),
+            )
+            return
+        }
+        wrapped = emptyList()
         val widths = tags.map { it.measuredWidth }
         val overflow = overflowView
         val plusWidth: (Int) -> Int = { n ->
@@ -79,6 +118,15 @@ class TagLineLayout @JvmOverloads constructor(
     }
 
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        if (wrapped.isNotEmpty()) {
+            tags().forEachIndexed { i, v ->
+                val p = wrapped.getOrNull(i) ?: return@forEachIndexed
+                val x = paddingLeft + p[0]
+                val y = paddingTop + p[1]
+                v.layout(x, y, x + v.measuredWidth, y + v.measuredHeight)
+            }
+            return
+        }
         var x = paddingLeft
         val innerHeight = b - t - paddingTop - paddingBottom
         fun place(v: View) {
