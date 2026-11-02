@@ -1076,8 +1076,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             ?.takeIf { it != Long.MAX_VALUE }
             ?: (cleanEp?.let { PrefManager.getCustomVal("${media.id}_${cleanEp}_max", Long.MAX_VALUE) }?.takeIf { it != Long.MAX_VALUE })
 
-        val savedPosition = savedMax?.let { if (it <= playbackPosition) max(0, it - 5000L) else playbackPosition }
-            ?: playbackPosition
+        val savedPosition = ani.dantotsu.media.anime.player.ResumeStart.startPosition(playbackPosition, savedMax)
+        playbackPosition = savedPosition
 
         val speeds = PlaybackSpeedSelection.values(PrefManager.getVal(PrefName.CursedSpeeds))
         val savedSpeedIndex = PrefManager.getCustomVal("${media.id}_speed", PrefManager.getVal<Int>(PrefName.DefaultSpeed))
