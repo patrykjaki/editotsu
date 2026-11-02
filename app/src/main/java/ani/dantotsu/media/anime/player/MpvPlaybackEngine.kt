@@ -476,6 +476,7 @@ class MpvPlaybackEngine(
                 val sec = TimeConverter.msToSeconds(positionMs)
                 try {
                     mpvClient.command("seek", sec.toString(), "absolute+keyframes")
+                    releaseTorrentReadIfUncached(op, positionMs / 1000.0)
                 } catch (e: Exception) {
                     ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekTo command failed: ${e.message}")
                 }
@@ -504,11 +505,39 @@ class MpvPlaybackEngine(
                 val sec = TimeConverter.msToSecondsSigned(offsetMs)
                 ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekRelative offsetMs=$offsetMs -> ${sec}s")
                 try {
+                    val fromSec = mpvClient.getPropertyDouble("time-pos")
                     mpvClient.command("seek", sec.toString(), "relative+keyframes")
+                    if (fromSec != null) releaseTorrentReadIfUncached(op, fromSec + offsetMs / 1000.0)
                 } catch (e: Exception) {
                     ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekRelative command failed: ${e.message}")
                 }
             }
+        }
+    }
+
+    /**
+     * Torrent streams: after a seek outside mpv's cache, tell the relay to end the
+     * read-ahead request that waits for a missing piece (see TorrentSeekSignal).
+     * Unknown cache state does nothing; a seek inside the cache never cuts the read.
+     */
+    private fun releaseTorrentReadIfUncached(op: LoadOperation?, targetSec: Double) {
+        val request = op?.request ?: return
+        if (request.sourceClass != PlaybackSourceClass.TORRENT_LOCALHOST) return
+        val ranges = try {
+            val state = mpvClient.getPropertyNode("demuxer-cache-state")?.asMap() ?: return
+            val list = state["seekable-ranges"]?.asArray() ?: return
+            list.map { node ->
+                val range = node.asMap() ?: return
+                val start = range["start"]?.let { it.asDouble() ?: it.asInt()?.toDouble() } ?: return
+                val end = range["end"]?.let { it.asDouble() ?: it.asInt()?.toDouble() } ?: return
+                start to end
+            }
+        } catch (_: Exception) {
+            return
+        }
+        if (ani.dantotsu.torrent.TorrentSeekSignal.needsNewRead(targetSec, ranges)) {
+            ani.dantotsu.util.Logger.log("MpvPlaybackEngine: torrent seek to ${"%.1f".format(targetSec)}s outside cache $ranges; releasing relay read")
+            ani.dantotsu.torrent.TorrentSeekSignal.uncachedSeek(request.uri)
         }
     }
 
