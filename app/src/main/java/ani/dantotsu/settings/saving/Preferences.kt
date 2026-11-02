@@ -161,6 +161,7 @@ enum class PrefName(val data: Pref) {
     SubAlpha(Pref(Location.Player, Float::class, 1f)),
     SubStroke(Pref(Location.Player, Float::class, 8f)),
     SubBottomMargin(Pref(Location.Player, Float::class, 1f)),
+    SourceSubScale(Pref(Location.Player, Float::class, 1f)),
     Font(Pref(Location.Player, Int::class, 0)),
     FontSize(Pref(Location.Player, Int::class, 20)),
     Locale(Pref(Location.Player, Int::class, 2)),
