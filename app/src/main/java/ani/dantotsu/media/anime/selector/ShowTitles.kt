@@ -37,6 +37,7 @@ class ShowTitles(preferred: String, all: Collection<String>) {
     fun localize(title: String?): String? {
         if (title.isNullOrBlank()) return title
         var t = dropRepeatedNames(title)
+        if (variants.any { it.regex.containsMatchIn(t) }) t = dropTrailingAltTitles(t)
         for (v in variants) {
             val m = v.regex.find(t) ?: continue
             if (norm(m.value) == norm(v.replacement)) break
@@ -72,6 +73,27 @@ class ShowTitles(preferred: String, all: Collection<String>) {
         return t
     }
 
+    /**
+     * The card already starts with the show's name, so a trailing "(...)" part that reads like
+     * another title (3+ words, letters only, no tag words) is an alternate name AniList doesn't
+     * list: "(There Is Also a Hole in the Student Organization)".
+     */
+    private fun dropTrailingAltTitles(title: String): String {
+        val m = TRAILING_PARENS.find(title) ?: return title
+        val parts = m.groupValues[1].split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val keep = parts.filterNot(::looksLikeTitle)
+        if (keep.size == parts.size) return title
+        val rest = if (keep.isEmpty()) "" else " (" + keep.joinToString(", ") + ")"
+        return title.substring(0, m.range.first).trimEnd() + rest
+    }
+
+    private fun looksLikeTitle(part: String): Boolean {
+        val words = part.split(' ').filter { it.isNotEmpty() }
+        if (words.size < 3) return false
+        if (!words.all { w -> w.all { it.isLetter() || it == '\'' || it == '!' || it == '?' || it == ':' } }) return false
+        return words.none { it.lowercase(Locale.ROOT).trimEnd('!', '?', ':') in TAG_WORDS }
+    }
+
     override fun equals(other: Any?): Boolean =
         other is ShowTitles && other.known == known && other.variants.map { it.norm to it.replacement } == variants.map { it.norm to it.replacement }
 
@@ -80,6 +102,12 @@ class ShowTitles(preferred: String, all: Collection<String>) {
     companion object {
         private const val MIN_LEN = 4
         private val PARENS = Regex("""\(([^()]*)\)""")
+        private val TRAILING_PARENS = Regex("""\(([^()]*)\)\s*$""")
+        private val TAG_WORDS = setOf(
+            "sub", "subs", "subbed", "dub", "dubbed", "audio", "dual", "multi", "raw", "raws", "uncensored",
+            "censored", "batch", "complete", "web", "bd", "bluray", "remux", "weekly", "english", "french",
+            "spanish", "german", "italian", "portuguese", "subtitles", "version", "edition", "cut",
+        )
         private val SEASON_SUFFIX = Regex(
             """(?i)[\s:\-–]*(?:season\s*\d+|\d+(?:st|nd|rd|th)\s+season|s\d{1,2}|part\s*\d+|cour\s*\d+|\d+(?:st|nd|rd|th)\s+cour|\(\d{4}\))\s*$""",
         )

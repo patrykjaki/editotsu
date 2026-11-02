@@ -2547,8 +2547,10 @@ object SourceRowClassifier {
             // Trailing `-GROUP` matching the header group (suffix
             // groups are shown in the header, not repeated).
             if (releaseGroup != null) {
+                // also before trailing notes: "x264-Tsundere-Raws (VOSTFR, ...)"
                 val suffixGroup = Regex(
-                    """[\s._\-]+""" + Regex.escape(releaseGroup) + """\s*${'$'}""",
+                    """[\s._\-]+""" + Regex.escape(releaseGroup) +
+                        """(?=\s*(?:[\[(][^\[\]()]*[\])]\s*)*${'$'})""",
                     RegexOption.IGNORE_CASE,
                 )
                 val strippedSuffix = suffixGroup.replace(cleaned, "")
@@ -2583,8 +2585,15 @@ object SourceRowClassifier {
         // Any HDR/DV spelling left over once an HDR variant is shown as a
         // pill (e.g. "DV HDR" where only DV became the variant, "HDR10P").
         if (hdrVariant != null) out = out.replace(CLEAN_HDR_ANY_TOKEN, " ")
+        // language tags of French/multi releases; the flag chips show the languages
+        out = out.replace(CLEAN_LANG_NOTE_TOKEN, " ")
         return ReleaseTitleNormalizer.normalize(out)
     }
+
+    /** upper-case only, so title words ("The French Chef") stay */
+    private val CLEAN_LANG_NOTE_TOKEN = Regex(
+        """(?<=^|[\s.\-_\[(,])(?:SUBFRENCH|VOSTFR|VOSTA|TRUEFRENCH|FRENCH|VFF|VFQ|VFI|VF|MULTi|MULTI)(?=$|[\s.\-_\]),])""",
+    )
 
     private val CLEAN_HDR_ANY_TOKEN = Regex(
         """(?<=^|[\s.\-_\[(])(?:HDR10\+|HDR10PLUS|HDR10P|HDR10|HDR|DV|DOVI|DOLBY[\s.\-_]*VISION)(?=$|[\s.\-_\])])""",
