@@ -45,7 +45,7 @@ class AnimeThemesRepositoryTest {
 
     @Before
     fun setUp() {
-        tempCacheDir = File(System.getProperty("java.io.tmpdir"), "animethemes_test_cache_${System.currentTimeMillis()}")
+        tempCacheDir = java.nio.file.Files.createTempDirectory("animethemes_test_cache_").toFile()
         tempCacheDir.mkdirs()
     }
 

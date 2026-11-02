@@ -16,7 +16,7 @@ class MpvPlaybackEngineTest {
     private lateinit var fakeClient: FakeMpvClient
     private lateinit var engine: MpvPlaybackEngine
     private val tempDir by lazy {
-        File(System.getProperty("java.io.tmpdir"), "dantotsu_test_${System.currentTimeMillis()}").apply { mkdirs() }
+        java.nio.file.Files.createTempDirectory("dantotsu_test_").toFile()
     }
 
     @Before
