@@ -63,6 +63,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.Serializable
@@ -683,8 +684,19 @@ class MediaInfoFragment : Fragment() {
                     }
                     themesJob?.cancel()
                     themesJob = viewLifecycleOwner.lifecycleScope.launch {
+                        // AnimeThemes can take 20-40 s; say so unless the cache answers first.
+                        val loading = launch {
+                            delay(300)
+                            ItemTitleTextBinding.inflate(LayoutInflater.from(context), slot, false).apply {
+                                itemTitle.setText(R.string.anime_themes_title)
+                                itemText.setText(R.string.anime_themes_loading)
+                                slot.addView(root)
+                            }
+                        }
                         val data = AnimeThemes.repository.getThemesForMedia(media)
+                        loading.cancel()
                         if (_binding == null || slot.parent == null) return@launch
+                        slot.removeAllViews()
                         val tracks = data?.let { ThemeQueue.tracks(it) }.orEmpty()
                         if (tracks.isEmpty()) showAniListText() else showThemeStrip(slot, media, tracks)
                     }
@@ -742,17 +754,27 @@ class MediaInfoFragment : Fragment() {
                     // Index-parallel with media.tags via tagsIsSpoiler.
                     val hideSpoilerTags = PrefManager.getVal<Boolean>(PrefName.HideSpoilerTags)
                     val hasSpoilers = media.tagsIsSpoiler.any { it }
-                    var allSpoilersRevealed = false
                     val spoilerChipUpdaters = mutableListOf<(Boolean) -> Unit>()
+                    // Spoiler chips currently masked; the header button shows this state.
+                    val hiddenSpoilers = mutableSetOf<Int>()
+                    val spoilerAction = bind.itemTitleAction
+                    fun updateSpoilerAction() {
+                        if (hiddenSpoilers.isEmpty()) {
+                            spoilerAction.setText(R.string.hide_spoiler_tags)
+                            spoilerAction.setIconResource(R.drawable.ic_round_remove_red_eye_24)
+                        } else {
+                            spoilerAction.text = spoilerAction.resources.getQuantityString(
+                                R.plurals.show_spoiler_tags, hiddenSpoilers.size, hiddenSpoilers.size
+                            )
+                            spoilerAction.setIconResource(R.drawable.format_spoiler_24)
+                        }
+                    }
 
                     if (hasSpoilers && hideSpoilerTags) {
-                        bind.itemTitle.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.format_spoiler_24, 0)
-                        bind.itemTitle.compoundDrawablePadding = 8
-                        bind.itemTitle.setSafeOnClickListener {
-                            allSpoilersRevealed = !allSpoilersRevealed
-                            spoilerChipUpdaters.forEach { it(allSpoilersRevealed) }
-                            val msg = if (allSpoilersRevealed) R.string.show_spoilers else R.string.hide_spoilers
-                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        spoilerAction.visibility = View.VISIBLE
+                        spoilerAction.setSafeOnClickListener {
+                            val reveal = hiddenSpoilers.isNotEmpty()
+                            spoilerChipUpdaters.forEach { it(reveal) }
                         }
                     }
 
@@ -766,6 +788,10 @@ class MediaInfoFragment : Fragment() {
                         var isRevealed = spoilerChipRevealed(hideSpoilerTags, isSpoiler)
 
                         fun updateChipAppearance() {
+                            if (isSpoiler && hideSpoilerTags) {
+                                if (isRevealed) hiddenSpoilers.remove(position) else hiddenSpoilers.add(position)
+                                updateSpoilerAction()
+                            }
                             if (isSpoiler && !isRevealed) {
                                 chip.text = chip.context.getString(R.string.spoiler_tag_placeholder)
                                 chip.setChipIconResource(R.drawable.format_spoiler_24)
