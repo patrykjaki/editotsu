@@ -18,6 +18,38 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * Window-only download is done with piece priorities only. Files keep a non-zero
+ * priority: libtorrent writes the data of an IGNORE file into its part file, where the
+ * relay (which reads the real file from disk) cannot see it.
+ */
+internal fun ignoreAllPieces(handle: TorrentHandle, lock: Any) {
+    try {
+        synchronized(lock) {
+            if (!handle.isValid) return
+            val n = handle.torrentFile()?.numPieces() ?: return
+            handle.prioritizePieces(Priority.array(Priority.IGNORE, n))
+        }
+    } catch (_: Exception) {}
+}
+
+/**
+ * Safety net for a handle whose file is at IGNORE (data would go to the part file):
+ * raise the file to DEFAULT and put its pieces back to IGNORE so only the windows
+ * raised afterwards download. Never lowers another file. Caller holds the handle lock.
+ * Returns true when it changed something.
+ */
+internal fun ensureFileStreamable(handle: TorrentHandle, fileIndex: Int, fileFirstPiece: Int, fileLastPiece: Int): Boolean {
+    val files = handle.filePriorities()
+    if (fileIndex !in files.indices || files[fileIndex] != Priority.IGNORE) return false
+    files[fileIndex] = Priority.DEFAULT
+    handle.prioritizeFiles(files)
+    val pieces = handle.piecePriorities()
+    for (p in fileFirstPiece..minOf(fileLastPiece, pieces.size - 1)) pieces[p] = Priority.IGNORE
+    handle.prioritizePieces(pieces)
+    return true
+}
+
 data class StreamingPiecePlan(
     val startupPieces: List<Int>,
     val opportunisticTail: Int?,
@@ -225,6 +257,13 @@ data class PrebufferProgress(
  */
 val TORRENT_DEFAULT_TRACKERS = listOf(
     "http://nyaa.tracker.wf:7777/announce",
+    // Anime trackers (nyaa's sister sites and anime indexers); same set other anime
+    // streaming clients announce to.
+    "http://anidex.moe:6969/announce",
+    "http://tracker.anirena.com:80/announce",
+    "https://tracker.nekobt.to/api/tracker/public/announce",
+    "http://open.acgnxtracker.com:80/announce",
+    "udp://exodus.desync.com:6969/announce",
     "udp://open.stealth.si:80/announce",
     "udp://tracker.opentrackr.org:1337/announce",
     "udp://tracker.torrent.eu.org:451/announce",
@@ -292,15 +331,21 @@ class TorrentServerManager(private val context: Context) {
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.active_limit.swigValue(), 50)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.connections_limit.swigValue(), 80)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.unchoke_slots_limit.swigValue(), 32)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.connection_speed.swigValue(), 30)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.torrent_connect_boost.swigValue(), 30)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.connection_speed.swigValue(), 60)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.torrent_connect_boost.swigValue(), 60)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_out_request_queue.swigValue(), 1000)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_allowed_in_request_queue.swigValue(), 500)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_peerlist_size.swigValue(), 500)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.max_paused_peerlist_size.swigValue(), 200)
+            // request_queue_time stays at libtorrent's default (3 s). 1 s (WebTorrent's value)
+            // was tried in 4a50318f but never benched cleanly; deep queues are what
+            // anacrolix/torrent (TorrServer, 2x our throughput) uses too.
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.request_timeout.swigValue(), 10)
-            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.peer_connect_timeout.swigValue(), 15)
+            settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.peer_connect_timeout.swigValue(), 7)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.piece_timeout.swigValue(), 5)
+            // Window-only streaming makes the torrent "finished" whenever the window is
+            // complete; by default libtorrent then drops every seed. Keep them.
+            settings.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.close_redundant_connections.swigValue(), false)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.aio_threads.swigValue(), 4)
             settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.hashing_threads.swigValue(), 2)
 
@@ -492,6 +537,10 @@ class TorrentServerManager(private val context: Context) {
         }
     }
 
+    private val metadataCache by lazy {
+        TorrentMetadataCache(java.io.File(context.filesDir, "torrent/meta"))
+    }
+
     private val sessionStateStore by lazy {
         SessionStateStore(java.io.File(context.filesDir, "torrent/session.state"))
     }
@@ -554,7 +603,21 @@ class TorrentServerManager(private val context: Context) {
             var resolvedHash: String? = null
             var resolvedTorrentInfo: TorrentInfo? = null
             when {
-                url.startsWith("magnet:") -> resolvedHash = parseMagnetHash(url)
+                url.startsWith("magnet:") -> {
+                    resolvedHash = parseMagnetHash(url)
+                    // Played before: use the saved metadata and skip the fetch from peers.
+                    val cachedHash = resolvedHash
+                    if (cachedHash != null) {
+                        metadataCache.load(cachedHash)?.let { bytes ->
+                            val ti = try { TorrentInfo(bytes) } catch (_: Throwable) { null }
+                            if (ti != null && ti.infoHash().toHex().equals(cachedHash, ignoreCase = true)) {
+                                resolvedTorrentInfo = ti
+                            } else {
+                                metadataCache.discard(cachedHash)
+                            }
+                        }
+                    }
+                }
                 // HOLD1: case-insensitive dispatch ([isHttpFetchUrl]) so
                 // every URL the G6 entry gate accepts reaches this branch.
                 isHttpFetchUrl(url) -> {
@@ -596,13 +659,16 @@ class TorrentServerManager(private val context: Context) {
 
                 if (resolvedTorrentInfo != null) {
                     val ti = resolvedTorrentInfo
-                    val p = Priority.array(Priority.IGNORE, ti.numFiles())
-                    // Not sequential: the relay's deadline window keeps playback in order and
-                    // follows seeks; the rest of the file downloads rarest-first.
+                    val existed = sessionManager.find(sha1) != null
+                    // Files stay at DEFAULT: a file at IGNORE has its data written to the
+                    // part file, which the relay cannot read. Pieces decide what downloads.
+                    val p = Priority.array(Priority.DEFAULT, ti.numFiles())
                     sessionManager.download(ti, saveDir, null, p, null, TorrentFlags.AUTO_MANAGED)
                     handle = sessionManager.find(sha1)
+                    if (!existed) handle?.let { ignoreAllPieces(it, getHandleLock(infoHash)) }
                 } else {
                     handle = sessionManager.find(sha1)
+                    val createdHere = handle == null
                     if (handle == null) {
                         val enrichedUrl = buildEnrichedMagnetUri(url, TORRENT_DEFAULT_TRACKERS)
                         sessionManager.download(enrichedUrl, saveDir, TorrentFlags.AUTO_MANAGED)
@@ -629,6 +695,15 @@ class TorrentServerManager(private val context: Context) {
                         }
                         waitTime++
                     }
+                    // A new magnet would download every file rarest-first as soon as the
+                    // metadata lands, filling peers' queues before the player's first read.
+                    // Start with no piece wanted; the relay/prebuffer raise what they need.
+                    // Only for handles created here: re-adding a torrent that is streaming
+                    // (next-episode prebuffer) must not reset the live window.
+                    val fresh = handle
+                    if (createdHere && fresh != null && fresh.torrentFile() != null) {
+                        ignoreAllPieces(fresh, getHandleLock(infoHash))
+                    }
                 }
 
                 val liveHandle = handle ?: throw Exception("Failed to add torrent: $url")
@@ -650,6 +725,24 @@ class TorrentServerManager(private val context: Context) {
                 }
 
                 liveHandle.resume()
+                // Save the metadata for the next play of this release (magnets only; a cached
+                // or fetched .torrent is already on hand), and keep the magnet's own trackers,
+                // which a cached .torrent may not list.
+                if (url.startsWith("magnet:")) {
+                    TorrentMetadataCache.magnetTrackers(url).forEach { trk ->
+                        try { liveHandle.addTracker(AnnounceEntry(trk)) } catch (_: Exception) {}
+                    }
+                    if (metadataCache.load(infoHash) == null) {
+                        try {
+                            val span = liveHandle.torrentFile()?.swig()?.get_info_section()
+                            val n = span?.size()?.toInt() ?: 0
+                            if (span != null && n in 1..TorrentMetadataCache.MAX_BYTES.toInt()) {
+                                val info = ByteArray(n) { span.at(it.toLong()) }
+                                metadataCache.save(infoHash, TorrentMetadataCache.wrapInfoSection(info))
+                            }
+                        } catch (_: Throwable) {}
+                    }
+                }
                 TORRENT_DEFAULT_TRACKERS.forEach { trk ->
                     try { liveHandle.addTracker(AnnounceEntry(trk)) } catch (_: Exception) {}
                 }
@@ -766,12 +859,16 @@ class TorrentServerManager(private val context: Context) {
             val pieceLength = torrentInfo.pieceLength().toLong()
             val totalPieces = torrentInfo.numPieces()
 
-            val numFiles = fileStorage.numFiles()
-            val filePriorities = Priority.array(Priority.IGNORE, numFiles)
-            if (fileIndex in 0 until numFiles) {
-                filePriorities[fileIndex] = Priority.TOP_PRIORITY
+            run {
+                val ff = (fileOffset / pieceLength).toInt()
+                val fl = ((fileOffset + fileSize - 1) / pieceLength).toInt()
+                try { synchronized(lock) { if (handle.isValid) ensureFileStreamable(handle, fileIndex, ff, fl) } } catch (_: Exception) {}
             }
-            try { synchronized(lock) { if (handle.isValid) handle.prioritizeFiles(filePriorities) } } catch (_: Exception) {}
+            // Window-only, like the relay: no file-level priority here. The whole file at
+            // TOP made every piece compete with the head pieces below, and prioritizeFiles
+            // resets all piece priorities, which wiped a live stream's window when the next
+            // episode of the same torrent was prebuffered. New torrents start all-IGNORE
+            // (addTorrent); only the startup and tail pieces are raised here.
 
             val plan = computeStreamingPiecePlan(fileOffset, fileSize, pieceLength, totalPieces)
             if (plan.startupPieces.isEmpty()) return PrebufferResult(false, null)

@@ -10,7 +10,7 @@ class StreamWindowPlannerTest {
 
     @Test
     fun `window size follows bytes and is bounded`() {
-        assertEquals(16, StreamWindowPlanner(0, 999, 2 * mb).windowPieces)          // 32 MB / 2 MB
+        assertEquals(32, StreamWindowPlanner(0, 999, 2 * mb).windowPieces)          // 64 MB / 2 MB
         assertEquals(StreamWindowPlanner.MIN_PIECES, StreamWindowPlanner(0, 999, 16 * mb).windowPieces)
         assertEquals(StreamWindowPlanner.MAX_PIECES, StreamWindowPlanner(0, 999, 256 * 1024).windowPieces)
     }
@@ -19,7 +19,7 @@ class StreamWindowPlannerTest {
     fun `raise is ordered nearest first with rising deadlines`() {
         val p = StreamWindowPlanner(10, 500, 2 * mb)
         val plan = p.plan(10)
-        assertEquals((10..25).toList(), plan.raise.map { it.first })
+        assertEquals((10..41).toList(), plan.raise.map { it.first })
         val deadlines = plan.raise.map { it.second }
         assertEquals(0, deadlines.first())
         assertEquals(deadlines.sorted(), deadlines)
@@ -31,8 +31,8 @@ class StreamWindowPlannerTest {
         val p = StreamWindowPlanner(0, 1000, 2 * mb)
         p.plan(0)
         val seek = p.plan(500)
-        assertEquals((0..15).toList(), seek.demote.sorted())
-        assertEquals((500..515).toSet(), p.raisedPieces())
+        assertEquals((0..31).toList(), seek.demote.sorted())
+        assertEquals((500..531).toSet(), p.raisedPieces())
     }
 
     @Test
@@ -41,7 +41,7 @@ class StreamWindowPlannerTest {
         p.plan(0)
         val next = p.plan(1)
         assertEquals(listOf(0), next.demote)
-        assertEquals(16, next.raise.first { it.first == 16 }.let { it.first })
+        assertEquals(32, next.raise.first { it.first == 32 }.let { it.first })
     }
 
     @Test
@@ -71,5 +71,45 @@ class StreamWindowPlannerTest {
         assertFalse(r.shouldReannounce("a", stalledForMs = 9_000, nowMs = 20_000))
         assertTrue(r.shouldReannounce("b", stalledForMs = 6_000, nowMs = 20_000))
         assertTrue(r.shouldReannounce("a", stalledForMs = 40_000, nowMs = 40_001))
+    }
+
+    // Sizes from the owner's 4K log: 1.36 GB mkv, cues probe at 1363008878, cluster at 24 MB.
+    private val size4k = 1_363_123_787L
+    private val tail4k = setOf(648, 649, 650)
+
+    @Test
+    fun `cues probe while the head owns the stream is a side read`() {
+        assertTrue(StreamWindowPlanner.isTailSideRead(1_363_008_878L, size4k, 649, tail4k, streamHasOwner = true))
+        // In the last 8 MB but before the protected pieces: still a side read.
+        assertTrue(StreamWindowPlanner.isTailSideRead(size4k - 7 * mb, size4k, 646, tail4k, streamHasOwner = true))
+    }
+
+    @Test
+    fun `head, mid-file seeks and ownerless tail reads are ordinary reads`() {
+        assertFalse(StreamWindowPlanner.isTailSideRead(0L, size4k, 0, tail4k, streamHasOwner = true))
+        assertFalse(StreamWindowPlanner.isTailSideRead(24_449_597L, size4k, 11, tail4k, streamHasOwner = true))
+        assertFalse(StreamWindowPlanner.isTailSideRead(size4k / 2, size4k, 325, tail4k, streamHasOwner = true))
+        assertFalse(StreamWindowPlanner.isTailSideRead(1_363_008_878L, size4k, 649, tail4k, streamHasOwner = false))
+    }
+
+    @Test
+    fun `head-first raises only the first pieces and no tail, then widens`() {
+        val p = StreamWindowPlanner(0, 700, 2 * mb, protectedPieces = setOf(698, 699, 700))
+        val narrow = p.plan(0, headFirst = true)
+        assertEquals((0 until StreamWindowPlanner.HEAD_FIRST_PIECES).toList(), narrow.raise.map { it.first })
+        assertEquals(0, narrow.raise.first().second)
+        val wide = p.plan(0)
+        assertEquals((0..31).toList() + listOf(698, 699, 700), wide.raise.map { it.first })
+        assertTrue(wide.demote.isEmpty())
+    }
+
+    @Test
+    fun `only the nearest pieces and the tail get deadlines`() {
+        val tail = setOf(698, 699, 700)
+        val p = StreamWindowPlanner(0, 700, 2 * mb, protectedPieces = tail)
+        val plan = p.plan(100)
+        val withDeadline = plan.deadlined(tail).map { it.first }
+        assertEquals((100 until 100 + StreamWindowPlanner.CRITICAL_PIECES).toList() + tail.toList(), withDeadline)
+        assertEquals(32 + tail.size, plan.raise.size) // the whole window is still raised
     }
 }

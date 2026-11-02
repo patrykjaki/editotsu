@@ -137,6 +137,9 @@ class MpvPlaybackEngine(
         var externalSubtitlesAttached: Boolean = false,
         var externalAudioAttached: Boolean = false,
         var durationKnown: Boolean = false,
+        // Set at the first MPV_EVENT_PLAYBACK_RESTART of this load (first frame ready).
+        // Until then the state stays Buffering, even after FILE_LOADED.
+        var firstFrameShown: Boolean = false,
         var pendingSeekMs: Long? = null,
         var pendingAudioTrackId: Int? = null,
         var pendingSubtitleTrackId: Int? = null,
@@ -1468,7 +1471,8 @@ class MpvPlaybackEngine(
                 val pausedCache = mpvClient.getPropertyBoolean("paused-for-cache") ?: false
                 pausedForCache = pausedCache
                 val isLoaded = activeOp.state == LoadOperationState.LOADED
-                if (isLoaded && currentSnapshot.playbackState is PlaybackState.Buffering && !pausedCache) {
+                if (isLoaded && activeOp.firstFrameShown &&
+                    currentSnapshot.playbackState is PlaybackState.Buffering && !pausedCache) {
                     updateSnapshot(currentSnapshot.copy(playbackState = PlaybackState.Ready))
                     notifyPlaybackStateChanged(PlaybackState.Ready)
                 } else if (pausedCache && currentSnapshot.playbackState !is PlaybackState.Buffering) {
@@ -1780,10 +1784,9 @@ class MpvPlaybackEngine(
                             playInternal()
                         }
 
-                        updateSnapshot(currentSnapshot.copy(
-                            playbackState = PlaybackState.Ready
-                        ))
-                        notifyPlaybackStateChanged(PlaybackState.Ready)
+                        // Not Ready yet: mpv may still be reading cues/seeking to the first
+                        // cluster (torrent streams: seconds of black). PLAYBACK_RESTART marks
+                        // the first frame and flips to Ready.
                         computeAndPublishPlayingState()
                     }
                 }
@@ -1792,6 +1795,7 @@ class MpvPlaybackEngine(
                     val playingId = getPlayingEntryId()
                     val op = if (playingId != null) operationsByEntryId[playingId] else activeOperation
                     if (op != null && (playingId == null || op.playlistEntryId == playingId)) {
+                        op.firstFrameShown = true
                         updateSnapshot(currentSnapshot.copy(
                             playbackState = PlaybackState.Ready
                         ))
