@@ -24,6 +24,14 @@ object CarouselLogoResolver {
     private const val NO_LOGO = ""
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
     private val cache = ConcurrentHashMap<String, String>()
+    private val checkedLogos = ConcurrentHashMap<String, Boolean>()
+
+    /** true/false once [LogoShape] has checked the image at [url]; null when not checked yet. */
+    fun checked(url: String): Boolean? = checkedLogos[url]
+
+    fun markChecked(url: String, looksLikeLogo: Boolean) {
+        checkedLogos[url] = looksLikeLogo
+    }
 
     suspend fun resolve(media: Media): String? = withContext(Dispatchers.IO) {
         val cacheKey = "${media.id}:${media.idMAL}"
