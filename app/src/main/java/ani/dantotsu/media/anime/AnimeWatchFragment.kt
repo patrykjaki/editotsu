@@ -495,6 +495,10 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         selected.sourceIndex = i
         selected.server = null
         model.saveSelected(media.id, selected)
+        // A remembered release or group belongs to the old source; keeping it made the
+        // new source auto-play its first row under the old name.
+        ani.dantotsu.media.anime.selector.SelectedKeyStore.save(media.id, null)
+        ani.dantotsu.media.anime.selector.SelectedFamilyStore.save(media.id, null)
         media.selected = selected
         return model.watchSources?.get(i)!!
     }
