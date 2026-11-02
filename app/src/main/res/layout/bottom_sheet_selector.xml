@@ -155,6 +155,7 @@
             android:id="@+id/selectorRecyclerView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:fadingEdgeLength="16dp"
             android:requiresFadingEdge="vertical"
             tools:itemCount="4"
             tools:listitem="@layout/item_source_release" />
