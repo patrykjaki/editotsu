@@ -37,6 +37,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.DefaultTimeBar
@@ -375,6 +376,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         skipTimeButton = playerView.findViewById(R.id.exo_skip_timestamp)
         skipTimeText = skipTimeButton.findViewById(R.id.exo_skip_timestamp_text)
         timeStampText = playerView.findViewById(R.id.exo_time_stamp_text)
+        // The dot before the chapter name only shows when there is a name.
+        val timeStampSep = playerView.findViewById<View>(R.id.exo_time_stamp_sep)
+        timeStampText.doAfterTextChanged { timeStampSep.isVisible = !it.isNullOrEmpty() }
         animeTitle = playerView.findViewById(R.id.exo_anime_title)
         episodeTitle = playerView.findViewById(R.id.exo_ep_sel)
         customCastButton = playerView.findViewById(R.id.exo_cast)
@@ -2019,7 +2023,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         // Episode-only controls.
         listOf<View>(
             exoSource, exoSubtitle, exoAudioTrack, exoSettings, exoSpeed, exoSleepTimer,
-            exoSkipOpEd, customCastButton, skipTimeButton
+            exoSkipOpEd, customCastButton, skipTimeButton, exoSkip
         ).forEach { it.visibility = View.GONE }
 
         episodeTitle.adapter = NoPaddingArrayAdapter(

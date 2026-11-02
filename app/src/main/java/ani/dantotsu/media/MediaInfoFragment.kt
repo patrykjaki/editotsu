@@ -63,6 +63,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.Serializable
@@ -683,8 +684,19 @@ class MediaInfoFragment : Fragment() {
                     }
                     themesJob?.cancel()
                     themesJob = viewLifecycleOwner.lifecycleScope.launch {
+                        // AnimeThemes can take 20-40 s; say so unless the cache answers first.
+                        val loading = launch {
+                            delay(300)
+                            ItemTitleTextBinding.inflate(LayoutInflater.from(context), slot, false).apply {
+                                itemTitle.setText(R.string.anime_themes_title)
+                                itemText.setText(R.string.anime_themes_loading)
+                                slot.addView(root)
+                            }
+                        }
                         val data = AnimeThemes.repository.getThemesForMedia(media)
+                        loading.cancel()
                         if (_binding == null || slot.parent == null) return@launch
+                        slot.removeAllViews()
                         val tracks = data?.let { ThemeQueue.tracks(it) }.orEmpty()
                         if (tracks.isEmpty()) showAniListText() else showThemeStrip(slot, media, tracks)
                     }

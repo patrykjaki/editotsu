@@ -395,6 +395,7 @@
                     <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_gravity="end"
                         android:layout_marginBottom="-6dp"
                         android:gravity="center_vertical"
                         android:orientation="horizontal">
@@ -486,10 +487,12 @@
                     tools:text="24:00" />
 
                 <TextView
+                    android:id="@+id/exo_time_stamp_sep"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:includeFontPadding="false"
                     android:text=" • "
+                    android:visibility="gone"
                     android:textColor="#80FFFFFF"
                     android:textSize="14sp"
                     tools:ignore="HardcodedText,TextContrastCheck" />
