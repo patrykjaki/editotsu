@@ -238,6 +238,36 @@ class MpvPlaybackEngineTest {
     }
 
     @Test
+    fun testStaysBufferingUntilFirstFrame() {
+        engine.loadMedia(PlaybackRequest(uri = "http://127.0.0.1:8090/stream/ep1.mkv"))
+        Thread.sleep(50)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_START_FILE, playlistEntryId = 30L)
+        Thread.sleep(50)
+
+        // FILE_LOADED alone is not playback: mpv may still be seeking to the first cluster.
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_FILE_LOADED)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Buffering, engine.playbackState)
+
+        // A cache-unpause before the first frame must not flip to Ready either.
+        fakeClient.emitProperty("paused-for-cache", false)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Buffering, engine.playbackState)
+
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_PLAYBACK_RESTART)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Ready, engine.playbackState)
+
+        // After the first frame, cache stalls toggle Buffering/Ready as before.
+        fakeClient.emitProperty("paused-for-cache", true)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Buffering, engine.playbackState)
+        fakeClient.emitProperty("paused-for-cache", false)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Ready, engine.playbackState)
+    }
+
+    @Test
     fun testExternalSubtitlesAttachedOnFileLoaded() {
         val extSub = ExternalSubtitle(
             url = "https://cdn.anime.com/sub_en.vtt",

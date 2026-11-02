@@ -69,8 +69,11 @@ object TorrentBenchHook {
                     return
                 }
                 val uri = String(Base64.decode(b64, Base64.DEFAULT), Charsets.UTF_8).trim()
+                val magnetHash = Regex("btih:([0-9a-fA-F]{40})").find(uri)?.groupValues?.get(1)?.uppercase()
+                val cacheHit = magnetHash != null &&
+                    java.io.File(app.filesDir, "torrent/meta/$magnetHash.torrent").isFile
                 val t0 = SystemClock.elapsedRealtime()
-                Log.i(TAG, "event=add_start")
+                Log.i(TAG, "event=add_start metaCache=$cacheHit")
                 val torrent = manager.addTorrent(uri, title = "bench")
                 val metaMs = SystemClock.elapsedRealtime() - t0
                 val files = torrent.file_stats.orEmpty()
