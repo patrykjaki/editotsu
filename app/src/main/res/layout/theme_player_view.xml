@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Own player layout: the app overrides exo_player_view with the episode player's. -->
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <androidx.media3.ui.AspectRatioFrameLayout
+        android:id="@id/exo_content_frame"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center">
+
+        <View
+            android:id="@id/exo_shutter"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@android:color/black" />
+
+        <ImageView
+            android:id="@id/exo_artwork"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:scaleType="fitCenter" />
+    </androidx.media3.ui.AspectRatioFrameLayout>
+
+    <ProgressBar
+        android:id="@id/exo_buffering"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:indeterminate="true" />
+
+    <TextView
+        android:id="@id/exo_error_message"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginBottom="96dp"
+        android:background="#B3000000"
+        android:fontFamily="@font/poppins_family"
+        android:gravity="center"
+        android:padding="12dp"
+        android:textColor="@android:color/white"
+        android:textSize="14sp" />
+
+    <View
+        android:id="@id/exo_controller_placeholder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+</merge>
