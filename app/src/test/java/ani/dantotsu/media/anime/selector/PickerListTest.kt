@@ -269,6 +269,7 @@ class PickerListTest {
 
     @Test
     fun seederHealth() {
+        assertEquals("1 seed", SeederHealth.label(1))
         assertEquals("6 seeds", SeederHealth.label(6))
         assertEquals("313 seeds", SeederHealth.label(313))
         assertEquals("10 seeds", SeederHealth.label(10))
