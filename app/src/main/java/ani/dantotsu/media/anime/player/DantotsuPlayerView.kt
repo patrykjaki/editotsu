@@ -27,7 +27,17 @@ class DantotsuPlayerView @JvmOverloads constructor(
     private var controllerVisibilityListener: ((visibility: Int) -> Unit)? = null
     var controllerShowTimeoutMs: Int = 5000
 
-    private val hideRunnable = Runnable { hideController() }
+    /** Animated hide used by the timer; falls back to an instant hide. */
+    var autoHide: (() -> Unit)? = null
+    private val hideRunnable = Runnable {
+        if (!isControllerFullyVisible) return@Runnable
+        autoHide?.invoke() ?: hideController()
+    }
+
+    // The controls auto-hide only while playing (Media3 PlayerView parity):
+    // paused controls stay up, and the timer is armed when playback starts,
+    // not only after the first tap.
+    private var playing = false
 
     init {
         // 1. Inflate base player view container
@@ -180,9 +190,20 @@ class DantotsuPlayerView @JvmOverloads constructor(
         timelineCont?.translationY = 0f
 
         controllerVisibilityListener?.invoke(View.VISIBLE)
+        scheduleHide()
+    }
+
+    private fun scheduleHide() {
         removeCallbacks(hideRunnable)
-        if (controllerShowTimeoutMs > 0) {
+        if (playing && isControllerFullyVisible && controllerShowTimeoutMs > 0) {
             postDelayed(hideRunnable, controllerShowTimeoutMs.toLong())
+        }
+    }
+
+    override fun onIsPlayingChanged(isPlaying: Boolean) {
+        post {
+            playing = isPlaying
+            scheduleHide()
         }
     }
 
