@@ -461,6 +461,7 @@ class TorrentServerManager(private val context: Context) {
                 }
             )
             httpServer?.start()
+            TorrentSeekSignal.listener = { hash, index -> httpServer?.releaseBlockedRead(hash, index) }
             Logger.log("TorrentServerManager started. Port: $serverPort")
         } catch (e: Exception) {
             Logger.log("Failed to start TorrentServerManager: ${e.message}")
@@ -527,6 +528,7 @@ class TorrentServerManager(private val context: Context) {
 
     fun stop() {
         Logger.log("Stopping built-in TorrentServerManager...")
+        TorrentSeekSignal.listener = null
         httpServer?.stop()
         httpServer = null
         registries.values.forEach { it.dispose() }
