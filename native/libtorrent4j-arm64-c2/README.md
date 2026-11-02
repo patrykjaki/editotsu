@@ -1,9 +1,9 @@
-# CP1.5-B arm64 native release candidate
+# libtorrent4j arm64 native (c2 build)
 
-This directory owns the reproducible build and provenance for the first arm64 productionization
-candidate. The shipped JAR contains the exact built-in-crypto, WebTorrent-disabled, `-O0`, no-LTO
-ELF that passed the C2 10/10 physical-device native startup gate. Broader playback and lifecycle
-validation remains required before release approval.
+Reproducible build and provenance for the arm64 libtorrent4j JAR in `app/libs`. It contains a
+built-in-crypto, WebTorrent-disabled, `-O0`, no-LTO ELF. Unlike the Maven 2.1.0-39 native, it
+started cleanly in 10 of 10 runs on a physical device when a torrent with files on disk is
+added again.
 
 The `-O0` profile is intentional. An optimized ELF is a different candidate and must not replace
 this artifact until it has its own Build ID, provenance, packaged-APK proof, and device matrix.
