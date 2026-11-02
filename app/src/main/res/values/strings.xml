@@ -234,11 +234,7 @@
     <string name="opening">Opening</string>
     <string name="ending">Ending</string>
     <string name="anime_themes_title">Openings &amp; endings</string>
-    <string name="theme_back">Back</string>
-    <string name="theme_previous">Previous theme</string>
-    <string name="theme_next">Next theme</string>
-    <string name="theme_error">Could not play this video</string>
-    <string name="theme_error_http">Could not load this video (HTTP %1$d)</string>
+    <string name="theme_error_named">Could not play %1$s</string>
     <string name="theme_hidden_until">Hidden until episode %1$d</string>
     <string name="theme_flag_spoiler">Spoiler</string>
     <string name="theme_flag_nsfw">NSFW</string>
