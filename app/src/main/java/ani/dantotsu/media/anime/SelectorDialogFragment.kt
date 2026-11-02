@@ -147,6 +147,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
     private var launch: Boolean? = null
     private var isDownloadMenu: Boolean? = null
     private var episodes: ArrayList<String>? = null
+    private var forcePicker = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -156,6 +157,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             prevEpisode = it.getString("prev")
             isDownloadMenu = it.getBoolean("isDownload")
             episodes = it.getStringArrayList("episodes")
+            forcePicker = it.getBoolean("picker", false)
         }
     }
 
@@ -521,10 +523,26 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                     media?.anime?.selectedEpisode = actualKey
                     episode = ep
                     if (ep != null) {
-                        if (selected != null && media?.format != "LOCAL") {
+                        val entryKey = SelectedKeyStore.load(media!!.id)
+                        val entryFamily = SelectedFamilyStore.load(media!!.id)
+                        val decision = RememberedSelectionPolicy.autoplayEntry(
+                            forcePicker = forcePicker,
+                            isLocal = media?.format == "LOCAL",
+                            makeDefault = makeDefault,
+                            selectedName = selected,
+                            hasStoredKey = entryKey != null,
+                            hasStoredFamily = entryFamily != null,
+                            downloadedSource = model.watchSources!!.isDownloadedSource(media!!.selected!!.sourceIndex),
+                        )
+                        autoplayLog(
+                            "ep=$actualKey entry=${decision.entry} name=${selected?.lineSequence()?.firstOrNull()?.take(80)} " +
+                                "key=${entryKey != null} family=${entryFamily?.groupKey} remember=$makeDefault reason=${decision.reason}",
+                        )
+                        if (decision.entry != RememberedSelectionPolicy.AutoplayEntry.PICKER) {
                             binding.selectorListContainer.visibility = View.GONE
                             binding.selectorAutoListContainer.visibility = View.VISIBLE
-                            binding.selectorAutoText.text = selected?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: selected
+                            binding.selectorAutoText.text = selected?.lineSequence()?.firstOrNull { it.isNotBlank() }
+                                ?: entryFamily?.groupKey ?: ""
                             binding.selectorCancel.setOnClickListener {
                                 media!!.selected!!.server = null
                                 model.saveSelected(media!!.id, media!!.selected!!)
@@ -572,6 +590,10 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                             )
                                             if (recovery is RecoveryResult.Resolved) {
                                                 val chosen = recovery.server.name
+                                                autoplayLog(
+                                                    "ep=$actualKey matched=${chosen.lineSequence().firstOrNull()?.take(80)} " +
+                                                        "reason=${if (storedKey != null && recovery.exactKey == storedKey) "exact key" else "family"}",
+                                                )
                                                 // One coherent auto-recovery
                                                 // transaction. The runtime handle
                                                 // is ALWAYS applied below.
@@ -609,12 +631,13 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                                     ?.getEpisode(actualKey)?.selectedVideo = 0
                                                 startExoplayer(media!!)
                                             } else {
-                                                snackString(getString(R.string.auto_select_server_error))
-                                                media!!.selected!!.server = null
-                                                model.saveSelected(
-                                                    media!!.id, media!!.selected!!,
+                                                // A miss on one episode (the group hasn't released it
+                                                // yet) keeps what is remembered for the next ones.
+                                                autoplayLog(
+                                                    "ep=$actualKey matched=none rows=${servers.size} " +
+                                                        "reason=${if (recovery is RecoveryResult.Ambiguous) "ambiguous family" else "no match"}",
                                                 )
-                                                SelectedKeyStore.save(media!!.id, null)
+                                                snackString(getString(R.string.auto_select_server_error))
                                                 binding.selectorAutoListContainer.visibility = View.GONE
                                                 binding.selectorListContainer.visibility = View.VISIBLE
                                                 initializeVideoServerSelector(ep)
@@ -622,10 +645,12 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                         }
                                     }
                                 } else {
+                                    autoplayLog(
+                                        "ep=$actualKey matched=none reason=" +
+                                            if (storedKey == null && storedFamily == null) "name not found, nothing else remembered"
+                                            else "already tried this episode",
+                                    )
                                     snackString(getString(R.string.auto_select_server_error))
-                                    media!!.selected!!.server = null
-                                    model.saveSelected(media!!.id, media!!.selected!!)
-                                    SelectedKeyStore.save(media!!.id, null)
                                     binding.selectorAutoListContainer.visibility = View.GONE
                                     binding.selectorListContainer.visibility = View.VISIBLE
                                     initializeVideoServerSelector(ep)
@@ -668,6 +693,10 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                     val chosenVideo = if (media!!.selected!!.video in 0 until size) media!!.selected!!.video else 0
                                     media!!.anime!!.episodes?.getEpisode(currentKey)?.selectedVideo = chosenVideo
                                     media!!.selected!!.server = matchedExtractor.server.name
+                                    autoplayLog(
+                                        "ep=$actualKey matched=${matchedExtractor.server.name.lineSequence().firstOrNull()?.take(80)} " +
+                                            "reason=${if (matchedExtractor.server.name == selected) "name" else "fallback row"}",
+                                    )
                                     if (makeDefault && matchedExtractor.server.name == selected) {
                                         val provider = StableCandidateBuilder.providerOf(matchedExtractor.server)
                                         val exact = StableCandidateBuilder.exactKey(provider, matchedExtractor.server)
@@ -684,7 +713,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             // load() only afterwards.
                             val hasExplicit = hasExplicitServer(ep.extractors, selected)
 
-                            if (!hasExplicit && selected != null && rememberedRelease) {
+                            if (decision.entry == RememberedSelectionPolicy.AutoplayEntry.RECOVER) {
+                                failToList()
+                            } else if (!hasExplicit && selected != null && rememberedRelease) {
                                 // all rows are needed to pick the family; failToList
                                 // loads them and resolves exact key, then family
                                 failToList()
@@ -1853,13 +1884,20 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         }
     }
 
+    /** "autoplay: ..." in logcat, tag EditotsuAutoplay: why the dialog auto-played or showed the list */
+    private fun autoplayLog(msg: String) {
+        Log.i("EditotsuAutoplay", "autoplay: $msg")
+        Logger.log("autoplay: $msg")
+    }
+
     companion object {
         fun newInstance(
             server: String? = null,
             la: Boolean = true,
             prev: String? = null,
             isDownload: Boolean,
-            episodes: ArrayList<String>
+            episodes: ArrayList<String>,
+            forcePicker: Boolean = false,
         ): SelectorDialogFragment =
             SelectorDialogFragment().apply {
                 arguments = Bundle().apply {
@@ -1868,6 +1906,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                     putString("prev", prev)
                     putBoolean("isDownload", isDownload)
                     putStringArrayList("episodes", episodes)
+                    putBoolean("picker", forcePicker)
                 }
             }
     }
