@@ -374,7 +374,7 @@ class MediaAdaptor(
         val currentId = media.id
         logoView.tag = currentId
 
-        fun showLogo(url: String) {
+        fun showLogoNow(url: String) {
             logoView.loadImage(url)
             logoView.visibility = View.VISIBLE
             logoContainer?.visibility = View.VISIBLE
@@ -447,6 +447,33 @@ class MediaAdaptor(
                 }
                 synopsisView.visibility = View.GONE
             }
+        }
+
+        // Logo sites sometimes return artwork that is not a title logo (a full scene image,
+        // opaque and square). Check the image before using it; the text title stays otherwise.
+        fun showLogo(url: String) {
+            when (CarouselLogoResolver.checked(url)) {
+                true -> { showLogoNow(url); return }
+                false -> { showTitle(); return }
+                null -> showTitle()
+            }
+            com.bumptech.glide.Glide.with(logoView.context).asBitmap()
+                .load(com.bumptech.glide.load.model.GlideUrl(url))
+                .into(object : com.bumptech.glide.request.target.CustomTarget<Bitmap>(LogoShape.CHECK_PX, LogoShape.CHECK_PX) {
+                    override fun onResourceReady(
+                        resource: Bitmap,
+                        transition: com.bumptech.glide.request.transition.Transition<in Bitmap>?
+                    ) {
+                        val ok = LogoShape.looksLikeLogo(resource.width, resource.height, resource.hasAlpha()) { x, y ->
+                            android.graphics.Color.alpha(resource.getPixel(x, y))
+                        }
+                        CarouselLogoResolver.markChecked(url, ok)
+                        if (!ok && media.clearLogo == url) media.clearLogo = null
+                        if (ok && logoView.tag == currentId) showLogoNow(url)
+                    }
+
+                    override fun onLoadCleared(placeholder: android.graphics.drawable.Drawable?) {}
+                })
         }
 
         if (!media.clearLogo.isNullOrBlank()) {
