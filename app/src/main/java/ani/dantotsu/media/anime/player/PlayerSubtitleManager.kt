@@ -96,7 +96,12 @@ class PlayerSubtitleManager(
         val useSourceStyling = SubtitleStylingStore.shouldUseSource(resolvedOrigin)
 
         if (useSourceStyling) {
-            engine.applySubtitleStyle(SubtitleStyle(mode = SubtitleStyleMode.SOURCE))
+            engine.applySubtitleStyle(
+                SubtitleStyle(
+                    mode = SubtitleStyleMode.SOURCE,
+                    sourceScale = PrefManager.getVal<Float>(PrefName.SourceSubScale),
+                )
+            )
         } else {
             val fontSize = PrefManager.getVal<Int>(PrefName.FontSize).toFloat()
             val textColor = PrefManager.getVal<Int>(PrefName.PrimaryColor)
