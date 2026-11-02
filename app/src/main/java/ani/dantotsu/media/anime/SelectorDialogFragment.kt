@@ -21,7 +21,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.isVisible
-import androidx.core.view.updateLayoutParams
+import androidx.core.view.updatePadding
 import androidx.fragment.app.activityViewModels
 //import androidx.glance.visibility
 //import androidx.glance.visibility
@@ -186,8 +186,30 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         }
     }
 
+    /**
+     * The sheet runs under the gesture bar. The list reaches the screen edge (no bottom margin,
+     * which left an empty band) and its last card gets the inset as extra space, so it can
+     * scroll clear of the bar while the fading edge stays at the screen edge. The empty state
+     * and the auto-select view keep their buttons above the bar.
+     */
+    private fun applyNavBarInset() {
+        val inset = navBarHeight
+        val gap = (8 * resources.displayMetrics.density).toInt()
+        binding.selectorRecyclerView.addItemDecoration(object : RecyclerView.ItemDecoration() {
+            override fun getItemOffsets(outRect: android.graphics.Rect, view: View, parent: RecyclerView, state: RecyclerView.State) {
+                val pos = parent.getChildAdapterPosition(view)
+                val last = (parent.adapter?.itemCount ?: 0) - 1
+                outRect.bottom = if (pos != RecyclerView.NO_POSITION && pos == last) inset + gap else 0
+            }
+        })
+        for (v in listOf(binding.selectorEmpty, binding.selectorAutoListContainer)) {
+            v.updatePadding(bottom = v.paddingBottom + inset)
+        }
+    }
+
     @SuppressLint("SetTextI18n")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        applyNavBarInset()
         var loaded = false
         model.getMedia().observe(viewLifecycleOwner) { m ->
             media = m
@@ -213,9 +235,6 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                     }
                 }
                 fun initializeVideoServerSelector(ep: Episode, onEpisodeDownloadHandler: EpisodeDownloadHandler? = null) {
-                    binding.selectorRecyclerView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                        bottomMargin = navBarHeight
-                    }
                     binding.selectorRecyclerView.adapter = null
                     binding.selectorProgressBar.visibility = View.VISIBLE
                     binding.selectorEmpty.visibility = View.GONE

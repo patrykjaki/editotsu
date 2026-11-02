@@ -368,7 +368,10 @@ object SourceRowClassifier {
     private val REGEX_STRIP_MEDIA_EXTENSION =
         Regex("""\.(mkv|mp4|avi|webm|ts|m4v|m2ts|mov|flv|rmvb)$""", RegexOption.IGNORE_CASE)
     private val REGEX_TRAILING_SUFFIX_GROUP =
-        Regex("""-([A-Za-z][A-Za-z0-9]{1,11})\s*$""")
+        Regex("""-([A-Za-z][A-Za-z0-9-]{1,29})\s*$""")
+
+    /** notes after a scene group: "H.264-VARYG (Show, Multi-Subs)", "x265-GRP[rartv]" */
+    private val REGEX_TRAILING_NOTES = Regex("""(?:\s*[\[(][^\[\]()]*[\])])+\s*$""")
 
     /**
      * Tokens that must never be promoted from a `-SUFFIX` position to
@@ -876,8 +879,9 @@ object SourceRowClassifier {
             if (line.isEmpty()) continue
             if (isMetadataMarkerLine(line)) continue
             val noExt = REGEX_STRIP_MEDIA_EXTENSION.replace(line, "")
+                .replace(REGEX_TRAILING_NOTES, "").trimEnd()
             val token = REGEX_TRAILING_SUFFIX_GROUP.find(noExt)
-                ?.groupValues?.getOrNull(1) ?: continue
+                ?.groupValues?.getOrNull(1)?.trimEnd('-') ?: continue
             if (!isSuffixGroupCandidate(token)) continue
             return token
         }
@@ -885,7 +889,8 @@ object SourceRowClassifier {
     }
 
     private fun isSuffixGroupCandidate(token: String): Boolean {
-        if (token.length !in 2..12) return false
+        // hyphenated groups ("Tsundere-Raws") may be longer than plain ones
+        if (token.length !in 2..(if ('-' in token) 30 else 12)) return false
         // Episode/version shaped: S01E01, E01, S1, 01, v2.
         if (token.matches(REGEX_EPISODE_SHAPE_TOKEN)) return false
         if (token.matches(REGEX_VERSION_SHAPE_TOKEN)) return false
@@ -893,6 +898,9 @@ object SourceRowClassifier {
         if (token.matches(REGEX_RES_SHAPE_TOKEN)) return false
         val upper = token.uppercase()
         if (upper in SUFFIX_GROUP_DENY) return false
+        // "WEB-DL" -> "DL", "x264-Multi-Subs": a part that is a known tag means it isn't a group
+        if (upper == "DL" || upper == "RIP") return false
+        if ('-' in upper && upper.split('-').any { it in SUFFIX_GROUP_DENY || it == "MULTI" || it == "DL" }) return false
         if (SOURCE_SERVICE_ALIASES.containsKey(upper)) return false
         if (KNOWN_LANG_CODES.any { it.equals(upper, ignoreCase = true) }) {
             return false
