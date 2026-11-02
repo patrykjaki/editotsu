@@ -34,6 +34,8 @@ class TorrentHttpServer(
     /** Window planner of the current owner per stream, so a superseded owner keeps its pieces. */
     private val activePlanners = ConcurrentHashMap<Pair<String, Int>, StreamWindowPlanner>()
     private val reannounceLimiter = ReannounceLimiter()
+    /** Owner request per stream while it waits for a missing piece (see [releaseBlockedRead]). */
+    private val blockedOwners = ConcurrentHashMap<Pair<String, Int>, Socket>()
     private val executor = ThreadPoolExecutor(
         8, 32, 60L, TimeUnit.SECONDS,
         ArrayBlockingQueue(64),
@@ -328,6 +330,7 @@ class TorrentHttpServer(
                     if (p != firstPiece || firstPieceIn) applyWindow(p)
                     var waitedMs = 0L
                     var ready = synchronized(lock) { if (handle.isValid) handle.havePiece(p) else false }
+                    if (!ready && isOwner()) blockedOwners[streamKey] = socket
                     while (!ready && isRunning && !socket.isClosed) {
                         // Superseded by a newer request (seek) or the player went away:
                         // stop instead of holding deadlines for a position nobody reads.
@@ -345,6 +348,7 @@ class TorrentHttpServer(
                         }
                         ready = synchronized(lock) { if (handle.isValid) handle.havePiece(p) else false }
                     }
+                    blockedOwners.remove(streamKey, socket)
                     if (!ready) break
                     if (p == firstPiece && !firstPieceIn) {
                         firstPieceIn = true
@@ -407,6 +411,7 @@ class TorrentHttpServer(
             activeSockets.remove(socket)
             if (currentHash != null && currentFileIndex != null) {
                 activeStreamOwners.remove(Pair(currentHash.uppercase(), currentFileIndex), clientSessionId)
+                blockedOwners.remove(Pair(currentHash.uppercase(), currentFileIndex), socket)
             }
             deadlineRegistry?.unregisterOwner(clientSessionId)
             try { socket.close() } catch (_: Exception) {}
@@ -466,6 +471,27 @@ class TorrentHttpServer(
             socket.close()
         } catch (_: Exception) {}
     }
+
+    /**
+     * The player sought outside its cache: end the stream's request if it is still
+     * waiting for a missing piece, so mpv's blocked read returns and the seek opens
+     * a new request at once. 100 ms later, so mpv has queued the seek first. A
+     * request that is sending data is left alone.
+     */
+    fun releaseBlockedRead(hash: String, fileIndex: Int) {
+        val key = Pair(hash.uppercase(), fileIndex)
+        val socket = blockedOwners[key] ?: return
+        Thread({
+            try { Thread.sleep(100) } catch (_: InterruptedException) {}
+            if (blockedOwners.remove(key, socket)) {
+                Logger.log("TorrentHttpServer: released a blocked read for a seek")
+                try { socket.close() } catch (_: Exception) {}
+            }
+        }, "TorrentHttpServer-SeekRelease").apply { isDaemon = true }.start()
+    }
+
+    /** Torrents with a request being served right now (player stream or download). */
+    fun busyHashes(): Set<String> = activeStreamOwners.keys.map { it.first }.toSet()
 
     fun stop() {
         isRunning = false
