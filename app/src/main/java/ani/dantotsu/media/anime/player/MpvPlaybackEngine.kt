@@ -1120,10 +1120,13 @@ class MpvPlaybackEngine(
         try {
             when (style.mode) {
                 SubtitleStyleMode.SOURCE -> {
-                    mpvClient.setPropertyString("sub-ass-override", "no")
+                    val (override, scale) = MpvSubtitleStyleMapper.sourceScaling(style.sourceScale)
+                    mpvClient.setPropertyString("sub-ass-override", override)
+                    mpvClient.setPropertyDouble("sub-scale", scale)
                 }
                 SubtitleStyleMode.CUSTOM -> {
                     mpvClient.setPropertyString("sub-ass-override", "force")
+                    mpvClient.setPropertyDouble("sub-scale", 1.0)
                     val scaledFontSize = MpvSubtitleStyleMapper.spToMpvScaledSize(style.fontSizeSp)
                     val scaledMargin = MpvSubtitleStyleMapper.dpToMpvScaledMargin(style.bottomMarginDp)
                     val primaryHex = MpvSubtitleStyleMapper.colorToMpvHex(style.textColor)
@@ -1135,7 +1138,7 @@ class MpvPlaybackEngine(
                     mpvClient.setPropertyString("sub-color", primaryHex)
                     mpvClient.setPropertyString("sub-border-color", outlineHex)
                     mpvClient.setPropertyString("sub-back-color", backgroundHex)
-                    mpvClient.setPropertyDouble("sub-border-size", style.borderWidth.toDouble())
+                    mpvClient.setPropertyDouble("sub-border-size", MpvSubtitleStyleMapper.strokeToMpvBorder(style.borderWidth))
 
                     if (!style.fontFamily.isNullOrBlank()) {
                         mpvClient.setPropertyString("sub-font", style.fontFamily)

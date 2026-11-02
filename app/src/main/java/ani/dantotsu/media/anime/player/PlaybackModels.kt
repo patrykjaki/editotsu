@@ -96,8 +96,11 @@ data class SubtitleStyle(
     val textColor: Int = 0xFFFFFFFF.toInt(),
     val borderColor: Int = 0xFF000000.toInt(),
     val backgroundColor: Int = 0x00000000,
-    val borderWidth: Float = 3f,
-    val bottomMarginDp: Int = 24
+    /** Stroke setting (ExoPlayer-era scale, default 8); see MpvSubtitleStyleMapper. */
+    val borderWidth: Float = 8f,
+    val bottomMarginDp: Int = 24,
+    /** SOURCE mode only: size of the file's own styled subtitles (1.0 = as authored). */
+    val sourceScale: Float = 1f,
 )
 
 enum class ErrorCategory {
