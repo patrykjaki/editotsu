@@ -314,13 +314,6 @@
             android:supportsPictureInPicture="true"
             tools:targetApi="n" />
         <activity
-            android:name=".animethemes.ThemePlayerActivity"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
-            android:exported="false"
-            android:label="@string/anime_themes_title"
-            android:launchMode="singleTop"
-            android:screenOrientation="sensorLandscape" />
-        <activity
             android:name=".connections.anilist.Login"
             android:configChanges="orientation|screenSize|layoutDirection"
             android:excludeFromRecents="true"
@@ -561,14 +554,6 @@
             android:stopWithTask="true" />
         <service
             android:name=".media.anime.AnimePlayerService"
-            android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
-            <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService" />
-            </intent-filter>
-        </service>
-        <service
-            android:name=".animethemes.ThemePlaybackService"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>

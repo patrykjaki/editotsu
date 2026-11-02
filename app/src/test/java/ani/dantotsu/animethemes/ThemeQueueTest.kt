@@ -105,15 +105,22 @@ class ThemeQueueTest {
     }
 
     @Test
-    fun retryOnlyServerErrorsWithBackoff() {
-        assertEquals(1000L, ThemeQueue.retryDelayMs(503, 1, null))
-        assertEquals(2000L, ThemeQueue.retryDelayMs(503, 2, null))
-        assertEquals(4000L, ThemeQueue.retryDelayMs(502, 3, null))
-        assertEquals(6000L, ThemeQueue.retryDelayMs(429, 4, null))
-        assertNull(ThemeQueue.retryDelayMs(503, 5, null))
-        assertEquals(3000L, ThemeQueue.retryDelayMs(503, 1, "3"))
-        assertEquals(6000L, ThemeQueue.retryDelayMs(503, 1, "120"))
-        assertNull(ThemeQueue.retryDelayMs(403, 1, null))
-        assertNull(ThemeQueue.retryDelayMs(404, 1, null))
+    fun failuresRetrySameVideoThenFallbacks() {
+        val t = ThemeTrack(1, "OP 1", "song", "", "1-12", "https://v/a.webm", listOf("https://v/b.webm", "https://v/c.webm"), ThemeWarningType.NONE)
+        assertEquals(ThemeQueue.Attempt("https://v/a.webm", 1_000L), ThemeQueue.nextAttempt(t, 1))
+        assertEquals(ThemeQueue.Attempt("https://v/a.webm", 3_000L), ThemeQueue.nextAttempt(t, 2))
+        assertEquals(ThemeQueue.Attempt("https://v/b.webm", 500L), ThemeQueue.nextAttempt(t, 3))
+        assertEquals(ThemeQueue.Attempt("https://v/c.webm", 500L), ThemeQueue.nextAttempt(t, 4))
+        assertNull(ThemeQueue.nextAttempt(t, 5))
+    }
+
+    @Test
+    fun earlyEndAndLabel() {
+        assertTrue(ThemeQueue.endedEarly(40_000, 90_000))
+        assertFalse(ThemeQueue.endedEarly(88_000, 90_000))
+        assertFalse(ThemeQueue.endedEarly(5_000, 0))
+        val t = ThemeTrack(1, "OP 1", "We Are!", "", null, "u", emptyList(), ThemeWarningType.NONE)
+        assertEquals("OP 1 · We Are!", ThemeQueue.label(t))
+        assertEquals("OP 1", ThemeQueue.label(t.copy(songTitle = "OP 1")))
     }
 }
