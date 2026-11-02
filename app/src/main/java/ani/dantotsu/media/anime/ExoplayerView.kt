@@ -872,6 +872,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         progressManager.updateAniProgress()
         saveActivePosition()
         releasePlayer()
+        // releasePlayer() leaves the previous episode's position in playbackPosition; the
+        // next episode starts from its own saved position (0 when never watched). The
+        // episode observer resets it too, but it skips while epChanging is set, and the
+        // auto-play path then built the player at the previous episode's time.
+        playbackPosition = savedEpisodePosition(newEpKey)
         prevEpKey?.let { subtitleManager.clearTransientSubtitleCache("${media.id}-$it") }
         aniSkipManager.resetForNewEpisode()
         currentEpisodeIndex = index
