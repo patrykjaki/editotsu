@@ -382,6 +382,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             this, playerView, exoBrightnessCont, exoVolumeCont, exoBrightness, exoVolume,
             { playerManager.playbackEngine }, { playerManager.isInitialized }
         )
+        playerView.autoHide = { gestureManager.handleController() }
         aniSkipManager = PlayerAniSkipManager(
             this, timeline, model, exoSkipOpEd, exoSkip, skipTimeButton, skipTimeText, timeStampText,
             { playerManager.playbackEngine }
@@ -1761,6 +1762,24 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     aniSkipManager.hideSkipButtons()
                 }
             }
+        }
+    }
+
+    // configChanges includes orientation, so rotation does not recreate the
+    // activity: re-read the cutout and redo the notch margins here, otherwise
+    // the portrait margins from start-up stay until the controls are toggled.
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!this::gestureManager.isInitialized) return
+        window.decorView.post {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val rect = window.decorView.rootWindowInsets?.displayCutout?.boundingRects?.firstOrNull()
+                if (rect != null) {
+                    gestureManager.updateNotchHeight(min(rect.width(), rect.height()))
+                    return@post
+                }
+            }
+            gestureManager.checkNotch()
         }
     }
 
