@@ -62,6 +62,7 @@ import ani.dantotsu.media.anime.selector.SourceMetaIcon
 import ani.dantotsu.media.anime.selector.SourcePillKind
 import ani.dantotsu.media.anime.selector.SourceRowPill
 import ani.dantotsu.media.anime.selector.SourceRowSummarizer
+import ani.dantotsu.media.anime.selector.ShowTitles
 import ani.dantotsu.media.anime.selector.SourceRowViewModel
 import ani.dantotsu.media.anime.selector.AudioKind
 import ani.dantotsu.media.anime.selector.AudioKindDetector
@@ -994,9 +995,13 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             val storedFamily = mediaId?.let { SelectedFamilyStore.load(it) }
             val fallbackProvider = sourceName()
             val snapshot = links.toList()
+            val titles = media?.let { m ->
+                ShowTitles(m.userPreferredName, listOfNotNull(m.name, m.nameRomaji, m.nameMAL) + m.synonyms)
+            }
             val gen = ++generation
             scope.launch(rowWorker) {
                 if (gen != generation) return@launch
+                rowsBuilder.showTitles = titles
                 val result = rowsBuilder.buildWithViews(snapshot, storedKey, storedFamily, fallbackProvider)
                 val built = PickerListBuilder.build(result.rows, hasRememberedFamily = storedFamily != null)
                 withContext(Dispatchers.Main) {

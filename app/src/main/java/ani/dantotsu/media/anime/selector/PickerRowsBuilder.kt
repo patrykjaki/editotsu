@@ -31,6 +31,13 @@ class PickerRowsBuilder(
     private val fields = HashMap<ViewKey, SourceRowClassifier.ReleaseFields?>()
     private val servers = HashMap<ServerKey, ServerFacts>()
 
+    /** The show's names, to show card titles in the user's title language (display only). */
+    var showTitles: ShowTitles? = null
+        set(value) {
+            if (value != field) views.clear()
+            field = value
+        }
+
     /** Summarizer calls made so far (tests check that cached rows are not parsed again). */
     var summarizeCalls = 0
         private set
@@ -117,8 +124,17 @@ class PickerRowsBuilder(
     fun viewOf(extractor: VideoExtractor, video: Video): SourceRowViewModel =
         views.getOrPut(keyOf(extractor, video)) {
             summarizeCalls++
-            runCatching { summarize(extractor, video) }.getOrElse { fallback(extractor.server.name) }
+            runCatching { localized(summarize(extractor, video)) }.getOrElse { fallback(extractor.server.name) }
         }
+
+    private fun localized(vm: SourceRowViewModel): SourceRowViewModel {
+        val titles = showTitles ?: return vm
+        val clean = vm.cleanSubtitle ?: return vm
+        val shown = titles.localize(clean) ?: return vm
+        if (shown == clean) return vm
+        // a card without a group uses the clean title as its header too
+        return vm.copy(cleanSubtitle = shown, header = if (vm.header == clean) shown else vm.header)
+    }
 
     /** Cached release fields for filters (null for stream rows or parse errors). */
     private fun fieldsOf(extractor: VideoExtractor, video: Video): SourceRowClassifier.ReleaseFields? =
