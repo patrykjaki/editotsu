@@ -97,7 +97,9 @@ object MpvNetworkOptions {
             optionsList.add("http-header-fields=\"$escapedFields\"")
         }
 
-        if (startPositionMs > 0L && sourceClass != PlaybackSourceClass.TORRENT_LOCALHOST) {
+        // Torrents too: opening at the position skips the 0:00 frame that a seek after
+        // file-loaded showed first, and the relay fetches the head and cues either way.
+        if (startPositionMs > 0L) {
             val startSec = TimeConverter.msToSeconds(startPositionMs)
             optionsList.add("start=$startSec")
         }
