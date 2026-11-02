@@ -1177,7 +1177,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private fun sourceClick() {
         changingServer = true
 
-        media.selected?.server = null
+        // The list is forced for this dialog only; the remembered release stays for the
+        // next episodes (it used to be saved as null here, which turned auto-play off).
         playerManager.playbackEngine?.let { engine ->
             saveActivePosition()
             engine.pause()
@@ -1188,7 +1189,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             media,
             epNum,
             this.supportFragmentManager,
-            launch = false
+            launch = false,
+            forcePicker = true,
         )
     }
 
