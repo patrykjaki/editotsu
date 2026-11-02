@@ -197,6 +197,7 @@
     <string name="picker_also">Also</string>
     <string name="picker_auto_play">Remember and auto-play next time</string>
     <string name="picker_auto_title">Starting playback</string>
+    <string name="picker_auto_group">Release group: %1$s</string>
     <string name="picker_auto_resuming">Resuming episode %1$s at %2$s</string>
     <string name="picker_auto_starting">Playing episode %1$s</string>
     <string name="picker_empty_title">No streams for episode %1$s</string>
@@ -234,6 +235,7 @@
     <string name="opening">Opening</string>
     <string name="ending">Ending</string>
     <string name="anime_themes_title">Openings &amp; endings</string>
+    <string name="anime_themes_loading">Loading from AnimeThemes</string>
     <string name="theme_error_named">Could not play %1$s</string>
     <string name="theme_hidden_until">Hidden until episode %1$d</string>
     <string name="theme_flag_spoiler">Spoiler</string>

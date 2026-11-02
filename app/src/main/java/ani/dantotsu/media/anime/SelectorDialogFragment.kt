@@ -542,7 +542,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             binding.selectorListContainer.visibility = View.GONE
                             binding.selectorAutoListContainer.visibility = View.VISIBLE
                             binding.selectorAutoText.text = selected?.lineSequence()?.firstOrNull { it.isNotBlank() }
-                                ?: entryFamily?.groupKey ?: ""
+                                ?: entryFamily?.groupKey?.let { getString(R.string.picker_auto_group, it) } ?: ""
                             // Same rule as the player: a saved position resumes unless the
                             // episode was finished (92%), which starts again at 0:00.
                             val resumeKey = actualKey ?: ep.number
@@ -559,8 +559,19 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                 media!!.selected!!.server = null
                                 model.saveSelected(media!!.id, media!!.selected!!)
                                 SelectedKeyStore.save(media!!.id, null)
+                                // From the episode list, cancel means "let me pick": reopen
+                                // this episode with the release list. The player has its own
+                                // source button and keeps the plain close.
+                                val reopen = launch != false
+                                val m = media!!
+                                val fm = parentFragmentManager
+                                val epKey = actualKey ?: ep.number
                                 tryWith {
                                     dismissAllowingStateLoss()
+                                }
+                                if (reopen) {
+                                    autoplayLog("ep=$epKey cancel -> picker")
+                                    model.onEpisodeClick(m, epKey, fm, forcePicker = true)
                                 }
                             }
 
