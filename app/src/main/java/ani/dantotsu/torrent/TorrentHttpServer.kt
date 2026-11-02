@@ -294,8 +294,9 @@ class TorrentHttpServer(
                     deadlineRegistry?.registerDeadline(piece, clientSessionId, deadline.toLong())
                 }
             }
-            // Head-first: until the read has its first piece, only that piece and the next
-            // two are raised; the full window and the tail follow once data flows.
+            // Head-first: until the read has its first piece, only that piece, the next two
+            // and the last tail pieces (mkv cues, read before the first frame) are raised;
+            // the full window follows once data flows.
             var firstPieceIn = synchronized(lock) { if (handle.isValid) handle.havePiece(firstPiece) else false }
             applyWindow(firstPiece, headFirst = !firstPieceIn)
             // Headers go out at once: mpv waits on the body (network-timeout) instead of
