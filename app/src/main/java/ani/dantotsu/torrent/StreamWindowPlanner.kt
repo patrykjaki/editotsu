@@ -40,6 +40,17 @@ class StreamWindowPlanner(
             raise.filterIndexed { i, (piece, _) -> i < CRITICAL_PIECES || piece in protectedPieces }
     }
 
+    /**
+     * Protected pieces also raised in head-first mode: the last ones covering about
+     * [HEAD_FIRST_TAIL_BYTES] (+1 for a short last piece). mpv reads the mkv cues right
+     * after the head and waits for them before the first frame; fetched only after the
+     * head, they cost a second serial wait (5.6 s on the owner's phone, r10).
+     */
+    private val headFirstTail: List<Int> = run {
+        val n = if (pieceLength > 0) ((HEAD_FIRST_TAIL_BYTES + pieceLength - 1) / pieceLength).toInt() + 1 else 1
+        protectedPieces.filter { it in fileFirstPiece..fileLastPiece }.sortedDescending().take(n).sorted()
+    }
+
     val windowPieces: Int = run {
         val byBytes = if (pieceLength > 0) ((windowBytes + pieceLength - 1) / pieceLength).toInt() else MIN_PIECES
         byBytes.coerceIn(MIN_PIECES, MAX_PIECES)
@@ -55,8 +66,9 @@ class StreamWindowPlanner(
      * Window for a read position at [playheadPiece] (clamped into the file).
      *
      * [headFirst]: the read is still waiting for its first piece. Peers unchoke us slowly
-     * and the first seconds bring only a few hundred KB/s, so only the playhead piece and
-     * the next [HEAD_FIRST_PIECES] - 1 are raised (no tail, no full window) until it lands.
+     * and the first seconds bring only a few hundred KB/s, so only the playhead piece, the
+     * next [HEAD_FIRST_PIECES] - 1 and the last tail pieces (the container index, deadline
+     * right after the head) are raised until it lands; the full window follows.
      */
     @Synchronized
     fun plan(playheadPiece: Int, headFirst: Boolean = false): Plan {
@@ -67,7 +79,11 @@ class StreamWindowPlanner(
         for ((i, piece) in (start..end).withIndex()) {
             raise += piece to deadlineFor(i)
         }
-        if (!headFirst) for (piece in protectedPieces) {
+        if (headFirst) {
+            for (piece in headFirstTail) {
+                if (piece !in start..end) raise += piece to deadlineFor(span)
+            }
+        } else for (piece in protectedPieces) {
             if (piece in fileFirstPiece..fileLastPiece && piece !in start..end) {
                 raise += piece to PROTECTED_DEADLINE_MS
             }
@@ -115,6 +131,9 @@ class StreamWindowPlanner(
 
         /** Pieces raised while a read waits for its first piece. */
         const val HEAD_FIRST_PIECES = 3
+
+        /** Bytes at the end of the file fetched with the head (mkv cues are usually smaller). */
+        const val HEAD_FIRST_TAIL_BYTES = 1L * 1024 * 1024
 
         const val MIN_PIECES = 8
         const val MAX_PIECES = 128
