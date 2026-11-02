@@ -915,6 +915,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         private var filter: AudioKind? = null
         private var filterChosenByUser = false
         private val expanded = mutableSetOf<String>()
+        private val tagsExpanded = mutableSetOf<String>()
         private val viewTypeStream = 0
         private val viewTypeRelease = 1
 
@@ -1454,7 +1455,17 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 setPadding(padH, padV, padH, padV)
                 setSingleLine(true)
                 alpha = 0.8f
-                setOnClickListener { b.sourceExpand.performClick() }
+            }
+            // "+N": a tap on the tag row shows every tag (wrapped); again hides them.
+            // Only while tags are hidden or shown, so a tap on a row that fits still plays.
+            val tagsKey = keyOf(entry)
+            b.sourceTags.expanded = tagsKey in tagsExpanded
+            b.sourceTags.setOnClickListener {
+                if (tagsKey in tagsExpanded) tagsExpanded.remove(tagsKey) else tagsExpanded.add(tagsKey)
+                b.sourceTags.expanded = tagsKey in tagsExpanded
+            }
+            b.sourceTags.post {
+                b.sourceTags.isClickable = b.sourceTags.expanded || b.sourceTags.hasHidden
             }
 
             val size = viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SIZE }?.text
