@@ -1375,10 +1375,26 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             b.streamSub.isVisible = subtitles.isNotEmpty()
             if (topExtractor != null) actionsFor(topExtractor).setupRowSubtitleButton(b.streamSub, subtitles)
 
+            // a tap on the card plays the filled quality (remembered, else highest)
+            val defaultRef = list.defaultQuality(entry)
+            val defaultExtractor = defaultRef?.let { shown.getOrNull(it.extractor) }
+            if (defaultRef != null && defaultExtractor != null) {
+                val defaultActions = actionsFor(defaultExtractor)
+                b.sourceCard.setSafeOnClickListener {
+                    defaultActions.onRowClicked(defaultRef.video) {
+                        defaultActions.startDownload(defaultRef.video, defaultExtractor.subtitles)
+                    }
+                }
+                b.sourceCard.setOnLongClickListener { defaultActions.onRowLongClicked(defaultRef.video) }
+            } else {
+                b.sourceCard.setOnClickListener(null)
+                b.sourceCard.setOnLongClickListener(null)
+            }
+
             b.streamQualities.removeAllViews()
             entry.primary.forEach { variant ->
                 b.streamQualities.addView(
-                    qualityButton(b.streamQualities, entry, variant, filled = list.isRememberedQuality(variant.ref)),
+                    qualityButton(b.streamQualities, entry.name, variant.ref, variant.label, filled = variant.ref == defaultRef),
                 )
             }
             b.streamAlternates.removeAllViews()
@@ -1394,8 +1410,8 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 b.streamAlternates.addView(label, flexParams(b.root.context, endDp = 8, bottomDp = 0))
                 entry.alternates.forEach { variant ->
                     b.streamAlternates.addView(qualityButton(
-                        b.streamAlternates, entry, variant,
-                        filled = list.isRememberedQuality(variant.ref), compact = true,
+                        b.streamAlternates, entry.name, variant.ref, variant.label,
+                        filled = variant.ref == defaultRef, compact = true,
                     ))
                 }
             }
@@ -1419,15 +1435,16 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
         private fun qualityButton(
             parent: ViewGroup,
-            entry: PickerEntry.StreamGroup,
-            variant: QualityVariant,
+            name: String,
+            ref: RowRef,
+            label: CharSequence,
             filled: Boolean,
             compact: Boolean = false,
         ): View {
             val context = parent.context
             val d = context.resources.displayMetrics.density
             val tv = android.widget.TextView(context).apply {
-                text = variant.label
+                text = label
                 textSize = if (compact) 13f else 14f
                 typeface = ResourcesCompat.getFont(context, R.font.poppins_semi_bold)
                 gravity = android.view.Gravity.CENTER
@@ -1442,19 +1459,24 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                         else com.google.android.material.R.attr.colorOnSurface,
                     ),
                 )
-                contentDescription = getString(R.string.picker_play_quality, entry.name, variant.label)
+                contentDescription = getString(R.string.picker_play_quality, name, label.toString().replace('\n', ' '))
                 isClickable = true
                 isFocusable = true
             }
-            val extractor = shown.getOrNull(variant.ref.extractor)
+            if (label.contains('\n')) {
+                val padV = (6 * d).toInt()
+                tv.setPadding(tv.paddingLeft, padV, tv.paddingRight, padV)
+            }
+            val extractor = shown.getOrNull(ref.extractor)
             if (extractor != null) {
                 val rowActions = actionsFor(extractor)
+                // the same transaction as tapping that row: same exact key, family and server
                 tv.setSafeOnClickListener {
-                    rowActions.onRowClicked(variant.ref.video) {
-                        rowActions.startDownload(variant.ref.video, extractor.subtitles)
+                    rowActions.onRowClicked(ref.video) {
+                        rowActions.startDownload(ref.video, extractor.subtitles)
                     }
                 }
-                tv.setOnLongClickListener { rowActions.onRowLongClicked(variant.ref.video) }
+                tv.setOnLongClickListener { rowActions.onRowLongClicked(ref.video) }
             }
             tv.layoutParams = flexParams(context, endDp = 8, bottomDp = if (compact) 0 else 8)
             return tv
@@ -1472,7 +1494,19 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             val header = viewModel.header?.takeIf { it.isNotBlank() } ?: viewModel.displayLabel
             b.sourceHeader.text = header
 
+            // one release in several qualities: seeds and size move onto each quality's button
+            val qualities = entry.qualities
+            val grouped = qualities.isNotEmpty()
+            b.sourceQualities.removeAllViews()
+            b.sourceQualities.isVisible = grouped
+            qualities.forEach { q ->
+                b.sourceQualities.addView(
+                    qualityButton(b.sourceQualities, header, q.ref, releaseQualityLabel(q), filled = q.ref == entry.row.ref),
+                )
+            }
+
             val seeders = SeederHealth.parse(viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SEEDERS }?.text)
+                ?.takeIf { !grouped }
             b.sourceSeeders.isVisible = seeders != null
             if (seeders != null) {
                 b.sourceSeeders.text = if (SeederHealth.isLow(seeders)) {
@@ -1495,7 +1529,8 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             markBest(b.sourceCard, b.sourceWhy, entry)
 
             b.sourceTags.removeAllViews()
-            viewModel.pills.forEach { pill -> b.sourceTags.addView(makePillTextView(b.root.context, pill)) }
+            viewModel.pills.filter { !grouped || it.kind != SourcePillKind.QUALITY }
+                .forEach { pill -> b.sourceTags.addView(makePillTextView(b.root.context, pill)) }
             b.sourceTags.overflowView = android.widget.TextView(b.root.context).apply {
                 setBackgroundResource(R.drawable.pill_more)
                 textSize = 11f
@@ -1518,7 +1553,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 b.sourceTags.isClickable = b.sourceTags.expanded || b.sourceTags.hasHidden
             }
 
-            val size = viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SIZE }?.text
+            val size = viewModel.meta.firstOrNull { it.icon == SourceMetaIcon.SIZE }?.text?.takeIf { !grouped }
             b.sourceSize.isVisible = !size.isNullOrBlank()
             b.sourceSize.text = size
 
@@ -1539,7 +1574,13 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                     fileName = data?.fileName ?: CompactDetails.fileLine(qualityText),
                     rawName = data?.torrentName ?: SourceRowClassifier.extractReleaseName(qualityText),
                     transport = entry.row.transport,
-                ) + listOfNotNull(tags.takeIf { it.isNotBlank() }?.let { "Tags" to it }))
+                ) + listOfNotNull(tags.takeIf { it.isNotBlank() }?.let { "Tags" to it }) +
+                    entry.others.sortedByDescending { it.resolution ?: -1 }.mapNotNull { o ->
+                        val oe = shown.getOrNull(o.ref.extractor) ?: return@mapNotNull null
+                        val name = EditotsuInternalData.of(oe.server.video)?.torrentName
+                            ?: SourceRowClassifier.extractReleaseName(oe.server.name)
+                        (ResolutionLabel.label(o.resolution) ?: "Other") to name
+                    })
                     .joinToString("\n") { (label, value) -> "$label: $value" }
             }
 
@@ -1547,6 +1588,22 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 rowActions.onRowClicked(ref.video) { b.sourceDownload.performClick() }
             }
             b.sourceCard.setOnLongClickListener { rowActions.onRowLongClicked(ref.video) }
+        }
+
+        /** "1080p" over "174 seeds · 1.4 GB" */
+        private fun releaseQualityLabel(row: PickerRow): CharSequence {
+            val vm = shownViews[row.ref]
+            val seeds = SeederHealth.parse(vm?.meta?.firstOrNull { it.icon == SourceMetaIcon.SEEDERS }?.text)
+            val size = vm?.meta?.firstOrNull { it.icon == SourceMetaIcon.SIZE }?.text
+            val top = ResolutionLabel.label(row.resolution) ?: row.transport ?: "Play"
+            val sub = listOfNotNull(seeds?.let { SeederHealth.label(it) }, size).joinToString(" · ")
+            if (sub.isEmpty()) return top
+            return android.text.SpannableStringBuilder(top).append('\n').also { sb ->
+                val start = sb.length
+                sb.append(sub)
+                sb.setSpan(android.text.style.RelativeSizeSpan(0.78f), start, sb.length, 0)
+                sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.NORMAL), start, sb.length, 0)
+            }
         }
 
         // ---- tags (unchanged look from v3) ---------------------------------
