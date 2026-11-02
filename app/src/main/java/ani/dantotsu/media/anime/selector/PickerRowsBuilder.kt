@@ -72,6 +72,9 @@ class PickerRowsBuilder(
             }
             val family = facts.family
             val aniVideo = server.video
+            val data = EditotsuInternalData.of(aniVideo)
+            // names only (no hoster prefix or 👤/💾/⚙️ line) when the source sent them
+            val audioText = data?.torrentName?.let { listOfNotNull(it, data.fileName).joinToString("\n") } ?: server.name
             extractor.videos.forEachIndexed { vi, video ->
                 val viewModel = viewOf(extractor, video)
                 rowViews[RowRef(ei, vi)] = viewModel
@@ -84,13 +87,13 @@ class PickerRowsBuilder(
                     header = viewModel.header?.takeIf { it.isNotBlank() } ?: viewModel.displayLabel,
                     resolution = height,
                     transport = TransportLabel.of(video.file.url, video.format.name),
-                    audioKind = AudioKindDetector.detect(server.name),
+                    audioKind = data?.audioKind() ?: AudioKindDetector.detect(audioText),
                     preferred = extractor.isPreferred || aniVideo?.preferred == true,
                     rememberedExact = storedKey != null && facts.exact == storedKey,
                     rememberedFamily = storedFamily != null && family != null &&
                         family.providerPkg == storedFamily.providerPkg &&
                         family.groupKey == storedFamily.groupKey,
-                    facets = fieldsOf(extractor, video)?.let { RowFacets.of(it, height) }
+                    facets = fieldsOf(extractor, video)?.let { RowFacets.of(it, height, data?.sizeBytes) }
                         ?: RowFacets(resolution = ResolutionLabel.label(height), height = height),
                 )
             }
@@ -122,10 +125,9 @@ class PickerRowsBuilder(
         fields.getOrPut(keyOf(extractor, video)) {
             val name = extractor.server.name
             runCatching {
-                if (SourceRowClassifier.classifyPresentation(name) != SourcePresentationKind.RELEASE) null
-                else SourceRowClassifier.parseRelease(
-                    name, EditotsuInternalData.parse(extractor.server.video?.internalData)?.fileName,
-                )
+                val data = EditotsuInternalData.of(extractor.server.video)
+                if (SourceRowClassifier.classifyPresentation(name, data) != SourcePresentationKind.RELEASE) null
+                else SourceRowClassifier.parseRelease(name, data = data)
             }.getOrNull()
         }
 
@@ -136,7 +138,7 @@ class PickerRowsBuilder(
                 qualityText = extractor.server.name,
                 format = video.format,
                 url = video.file.url,
-                fileName = EditotsuInternalData.parse(extractor.server.video?.internalData)?.fileName,
+                data = EditotsuInternalData.of(extractor.server.video),
             )
 
         /** A row whose text could not be parsed still shows, titled with its raw text. */

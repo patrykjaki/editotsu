@@ -7,7 +7,7 @@ package ani.dantotsu.media.anime.selector
  *   total UTF-8 <= 512 bytes
  *   providerPkg UTF-8 <= 96 bytes
  *   groupKey <= 32 chars
- *   soft entries <= 7
+ *   soft entries <= 8 (7 before `pack` was added)
  *   soft key <= 16 chars
  *   soft value <= 32 chars
  *
@@ -29,7 +29,7 @@ object SelectedFamilyCodec {
     const val TOTAL_BYTES_LIMIT = 512
     const val PROVIDER_BYTES_LIMIT = 96
     const val GROUP_KEY_MAX = 32
-    const val SOFT_ENTRIES_LIMIT = 7
+    const val SOFT_ENTRIES_LIMIT = 8
     const val SOFT_KEY_MAX = 16
     const val SOFT_VALUE_MAX = 32
     const val VERSION = 1

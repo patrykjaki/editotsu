@@ -10,7 +10,7 @@ package ani.dantotsu.media.anime.selector
 object ReleaseTitleNormalizer {
     private val INNER_LEAD = Regex("""([\[({])[\s_|\-]+""")
     private val INNER_TRAIL = Regex("""[\s_|\-]+([\])}])""")
-    private val EMPTY_GROUP = Regex("""\[[\s._|\-]*]|\([\s._|\-]*\)|\{[\s._|\-]*}""")
+    private val EMPTY_GROUP = Regex("""\[[\s._|\-]*\]|\([\s._|\-]*\)|\{[\s._|\-]*\}""")
     private val WS_RUN = Regex("""\s+""")
     private val EDGE = Regex("""^[\s_|/\-]+|[\s_|/\-]+$""")
 

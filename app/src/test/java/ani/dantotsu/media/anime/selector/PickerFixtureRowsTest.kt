@@ -218,7 +218,7 @@ class PickerFixtureRowsTest {
             EditotsuInternalData.parse("""{"editotsu":1,"fileName":5,"torrentName":[]}"""),
         )
         assertEquals(
-            EditotsuInternalData(torrentName = "T", fileName = "a.mkv"),
+            EditotsuInternalData(torrentName = "T", fileName = "a.mkv", infoHash = "ab"),
             EditotsuInternalData.parse("""{"editotsu":1,"infoHash":"ab","torrentName":"T","fileName":"a.mkv","x":{}}"""),
         )
     }

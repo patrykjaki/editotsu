@@ -17,13 +17,14 @@ data class RowFacets(
     val height: Int? = null,
 ) {
     companion object {
-        fun of(fields: SourceRowClassifier.ReleaseFields, height: Int?): RowFacets = RowFacets(
+        /** [sizeBytes] from the source's data when it has one; otherwise parsed from the size text */
+        fun of(fields: SourceRowClassifier.ReleaseFields, height: Int?, sizeBytes: Long? = null): RowFacets = RowFacets(
             resolution = ResolutionLabel.label(height),
             codec = fields.codec,
             hdr = fields.hdrVariant ?: if (fields.hdr) "HDR" else "SDR",
             group = fields.releaseGroup,
             seeders = fields.seeders,
-            sizeBytes = parseSize(fields.sizeText),
+            sizeBytes = sizeBytes ?: parseSize(fields.sizeText),
             height = height,
         )
 

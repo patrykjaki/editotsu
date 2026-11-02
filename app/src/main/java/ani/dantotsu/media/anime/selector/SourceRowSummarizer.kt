@@ -107,8 +107,9 @@ object SourceRowSummarizer {
         format: VideoType?,
         url: String,
         fileName: String? = null,
+        data: EditotsuInternalData? = null,
     ): SourceRowViewModel {
-        val presentation = SourceRowClassifier.classifyPresentation(qualityText)
+        val presentation = SourceRowClassifier.classifyPresentation(qualityText, data)
         val formatName = format?.name ?: ""
         val transport = SourceRowClassifier.classifyTransport(
             url = url,
@@ -116,7 +117,7 @@ object SourceRowSummarizer {
             formatName = formatName,
         )
         return when (presentation) {
-            SourcePresentationKind.RELEASE -> buildRelease(displayLabel, transport, url, fileName)
+            SourcePresentationKind.RELEASE -> buildRelease(displayLabel, transport, url, fileName, data)
             SourcePresentationKind.STREAM -> buildStream(displayLabel, qualityText, transport, formatName)
         }
     }
@@ -127,8 +128,9 @@ object SourceRowSummarizer {
         formatName: String?,
         url: String,
         fileName: String? = null,
+        data: EditotsuInternalData? = null,
     ): SourceRowViewModel {
-        val presentation = SourceRowClassifier.classifyPresentation(qualityText)
+        val presentation = SourceRowClassifier.classifyPresentation(qualityText, data)
         val effectiveName = formatName ?: ""
         val transport = SourceRowClassifier.classifyTransport(
             url = url,
@@ -136,7 +138,7 @@ object SourceRowSummarizer {
             formatName = effectiveName,
         )
         return when (presentation) {
-            SourcePresentationKind.RELEASE -> buildRelease(displayLabel, transport, url, fileName)
+            SourcePresentationKind.RELEASE -> buildRelease(displayLabel, transport, url, fileName, data)
             SourcePresentationKind.STREAM -> buildStream(displayLabel, qualityText, transport, effectiveName)
         }
     }
@@ -146,8 +148,9 @@ object SourceRowSummarizer {
         transport: SourceTransport,
         url: String,
         fileName: String? = null,
+        data: EditotsuInternalData? = null,
     ): SourceRowViewModel {
-        val fields = SourceRowClassifier.parseRelease(displayLabel, fileName)
+        val fields = SourceRowClassifier.parseRelease(displayLabel, fileName, data)
         val pills = buildPills(fields)
         val meta = buildReleaseMeta(fields)
         val details = buildReleaseDetails(fields, transport)
@@ -277,7 +280,7 @@ object SourceRowSummarizer {
         }
 
         // 5. Codec (one pill), then bit depth.
-        fields.codec?.let { out += SourceRowPill(it, SourcePillKind.CODEC) }
+        fields.codec?.let { out += SourceRowPill(CodecLabel.of(it), SourcePillKind.CODEC) }
         bitDepthPill?.let { out += it }
 
         // 6. Audio format.
