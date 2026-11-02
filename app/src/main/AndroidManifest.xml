@@ -306,6 +306,7 @@
         <activity
             android:name=".media.anime.ExoplayerView"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
+            android:screenOrientation="sensorLandscape"
             android:excludeFromRecents="true"
             android:exported="true"
             android:label="@string/video"
