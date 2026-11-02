@@ -273,7 +273,7 @@ android {
             applicationIdSuffix = ".beta"
             versionNameSuffix = "+$devBuildId"
             buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$devBuildId\"")
-            resValue("string", "app_build_label", "Editotsu Beta")
+            resValue("string", "app_build_label", "Editotsu α")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_alpha"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_alpha_round"
             isDebuggable = true
@@ -291,7 +291,7 @@ android {
             applicationIdSuffix = ".beta"
             if (testBuildId.isNotEmpty()) versionNameSuffix = "+$testBuildId"
             buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$testBuildId\"")
-            resValue("string", "app_build_label", "Editotsu Beta")
+            resValue("string", "app_build_label", "Editotsu β")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_beta"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_beta_round"
             isDebuggable = false
@@ -309,7 +309,7 @@ android {
             applicationIdSuffix = ".beta"
             versionNameSuffix = "+$devBuildId"
             buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$devBuildId\"")
-            resValue("string", "app_build_label", "Editotsu Beta")
+            resValue("string", "app_build_label", "Editotsu β")
             manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_beta"
             manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_beta_round"
             isDebuggable = false
