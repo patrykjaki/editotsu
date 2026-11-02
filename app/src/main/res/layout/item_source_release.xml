@@ -69,8 +69,8 @@
                 android:layout_marginTop="2dp"
                 android:ellipsize="end"
                 android:fontFamily="@font/poppins"
+                android:maxLines="2"
                 android:paddingEnd="12dp"
-                android:singleLine="true"
                 android:textSize="14sp"
                 tools:text="Frieren: Beyond Journey's End (2023) S01" />
 
