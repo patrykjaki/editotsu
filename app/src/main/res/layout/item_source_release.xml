@@ -87,15 +87,6 @@
                 tools:text="Best match · you picked this last time"
                 tools:visibility="visible" />
 
-            <!-- one button per quality when the release comes in several (SubsPlease 1080p/720p/480p) -->
-            <com.google.android.flexbox.FlexboxLayout
-                android:id="@+id/sourceQualities"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:paddingEnd="12dp"
-                android:visibility="gone"
-                app:flexWrap="wrap" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -150,6 +141,18 @@
                     android:src="@drawable/ic_round_info_24"
                     app:tint="?attr/colorOnBackground" />
             </LinearLayout>
+
+            <!-- The card plays its best quality; the others of the same release
+                 (SubsPlease 1080p/720p/480p) sit here as small buttons. -->
+            <com.google.android.flexbox.FlexboxLayout
+                android:id="@+id/sourceQualities"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:paddingEnd="12dp"
+                android:visibility="gone"
+                app:alignItems="center"
+                app:flexWrap="wrap" />
 
             <TextView
                 android:id="@+id/sourceDetails"

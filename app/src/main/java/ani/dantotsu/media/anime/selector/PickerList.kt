@@ -419,7 +419,7 @@ object SeederHealth {
         text?.let { NUMBER.find(it)?.value?.filter(Char::isDigit)?.toIntOrNull() }
 
     /** low counts are shown in the error colour, not with extra words */
-    fun label(seeders: Int): String = "$seeders seeds"
+    fun label(seeders: Int): String = if (seeders == 1) "1 seed" else "$seeders seeds"
 }
 
 object TagLineBudget {
