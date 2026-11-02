@@ -1,14 +1,20 @@
-# Editotsu 0.5 release pipeline (reviewed replacement for the old beta.yml).
+# Editotsu release pipeline.
+#
+# The version comes from editotsu.version in gradle.properties; versionCode follows
+# the same formula as app/build.gradle.kts. Nothing here names a version.
 #
 # Two modes, one deterministic pipeline:
 #   RC validation : manual workflow_dispatch with rc_sha -> evidence only, NO release.
-#   Tag mode      : push of tag v0.5.0-beta01 -> reverify approved SHA -> prerelease.
+#   Tag mode      : push of tag v<editotsu.version> -> reverify approved SHA
+#                   (repo variable APPROVED_RELEASE_SHA) -> GitHub release.
+#                   Versions with "-" (alpha/beta/rc) ship as ani.editotsu.beta
+#                   pre-releases; stable versions as ani.editotsu.
 #
 # Provenance rule: every publishable APK has exactly one producing build
 # execution (per-flavor matrix legs build and upload only their flavor).
 # Release creation is the final job and depends on every required job.
 # A partial matrix can never publish: asset globs use fail_on_unmatched_files.
-name: Editotsu 0.5 release
+name: Editotsu release
 
 on:
   workflow_dispatch:
@@ -18,7 +24,7 @@ on:
         required: true
   push:
     tags:
-      - "v0.5.0-beta01"
+      - "v[0-9]+.[0-9]+.[0-9]+*"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,12 +35,6 @@ permissions:
 
 env:
   CI: "true"
-  EXPECTED_VERSION: "0.5.0-beta01"
-  EXPECTED_CODE: "1000510"
-  # Channel/package contract (deliberate, not hardcoded-beta-universal):
-  # prerelease versions (containing "-") ship as ani.editotsu.beta so
-  # betas coexist with stable; future stable versions ship as
-  # ani.editotsu. Derived in the verify job from EXPECTED_VERSION.
 
 jobs:
   sha-gate:
@@ -42,6 +42,12 @@ jobs:
     outputs:
       checked_sha: ${{ steps.resolve.outputs.checked_sha }}
       trigger_mode: ${{ steps.resolve.outputs.trigger_mode }}
+      version: ${{ steps.version.outputs.version }}
+      code: ${{ steps.version.outputs.code }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      build_type: ${{ steps.version.outputs.build_type }}
+      package: ${{ steps.version.outputs.package }}
+      channel: ${{ steps.version.outputs.channel }}
     steps:
       - name: Validate candidate SHA input
         id: resolve
@@ -50,9 +56,9 @@ jobs:
             SHA="${{ inputs.rc_sha }}"
             MODE="rc-validation"
           else
-            VARD="${{ vars.APPROVED_0_5_0_BETA01_RC_SHA }}"
+            VARD="${{ vars.APPROVED_RELEASE_SHA }}"
             if ! printf '%s' "$VARD" | grep -Eq '^[0-9a-f]{40}$'; then
-              echo "::error::APPROVED_0_5_0_BETA01_RC_SHA missing or not 40-hex"
+              echo "::error::APPROVED_RELEASE_SHA missing or not 40-hex"
               exit 1
             fi
             SHA="$VARD"
@@ -71,6 +77,33 @@ jobs:
         with:
           ref: ${{ steps.resolve.outputs.checked_sha }}
           fetch-depth: 0
+      - name: Read version from gradle.properties
+        id: version
+        run: |
+          V=$(grep -E '^editotsu\.version=' gradle.properties | head -1 | cut -d= -f2 | tr -d '[:space:]')
+          OUT=$(python3 - "$V" <<'EOF'
+          import re, sys
+          v = sys.argv[1]
+          m = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)(\d{2}))?', v)
+          if not m:
+              sys.exit("editotsu.version '%s' is not MAJOR.MINOR.PATCH[-alphaNN|-betaNN|-rcNN]" % v)
+          major, minor, patch, stage, nn = m.groups()
+          n = int(nn or 0)
+          s = {'alpha': n, 'beta': 20 + n, 'rc': 50 + n}.get(stage, 99)
+          code = 1_000_000 + int(major) * 10_000_000 + int(minor) * 100_000 + int(patch) * 1_000 + s
+          pre = stage is not None
+          print("version=%s" % v)
+          print("code=%d" % code)
+          print("prerelease=%s" % ("true" if pre else "false"))
+          print("build_type=%s" % ("beta" if pre else "release"))
+          print("package=%s" % ("ani.editotsu.beta" if pre else "ani.editotsu"))
+          print("channel=%s" % (stage or "stable"))
+          EOF
+          ) || { echo "::error::bad editotsu.version"; exit 1; }
+          echo "$OUT" | tee -a "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+            [ "$GITHUB_REF_NAME" = "v$V" ] || { echo "::error::tag $GITHUB_REF_NAME != v$V"; exit 1; }
+          fi
       - name: Assert exact candidate and record provenance
         run: |
           mkdir -p evidence-sha
@@ -88,7 +121,7 @@ jobs:
           MAIN_SHA=$(git rev-parse origin/main)
 
           if [ "$MODE" = "tag" ]; then
-            TAG_SHA=$(git rev-list -n 1 v0.5.0-beta01)
+            TAG_SHA=$(git rev-list -n 1 "${{ github.ref_name }}")
 
             [ "$TAG_SHA" = "$WANT" ] || {
               echo "::error::tag $TAG_SHA != approved $WANT"
@@ -192,16 +225,22 @@ jobs:
           ref: ${{ needs.sha-gate.outputs.checked_sha }}
           fetch-depth: 0
       - name: Assert source version identity
+        env:
+          EXPECTED_VERSION: ${{ needs.sha-gate.outputs.version }}
+          EXPECTED_CODE: ${{ needs.sha-gate.outputs.code }}
         run: |
           mkdir -p evidence-version
-          NAME=$(grep -E -m1 'versionName = "' app/build.gradle.kts | sed -E 's/.*versionName = "//; s/".*//')
-          CODE=$(grep -E -m1 'versionCode = ' app/build.gradle.kts | grep -E -o '[0-9]+')
+          # the version has one home; the build script must still read it from there
+          grep -q 'providers.gradleProperty("editotsu.version")' app/build.gradle.kts \
+            || { echo "::error::app/build.gradle.kts no longer reads editotsu.version"; exit 1; }
+          if grep -E -q '^\s*version(Name|Code) = ("|[0-9])' app/build.gradle.kts; then
+            echo "::error::hard-coded versionName/versionCode in app/build.gradle.kts"; exit 1
+          fi
           {
-            echo "versionName=$NAME (expected $EXPECTED_VERSION)"
-            echo "versionCode=$CODE (expected $EXPECTED_CODE)"
+            echo "editotsu.version=$EXPECTED_VERSION"
+            echo "versionCode=$EXPECTED_CODE"
+            echo "channel=${{ needs.sha-gate.outputs.channel }} package=${{ needs.sha-gate.outputs.package }}"
           } | tee evidence-version/version-gate.txt
-          [ "$NAME" = "$EXPECTED_VERSION" ] || { echo "::error::versionName mismatch"; exit 1; }
-          [ "$CODE" = "$EXPECTED_CODE" ] || { echo "::error::versionCode mismatch"; exit 1; }
       - name: Upload version evidence
         uses: actions/upload-artifact@v4
         with:
@@ -331,13 +370,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        include:
-          - flavor: google
-            gradle_task: assembleGoogleBeta
-            output_path: app/build/outputs/apk/google/beta/*.apk
-          - flavor: fdroid
-            gradle_task: assembleFdroidBeta
-            output_path: app/build/outputs/apk/fdroid/beta/*.apk
+        flavor: [google, fdroid]
     steps:
       - name: Checkout exact SHA
         uses: actions/checkout@v4
@@ -369,19 +402,28 @@ jobs:
           EDITOTSU_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           EDITOTSU_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           MAL_CLIENT_ID: ${{ secrets.MAL_CLIENT_ID }}
+          BUILD_TYPE: ${{ needs.sha-gate.outputs.build_type }}
+          FLAVOR: ${{ matrix.flavor }}
         run: |
           chmod +x ./gradlew
-          ./gradlew ${{ matrix.gradle_task }}
+          TASK="assemble${FLAVOR^}${BUILD_TYPE^}"
+          echo "gradle task: $TASK"
+          ./gradlew "$TASK"
       - name: Upload this flavor's APKs only
         uses: actions/upload-artifact@v4
         with:
           name: apks-${{ matrix.flavor }}
           retention-days: 14
-          path: ${{ matrix.output_path }}
+          path: app/build/outputs/apk/${{ matrix.flavor }}/${{ needs.sha-gate.outputs.build_type }}/*.apk
 
   verify:
     runs-on: ubuntu-latest
-    needs: [build, mal-control]
+    needs: [sha-gate, build, mal-control]
+    env:
+      EXPECTED_VERSION: ${{ needs.sha-gate.outputs.version }}
+      EXPECTED_CODE: ${{ needs.sha-gate.outputs.code }}
+      EXPECTED_PKG: ${{ needs.sha-gate.outputs.package }}
+      BUILD_TYPE: ${{ needs.sha-gate.outputs.build_type }}
     steps:
       - name: Download built APKs
         uses: actions/download-artifact@v4
@@ -410,7 +452,6 @@ jobs:
           echo "apksigner=$APKSIGNER" | tee release-evidence/tooling.txt
           echo "aapt2=$AAPT2" | tee -a release-evidence/tooling.txt
           EXPECTED=$(printf '%s' "$PINNED_DIGEST" | tr -d ':' | tr 'A-Z' 'a-z')
-          if [[ "$EXPECTED_VERSION" == *"-"* ]]; then EXPECTED_PKG="ani.editotsu.beta"; else EXPECTED_PKG="ani.editotsu"; fi
           echo "expected package for $EXPECTED_VERSION: $EXPECTED_PKG"
           rc=0
           : > release-evidence/apk-badging.txt
@@ -436,10 +477,13 @@ jobs:
       - name: Rename assets + SHA256SUMS + asset list
         run: |
           mkdir -p final
-          cp release-apks/app-google-arm64-v8a-beta.apk final/Editotsu-0.5.0-beta01-google-arm64-v8a.apk
-          cp release-apks/app-google-universal-beta.apk final/Editotsu-0.5.0-beta01-google-universal.apk
-          cp release-apks/app-fdroid-arm64-v8a-beta.apk final/Editotsu-0.5.0-beta01-fdroid-arm64-v8a.apk
-          cp release-apks/app-fdroid-universal-beta.apk final/Editotsu-0.5.0-beta01-fdroid-universal.apk
+          for f in google fdroid; do
+            for abi in arm64-v8a universal; do
+              SRC="release-apks/app-$f-$abi-$BUILD_TYPE.apk"
+              [ -f "$SRC" ] || { echo "::error::missing $SRC"; exit 1; }
+              cp "$SRC" "final/Editotsu-$EXPECTED_VERSION-$f-$abi.apk"
+            done
+          done
           (cd final && sha256sum Editotsu-*.apk > SHA256SUMS && cat SHA256SUMS)
           ls -1 final/ | tee release-evidence/asset-list.txt
       - name: Upload evidence bundle
@@ -454,24 +498,27 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [verify]
-    if: github.ref == 'refs/tags/v0.5.0-beta01'
+    needs: [sha-gate, verify]
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
+    env:
+      V: ${{ needs.sha-gate.outputs.version }}
     steps:
       - name: Checkout tag
         uses: actions/checkout@v4
         with:
-          ref: v0.5.0-beta01
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
       - name: Gate on approved RC SHA (fail closed, defense in depth)
         run: |
-          VAR="${{ vars.APPROVED_0_5_0_BETA01_RC_SHA }}"
+          VAR="${{ vars.APPROVED_RELEASE_SHA }}"
           if ! printf '%s' "$VAR" | grep -Eq '^[0-9a-f]{40}$'; then
-            echo "::error::APPROVED_0_5_0_BETA01_RC_SHA missing or not 40-hex"; exit 1
+            echo "::error::APPROVED_RELEASE_SHA missing or not 40-hex"; exit 1
           fi
+          [ -f ".github/release-notes/v$V.md" ] || { echo "::error::.github/release-notes/v$V.md missing"; exit 1; }
           git fetch origin main
-          TAG_SHA=$(git rev-list -n 1 v0.5.0-beta01)
+          TAG_SHA=$(git rev-list -n 1 "${{ github.ref_name }}")
           MAIN_SHA=$(git rev-parse origin/main)
           [ "$TAG_SHA" = "$VAR" ] || { echo "::error::tag $TAG_SHA != approved $VAR"; exit 1; }
           [ "$TAG_SHA" = "$MAIN_SHA" ] || { echo "::error::tag $TAG_SHA != current main $MAIN_SHA"; exit 1; }
@@ -484,18 +531,18 @@ jobs:
       - name: Create GitHub pre-release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v0.5.0-beta01
-          name: Editotsu v0.5.0-beta01 (beta)
-          body_path: .github/release-notes/v0.5.0-beta01.md
-          prerelease: true
-          make_latest: false
+          tag_name: ${{ github.ref_name }}
+          name: Editotsu v${{ needs.sha-gate.outputs.version }}${{ needs.sha-gate.outputs.prerelease == 'true' && format(' ({0})', needs.sha-gate.outputs.channel) || '' }}
+          body_path: .github/release-notes/v${{ needs.sha-gate.outputs.version }}.md
+          prerelease: ${{ needs.sha-gate.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.sha-gate.outputs.prerelease == 'true' && 'false' || 'true' }}
           draft: false
           fail_on_unmatched_files: true
           files: |
-            evidence/final/Editotsu-0.5.0-beta01-google-arm64-v8a.apk
-            evidence/final/Editotsu-0.5.0-beta01-google-universal.apk
-            evidence/final/Editotsu-0.5.0-beta01-fdroid-arm64-v8a.apk
-            evidence/final/Editotsu-0.5.0-beta01-fdroid-universal.apk
+            evidence/final/Editotsu-${{ needs.sha-gate.outputs.version }}-google-arm64-v8a.apk
+            evidence/final/Editotsu-${{ needs.sha-gate.outputs.version }}-google-universal.apk
+            evidence/final/Editotsu-${{ needs.sha-gate.outputs.version }}-fdroid-arm64-v8a.apk
+            evidence/final/Editotsu-${{ needs.sha-gate.outputs.version }}-fdroid-universal.apk
             evidence/final/SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
