@@ -1,9 +1,12 @@
 package ani.dantotsu.animethemes
 
+import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.content.res.ResourcesCompat
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.color.MaterialColors
 import ani.dantotsu.R
 import ani.dantotsu.databinding.ItemAnimeThemeCardBinding
 
@@ -36,16 +39,33 @@ class AnimeThemesStripAdapter(
         }
         b.themeFlag.text = flag
         b.themeFlag.visibility = if (flag == null) View.GONE else View.VISIBLE
-        if (isShielded(track)) {
+        val shielded = isShielded(track)
+        if (shielded) {
             b.themeSong.text = context.getString(
                 R.string.theme_hidden_until, ThemeQueue.firstEpisode(track.episodes) ?: 0
             )
-            b.themeArtist.visibility = View.GONE
+            b.themeSong.typeface = ResourcesCompat.getFont(context, R.font.poppins)
+            b.themeSong.setTextColor(onSurfaceVariant(context))
+            b.themeArtist.text = ""
         } else {
             b.themeSong.text = track.songTitle
+            b.themeSong.typeface = ResourcesCompat.getFont(context, R.font.poppins_bold)
+            b.themeSong.setTextColor(onSurface(context))
             b.themeArtist.text = track.artist
-            b.themeArtist.visibility = if (track.artist.isBlank()) View.GONE else View.VISIBLE
         }
+        b.root.contentDescription = listOf(
+            track.tag,
+            ThemeQueue.episodesLabel(track.episodes),
+            b.themeSong.text.toString(),
+            b.themeArtist.text.toString().takeIf { it.isNotBlank() },
+            flag,
+        ).filterNotNull().joinToString(", ")
         b.root.setOnClickListener { onPlay(track) }
     }
+
+    private fun onSurface(context: Context) =
+        MaterialColors.getColor(context, com.google.android.material.R.attr.colorOnSurface, 0)
+
+    private fun onSurfaceVariant(context: Context) =
+        MaterialColors.getColor(context, com.google.android.material.R.attr.colorOnSurfaceVariant, 0)
 }

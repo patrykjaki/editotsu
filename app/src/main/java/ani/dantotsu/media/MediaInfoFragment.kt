@@ -25,9 +25,9 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
+import ani.dantotsu.media.anime.ExoplayerView
 import ani.dantotsu.animethemes.AnimeThemes
 import ani.dantotsu.animethemes.AnimeThemesStripAdapter
-import ani.dantotsu.animethemes.ThemePlayerActivity
 import ani.dantotsu.animethemes.ThemeQueue
 import ani.dantotsu.animethemes.ThemeTrack
 import ani.dantotsu.R
@@ -1146,12 +1146,11 @@ class MediaInfoFragment : Fragment() {
                 LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
             itemRecycler.adapter = AnimeThemesStripAdapter(tracks, shielded) { tapped ->
                 val queue = ThemeQueue.playQueue(tracks, tapped, shielded)
-                ThemePlayerActivity.open(
+                ExoplayerView.openThemes(
                     requireContext(),
                     queue,
                     queue.indexOfFirst { it.themeId == tapped.themeId }.coerceAtLeast(0),
                     media.userPreferredName,
-                    media.cover,
                 )
             }
             slot.addView(root)
