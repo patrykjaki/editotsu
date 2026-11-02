@@ -251,8 +251,8 @@ object StableReleaseMetadataExtractor {
         for (rawLine in raw.lines()) {
             val line = rawLine.trim()
             if (line.isEmpty() || isMetadataLine(line)) continue
-            val noExt = MEDIA_EXTENSION.replace(line, "")
-            val token = TRAILING_SUFFIX_GROUP.find(noExt)?.groupValues?.getOrNull(1) ?: continue
+            val noExt = MEDIA_EXTENSION.replace(line, "").replace(TRAILING_NOTES, "").trimEnd()
+            val token = TRAILING_SUFFIX_GROUP.find(noExt)?.groupValues?.getOrNull(1)?.trimEnd('-') ?: continue
             if (isSuffixGroupCandidate(token)) return token
         }
         return null
@@ -270,10 +270,12 @@ object StableReleaseMetadataExtractor {
     }
 
     private fun isSuffixGroupCandidate(token: String): Boolean {
-        if (token.length !in 2..12) return false
+        if (token.length !in 2..(if ('-' in token) 30 else 12)) return false
         if (EPISODE_SHAPE.matches(token) || VERSION_SHAPE.matches(token) || RES_SHAPE.matches(token)) return false
         val upper = token.uppercase(Locale.ROOT)
         if (upper in SUFFIX_DENY || upper in KNOWN_NON_GROUP_BRACKETS) return false
+        if (upper == "DL" || upper == "RIP") return false
+        if ('-' in upper && upper.split('-').any { it in SUFFIX_DENY || it == "MULTI" || it == "DL" }) return false
         if (upper in SOURCE_SERVICE_ALIASES) return false
         if (KNOWN_LANG_CODES.any { it.equals(upper, ignoreCase = true) }) return false
         return true
@@ -286,7 +288,8 @@ object StableReleaseMetadataExtractor {
         Regex("""(?i)(dubbed|dual audio|multi audio|multi subs?|subbed|subs?|raw)""")
     private val MEDIA_EXTENSION =
         Regex("""\.(mkv|mp4|avi|webm|ts|m4v|m2ts|mov|flv|rmvb)$""", RegexOption.IGNORE_CASE)
-    private val TRAILING_SUFFIX_GROUP = Regex("""-([A-Za-z][A-Za-z0-9]{1,11})\s*$""")
+    private val TRAILING_SUFFIX_GROUP = Regex("""-([A-Za-z][A-Za-z0-9-]{1,29})\s*$""")
+    private val TRAILING_NOTES = Regex("""(?:\s*[\[(][^\[\]()]*[\])])+\s*$""")
     private val EPISODE_SHAPE = Regex("""(?i)^([se]?\d+)+[a-z]?$""")
     private val VERSION_SHAPE = Regex("""(?i)^v\d+[a-z]?$""")
     private val RES_SHAPE = Regex("""(?i)^\d+p$""")
