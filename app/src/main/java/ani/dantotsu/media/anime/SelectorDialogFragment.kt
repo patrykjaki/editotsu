@@ -381,9 +381,10 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                     runBlocking {
                                         try {
                                             withContext(Dispatchers.IO) {
-                                                torrentManager.activeTorrentHash?.let {
-                                                    torrentManager.removeTorrent(it)
-                                                }
+                                                // The previous torrent goes only when this one is a different
+                                                // torrent: the next episode of a batch is the same torrent, and
+                                                // removing it dropped every peer (ep 2 waited 19 s to reconnect).
+                                                val previousHash = torrentManager.activeTorrentHash
                                                 val index = if (url.contains("index=")) {
                                                     url.substringAfter("index=")
                                                         .toIntOrNull() ?: 0
@@ -396,6 +397,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                                     "",
                                                     false
                                                 )
+                                                if (previousHash != null && !previousHash.equals(currentTorrent.hash, ignoreCase = true)) {
+                                                    torrentManager.removeTorrent(previousHash)
+                                                }
                                                 torrentManager.activeTorrentHash =
                                                     currentTorrent.hash
 
