@@ -63,6 +63,7 @@ import ani.dantotsu.media.MediaDetailsViewModel
 import ani.dantotsu.media.MediaNameAdapter
 import ani.dantotsu.media.continueListWith
 import ani.dantotsu.media.isUnlinkedPlayback
+import ani.dantotsu.torrent.TorrentRelayLink
 import ani.dantotsu.media.anime.player.CastScreenView
 import ani.dantotsu.media.anime.player.DantotsuPlayerManager
 import ani.dantotsu.media.anime.player.DantotsuPlayerView
@@ -1033,22 +1034,28 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         )
 
         val currentVideo = video
-        if (currentVideo != null && (currentVideo.file.url.startsWith("magnet:") || currentVideo.file.url.endsWith(".torrent"))) {
+        val relay = currentVideo?.let { TorrentRelayLink.parse(it.file.url) }
+        if (currentVideo != null && (relay != null || currentVideo.file.url.startsWith("magnet:") || currentVideo.file.url.endsWith(".torrent"))) {
             val torrentManager = Injekt.get<ani.dantotsu.torrent.TorrentServerManager>()
             if (torrentManager.isAvailable()) {
-                val url = currentVideo.file.url
-                val index = if (url.contains("index=")) {
+                // A relay link (set on this Video by the buffering dialog or the manual
+                // torrent sheet) plays only while its torrent is in the session; it may
+                // have been removed since, so the torrent is added again from its source.
+                val url = relay?.let { torrentManager.sourceFor(it.hash) } ?: currentVideo.file.url
+                val index = relay?.index ?: if (url.contains("index=")) {
                     url.substringAfter("index=").toIntOrNull() ?: 0
                 } else 0
-                val hash = try {
+                val hash = relay?.hash ?: try {
                     if (url.startsWith("magnet:")) torrentManager.parseMagnetHash(url) else ""
                 } catch (_: Exception) { "" }
 
                 // Warmup in background
                 torrentManager.prebufferTorrent(url, index, currentVideo.quality.toString())
 
+                // Played through a copy: the episode's Video keeps its magnet, so a later
+                // play of it (replay, re-pick, copy link) still has the real source.
                 if (hash.isNotBlank()) {
-                    currentVideo.file.url = torrentManager.getLink(hash, index)
+                    video = currentVideo.copy(file = currentVideo.file.copy(url = torrentManager.getLink(hash, index)))
                 }
             }
         }
@@ -1913,6 +1920,18 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     override fun onDestroy() {
+        if (isFinishing) {
+            // Leaving the player: torrents nothing streams any more are removed after a
+            // short grace (an immediate reopen keeps its torrent), instead of downloading
+            // and uploading in the background service until the app is swiped away.
+            val torrentManager = Injekt.get<ani.dantotsu.torrent.TorrentServerManager>()
+            if (torrentManager.isRunning()) {
+                kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                    kotlinx.coroutines.delay(25_000L)
+                    torrentManager.removeIdleTorrents()
+                }
+            }
+        }
         sleepTimerHandler.removeCallbacks(sleepTimerFire)
         autoplayIdleHandler.removeCallbacks(autoplayIdleReset)
         unregisterPipReceiver()
