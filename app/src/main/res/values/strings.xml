@@ -1526,11 +1526,11 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="spoiler_tag_placeholder">Spoiler</string>
     <string name="show_spoilers">Show Spoilers</string>
     <string name="hide_spoilers">Hide Spoilers</string>
-    <plurals name="show_spoiler_tags">
+    <plurals name="tags_show_spoilers">
         <item quantity="one">Show %d spoiler</item>
         <item quantity="other">Show %d spoilers</item>
     </plurals>
-    <string name="hide_spoiler_tags">Hide spoilers</string>
+    <string name="tags_hide_spoilers">Hide spoilers</string>
 
     <!-- MAX MERGE M3: data and storage (upstream e954d9f1) -->
     <string name="label_data_storage">Data and Storage</string>
