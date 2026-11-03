@@ -758,6 +758,15 @@ class MediaDetailsViewModel : ViewModel() {
         episodes.postValue(epsLoaded)
     }
 
+    /**
+     * Posts the already-loaded episode list again so the episode observer merges
+     * metadata that arrived later. Never fetches from the extension: metadata can
+     * arrive before the extension answers, and a fetch here would duplicate it.
+     */
+    fun remergeEpisodeMetadata(i: Int) {
+        if (epsLoaded.containsKey(i)) episodes.postValue(epsLoaded)
+    }
+
     suspend fun forceLoadEpisode(media: Media, i: Int) {
         epsLoaded[i] = watchSources?.loadEpisodesFromMedia(i, media) ?: mutableMapOf()
         episodes.postValue(epsLoaded)

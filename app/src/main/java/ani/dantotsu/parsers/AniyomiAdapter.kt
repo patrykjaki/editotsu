@@ -54,6 +54,9 @@ import java.net.URL
 import java.net.URLDecoder
 import java.util.Locale
 
+/** Seasons of one show fetched at the same time; more risks HTTP 429 from the site. */
+private const val SEASON_FETCH_PARALLELISM = 3
+
 class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
     val extension: AnimeExtension.Installed
     var sourceLanguage = 0
@@ -160,20 +163,28 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
             }.getOrNull()
 
             val res = if (!seasons.isNullOrEmpty()) {
-                val allEpisodes = mutableListOf<SEpisode>()
-                for (season in seasons) {
-                    val seasonAnime = runCatching {
-                        if (source is AnimeHttpSource) source.getAnimeDetails(season) else season
-                    }.getOrDefault(season)
-                    val seasonEpisodes = runCatching {
-                        source.getEpisodeListCompat(seasonAnime)
-                    }.getOrDefault(emptyList())
-                    seasonEpisodes.forEach { ep ->
-                        if (ep.scanlator.isNullOrBlank()) {
-                            ep.scanlator = seasonAnime.title.ifBlank { null } ?: season.title
+                // Up to SEASON_FETCH_PARALLELISM seasons load at once (upstream 2e310d77);
+                // results keep the extension's season order.
+                val permits = Semaphore(SEASON_FETCH_PARALLELISM)
+                val allEpisodes = withContext(Dispatchers.IO) {
+                    seasons.map { season ->
+                        async {
+                            permits.withPermit {
+                                val seasonAnime = runCatching {
+                                    if (source is AnimeHttpSource) source.getAnimeDetails(season) else season
+                                }.getOrDefault(season)
+                                val seasonEpisodes = runCatching {
+                                    source.getEpisodeListCompat(seasonAnime)
+                                }.getOrDefault(emptyList())
+                                seasonEpisodes.forEach { ep ->
+                                    if (ep.scanlator.isNullOrBlank()) {
+                                        ep.scanlator = seasonAnime.title.ifBlank { null } ?: season.title
+                                    }
+                                }
+                                seasonEpisodes
+                            }
                         }
-                    }
-                    allEpisodes.addAll(seasonEpisodes)
+                    }.awaitAll().flatten()
                 }
                 if (allEpisodes.isEmpty()) {
                     source.getEpisodeListCompat(sAnime)
