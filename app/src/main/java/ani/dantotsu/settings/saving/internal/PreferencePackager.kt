@@ -56,8 +56,7 @@ class PreferencePackager {
                 prefsMap[BackupSections.INSTALLED_EXTENSIONS] = installedExtensions()
                     .mapValues { (_, entry) -> typed(entry) }
             }
-            // Payload validation rejects empty files.
-            return Gson().toJson(prefsMap.filterValues { it.isNotEmpty() })
+            return Gson().toJson(prefsMap.filter { (key, value) -> BackupSections.keepInPayload(key, value.isEmpty()) })
         }
 
         private fun packSourcePrefs(): Map<String, Map<String, Any>> {
