@@ -1295,7 +1295,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             })
             configurableSource()?.let { sourceId ->
                 buttons.addView(com.google.android.material.button.MaterialButton(
-                    ctx, null, com.google.android.material.R.attr.borderlessButtonStyle,
+                    ctx, null, androidx.appcompat.R.attr.borderlessButtonStyle,
                 ).apply {
                     text = getString(R.string.picker_source_filters)
                     setOnClickListener {
@@ -1519,8 +1519,8 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 b.sourceSeeders.text = resources.getQuantityString(R.plurals.picker_seeds, seeders, seeders)
                 b.sourceSeeders.setTextColor(
                     b.root.context.getThemeColor(
-                        if (SeederHealth.isLow(seeders)) com.google.android.material.R.attr.colorError
-                        else com.google.android.material.R.attr.colorPrimary,
+                        if (SeederHealth.isLow(seeders)) androidx.appcompat.R.attr.colorError
+                        else androidx.appcompat.R.attr.colorPrimary,
                     ),
                 )
             }
