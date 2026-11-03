@@ -109,8 +109,48 @@ class SettingsActivity : AppCompatActivity() {
                 arrayListOf(
                     Settings(
                         type = 1,
-                        name = getString(R.string.accounts),
-                        desc = getString(R.string.accounts_desc),
+                        name = getString(R.string.settings_appearance),
+                        desc = getString(R.string.settings_appearance_desc),
+                        icon = R.drawable.ic_palette,
+                        onClick = {
+                            startActivity(Intent(context, UserInterfaceSettingsActivity::class.java))
+                        },
+                        isActivity = true
+                    ),
+                    Settings(
+                        type = 1,
+                        name = getString(R.string.settings_player),
+                        desc = getString(R.string.settings_player_desc),
+                        icon = R.drawable.ic_round_video_settings_24,
+                        onClick = {
+                            startActivity(Intent(context, PlayerSettingsActivity::class.java))
+                        },
+                        isActivity = true
+                    ),
+                    Settings(
+                        type = 1,
+                        name = getString(R.string.settings_reading),
+                        desc = getString(R.string.settings_reading_desc),
+                        icon = R.drawable.ic_round_import_contacts_24,
+                        onClick = {
+                            startActivity(Intent(context, ReaderSettingsActivity::class.java))
+                        },
+                        isActivity = true
+                    ),
+                    Settings(
+                        type = 1,
+                        name = getString(R.string.settings_sources),
+                        desc = getString(R.string.settings_sources_desc),
+                        icon = R.drawable.ic_extension,
+                        onClick = {
+                            startActivity(SettingsGroupActivity.sources(context))
+                        },
+                        isActivity = true
+                    ),
+                    Settings(
+                        type = 1,
+                        name = getString(R.string.settings_tracking),
+                        desc = getString(R.string.settings_tracking_desc),
                         icon = R.drawable.ic_round_person_24,
                         onClick = {
                             startActivity(Intent(context, SettingsAccountActivity::class.java))
@@ -119,92 +159,11 @@ class SettingsActivity : AppCompatActivity() {
                     ),
                     Settings(
                         type = 1,
-                        name = getString(R.string.theme),
-                        desc = getString(R.string.theme_desc),
-                        icon = R.drawable.ic_palette,
-                        onClick = {
-                            startActivity(Intent(context, SettingsThemeActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.common),
-                        desc = getString(R.string.common_desc),
-                        icon = R.drawable.ic_lightbulb_24,
-                        onClick = {
-                            startActivity(Intent(context, SettingsCommonActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.anime),
-                        desc = getString(R.string.anime_desc),
-                        icon = R.drawable.ic_round_movie_filter_24,
-                        onClick = {
-                            startActivity(Intent(context, SettingsAnimeActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    // MAX MERGE M3 (upstream e954d9f1).
-                    Settings(
-                        type = 1,
                         name = getString(R.string.label_data_storage),
-                        desc = getString(R.string.label_data_storage_desc),
+                        desc = getString(R.string.settings_data_desc),
                         icon = R.drawable.ic_round_folder_24,
                         onClick = {
                             startActivity(Intent(context, ani.dantotsu.settings.data.SettingsDataActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.manga),
-                        desc = getString(R.string.manga_desc),
-                        icon = R.drawable.ic_round_import_contacts_24,
-                        onClick = {
-                            startActivity(Intent(context, SettingsMangaActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.extensions),
-                        desc = getString(R.string.extensions_desc),
-                        icon = R.drawable.ic_extension,
-                        onClick = {
-                            startActivity(Intent(context, SettingsExtensionsActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.torrent_settings),
-                        desc = getString(R.string.torrent_settings_desc),
-                        icon = R.drawable.ic_download_24,
-                        onClick = {
-                            startActivity(Intent(context, TorrentSettingsActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.addons),
-                        desc = getString(R.string.addons_desc),
-                        icon = R.drawable.ic_round_restaurant_24,
-                        onClick = {
-                            startActivity(Intent(context, SettingsAddonActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.notifications),
-                        desc = getString(R.string.notifications_desc),
-                        icon = R.drawable.ic_round_notifications_none_24,
-                        onClick = {
-                            startActivity(Intent(context, SettingsNotificationActivity::class.java))
                         },
                         isActivity = true
                     ),

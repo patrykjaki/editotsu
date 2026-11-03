@@ -16,4 +16,7 @@ data class Settings(
     var isVisible: Boolean = true,
     val isActivity: Boolean = false,
     var isChecked: Boolean = false,
+    /** [SettingsRowType.ADVANCED] only: the rows it shows and hides, and when each may show. */
+    val advancedRows: List<Settings> = emptyList(),
+    val advancedVisibility: List<Boolean> = emptyList(),
 )
