@@ -86,7 +86,7 @@ class SettingsActivity : AppCompatActivity() {
                 bottomMargin = navBarHeight
             }
 
-            onBackPressedDispatcher.addCallback(context) {
+            backCallback = onBackPressedDispatcher.addCallback(context) {
                 if (settingsSearchBarText.text?.isNotBlank() == true) {
                     settingsSearchBarText.setText("")
                 } else if (PrefManager.getCustomVal("reload", false)) {
@@ -232,6 +232,7 @@ class SettingsActivity : AppCompatActivity() {
             settingsSearchBarText.addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    updateBackCallback()
                     val query = s?.toString()?.trim() ?: ""
                     if (query.isNotEmpty()) {
                         val results = ani.dantotsu.settings.search.SettingsRegistry.search(context, query)
@@ -365,5 +366,14 @@ class SettingsActivity : AppCompatActivity() {
     override fun onResume() {
         ThemeManager(this).applyTheme()
         super.onResume()
+        updateBackCallback()
+    }
+
+    // Predictive back needs the callback off when back would just close the screen.
+    private var backCallback: androidx.activity.OnBackPressedCallback? = null
+
+    private fun updateBackCallback() {
+        backCallback?.isEnabled = binding.settingsSearchBarText.text?.isNotBlank() == true ||
+            PrefManager.getCustomVal("reload", false)
     }
 }
