@@ -1573,6 +1573,10 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="settings_section_progress">Progress updates</string>
     <string name="settings_section_notifications">Notifications</string>
     <string name="settings_section_storage">Storage</string>
+    <string name="notification_permission">Notification permission</string>
+    <string name="notification_permission_on">Allowed. Tap to manage notification categories</string>
+    <string name="notification_permission_off">Not allowed. Subscription, AniList and comment notifications are not shown</string>
+    <string name="notifications_off_for_app">Notifications are off for Editotsu</string>
     <string name="settings_section_backups">Backups</string>
     <string name="settings_section_privacy">Privacy</string>
     <string name="settings_advanced">Advanced</string>

@@ -233,6 +233,16 @@ class SettingsAccountActivity : AppCompatActivity() {
         )
     }
 
+    private var notificationsAllowed: Boolean? = null
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh the permission row after a trip to the system notification settings.
+        val allowed = ani.dantotsu.hasNotificationPermission(this)
+        if (notificationsAllowed != null && notificationsAllowed != allowed) showRows()
+        notificationsAllowed = allowed
+    }
+
     fun reload() {
         snackString(getString(R.string.restart_app_extra))
     }

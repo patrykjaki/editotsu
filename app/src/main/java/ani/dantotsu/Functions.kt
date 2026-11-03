@@ -1553,6 +1553,22 @@ fun hasNotificationPermission(context: Context): Boolean {
     }
 }
 
+/**
+ * Asks for POST_NOTIFICATIONS on Android 13+ when it is missing. Returns false when
+ * notifications stay off (older Android with app notifications disabled), so the caller
+ * can point to the system settings.
+ */
+fun requestNotificationPermission(activity: Activity): Boolean {
+    if (hasNotificationPermission(activity)) return true
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        androidx.core.app.ActivityCompat.requestPermissions(
+            activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1
+        )
+        return true
+    }
+    return false
+}
+
 fun openSettings(context: Context, channelId: String?): Boolean {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         val intent = Intent(
