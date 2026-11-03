@@ -106,6 +106,15 @@ object BackupSections {
 
     fun keepAppPrefKey(key: String): Boolean = key !in APP_PREFS_SKIPPED_KEYS
 
+    /**
+     * Settings groups stay in the file even when empty: an empty group means
+     * "all defaults", and restoring it resets that group (a theme left at its
+     * default in the backup comes back as the default). Other empty entries are
+     * dropped.
+     */
+    fun keepInPayload(key: String, isEmpty: Boolean): Boolean =
+        !isEmpty || Location.entries.any { it.name == key }
+
     fun extensionEntry(type: String, name: String, versionName: String): String =
         "$type|$name|$versionName"
 
