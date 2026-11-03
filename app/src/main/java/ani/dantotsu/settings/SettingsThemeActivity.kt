@@ -41,7 +41,8 @@ class SettingsThemeActivity : AppCompatActivity(), SimpleDialog.OnDialogResultLi
                 topMargin = statusBarHeight
                 bottomMargin = navBarHeight
             }
-            onBackPressedDispatcher.addCallback(context) {
+            // Off unless the app must restart, so plain back shows the predictive preview.
+            onBackPressedDispatcher.addCallback(context, enabled = reload) {
                 if (reload) {
                     val packageName = context.packageName
                     val mainIntent = Intent.makeRestartActivityTask(

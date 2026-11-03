@@ -1560,7 +1560,6 @@ class NovelReaderActivity : AppCompatActivity() {
     }
 
     private fun setupBackPressedHandler() {
-        var lastBackPressedTime: Long = 0
         val doublePressInterval: Long = 2000
 
         onBackPressedDispatcher.addCallback(object : OnBackPressedCallback(true) {
@@ -1569,12 +1568,11 @@ class NovelReaderActivity : AppCompatActivity() {
                     stopTts()
                     return
                 }
-                if (lastBackPressedTime + doublePressInterval > System.currentTimeMillis()) {
-                    finish()
-                } else {
-                    snackString("Press back again to exit")
-                    lastBackPressedTime = System.currentTimeMillis()
-                }
+                // Off for the press interval, so the second back is the system's
+                // (with the predictive preview).
+                snackString(getString(R.string.back_to_exit))
+                isEnabled = false
+                binding.root.postDelayed({ isEnabled = true }, doublePressInterval)
             }
         })
     }
