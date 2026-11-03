@@ -24,7 +24,11 @@ data class ThemeTrack(
 )
 
 /** One theme on the details strip: its playable versions and the one the selector prefers. */
-data class ThemeChoice(val versions: List<ThemeTrack>, val auto: ThemeTrack)
+data class ThemeChoice(
+    val versions: List<ThemeTrack>,
+    val auto: ThemeTrack,
+    val isEnding: Boolean = false,
+)
 
 /** Pure helpers that turn [AnimeThemesData] into what the details strip and the player show. */
 object ThemeQueue {
@@ -59,7 +63,7 @@ object ThemeQueue {
         val best = AnimeThemeVideoSelector.selectPreferredVideo(entries.flatMap { it.second }, prefs)
         val autoEntry = entries.firstOrNull { (_, v) -> v.any { it.videoUrl == best?.videoUrl } }?.first
         val auto = versions.firstOrNull { it.entryId == autoEntry?.entryId } ?: versions.first()
-        return ThemeChoice(versions, auto)
+        return ThemeChoice(versions, auto, isEnding = theme.type.equals("ED", ignoreCase = true))
     }
 
     private fun versionTrack(
