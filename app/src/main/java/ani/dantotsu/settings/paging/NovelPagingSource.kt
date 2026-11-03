@@ -1,5 +1,6 @@
 package ani.dantotsu.settings.paging
 
+import ani.dantotsu.settings.ExtensionRowText
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
@@ -241,8 +242,7 @@ class NovelExtensionAdapter(private val clickListener: OnNovelInstallClickListen
             binding.extensionNameTextView.text = extension.name
             // Upstream 4b8d09be: origin-repo badge.
             val repo = extension.repoName ?: ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(extension.repository)
-            val repoBadge = if (repo.isNotBlank()) "@$repo" else ""
-            val versionText = listOf(lang, extension.versionName, repoBadge).filter { it.isNotBlank() }.joinToString(" ")
+            val versionText = ExtensionRowText.versionLine(lang, extension.versionName, false, repo)
             binding.extensionVersionTextView.text = versionText
         }
 
