@@ -113,7 +113,7 @@ class DantotsuPlayerManager(
         val sourceLease: AutoCloseable? = if (sourceClass == PlaybackSourceClass.TORRENT_LOCALHOST) {
             try {
                 val hash = uri.substringAfter("hash=").substringBefore("&")
-                val index = uri.substringAfter("index=").substringBefore("&").toIntOrNull() ?: 0
+                val index = ani.dantotsu.torrent.TorrentLinks.fileIndex(uri)
                 if (hash.isNotEmpty()) {
                     Injekt.get<TorrentServerManager>().adoptPrebufferLease(hash, index)
                 } else null

@@ -20,11 +20,32 @@ abstract class WatchSources : BaseSources() {
         return get(i) is OfflineAnimeParser
     }
 
-    suspend fun loadEpisodesFromMedia(i: Int, media: Media): MutableMap<String, Episode> {
-        return tryWithSuspend(true) {
-            val res = get(i).autoSearch(media) ?: return@tryWithSuspend mutableMapOf()
+    /**
+     * [onCached] gets the last stored list first (if any) while the extension is asked;
+     * a failed or empty fetch then keeps that list instead of showing nothing.
+     */
+    suspend fun loadEpisodesFromMedia(
+        i: Int,
+        media: Media,
+        onCached: ((MutableMap<String, Episode>) -> Unit)? = null
+    ): MutableMap<String, Episode> {
+        val parser = get(i)
+        val offline = parser is OfflineAnimeParser
+        val key = parser.saveName.ifBlank { parser.name }
+        val cached = if (onCached != null && !offline) episodeCache.load(key, media.id) else null
+        if (!cached.isNullOrEmpty()) onCached?.invoke(cached)
+        val loaded = tryWithSuspend(true) {
+            val res = parser.autoSearch(media) ?: return@tryWithSuspend mutableMapOf()
             loadEpisodes(i, res.link, res.extra, res.sAnime)
         } ?: mutableMapOf()
+        if (loaded.isNotEmpty() && !offline) episodeCache.save(key, media.id, loaded)
+        return if (loaded.isEmpty() && !cached.isNullOrEmpty()) cached else loaded
+    }
+
+    companion object {
+        val episodeCache = ListCache<Episode> {
+            ani.dantotsu.App.context?.cacheDir?.let { java.io.File(it, "episode_lists") }
+        }
     }
 
     suspend fun loadEpisodes(
@@ -66,11 +87,29 @@ abstract class MangaReadSources : BaseSources() {
             ?: EmptyMangaParser()
     }
 
-    suspend fun loadChaptersFromMedia(i: Int, media: Media): MutableMap<String, MangaChapter> {
-        return tryWithSuspend(true) {
-            val res = get(i).autoSearch(media) ?: return@tryWithSuspend mutableMapOf()
+    /** Same as [WatchSources.loadEpisodesFromMedia], for chapters. */
+    suspend fun loadChaptersFromMedia(
+        i: Int,
+        media: Media,
+        onCached: ((MutableMap<String, MangaChapter>) -> Unit)? = null
+    ): MutableMap<String, MangaChapter> {
+        val parser = get(i)
+        val offline = parser is OfflineMangaParser
+        val key = parser.saveName.ifBlank { parser.name }
+        val cached = if (onCached != null && !offline) chapterCache.load(key, media.id) else null
+        if (!cached.isNullOrEmpty()) onCached?.invoke(cached)
+        val loaded = tryWithSuspend(true) {
+            val res = parser.autoSearch(media) ?: return@tryWithSuspend mutableMapOf()
             loadChapters(i, res)
         } ?: mutableMapOf()
+        if (loaded.isNotEmpty() && !offline) chapterCache.save(key, media.id, loaded)
+        return if (loaded.isEmpty() && !cached.isNullOrEmpty()) cached else loaded
+    }
+
+    companion object {
+        val chapterCache = ListCache<MangaChapter> {
+            ani.dantotsu.App.context?.cacheDir?.let { java.io.File(it, "chapter_lists") }
+        }
     }
 
     suspend fun loadChapters(i: Int, show: ShowResponse): MutableMap<String, MangaChapter> {

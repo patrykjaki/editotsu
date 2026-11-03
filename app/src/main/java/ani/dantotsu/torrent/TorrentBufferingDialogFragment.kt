@@ -87,9 +87,7 @@ class TorrentBufferingDialogFragment : BottomSheetDialogFragment() {
 
         bufferJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val index = if (url.contains("index=")) {
-                    url.substringAfter("index=").toIntOrNull() ?: 0
-                } else 0
+                val index = ani.dantotsu.torrent.TorrentLinks.fileIndex(url)
 
                 val currentTorrent = torrentManager.addTorrent(
                     url, targetVideo.quality.toString(), "", "", false

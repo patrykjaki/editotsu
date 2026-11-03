@@ -47,10 +47,10 @@ class PlayerAniSkipManager(
         }
     }
 
-    fun init() {
+    fun init(track: Boolean = true) {
         setupTimeStampsObserver()
         setupSkipOpEdButton()
-        if (PrefManager.getVal(PrefName.TimeStampsEnabled)) {
+        if (track && PrefManager.getVal(PrefName.TimeStampsEnabled)) {
             startTracking()
         }
     }

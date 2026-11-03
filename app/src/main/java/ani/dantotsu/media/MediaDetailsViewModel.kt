@@ -31,6 +31,7 @@ import ani.dantotsu.others.Jikan
 import ani.dantotsu.others.Kitsu
 import ani.dantotsu.others.TmdbService
 import ani.dantotsu.others.sanitizedStamps
+import ani.dantotsu.parsers.ListCache
 import ani.dantotsu.parsers.AnimeSources
 import ani.dantotsu.parsers.Book
 import ani.dantotsu.parsers.MangaImage
@@ -750,10 +751,26 @@ class MediaDetailsViewModel : ViewModel() {
         epsLoaded.remove(sourceIndex)
     }
 
+    /** "N new episodes/chapters" after a cached list was shown and the fresh one had more. */
+    private fun announceNew(count: Int, plural: Int) {
+        if (count <= 0) return
+        val context = ani.dantotsu.currContext() ?: return
+        ani.dantotsu.snackString(context.resources.getQuantityString(plural, count, count))
+    }
+
     suspend fun loadEpisodes(media: Media, i: Int, invalidate: Boolean = false) {
         val isOffline = watchSources?.get(i) is OfflineAnimeParser
         if (!epsLoaded.containsKey(i) || invalidate || isOffline) {
-            epsLoaded[i] = watchSources?.loadEpisodesFromMedia(i, media) ?: mutableMapOf()
+            var shown: Map<String, Episode>? = null
+            val onCached: ((MutableMap<String, Episode>) -> Unit)? =
+                if (invalidate || isOffline) null else { cached ->
+                    shown = cached
+                    epsLoaded[i] = cached
+                    episodes.postValue(epsLoaded)
+                }
+            val fresh = watchSources?.loadEpisodesFromMedia(i, media, onCached) ?: mutableMapOf()
+            epsLoaded[i] = fresh
+            announceNew(ListCache.newKeys(shown, fresh).size, R.plurals.new_episodes_found)
         }
         episodes.postValue(epsLoaded)
     }
@@ -1043,8 +1060,16 @@ class MediaDetailsViewModel : ViewModel() {
         Logger.log("Loading Manga Chapters : $mangaLoaded")
         val isOffline = mangaReadSources?.get(i) is OfflineMangaParser
         if (!mangaLoaded.containsKey(i) || invalidate || isOffline) tryWithSuspend {
-            mangaLoaded[i] =
-                mangaReadSources?.loadChaptersFromMedia(i, media) ?: mutableMapOf()
+            var shown: Map<String, MangaChapter>? = null
+            val onCached: ((MutableMap<String, MangaChapter>) -> Unit)? =
+                if (invalidate || isOffline) null else { cached ->
+                    shown = cached
+                    mangaLoaded[i] = cached
+                    mangaChapters.postValue(mangaLoaded)
+                }
+            val fresh = mangaReadSources?.loadChaptersFromMedia(i, media, onCached) ?: mutableMapOf()
+            mangaLoaded[i] = fresh
+            announceNew(ListCache.newKeys(shown, fresh).size, R.plurals.new_chapters_found)
         }
         mangaChapters.postValue(mangaLoaded)
     }

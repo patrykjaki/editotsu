@@ -810,6 +810,13 @@ class TorrentServerManager(private val context: Context) {
         title: String = ""
     ) {
         if (!isAvailable()) return
+        // The picker starts a prebuffer on selection and the player starts one on open;
+        // the second call for the same file while the first runs is dropped.
+        val key = "${url.trim()}#$fileIndex"
+        if (!prebuffersInFlight.add(key)) {
+            Logger.log("TorrentServerManager: prebuffer already running for index $fileIndex")
+            return
+        }
         start()
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             try {
@@ -819,9 +826,13 @@ class TorrentServerManager(private val context: Context) {
                 prebufferWithResult(hash, fileIndex)
             } catch (e: Exception) {
                 Logger.log("TorrentServerManager: Background prebuffer failed: ${e.message}")
+            } finally {
+                prebuffersInFlight.remove(key)
             }
         }
     }
+
+    private val prebuffersInFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     fun prebufferWithResult(
         torrentHash: String,
