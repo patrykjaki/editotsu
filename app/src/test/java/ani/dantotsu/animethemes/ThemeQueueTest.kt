@@ -178,13 +178,8 @@ class ThemeQueueTest {
     }
 
     @Test
-    fun versionLabels() {
+    fun playerLabelNamesTheVersion() {
         val choice = ThemeQueue.choice(multiVersion())!!
-        val hidden = { ep: Int -> "Hidden until episode $ep" }
-        val flag = { w: ThemeWarningType -> if (w == ThemeWarningType.SPOILER) "Spoiler" else null }
-        assertEquals("v1 · Eps 1–12", ThemeQueue.versionLabel(choice.versions[0], false, hidden, flag))
-        assertEquals("v2 · Eps 13–24 · Spoiler", ThemeQueue.versionLabel(choice.versions[1], false, hidden, flag))
-        assertEquals("v2 · Hidden until episode 13 · Spoiler", ThemeQueue.versionLabel(choice.versions[1], true, hidden, flag))
         assertEquals("OP 1 v2 · song", ThemeQueue.label(choice.versions[1]))
     }
 

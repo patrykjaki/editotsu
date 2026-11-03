@@ -698,7 +698,13 @@ class MediaInfoFragment : Fragment() {
                         loading.cancel()
                         if (_binding == null || slot.parent == null) return@launch
                         slot.removeAllViews()
-                        val tracks = data?.let { ThemeQueue.choices(it) }.orEmpty()
+                        val prefs = ani.dantotsu.animethemes.ThemePlaybackPreferences(
+                            resolution = ani.dantotsu.animethemes.ResolutionPref.fromInt(PrefManager.getVal(PrefName.AnimeThemesPreferredResolution)),
+                            source = ani.dantotsu.animethemes.SourcePref.fromInt(PrefManager.getVal(PrefName.AnimeThemesPreferredSource)),
+                            credits = ani.dantotsu.animethemes.CreditsPref.fromInt(PrefManager.getVal(PrefName.AnimeThemesPreferredCredits)),
+                            subtitles = ani.dantotsu.animethemes.SubtitlesPref.fromInt(PrefManager.getVal(PrefName.AnimeThemesPreferredSubtitles)),
+                        )
+                        val tracks = data?.let { ThemeQueue.choices(it, prefs) }.orEmpty()
                         if (tracks.isEmpty()) showAniListText() else showThemeStrip(slot, media, tracks)
                     }
                 }
@@ -1171,7 +1177,7 @@ class MediaInfoFragment : Fragment() {
             itemTitle.setText(R.string.anime_themes_title)
             itemRecycler.layoutManager =
                 LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-            itemRecycler.adapter = AnimeThemesStripAdapter(choices, shielded) { tapped, shown ->
+            itemRecycler.adapter = AnimeThemesStripAdapter(choices, shielded, childFragmentManager) { tapped, shown ->
                 val queue = ThemeQueue.playQueue(shown, tapped, shielded)
                 ExoplayerView.openThemes(
                     requireContext(),
