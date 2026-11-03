@@ -370,6 +370,51 @@ object SettingsRegistry {
             )
         )
 
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.theme_pref_resolution),
+                desc = context.getString(R.string.anime_themes_title),
+                icon = R.drawable.ic_round_high_quality_24,
+                category = context.getString(R.string.anime),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.anime)}",
+                targetActivity = SettingsAnimeActivity::class.java,
+                highlightKey = context.getString(R.string.theme_pref_resolution)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.theme_pref_source),
+                desc = context.getString(R.string.anime_themes_title),
+                icon = R.drawable.ic_round_movie_filter_24,
+                category = context.getString(R.string.anime),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.anime)}",
+                targetActivity = SettingsAnimeActivity::class.java,
+                highlightKey = context.getString(R.string.theme_pref_source)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.theme_pref_credits),
+                desc = context.getString(R.string.anime_themes_title),
+                icon = R.drawable.ic_round_video_settings_24,
+                category = context.getString(R.string.anime),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.anime)}",
+                targetActivity = SettingsAnimeActivity::class.java,
+                highlightKey = context.getString(R.string.theme_pref_credits)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.theme_pref_subtitles),
+                desc = context.getString(R.string.anime_themes_title),
+                icon = R.drawable.ic_round_subtitles_24,
+                category = context.getString(R.string.anime),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.anime)}",
+                targetActivity = SettingsAnimeActivity::class.java,
+                highlightKey = context.getString(R.string.theme_pref_subtitles)
+            )
+        )
+
         // 5. Player Settings
         list.add(
             SearchableSetting(

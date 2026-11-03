@@ -100,6 +100,11 @@ enum class PrefName(val data: Pref) {
     DarkMode(Pref(Location.UI, Int::class, 0)),
     ShowYtButton(Pref(Location.UI, Boolean::class, true)),
     HideEpisodeSpoilers(Pref(Location.UI, Boolean::class, false)),
+    // AnimeThemes video choice; index = ResolutionPref / SourcePref / CreditsPref / SubtitlesPref value
+    AnimeThemesPreferredResolution(Pref(Location.General, Int::class, 0)),
+    AnimeThemesPreferredSource(Pref(Location.General, Int::class, 0)),
+    AnimeThemesPreferredCredits(Pref(Location.General, Int::class, 0)),
+    AnimeThemesPreferredSubtitles(Pref(Location.General, Int::class, 0)),
     AnimeDefaultView(Pref(Location.UI, Int::class, 0)),
     MangaDefaultView(Pref(Location.UI, Int::class, 0)),
     BlurBanners(Pref(Location.UI, Boolean::class, true)),
