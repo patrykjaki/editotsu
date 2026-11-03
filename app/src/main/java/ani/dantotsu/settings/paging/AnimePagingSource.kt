@@ -1,5 +1,6 @@
 package ani.dantotsu.settings.paging
 
+import ani.dantotsu.settings.ExtensionRowText
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
@@ -202,7 +203,6 @@ class AnimeExtensionAdapter(private val clickListener: OnAnimeInstallClickListen
         val extensionIconImageView: ImageView = binding.extensionIconImageView
 
         fun bind(extension: AnimeExtension.Available) {
-            val nsfw = if (extension.isNsfw) "(18+)" else ""
             val lang = LanguageMapper.getLanguageName(extension.lang)
             binding.extensionNameTextView.text = extension.name
             val majorLib = extension.libVersion.toInt()
@@ -213,8 +213,7 @@ class AnimeExtensionAdapter(private val clickListener: OnAnimeInstallClickListen
             }
             // Upstream 4b8d09be: origin-repo badge.
             val repo = extension.repoName ?: ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(extension.repository)
-            val repoBadge = if (repo.isNotBlank()) "@$repo" else ""
-            val versionText = listOf(lang, displayVersion, nsfw, repoBadge).filter { it.isNotBlank() }.joinToString(" ")
+            val versionText = ExtensionRowText.versionLine(lang, displayVersion, extension.isNsfw, repo)
             binding.extensionVersionTextView.text = versionText
         }
 

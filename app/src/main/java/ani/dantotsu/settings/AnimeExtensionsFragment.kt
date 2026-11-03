@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.paging.CombinedLoadStates
 import androidx.recyclerview.widget.LinearLayoutManager
 import ani.dantotsu.databinding.FragmentExtensionsBinding
 import ani.dantotsu.media.MediaType
@@ -28,6 +29,16 @@ class AnimeExtensionsFragment : Fragment(),
     SearchQueryHandler, OnAnimeInstallClickListener {
     private var _binding: FragmentExtensionsBinding? = null
     private val binding get() = _binding!!
+
+    private var searchQuery = ""
+    private val loadStateListener: (CombinedLoadStates) -> Unit = { states ->
+        _binding?.let {
+            ExtensionEmptyState.onLoadStates(
+                ExtensionEmptyState.Views(it.extensionsEmpty, it.extensionsEmptyText, it.extensionsEmptyAction),
+                states, adapter.itemCount, MediaType.ANIME, searchQuery
+            )
+        }
+    }
 
     private val viewModel: AnimeExtensionsViewModel by viewModels {
         AnimeExtensionsViewModelFactory(animeExtensionManager)
@@ -61,10 +72,12 @@ class AnimeExtensionsFragment : Fragment(),
         viewModel.invalidatePager() // Force a refresh of the pager
 
         ExtensionRefresh.bind(binding.extensionsSwipeRefresh, viewLifecycleOwner, MediaType.ANIME)
+        adapter.addLoadStateListener(loadStateListener)
         return binding.root
     }
 
     override fun updateContentBasedOnQuery(query: String?) {
+        searchQuery = query?.trim().orEmpty()
         viewModel.setSearchQuery(query ?: "")
     }
 
@@ -90,6 +103,7 @@ class AnimeExtensionsFragment : Fragment(),
     }
 
     override fun onDestroyView() {
+        adapter.removeLoadStateListener(loadStateListener)
         super.onDestroyView();_binding = null
     }
 
