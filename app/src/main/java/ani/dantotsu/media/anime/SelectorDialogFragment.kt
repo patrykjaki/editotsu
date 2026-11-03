@@ -110,6 +110,7 @@ import ani.dantotsu.tryWith
 import ani.dantotsu.util.Logger
 import ani.dantotsu.util.customAlertDialog
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.DelicateCoroutinesApi
