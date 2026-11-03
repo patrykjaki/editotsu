@@ -4,10 +4,10 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".settings.TorrentSettingsActivity">
+    tools:context=".settings.SettingsGroupActivity">
 
     <LinearLayout
-        android:id="@+id/settingsTorrentLayout"
+        android:id="@+id/settingsGroupLayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical">
@@ -22,7 +22,7 @@
             app:cardBackgroundColor="@color/nav_bg_inv">
 
             <ImageButton
-                android:id="@+id/torrentSettingsBack"
+                android:id="@+id/settingsGroupBack"
                 android:layout_width="64dp"
                 android:layout_height="64dp"
                 android:background="@color/nav_bg_inv"
@@ -39,15 +39,17 @@
             tools:ignore="UseCompoundDrawables">
 
             <TextView
+                android:id="@+id/settingsGroupTitle"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_margin="32dp"
                 android:layout_weight="1"
                 android:fontFamily="@font/poppins_bold"
-                android:text="@string/torrent_settings"
+                tools:text="@string/settings_sources"
                 android:textSize="28sp" />
 
             <ImageView
+                android:id="@+id/settingsGroupIcon"
                 android:layout_width="96dp"
                 android:layout_height="96dp"
                 android:layout_marginEnd="20dp"

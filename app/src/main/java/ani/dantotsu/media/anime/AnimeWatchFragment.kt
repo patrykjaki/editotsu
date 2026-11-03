@@ -487,6 +487,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         selected.sourceIndex = i
         selected.server = null
         model.saveSelected(media.id, selected)
+        if (subscribed) model.watchSources?.names?.getOrNull(i)?.let { SubscriptionHelper.saveSource(media.id, it) }
         // A remembered release or group belongs to the old source; keeping it made the
         // new source auto-play its first row under the old name.
         ani.dantotsu.media.anime.selector.SelectedKeyStore.save(media.id, null)
@@ -545,6 +546,15 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
     fun onNotificationPressed(subscribed: Boolean, source: String) {
         this.subscribed = subscribed
         saveSubscription(media, subscribed)
+        if (subscribed) {
+            SubscriptionHelper.saveSource(media.id, source)
+            activity?.let {
+                if (!ani.dantotsu.requestNotificationPermission(it)) {
+                    snackString(getString(R.string.notifications_off_for_app))
+                    return
+                }
+            }
+        }
         snackString(
             if (subscribed) getString(R.string.subscribed_notification, source)
             else getString(R.string.unsubscribed_notification)

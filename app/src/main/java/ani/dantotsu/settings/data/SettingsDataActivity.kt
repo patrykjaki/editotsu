@@ -31,7 +31,12 @@ import ani.dantotsu.util.LauncherWrapper
 import ani.dantotsu.restartApp
 import ani.dantotsu.savePrefsToDownloads
 import ani.dantotsu.settings.Settings
+import ani.dantotsu.settings.CommonSettingsRows
+import ani.dantotsu.settings.MediaSettingsRows
 import ani.dantotsu.settings.SettingsAdapter
+import ani.dantotsu.settings.SettingsSection
+import ani.dantotsu.settings.SettingsSections
+import ani.dantotsu.settings.search.SettingsSearchAdapter
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.Logger
@@ -55,8 +60,9 @@ import java.util.Locale
  * usage, cache clearing, manual/auto backup, restore, download-dir move,
  * download purge. Adapted: Editotsu branding; no rebuild-index row (no
  * local index API — not invented); manga purge travels the service scope
- * barrier (direct purge refuses manga); restore handles `.ani` here
- * (encrypted `.sani` restore lives in Settings > Common).
+ * barrier (direct purge refuses manga); restore handles `.ani` and `.sani`.
+ * Also hosts the download, privacy and per-type purge rows from the old
+ * Common/Anime/Manga screens.
  */
 class SettingsDataActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsDataBinding
@@ -359,7 +365,7 @@ class SettingsDataActivity : AppCompatActivity() {
         )
         val copyCounts = arrayOf("1", "2", "3", "5")
 
-        val settingsList = arrayListOf(
+        val storage = listOf(
             Settings(
                 type = 1,
                 name = getString(R.string.clear_cache),
@@ -380,48 +386,6 @@ class SettingsDataActivity : AppCompatActivity() {
                     }
                 }
             ),
-
-            Settings(
-                type = 1,
-                name = getString(R.string.change_download_directory),
-                desc = getString(R.string.change_download_directory_desc),
-                icon = R.drawable.ic_round_folder_24,
-                onClick = {
-                    val oldUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
-                    context.customAlertDialog().apply {
-                        setTitle(R.string.change_download_directory)
-                        setMessage(R.string.change_download_directory_confirm)
-                        setPosButton(R.string.ok) {
-                            launcher.registerForCallback { success ->
-                                if (success) {
-                                    toast(getString(R.string.please_wait))
-                                    val newUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
-                                    lifecycleScope.launch(Dispatchers.IO) {
-                                        Injekt.get<DownloadsManager>().moveDownloadsDir(
-                                            context,
-                                            Uri.parse(oldUri),
-                                            Uri.parse(newUri),
-                                        ) { finished, message ->
-                                            if (finished) {
-                                                toast(getString(R.string.success))
-                                                updateStorageInfo()
-                                            } else {
-                                                toast(message)
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    toast(getString(R.string.error))
-                                }
-                            }
-                            launcher.launch()
-                        }
-                        setNegButton(R.string.cancel)
-                        show()
-                    }
-                }
-            ),
-
             Settings(
                 type = 1,
                 name = getString(R.string.purge_downloads),
@@ -464,10 +428,6 @@ class SettingsDataActivity : AppCompatActivity() {
                     }
                 }
             ),
-
-            // MAX MERGE M3: torrent cache quota + managed purge live here
-            // (canonical storage home; moved out of Torrent Settings — no
-            // duplicated editable UI).
             Settings(
                 type = 1,
                 name = getString(R.string.torrent_cache_quota),
@@ -493,7 +453,6 @@ class SettingsDataActivity : AppCompatActivity() {
                     }
                 }
             ),
-
             Settings(
                 type = 1,
                 name = getString(R.string.clear_torrent_cache),
@@ -520,7 +479,77 @@ class SettingsDataActivity : AppCompatActivity() {
                     }
                 }
             ),
-
+        )
+        val downloads = listOf(
+            Settings(
+                type = 1,
+                name = getString(R.string.change_download_directory),
+                desc = getString(R.string.change_download_directory_desc),
+                icon = R.drawable.ic_round_folder_24,
+                onClick = {
+                    val oldUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
+                    context.customAlertDialog().apply {
+                        setTitle(R.string.change_download_directory)
+                        setMessage(R.string.change_download_directory_confirm)
+                        setPosButton(R.string.ok) {
+                            launcher.registerForCallback { success ->
+                                if (success) {
+                                    toast(getString(R.string.please_wait))
+                                    val newUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        Injekt.get<DownloadsManager>().moveDownloadsDir(
+                                            context,
+                                            Uri.parse(oldUri),
+                                            Uri.parse(newUri),
+                                        ) { finished, message ->
+                                            if (finished) {
+                                                toast(getString(R.string.success))
+                                                updateStorageInfo()
+                                            } else {
+                                                toast(message)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    toast(getString(R.string.error))
+                                }
+                            }
+                            launcher.launch()
+                        }
+                        setNegButton(R.string.cancel)
+                        show()
+                    }
+                }
+            ),
+        ) + CommonSettingsRows.downloads(this)
+        val backups = listOf(
+            Settings(
+                type = 1,
+                name = getString(R.string.backup_now),
+                desc = getString(R.string.backup_now_desc),
+                icon = R.drawable.backup_restore,
+                onClick = {
+                    BackupRestore.chooseSections(this@SettingsDataActivity) { sections, password ->
+                        val timestampStr = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault()).format(Date())
+                        pendingBackupPayload = BackupRestore.create(sections, password)
+                        password?.fill('0')
+                        val ext = if (password != null) "sani" else "ani"
+                        pendingBackupName = "Editotsu_${timestampStr}.$ext"
+                        pendingBackupName?.let { createDocumentLauncher?.launch(it) }
+                    }
+                }
+            ),
+            Settings(
+                type = 1,
+                name = getString(R.string.restore_backup),
+                desc = getString(R.string.restore_backup_desc),
+                icon = R.drawable.backup_restore,
+                onClick = {
+                    // M3 HOLD cleanup: SAF picker grants its own access;
+                    // no legacy storage permission needed.
+                    openDocumentLauncher.launch(arrayOf("*/*"))
+                }
+            ),
             Settings(
                 type = 1,
                 name = getString(R.string.auto_backup_interval),
@@ -540,7 +569,6 @@ class SettingsDataActivity : AppCompatActivity() {
                     }
                 }
             ),
-
             Settings(
                 type = 1,
                 name = getString(R.string.auto_backup_max_copies),
@@ -561,7 +589,6 @@ class SettingsDataActivity : AppCompatActivity() {
                     }
                 }
             ),
-
             Settings(
                 type = 1,
                 name = getString(R.string.auto_backup),
@@ -577,41 +604,19 @@ class SettingsDataActivity : AppCompatActivity() {
                 icon = R.drawable.backup_restore,
                 onClick = {}
             ),
-
-            Settings(
-                type = 1,
-                name = getString(R.string.backup_now),
-                desc = getString(R.string.backup_now_desc),
-                icon = R.drawable.backup_restore,
-                onClick = {
-                    BackupRestore.chooseSections(this@SettingsDataActivity) { sections, password ->
-                        val timestampStr = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault()).format(Date())
-                        pendingBackupPayload = BackupRestore.create(sections, password)
-                        password?.fill('0')
-                        val ext = if (password != null) "sani" else "ani"
-                        pendingBackupName = "Editotsu_${timestampStr}.$ext"
-                        pendingBackupName?.let { createDocumentLauncher?.launch(it) }
-                    }
-                }
-            ),
-
-            Settings(
-                type = 1,
-                name = getString(R.string.restore_backup),
-                desc = getString(R.string.restore_backup_desc),
-                icon = R.drawable.backup_restore,
-                onClick = {
-                    // M3 HOLD cleanup: SAF picker grants its own access;
-                    // no legacy storage permission needed.
-                    openDocumentLauncher.launch(arrayOf("*/*"))
-                }
-            )
         )
+        val sections = listOf(
+            SettingsSection(getString(R.string.settings_section_storage), storage, CommonSettingsRows.maintenance(this)),
+            SettingsSection(getString(R.string.downloads), downloads, MediaSettingsRows.purges(this)),
+            SettingsSection(getString(R.string.settings_section_backups), backups),
+            SettingsSection(getString(R.string.settings_section_privacy), CommonSettingsRows.privacy(this)),
+        )
+        val highlightKey = intent.getStringExtra(SettingsSearchAdapter.EXTRA_HIGHLIGHT_KEY)
+        val settingsList = SettingsSections.flatten(sections, getString(R.string.settings_advanced), highlightKey)
 
         binding.dataSettingsRecyclerView.apply {
             layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
-            adapter = SettingsAdapter(settingsList)
-            setHasFixedSize(true)
+            adapter = SettingsAdapter(settingsList, highlightKey = highlightKey)
         }
     }
 }

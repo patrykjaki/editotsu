@@ -49,7 +49,8 @@ class SubscriptionNotificationTask : Task {
                 return withContext(Dispatchers.IO) {
                     App.context = context
                     Logger.log("SubscriptionNotificationTask: execute")
-                    var timeout = 15_000L
+                    // A cold background process loads every extension first; 15 s was too short with many installed.
+                    var timeout = 60_000L
                     do {
                         delay(1000)
                         timeout -= 1000

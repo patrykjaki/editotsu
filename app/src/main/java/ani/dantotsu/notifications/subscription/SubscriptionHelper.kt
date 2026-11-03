@@ -39,10 +39,28 @@ class SubscriptionHelper {
             PrefManager.setCustomVal("Selected-${mediaId}", data)
         }
 
+        /**
+         * The subscribed source is kept by name: the saved index points into the installed
+         * list, which shifts when extensions are added or removed (and the details screen
+         * may index a different list, e.g. with adult sources). Null keeps the saved index.
+         */
+        fun saveSource(mediaId: Int, sourceName: String) {
+            if (sourceName.isNotBlank()) PrefManager.setCustomVal("$SOURCE_NAME$mediaId", sourceName)
+        }
+
+        internal fun resolveSourceIndex(mediaId: Int, names: List<String>): Int? {
+            val name = PrefManager.getNullableCustomVal("$SOURCE_NAME$mediaId", null, String::class.java)
+            return sourceIndexFor(name, names)
+        }
+
+        internal fun sourceIndexFor(name: String?, names: List<String>): Int? =
+            name?.let { names.indexOf(it) }?.takeIf { it >= 0 }
+
         fun getAnimeParser(id: Int): AnimeParser {
             val sources = AnimeSources
             Logger.log("getAnimeParser size: ${sources.list.size}")
             val selected = loadSelected(id)
+            resolveSourceIndex(id, sources.names)?.let { selected.sourceIndex = it }
             if (selected.sourceIndex >= sources.list.size) {
                 selected.sourceIndex = 0
                 saveSelected(id, selected)
@@ -87,6 +105,7 @@ class SubscriptionHelper {
             val sources = MangaSources
             Logger.log("getMangaParser size: ${sources.list.size}")
             val selected = loadSelected(id)
+            resolveSourceIndex(id, sources.names)?.let { selected.sourceIndex = it }
             if (selected.sourceIndex >= sources.list.size) {
                 selected.sourceIndex = 0
                 saveSelected(id, selected)
@@ -160,6 +179,7 @@ class SubscriptionHelper {
         }
 
         private const val SUBSCRIPTIONS = "subscriptions"
+        private const val SOURCE_NAME = "SubscriptionSource-"
 
         @Suppress("UNCHECKED_CAST")
         fun getSubscriptions(): Map<Int, SubscribeMedia> =

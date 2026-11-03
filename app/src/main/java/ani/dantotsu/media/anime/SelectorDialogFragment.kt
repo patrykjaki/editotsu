@@ -101,7 +101,7 @@ import ani.dantotsu.media.anime.selector.SelectedFamilyStore
 import ani.dantotsu.media.anime.selector.SelectedKeyStore
 import ani.dantotsu.media.anime.selector.StableCandidateBuilder
 import ani.dantotsu.setSafeOnClickListener
-import ani.dantotsu.settings.SettingsAddonActivity
+import ani.dantotsu.settings.SettingsGroupActivity
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
@@ -383,7 +383,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                     setMessage(R.string.would_you_like_to_install)
                                     setPosButton(R.string.yes) {
                                         context.startActivity(
-                                            Intent(context, SettingsAddonActivity::class.java)
+                                            SettingsGroupActivity.sources(context)
                                         )
                                     }
                                     setNegButton(R.string.no) { }
@@ -1772,7 +1772,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                     setPosButton(R.string.yes) {
                         ContextCompat.startActivity(
                             context,
-                            Intent(context, SettingsAddonActivity::class.java),
+                            SettingsGroupActivity.sources(context),
                             null
                         )
                     }

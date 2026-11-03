@@ -35,6 +35,9 @@ class ReaderSettingsActivity : AppCompatActivity() {
             onBackPressedDispatcher.onBackPressed()
         }
 
+        binding.readerMangaRows.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        binding.readerMangaRows.adapter = SettingsAdapter(ArrayList(MediaSettingsRows.manga(this)))
+
         //Manga Settings
         binding.readerSettingsSourceName.isChecked = PrefManager.getVal(PrefName.ShowSource)
         binding.readerSettingsSourceName.setOnCheckedChangeListener { _, isChecked ->
@@ -350,26 +353,6 @@ class ReaderSettingsActivity : AppCompatActivity() {
             PrefManager.setVal(PrefName.VolumeButtonsNovel, isChecked)
         }
 
-        //Update Progress
-        binding.readerSettingsAskUpdateProgress.isChecked =
-            PrefManager.getVal(PrefName.AskIndividualReader)
-        binding.readerSettingsAskUpdateProgress.setOnCheckedChangeListener { _, isChecked ->
-            PrefManager.setVal(PrefName.AskIndividualReader, isChecked)
-            binding.readerSettingsAskChapterZero.isEnabled = !isChecked
-        }
-        binding.readerSettingsAskChapterZero.isChecked =
-            PrefManager.getVal(PrefName.ChapterZeroReader)
-        binding.readerSettingsAskChapterZero.isEnabled =
-            !PrefManager.getVal<Boolean>(PrefName.AskIndividualReader)
-        binding.readerSettingsAskChapterZero.setOnCheckedChangeListener { _, isChecked ->
-            PrefManager.setVal(PrefName.ChapterZeroReader, isChecked)
-        }
-        binding.readerSettingsAskUpdateDoujins.isChecked =
-            PrefManager.getVal(PrefName.UpdateForHReader)
-        binding.readerSettingsAskUpdateDoujins.setOnCheckedChangeListener { _, isChecked ->
-            PrefManager.setVal(PrefName.UpdateForHReader, isChecked)
-            if (isChecked) snackString(getString(R.string.very_bold))
-        }
 
     }
 }
