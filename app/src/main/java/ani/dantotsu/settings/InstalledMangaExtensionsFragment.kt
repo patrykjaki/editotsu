@@ -49,6 +49,7 @@ import java.util.Locale
 
 class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
     private var _binding: FragmentExtensionsBinding? = null
+    private var searchQuery = ""
     private val binding get() = _binding!!
     private lateinit var extensionsRecyclerView: RecyclerView
     private val skipIcons: Boolean = PrefManager.getVal(PrefName.SkipExtensionIcons)
@@ -224,6 +225,11 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
             }
         }
         ExtensionRefresh.bind(binding.extensionsSwipeRefresh, viewLifecycleOwner, MediaType.MANGA)
+        extensionsAdapter.onListChanged = { count ->
+            _binding?.let {
+                ExtensionEmptyState.onInstalledList(emptyViews(it), count, MediaType.MANGA, searchQuery)
+            }
+        }
         return binding.root
     }
 
@@ -236,10 +242,16 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
     }
 
     override fun onDestroyView() {
+        extensionsAdapter.onListChanged = null
         super.onDestroyView();_binding = null
     }
 
+    private fun emptyViews(b: FragmentExtensionsBinding) = ExtensionEmptyState.Views(
+        b.extensionsEmpty, b.extensionsEmptyText, b.extensionsEmptyAction
+    )
+
     override fun updateContentBasedOnQuery(query: String?) {
+        searchQuery = query?.trim().orEmpty()
         extensionsAdapter.filter(
             query ?: "",
             sortToMangaSourcesList(mangaExtensionManager.installedExtensionsFlow.value)
@@ -257,6 +269,15 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
     ) : ListAdapter<MangaExtension.Installed, MangaExtensionsAdapter.ViewHolder>(
         DIFF_CALLBACK_INSTALLED
     ) {
+
+        var onListChanged: ((Int) -> Unit)? = null
+
+        override fun onCurrentListChanged(
+            previousList: MutableList<MangaExtension.Installed>,
+            currentList: MutableList<MangaExtension.Installed>
+        ) {
+            onListChanged?.invoke(currentList.size)
+        }
 
         fun updateData(newExtensions: List<MangaExtension.Installed>) {
             submitList(newExtensions)
@@ -277,7 +298,6 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val extension = getItem(position)
-            val nsfw = if (extension.isNsfw) "(18+)" else ""
             val lang = getLanguageName(extension.lang)
             holder.extensionNameTextView.text = extension.name
             val libStr = if (extension.libVersion == extension.libVersion.toLong().toDouble()) "${extension.libVersion.toLong()}" else "${extension.libVersion}"
@@ -288,8 +308,7 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
             }
             // Upstream 4b8d09be: origin-repo badge (installed may predate tracking).
             val repo = extension.repoName ?: extension.repository?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) } ?: ani.dantotsu.parsers.ExtensionRepoMetaHelper.getInstalledRepo(extension.pkgName)?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) }
-            val repoBadge = if (!repo.isNullOrBlank()) "@$repo" else ""
-            val versionText = listOf(lang, displayVersion, nsfw, repoBadge).filter { it.isNotBlank() }.joinToString(" ")
+            val versionText = ExtensionRowText.versionLine(lang, displayVersion, extension.isNsfw, repo)
             holder.extensionVersionTextView.text = versionText
             if (!skipIcons) {
                 holder.extensionIconImageView.setImageDrawable(extension.icon)
