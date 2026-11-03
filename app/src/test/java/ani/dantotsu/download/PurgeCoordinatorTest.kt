@@ -22,6 +22,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -640,7 +641,7 @@ class PurgeCoordinatorTest {
     @Test
     fun `processor idle stop defers to the active purge`() = runBlocking {
         val coordinator = PurgeCoordinator()
-        val events = mutableListOf<String>()
+        val events = CopyOnWriteArrayList<String>()
         var stopped = false
 
         // The service loop-tail rule under test:
@@ -695,9 +696,10 @@ class PurgeCoordinatorTest {
         events.add("publish")
         processorIdleStop(queueEmpty = true)
         assertTrue(stopped)
-        assertEquals(
-            listOf("snapshot", "worker-done", "settle", "purge", "publish", "stop"),
-            events
-        )
+        // cancel() is asynchronous, so the worker may unwind before or after
+        // the snapshot callback returns. Both happen before settle joins the
+        // jobs; the transaction finishes before the idle stop.
+        assertEquals(setOf("snapshot", "worker-done"), events.take(2).toSet())
+        assertEquals(listOf("settle", "purge", "publish", "stop"), events.drop(2))
     }
 }
