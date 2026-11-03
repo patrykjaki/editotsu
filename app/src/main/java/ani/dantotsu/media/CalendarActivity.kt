@@ -41,7 +41,7 @@ class CalendarActivity : AppCompatActivity() {
         binding = ActivityListBinding.inflate(layoutInflater)
 
         val primaryColor = getThemeColor(com.google.android.material.R.attr.colorSurface)
-        val primaryTextColor = getThemeColor(com.google.android.material.R.attr.colorPrimary)
+        val primaryTextColor = getThemeColor(androidx.appcompat.R.attr.colorPrimary)
         val secondaryTextColor = getThemeColor(com.google.android.material.R.attr.colorOutline)
 
         window.statusBarColor = primaryColor

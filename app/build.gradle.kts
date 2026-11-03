@@ -411,6 +411,7 @@ dependencies {
 
     implementation(libs.bundles.media3)
     implementation(libs.mediarouter)
+    implementation(libs.androidx.compose.runtime)
 
 
     // UI

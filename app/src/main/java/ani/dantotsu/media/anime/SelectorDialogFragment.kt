@@ -1295,7 +1295,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             })
             configurableSource()?.let { sourceId ->
                 buttons.addView(com.google.android.material.button.MaterialButton(
-                    ctx, null, com.google.android.material.R.attr.borderlessButtonStyle,
+                    ctx, null, androidx.appcompat.R.attr.borderlessButtonStyle,
                 ).apply {
                     text = getString(R.string.picker_source_filters)
                     setOnClickListener {
@@ -1465,7 +1465,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 text = others.joinToString(" · ") { it.second }
                 textSize = 14f
                 typeface = ResourcesCompat.getFont(context, R.font.poppins_semi_bold)
-                setTextColor(context.getThemeColor(com.google.android.material.R.attr.colorPrimary))
+                setTextColor(context.getThemeColor(androidx.appcompat.R.attr.colorPrimary))
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 minHeight = (44 * d).toInt()
                 setPadding((8 * d).toInt(), 0, (4 * d).toInt(), 0)
@@ -1581,8 +1581,8 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 b.sourceSeeders.text = resources.getQuantityString(R.plurals.picker_seeds, seeders, seeders)
                 b.sourceSeeders.setTextColor(
                     b.root.context.getThemeColor(
-                        if (SeederHealth.isLow(seeders)) com.google.android.material.R.attr.colorError
-                        else com.google.android.material.R.attr.colorPrimary,
+                        if (SeederHealth.isLow(seeders)) androidx.appcompat.R.attr.colorError
+                        else androidx.appcompat.R.attr.colorPrimary,
                     ),
                 )
             }

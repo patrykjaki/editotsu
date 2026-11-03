@@ -667,7 +667,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
             when {
                 delay == 0L -> {
                     binding.subDelayStatusBadge.text = getString(R.string.sync_in_sync)
-                    binding.subDelayStatusBadge.backgroundTintList = ColorStateList.valueOf(requireContext().getThemeColor(com.google.android.material.R.attr.colorPrimary))
+                    binding.subDelayStatusBadge.backgroundTintList = ColorStateList.valueOf(requireContext().getThemeColor(androidx.appcompat.R.attr.colorPrimary))
                 }
                 delay > 0 -> {
                     binding.subDelayStatusBadge.text = getString(R.string.sync_delayed)
@@ -688,7 +688,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
             when {
                 delay == 0L -> {
                     binding.audioDelayStatusBadge.text = getString(R.string.sync_in_sync)
-                    binding.audioDelayStatusBadge.backgroundTintList = ColorStateList.valueOf(requireContext().getThemeColor(com.google.android.material.R.attr.colorPrimary))
+                    binding.audioDelayStatusBadge.backgroundTintList = ColorStateList.valueOf(requireContext().getThemeColor(androidx.appcompat.R.attr.colorPrimary))
                 }
                 delay > 0 -> {
                     binding.audioDelayStatusBadge.text = getString(R.string.sync_delayed)
