@@ -1899,7 +1899,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     override fun onStop() {
         super.onStop()
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
-        if (this::playerManager.isInitialized && playerManager.isInitialized && !inPip) {
+        // Theme mode keeps playing in the background (AnimePlayerService); episodes pause.
+        if (!themeMode && this::playerManager.isInitialized && playerManager.isInitialized && !inPip) {
             playerManager.playbackCoordinator?.setLifecycleSuppressed(true)
         }
         if (!themeMode && this::playerManager.isInitialized && playerManager.isInitialized) {
@@ -1991,6 +1992,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
         themeRetry?.let { themeHandler.removeCallbacks(it) }
         if (themeMode) {
+            AnimePlayerService.stop(this)
             if (this::playerManager.isInitialized && playerManager.isInitialized) playerManager.releasePlayer()
         } else if (this::playerManager.isInitialized && playerManager.isInitialized) {
             if (this::progressManager.isInitialized) {
@@ -2045,7 +2047,32 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             isFullscreen = (isFullscreen + 1) % 3
             applyResizeMode(isFullscreen)
         }
+        // The session lists the themes, so the notification and lock screen get previous/next.
+        playerManager.mediaQueue = object : ani.dantotsu.media.anime.player.MediaQueue {
+            override val titles = themeTracks.map { ThemeQueue.label(it) }
+            override val currentIndex get() = themeIndex
+            override fun skipTo(index: Int) = playTheme(index)
+        }
         playTheme(intent.getIntExtra(EXTRA_THEME_START, 0).coerceIn(0, themeTracks.lastIndex))
+    }
+
+    /**
+     * Theme mode keeps playing with the screen off or the app in the background: the
+     * session goes to [AnimePlayerService], which shows the media notification. Tapping
+     * it brings the app's task back without a new intent (onNewIntent restarts the player).
+     */
+    private fun startThemeService() {
+        val session = playerManager.mediaSession ?: return
+        packageManager.getLaunchIntentForPackage(packageName)?.let { launch ->
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+            session.setSessionActivity(
+                android.app.PendingIntent.getActivity(
+                    this, 0, launch,
+                    android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+                )
+            )
+        }
+        AnimePlayerService.start(this, session)
     }
 
     /** Starts theme [index]; [url] and [startMs] are set when retrying the same theme. */
@@ -2059,8 +2086,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
         themeIndex = index
         val track = themeTracks[index]
-        playerManager.releasePlayer()
-        val engine = playerManager.initPlayer(startMs, 1f, themeListener)
+        // One player for the whole queue: the next theme loads into the running engine,
+        // so the media session (and its notification) stays the same.
+        val running = playerManager.playbackEngine.takeIf { playerManager.isInitialized }
+        val engine = running ?: playerManager.initPlayer(startMs, 1f, themeListener)
+        if (running == null) startThemeService()
         if (episodeTitle.selectedItemPosition != index) episodeTitle.setSelection(index)
         videoInfo.text = ""
         engine.loadMedia(
@@ -2075,6 +2105,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             )
         )
         playerManager.playbackCoordinator?.play() ?: engine.play()
+        playerManager.media3PlayerAdapter?.refresh()
         applyResizeMode(isFullscreen)
     }
 
