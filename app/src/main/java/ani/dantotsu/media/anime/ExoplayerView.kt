@@ -561,7 +561,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             onBackPressedDispatcher.onBackPressed()
         }
 
-        aniSkipManager.init()
+        // Theme mode plays OP/ED videos: no skip times to poll for.
+        aniSkipManager.init(track = !themeMode)
 
         // Play/Pause
         exoPlay.setOnClickListener {
@@ -1084,9 +1085,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 // torrent sheet) plays only while its torrent is in the session; it may
                 // have been removed since, so the torrent is added again from its source.
                 val url = relay?.let { torrentManager.sourceFor(it.hash) } ?: currentVideo.file.url
-                val index = relay?.index ?: if (url.contains("index=")) {
-                    url.substringAfter("index=").toIntOrNull() ?: 0
-                } else 0
+                val index = relay?.index ?: ani.dantotsu.torrent.TorrentLinks.fileIndex(url)
                 val hash = relay?.hash ?: try {
                     if (url.startsWith("magnet:")) torrentManager.parseMagnetHash(url) else ""
                 } catch (_: Exception) { "" }

@@ -1,5 +1,8 @@
 package ani.dantotsu.media.anime.player
 
+import ani.dantotsu.R
+import ani.dantotsu.snackString
+
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
@@ -331,6 +334,10 @@ class PlayerCastManager(
         episodeTitle: String?
     ) {
         val videoURL = video?.file?.url ?: return
+        if (isTorrent(videoURL)) {
+            snackString(activity.getString(R.string.cast_torrent_unsupported), activity)
+            return
+        }
         val subtitleUrl = if (!hasExtSubtitles || subtitle == null) video.file.url else subtitle.file.url
         val shareVideo = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(videoURL.toUri(), "video/*")
@@ -364,8 +371,21 @@ class PlayerCastManager(
         }
     }
 
+    /** Cast plays HTTP sources only; a torrent streams from this phone's own relay. */
+    private fun isTorrent(url: String?): Boolean {
+        if (url.isNullOrBlank()) return false
+        if (url.startsWith("magnet:") || url.endsWith(".torrent")) return true
+        return runCatching { ani.dantotsu.parsers.StreamTypeDetector.isTorrentStream(java.net.URL(url)) }
+            .getOrDefault(false)
+    }
+
     override fun onCastSessionAvailable() {
         val item = currentMediaItem
+        if (isTorrent(item?.localConfiguration?.uri?.toString()) || isTorrent(currentVideo?.file?.url)) {
+            snackString(activity.getString(R.string.cast_torrent_unsupported), activity)
+            castContext?.sessionManager?.endCurrentSession(true)
+            return
+        }
         if (isCastApiAvailable && !activity.isDestroyed && item != null) {
             playbackCoordinator?.setPlaybackTarget(PlaybackTarget.REMOTE_CAST)
             val handoverPosition = playbackEngine?.positionMs ?: 0L

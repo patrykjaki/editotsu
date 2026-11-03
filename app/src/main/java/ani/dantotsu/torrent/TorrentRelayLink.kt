@@ -13,3 +13,15 @@ data class TorrentRelayLink(val hash: String, val index: Int) {
         }
     }
 }
+
+/** Shared parsing for torrent links handed around the player and picker. */
+object TorrentLinks {
+    private val INDEX = Regex("""[?&]index=(\d+)""")
+
+    /**
+     * The file index in a magnet/relay link (`index=N`), 0 when absent. Stops at the next
+     * parameter: the old copies read "3&tr=..." as not-a-number and fell back to file 0.
+     */
+    fun fileIndex(url: String): Int =
+        INDEX.find(url)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+}
