@@ -69,8 +69,6 @@ import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tachiyomi.core.util.lang.launchIO
@@ -168,10 +166,11 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
                     val offline = !isOnline(binding.root.context) || PrefManager.getVal(PrefName.OfflineMode)
                     val isLocal = model.watchSources?.list?.getOrNull(media.selected!!.sourceIndex)?.name == "Local"
                     if (!offline && !isLocal) {
-                        val kitsuEpisodes = async { model.loadKitsuEpisodes(media) }
-                        val anifyEpisodes = async { model.loadAnifyEpisodes(media) }
-                        val fillerEpisodes = async { model.loadFillerEpisodes(media) }
-                        awaitAll(kitsuEpisodes, anifyEpisodes, fillerEpisodes)
+                        // Episode metadata (Kitsu, Anify, Jikan) fills in when it arrives;
+                        // the extension's episode list never waits for it.
+                        launch { model.loadKitsuEpisodes(media) }
+                        launch { model.loadAnifyEpisodes(media) }
+                        launch { model.loadFillerEpisodes(media) }
                     }
                     model.loadEpisodes(media, media.selected!!.sourceIndex, invalidate = true)
                     withContext(Dispatchers.Main) {
@@ -253,10 +252,9 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
                         if (offline && !isLocal) {
                             media.selected!!.sourceIndex = model.watchSources!!.list.lastIndex
                         } else if (!offline && !isLocal) {
-                            val kitsuEpisodes = async { model.loadKitsuEpisodes(media) }
-                            val anifyEpisodes = async { model.loadAnifyEpisodes(media) }
-                            val fillerEpisodes = async { model.loadFillerEpisodes(media) }
-                            awaitAll(kitsuEpisodes, anifyEpisodes, fillerEpisodes)
+                            launch { model.loadKitsuEpisodes(media) }
+                            launch { model.loadAnifyEpisodes(media) }
+                            launch { model.loadFillerEpisodes(media) }
                         }
                         model.loadEpisodes(media, media.selected!!.sourceIndex)
                     }
@@ -341,26 +339,20 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         model.getKitsuEpisodes().observe(viewLifecycleOwner) { i ->
             if (i != null) {
                 media.anime?.kitsuEpisodes = i
-                if (loaded) {
-                    loadEpisodes(media.selected!!.sourceIndex, false)
-                }
+                if (loaded) model.remergeEpisodeMetadata(media.selected!!.sourceIndex)
             }
         }
 
         model.getFillerEpisodes().observe(viewLifecycleOwner) { i ->
             if (i != null) {
                 media.anime?.fillerEpisodes = i
-                if (loaded) {
-                    loadEpisodes(media.selected!!.sourceIndex, false)
-                }
+                if (loaded) model.remergeEpisodeMetadata(media.selected!!.sourceIndex)
             }
         }
         model.getAnifyEpisodes().observe(viewLifecycleOwner) { i ->
             if (i != null) {
                 media.anime?.anifyEpisodes = i
-                if (loaded) {
-                    loadEpisodes(media.selected!!.sourceIndex, false)
-                }
+                if (loaded) model.remergeEpisodeMetadata(media.selected!!.sourceIndex)
             }
         }
     }

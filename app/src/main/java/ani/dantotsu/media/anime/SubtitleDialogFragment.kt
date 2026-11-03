@@ -971,7 +971,14 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                             itemBinding.formatBadge.isVisible = true
                         }
 
-                        val isSelected = activeOnlineId == null && savedEpSub == null && savedLang == item.language
+                        // Only one row is marked when several server subtitles share a
+                        // language name: the saved index, else the first with that name.
+                        val currentSubs = episode.extractors
+                            ?.find { it.server.name == episode.selectedExtractor }?.subtitles.orEmpty()
+                        val selectedIndex = episode.selectedSubtitle?.takeIf { it in currentSubs.indices }
+                            ?: currentSubs.indexOfFirst { it.language == savedLang }.takeIf { it != -1 }
+                        val isSelected = activeOnlineId == null && savedEpSub == null &&
+                            savedLang == item.language && selectedIndex == currentSubs.indexOf(item)
                         if (isSelected) {
                             itemBinding.subtitleCardRoot.setCardBackgroundColor(highlightColor)
                             itemBinding.subtitleCardRoot.strokeColor = borderSelectedColor

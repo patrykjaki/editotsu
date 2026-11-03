@@ -1111,9 +1111,21 @@ class MpvPlaybackEngine(
                 op?.pendingExternalBaselineExternalIds = op?.knownExternalTrackIds ?: emptySet()
             }
             val flag = if (select) "select" else "auto"
+            stageExtensionFonts()
             try {
                 mpvClient.command("sub-add", uri, flag, title ?: "", language ?: "")
             } catch (_: Exception) {}
+        }
+    }
+
+    /** Copies fonts extensions downloaded since start-up into mpv's font folder; see [MpvExtensionFonts]. */
+    private fun stageExtensionFonts() {
+        val ctx = context ?: return
+        runCatching {
+            MpvExtensionFonts.stage(
+                MpvExtensionFonts.sourceDirs(ctx.filesDir, ctx.cacheDir),
+                java.io.File(ctx.filesDir, "fonts")
+            )
         }
     }
 
@@ -1750,6 +1762,7 @@ class MpvPlaybackEngine(
                         // so header-gated softsubs (AniZone) fetch correctly.
                         if (!op.externalSubtitlesAttached) {
                             op.externalSubtitlesAttached = true
+                            if (op.request.externalSubtitles.isNotEmpty()) stageExtensionFonts()
                             op.request.externalSubtitles.forEach { sub ->
                                 val flag = if (sub.selected) "select" else "auto"
                                 try {
