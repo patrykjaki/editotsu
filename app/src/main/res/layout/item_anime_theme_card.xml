@@ -91,6 +91,27 @@
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="13sp" />
 
+            <!-- Opens the version list. 48dp tall for touch, pulled into the 32dp row. -->
+            <TextView
+                android:id="@+id/themeVersions"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginVertical="-8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:drawablePadding="0dp"
+                android:fontFamily="@font/poppins_bold"
+                android:gravity="center_vertical"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="6dp"
+                android:paddingEnd="2dp"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="12sp"
+                android:visibility="gone"
+                app:drawableEndCompat="@drawable/ic_round_arrow_drop_down_24"
+                app:drawableTint="?attr/colorPrimary" />
+
             <!-- Play affordance; the whole card is the touch target. -->
             <ImageView
                 android:id="@+id/themePlay"
