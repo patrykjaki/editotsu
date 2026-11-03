@@ -59,6 +59,18 @@ object NotificationSettingsRows {
             rows = listOf(
                 Settings(
                     type = SettingsRowType.CLICK,
+                    name = getString(R.string.notification_permission),
+                    desc = getString(
+                        if (ani.dantotsu.hasNotificationPermission(context)) R.string.notification_permission_on
+                        else R.string.notification_permission_off
+                    ),
+                    icon = R.drawable.ic_round_notifications_none_24,
+                    // The system page grants the permission too, including after a denial.
+                    onClick = { ani.dantotsu.openSettings(context, null) },
+                    isActivity = true
+                ),
+                Settings(
+                    type = SettingsRowType.CLICK,
                     name = getString(
                         R.string.subscriptions_checking_time_s,
                         timeNames[curTime]

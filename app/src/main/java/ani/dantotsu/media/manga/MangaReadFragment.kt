@@ -383,6 +383,7 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
         selected.sourceIndex = i
         selected.server = null
         model.saveSelected(media.id, selected)
+        if (subscribed) model.mangaReadSources?.names?.getOrNull(i)?.let { SubscriptionHelper.saveSource(media.id, it) }
         media.selected = selected
         return model.mangaReadSources?.get(i)!!
     }
@@ -427,6 +428,15 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
     fun onNotificationPressed(subscribed: Boolean, source: String) {
         this.subscribed = subscribed
         saveSubscription(media, subscribed)
+        if (subscribed) {
+            SubscriptionHelper.saveSource(media.id, source)
+            activity?.let {
+                if (!ani.dantotsu.requestNotificationPermission(it)) {
+                    snackString(getString(R.string.notifications_off_for_app))
+                    return
+                }
+            }
+        }
         snackString(
             if (subscribed) getString(R.string.subscribed_notification, source)
             else getString(R.string.unsubscribed_notification)
