@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.content.res.ResourcesCompat
+import androidx.core.view.ViewCompat
 import ani.dantotsu.BottomSheetDialogFragment
 import ani.dantotsu.R
 import ani.dantotsu.databinding.BottomSheetThemeVersionsBinding
@@ -62,6 +63,7 @@ class ThemeVersionsSheet : BottomSheetDialogFragment() {
             val selected = v.entryId == current.entryId
             row.root.strokeWidth = if (selected) (2 * resources.displayMetrics.density).toInt() else 0
             row.root.isSelected = selected
+            if (selected) ViewCompat.setStateDescription(row.root, getString(R.string.theme_version_selected))
             row.root.contentDescription = listOfNotNull(
                 "v${v.version}", row.versionEpisodes.text.toString(), flag,
             ).joinToString(", ")
