@@ -71,10 +71,6 @@ class PlayerSettingsActivity :
 
         initActivity(this)
 
-        onBackPressedDispatcher.addCallback(this) {
-            finish()
-        }
-
         try {
             media = intent.getSerialized("media")
             subtitle = intent.getSerialized("subtitle")

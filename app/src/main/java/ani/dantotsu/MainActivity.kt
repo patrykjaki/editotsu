@@ -239,19 +239,21 @@ class MainActivity : AppCompatActivity() {
         }
         incognitoNotification(this)
 
-        var doubleBackToExitPressedOnce = false
+        // First back shows "back again to exit" and turns this off; the second back is
+        // the system's, so it gets the predictive back-to-home preview.
         onBackPressedDispatcher.addCallback(this) {
-            if (doubleBackToExitPressedOnce) {
-                finish()
-            }
-            doubleBackToExitPressedOnce = true
-            snackString(this@MainActivity.getString(R.string.back_to_exit)).apply {
-                this?.addCallback(object : BaseTransientBottomBar.BaseCallback<Snackbar>() {
+            isEnabled = false
+            val callback = this
+            val snack = snackString(this@MainActivity.getString(R.string.back_to_exit))
+            if (snack != null) {
+                snack.addCallback(object : BaseTransientBottomBar.BaseCallback<Snackbar>() {
                     override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
                         super.onDismissed(transientBottomBar, event)
-                        doubleBackToExitPressedOnce = false
+                        callback.isEnabled = true
                     }
                 })
+            } else {
+                Handler(Looper.getMainLooper()).postDelayed({ callback.isEnabled = true }, 2000)
             }
         }
 

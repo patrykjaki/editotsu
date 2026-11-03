@@ -54,17 +54,13 @@ class NoInternet : AppCompatActivity() {
         bottomBar.background = ContextCompat.getDrawable(this, R.drawable.bottom_nav_gray)
 
 
-        var doubleBackToExitPressedOnce = false
+        // First back shows "back again to exit" and turns this off for 2 s; the second
+        // back is the system's, so it gets the predictive back-to-home preview.
         onBackPressedDispatcher.addCallback(this) {
-            if (doubleBackToExitPressedOnce) {
-                finishAffinity()
-            }
-            doubleBackToExitPressedOnce = true
+            isEnabled = false
+            val callback = this
             snackString(this@NoInternet.getString(R.string.back_to_exit))
-            Handler(Looper.getMainLooper()).postDelayed(
-                { doubleBackToExitPressedOnce = false },
-                2000
-            )
+            Handler(Looper.getMainLooper()).postDelayed({ callback.isEnabled = true }, 2000)
         }
 
         binding.root.doOnAttach {
