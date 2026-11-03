@@ -55,7 +55,16 @@ object BackupRestore {
                 val sections = options.filterIndexed { i, _ -> checked[i] }.toSet() + BackupSection.Settings
                 if (BackupSection.Logins in sections) {
                     passwordDialog(activity, exporting = true) { password ->
-                        if (password != null) onChosen(sections, password)
+                        if (password == null) return@passwordDialog
+                        passwordDialog(activity, exporting = true, confirming = true) { again ->
+                            if (again == null) return@passwordDialog
+                            if (password.contentEquals(again)) {
+                                onChosen(sections, password)
+                            } else {
+                                toast(activity.getString(R.string.backup_password_mismatch))
+                            }
+                            again.fill('0')
+                        }
                     }
                 } else {
                     onChosen(sections, null)
@@ -72,7 +81,7 @@ object BackupRestore {
             name.endsWith(".sani") -> passwordDialog(activity, exporting = false) { password ->
                 if (password == null) return@passwordDialog
                 if (bytes.size <= 16) {
-                    toast(activity.getString(R.string.error_importing_settings))
+                    toast(activity.getString(R.string.backup_invalid_file))
                     return@passwordDialog
                 }
                 val json = try {
@@ -82,7 +91,7 @@ object BackupRestore {
                         bytes.copyOfRange(0, 16)
                     )
                 } catch (e: Exception) {
-                    toast(activity.getString(R.string.incorrect_password))
+                    toast(activity.getString(R.string.backup_wrong_password))
                     return@passwordDialog
                 }
                 apply(activity, json)
@@ -101,7 +110,7 @@ object BackupRestore {
             false
         }
         if (!ok) {
-            toast(activity.getString(R.string.error_importing_settings))
+            toast(activity.getString(R.string.backup_invalid_file))
             return
         }
         val missing = PreferencePackager.lastMissingExtensions
@@ -125,13 +134,20 @@ object BackupRestore {
      * Password prompt. Passwords up to 16 characters are padded with '0' to 16,
      * as the older export did, so its files decrypt with the same password.
      */
-    fun passwordDialog(activity: Activity, exporting: Boolean, callback: (CharArray?) -> Unit) {
+    fun passwordDialog(
+        activity: Activity,
+        exporting: Boolean,
+        confirming: Boolean = false,
+        callback: (CharArray?) -> Unit,
+    ) {
         val dialogView = DialogUserAgentBinding.inflate(activity.layoutInflater)
         val box = dialogView.userAgentTextBox
         box.hint = activity.getString(R.string.label_password)
         box.setSingleLine()
         val dialog = AlertDialog.Builder(activity, R.style.MyPopup)
-            .setTitle(activity.getString(R.string.enter_password))
+            .setTitle(
+                activity.getString(if (confirming) R.string.backup_password_confirm else R.string.enter_password)
+            )
             .setView(dialogView.root)
             .setPositiveButton(R.string.ok, null)
             .setNegativeButton(R.string.cancel) { d, _ ->
