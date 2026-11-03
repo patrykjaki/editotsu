@@ -100,7 +100,7 @@ class SettingsDataActivity : AppCompatActivity() {
                         contentResolver.openOutputStream(uri)?.use { out ->
                             out.write(payload)
                         } ?: throw Exception("Could not open destination")
-                        toast(getString(R.string.saved_to_path, uri.toString()))
+                        toast(getString(R.string.backup_saved, DocumentFile.fromSingleUri(this, uri)?.name ?: pendingBackupName.orEmpty()))
                     } catch (e: Exception) {
                         e.printStackTrace()
                         toast(getString(R.string.error_saving_settings))

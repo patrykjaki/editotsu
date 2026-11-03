@@ -73,6 +73,8 @@ object BackupSections {
         "RefreshStatus",
         "reload",
         "backup_missing_extensions",
+        "home_page_cache",
+        "user_status_cache",
     )
 
     private val HISTORY_SKIPPED_PREFIXES = listOf(
@@ -84,6 +86,20 @@ object BackupSections {
 
     fun keepHistoryKey(key: String): Boolean =
         key !in HISTORY_SKIPPED_KEYS && HISTORY_SKIPPED_PREFIXES.none { key.startsWith(it) }
+
+    /**
+     * The MAL token is stored encrypted with an Android Keystore key that only
+     * this install has, so the stored value is useless after a reinstall. The
+     * backup carries the decrypted token under this key instead (only in the
+     * password-encrypted logins file); restore encrypts it again with the new
+     * install's key.
+     */
+    const val MAL_TOKEN_BACKUP = "MALTokenBackup"
+
+    /** Login keys left out: install-bound ciphertext and half-finished OAuth state. */
+    val PROTECTED_SKIPPED_KEYS = setOf("MALEncryptedToken", "MALAuthSession", "MALCodeChallenge", "MALToken")
+
+    fun keepProtectedKey(key: String): Boolean = key !in PROTECTED_SKIPPED_KEYS
 
     /** Counters the app recomputes on start. */
     private val APP_PREFS_SKIPPED_KEYS = setOf("animeext_updates_count", "ext_updates_count")
