@@ -119,6 +119,7 @@ fun prepareMpvDirectories(context: Context): ResolvedMpvPaths {
                 }
             }
         } catch (_: Exception) {}
+        runCatching { MpvExtensionFonts.stage(MpvExtensionFonts.sourceDirs(filesDir, context.cacheDir), f) }
         if (f.exists() && f.isDirectory && f.canRead()) f else null
     } else null
 
