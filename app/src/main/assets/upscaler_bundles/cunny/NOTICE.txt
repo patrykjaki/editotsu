@@ -10,6 +10,14 @@ Files, copied unmodified from mpv/soft/ at that revision:
   CuNNy-faster-SOFT.glsl
   CuNNy-fast-SOFT.glsl
 
+Files, copied unmodified from mpv/soft/dp4a/ at that revision (used only
+with the Vulkan libmpv, vo=gpu-next):
+  CuNNy-veryfast-SOFT-Q.glsl
+  CuNNy-faster-SOFT-Q.glsl
+  CuNNy-fast-SOFT-Q.glsl
+
 These files are the complete source of the shaders. Editotsu loads them
-into libmpv through the glsl-shaders option; nothing is compiled or
-changed before that.
+into libmpv through the glsl-shaders option. On OpenGL ES (vo=gpu) the
+non-dp4a files are loaded from a copy in which the optional float16
+#extension line is commented out, because GLES rejects #extension after
+other code; the bundled files themselves stay byte-identical to upstream.

@@ -211,16 +211,8 @@ class MpvPlaybackEngine(
 
     // Stage A Pre-Ready Desired State Accumulators
     private var pendingSurface: Surface? = null
-    /**
-     * The local Vulkan libmpv replaces only the arm64-v8a library; other ABIs keep the stock
-     * (GLES-only) one, so Vulkan is only requested when this process runs the arm64 lib.
-     * mpv's Vulkan context needs Vulkan 1.1 entry points that Android's loader exports only
-     * from API 28 (weak references in that lib), so below 28 it stays on OpenGL.
-     */
-    private val vulkanLibmpv: Boolean =
-        ani.dantotsu.BuildConfig.LIBMPV_VULKAN &&
-            android.os.Build.VERSION.SDK_INT >= 28 &&
-            android.os.Build.SUPPORTED_ABIS.firstOrNull() == "arm64-v8a"
+    /** See [VulkanLibmpv]. */
+    private val vulkanLibmpv: Boolean = VulkanLibmpv.available
 
     /** Output to use while a surface is attached; see [VideoOutputPolicy]. Engine thread only. */
     private var desiredOutput: VideoOutputPolicy.Output = VideoOutputPolicy.outputFor("", vulkanLibmpv)
@@ -569,10 +561,17 @@ class MpvPlaybackEngine(
         }
     }
 
-    /** gpu-api/gpu-context first, then vo, so the VO re-init picks the new context. */
+    /**
+     * Each of gpu-api / gpu-context re-inits a running VO, and an intermediate pair
+     * (opengl + androidvk) fails ("Failed initializing any suitable GPU context!"). So park the VO
+     * on null while the pair changes, then start the target VO once.
+     */
     private fun applyOutput(output: VideoOutputPolicy.Output) {
-        output.gpuApi?.let { mpvClient.setPropertyString("gpu-api", it) }
-        output.gpuContext?.let { mpvClient.setPropertyString("gpu-context", it) }
+        if (output.gpuApi != null || output.gpuContext != null) {
+            mpvClient.setPropertyString("vo", "null")
+            output.gpuApi?.let { mpvClient.setPropertyString("gpu-api", it) }
+            output.gpuContext?.let { mpvClient.setPropertyString("gpu-context", it) }
+        }
         mpvClient.setPropertyString("vo", output.vo)
     }
 

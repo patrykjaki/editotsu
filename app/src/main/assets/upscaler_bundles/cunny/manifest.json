@@ -1,5 +1,5 @@
 {
-  "bundleRevision": 1,
+  "bundleRevision": 2,
   "provider": "cunny",
   "upstreamRevision": "906031bb00c15dd6a6bbbaa21c0eb0b724ca8437",
   "files": {
@@ -8,11 +8,29 @@
     "CuNNy-fast-SOFT.glsl": "7f5077ebe18ac599f088e8d8c0401a195132bcc1b078c9f3bb2f1baf16a92c8c",
     "LICENSE-LGPL-3.0.txt": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
     "LICENSE-GPL-3.0.txt": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-    "NOTICE.txt": "6394c33aa35d75a4913b87b660e1b89212ceb71d879d8a174efee39ae3c6f115"
+    "NOTICE.txt": "07a1a0791d47959c498f0d0049a55e6e3fe2aa15a28026f652053735080ea21e",
+    "CuNNy-veryfast-SOFT-Q.glsl": "aff8624c3663ca69a92e3f03fa41a6f139cc74cb03f070e1cdc3ec2d4d28d35c",
+    "CuNNy-faster-SOFT-Q.glsl": "9caf11134c598927a000650c9ba4d1c7cd2b7a6b62e06e2db44836756ec7ba6f",
+    "CuNNy-fast-SOFT-Q.glsl": "96af5170cdb0c06e7dac6bb18bb3b22d812af40fcf447ef2a291e6720d7a5114"
   },
   "profiles": {
-    "fast": ["CuNNy-veryfast-SOFT.glsl"],
-    "balanced": ["CuNNy-faster-SOFT.glsl"],
-    "quality": ["CuNNy-fast-SOFT.glsl"]
+    "fast": [
+      "CuNNy-veryfast-SOFT.glsl"
+    ],
+    "balanced": [
+      "CuNNy-faster-SOFT.glsl"
+    ],
+    "quality": [
+      "CuNNy-fast-SOFT.glsl"
+    ],
+    "fast@vulkan": [
+      "CuNNy-veryfast-SOFT-Q.glsl"
+    ],
+    "balanced@vulkan": [
+      "CuNNy-faster-SOFT-Q.glsl"
+    ],
+    "quality@vulkan": [
+      "CuNNy-fast-SOFT-Q.glsl"
+    ]
   }
 }
