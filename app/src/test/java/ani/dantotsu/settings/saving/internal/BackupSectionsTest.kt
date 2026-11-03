@@ -78,4 +78,18 @@ class BackupSectionsTest {
         assertTrue(BackupSections.keepProtectedKey("MALUserName"))
         assertTrue(BackupSections.keepProtectedKey("BiometricToken"))
     }
+
+    @Test
+    fun emptySettingsGroupsStayInTheFile() {
+        assertTrue(BackupSections.keepInPayload("UI", isEmpty = true))
+        assertTrue(BackupSections.keepInPayload("Reader", isEmpty = true))
+        assertFalse(BackupSections.keepInPayload(BackupSections.NOVEL_PLUGIN_STORAGE, isEmpty = true))
+        assertTrue(BackupSections.keepInPayload(BackupSections.NOVEL_PLUGIN_STORAGE, isEmpty = false))
+    }
+
+    @Test
+    fun emptyGroupPassesValidation() {
+        val json = """{"format":"editotsu-settings","version":1,"appVersion":"x","exportedAt":1,"payload":{"UI":{},"General":{}}}"""
+        assertTrue(validateBackupPayload(json) is BackupCheck.Valid)
+    }
 }
