@@ -34,10 +34,6 @@ import ani.dantotsu.settings.Settings
 import ani.dantotsu.settings.SettingsAdapter
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
-import ani.dantotsu.settings.saving.internal.PreferencePackager
-import ani.dantotsu.settings.saving.internal.BackupCheck
-import ani.dantotsu.settings.saving.internal.validateBackupPayload
-import ani.dantotsu.settings.saving.internal.wrapBackupEnvelope
 import ani.dantotsu.util.Logger
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
@@ -66,7 +62,7 @@ class SettingsDataActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsDataBinding
     private lateinit var launcher: LauncherWrapper
     private var cacheSize: Long = 0L
-    private var pendingBackupPayload: String? = null
+    private var pendingBackupPayload: ByteArray? = null
     private var pendingBackupName: String? = null
     private var createDocumentLauncher: androidx.activity.result.ActivityResultLauncher<String>? = null
 
@@ -93,7 +89,7 @@ class SettingsDataActivity : AppCompatActivity() {
             registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> restoreFromUri(uri) }
 
         createDocumentLauncher =
-            registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
                 // M3 HOLD Blocker 3: user-chosen destination, no legacy
                 // permission flow; write is atomic from the app side
                 // (single stream write, failure deletes nothing else).
@@ -102,7 +98,7 @@ class SettingsDataActivity : AppCompatActivity() {
                         val payload = pendingBackupPayload
                             ?: throw Exception("Nothing to back up")
                         contentResolver.openOutputStream(uri)?.use { out ->
-                            out.write(payload.toByteArray(Charsets.UTF_8))
+                            out.write(payload)
                         } ?: throw Exception("Could not open destination")
                         toast(getString(R.string.saved_to_path, uri.toString()))
                     } catch (e: Exception) {
@@ -193,38 +189,20 @@ class SettingsDataActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * M3 HOLD Blocker 4: restore path shared by the document callback.
-     * Validate BEFORE mutating — invalid input never reaches unpack.
-     */
+    /** Restore from a picked file; [BackupRestore] validates before writing anything. */
     private fun restoreFromUri(uri: Uri?) {
         if (uri == null) return
         try {
-            val jsonString =
-                contentResolver.openInputStream(uri)?.readBytes()
-                    ?: throw Exception("Error reading file")
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw Exception("Error reading file")
             val name = DocumentFile.fromSingleUri(this, uri)?.name ?: "settings"
-            // System pickers may append an extension (e.g. `.ani.json`
-            // from our own CreateDocument flow); validation decides.
-            if (name.endsWith(".ani") || name.endsWith(".json")) {
-                when (val check =
-                    validateBackupPayload(jsonString.toString(Charsets.UTF_8))) {
-                    is BackupCheck.Valid -> {
-                        if (PreferencePackager.unpack(check.payloadJson)) restartApp()
-                    }
-                    is BackupCheck.Invalid -> {
-                        Logger.log("Backup restore rejected: ${check.reason}")
-                        toast(getString(R.string.error_importing_settings))
-                    }
-                }
-            } else {
-                toast(getString(R.string.unknown_file_type))
-            }
+            BackupRestore.restore(this, bytes, name)
         } catch (e: Exception) {
             e.printStackTrace()
             toast(getString(R.string.error_importing_settings))
         }
     }
+
 
     private fun getReadableDownloadPath(uriString: String): String {
         val defaultPath =
@@ -606,18 +584,14 @@ class SettingsDataActivity : AppCompatActivity() {
                 desc = getString(R.string.backup_now_desc),
                 icon = R.drawable.backup_restore,
                 onClick = {
-                    // M3 HOLD Blockers 1+3+4: safe-allowlist payload in a
-                    // versioned envelope, written to a user-chosen document
-                    // (no legacy permission flow).
-                    val timestampStr = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault()).format(Date())
-                    val payload = PrefManager.exportAllPrefs(plaintextBackupAllowlist())
-                    pendingBackupPayload = wrapBackupEnvelope(
-                        payload,
-                        BuildConfig.VERSION_NAME,
-                        System.currentTimeMillis()
-                    )
-                    pendingBackupName = "Editotsu_${timestampStr}.ani"
-                    pendingBackupName?.let { createDocumentLauncher?.launch(it) }
+                    BackupRestore.chooseSections(this@SettingsDataActivity) { sections, password ->
+                        val timestampStr = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault()).format(Date())
+                        pendingBackupPayload = BackupRestore.create(sections, password)
+                        password?.fill('0')
+                        val ext = if (password != null) "sani" else "ani"
+                        pendingBackupName = "Editotsu_${timestampStr}.$ext"
+                        pendingBackupName?.let { createDocumentLauncher?.launch(it) }
+                    }
                 }
             ),
 

@@ -1114,7 +1114,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="include_list_anime_desc">Include list items in Anime explore page</string>
     <string name="ui_settings_desc">All the UI related settings</string>
     <string name="download_manager_select_desc">Default manager to download Anime</string>
-    <string name="backup_restore_desc">Your preferred settings everywhere</string>
+    <string name="backup_restore_desc">Settings, extensions and watch positions to a file and back</string>
     <string name="change_download_location_desc">Change the location where all the downloaded stuff goes</string>
     <string name="always_continue_content_desc">Continue where you left off</string>
     <string name="search_source_list_desc">Auto-select the next server if the previous server doesn\'t have the media</string>
@@ -1559,9 +1559,16 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="last_auto_backup">Last Auto-Backup: %1$s</string>
     <string name="last_auto_backup_never">Last Auto-Backup: Never</string>
     <string name="backup_now">Back up now</string>
-    <string name="backup_now_desc">Save a copy of your settings and preferences</string>
+    <string name="backup_now_desc">Settings and extension repos, plus extensions, watch positions and logins if you choose</string>
+    <string name="backup_choose_title">Back up</string>
+    <string name="backup_section_extensions">Extension settings, hidden and pinned sources, installed extension list</string>
+    <string name="backup_section_history">Watch positions and remembered sources</string>
+    <string name="backup_section_logins">Logins (needs a password)</string>
+    <string name="backup_password_hint">The backup is encrypted with this password. You need it to restore.</string>
+    <string name="backup_missing_extensions_title">Extensions to reinstall</string>
+    <string name="backup_missing_extensions_message">These extensions from the backup are not installed. Their repos are restored, so you can install them from Extensions.</string>
     <string name="restore_backup">Restore Backup</string>
-    <string name="restore_backup_desc">Import app settings from a backup file</string>
+    <string name="restore_backup_desc">Restore from a .ani or .sani backup file</string>
     <string name="change_download_directory">Change Download Directory</string>
     <string name="change_download_directory_desc">Choose a directory to store downloads</string>
     <string name="change_download_directory_confirm">Are you sure you want to change the download directory? Existing downloads will remain in the old directory.</string>
