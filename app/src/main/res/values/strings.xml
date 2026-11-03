@@ -253,12 +253,16 @@
     <string name="theme_opt_with_credits">With credits</string>
     <string name="theme_opt_no_subtitles">No subtitles</string>
     <string name="theme_opt_subtitled">Subtitled</string>
-    <plurals name="theme_versions">
-        <item quantity="one">%d version</item>
-        <item quantity="other">%d versions</item>
-    </plurals>
     <string name="theme_version_selected">Selected</string>
-    <string name="theme_versions_action">%1$s, %2$s, choose version</string>
+    <string name="theme_versions_action">%1$s, %2$s, versions</string>
+    <string name="theme_versions_open">Open</string>
+    <string name="theme_versions_closed">Closed</string>
+    <string name="theme_version_of">v%1$d of %2$d</string>
+    <string name="theme_section_openings">Openings</string>
+    <string name="theme_section_endings">Endings</string>
+    <string name="theme_show_all_openings">Show all %1$d openings</string>
+    <string name="theme_show_all_endings">Show all %1$d endings</string>
+    <string name="theme_show_less">Show less</string>
     <string name="prequel">Prequel</string>
     <string name="sequel">Sequel</string>
 
