@@ -13,11 +13,22 @@ import androidx.core.net.toUri
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 
+/**
+ * A list the session shows as its playlist (theme mode: the openings and endings).
+ * Previous/next on the notification and lock screen call [skipTo].
+ */
+interface MediaQueue {
+    val titles: List<String>
+    val currentIndex: Int
+    fun skipTo(index: Int)
+}
+
 @UnstableApi
 class PlaybackEngineMedia3Player(
     private val engine: PlaybackEngine,
     private val coordinator: PlaybackCoordinator? = null,
-    looper: Looper = Looper.getMainLooper()
+    looper: Looper = Looper.getMainLooper(),
+    private val queue: MediaQueue? = null,
 ) : SimpleBasePlayer(looper), PlaybackListener {
 
     private val availableCommands = Commands.Builder()
@@ -27,6 +38,16 @@ class PlaybackEngineMedia3Player(
         .add(Player.COMMAND_GET_METADATA)
         .add(Player.COMMAND_SET_SPEED_AND_PITCH)
         .add(Player.COMMAND_STOP)
+        .apply {
+            if (queue != null) {
+                add(Player.COMMAND_GET_TIMELINE)
+                add(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
+                add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                add(Player.COMMAND_SEEK_TO_NEXT)
+                add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+            }
+        }
         .build()
 
     private var lastPositionInvalidateTime = 0L
@@ -78,7 +99,32 @@ class PlaybackEngineMedia3Player(
             C.TIME_UNSET
         }
 
-        val playlist = if (request != null) {
+        val queueTitles = queue?.titles.orEmpty()
+        val queueIndex = queue?.currentIndex ?: -1
+        val playlist = if (queue != null && queueIndex in queueTitles.indices) {
+            queueTitles.mapIndexed { i, title ->
+                if (i == queueIndex && request != null) {
+                    MediaItemData.Builder("queue-$i")
+                        .setMediaItem(mediaItem)
+                        .setDurationUs(durationUs)
+                        .build()
+                } else {
+                    MediaItemData.Builder("queue-$i")
+                        .setMediaItem(
+                            MediaItem.Builder()
+                                .setMediaId("queue-$i")
+                                .setMediaMetadata(
+                                    MediaMetadata.Builder()
+                                        .setTitle(title)
+                                        .setArtist(request?.seriesTitle)
+                                        .build()
+                                )
+                                .build()
+                        )
+                        .build()
+                }
+            }
+        } else if (request != null) {
             listOf(
                 MediaItemData.Builder(request.uri)
                     .setMediaItem(mediaItem)
@@ -99,7 +145,7 @@ class PlaybackEngineMedia3Player(
             .setPlaylist(playlist)
 
         if (playlist.isNotEmpty()) {
-            stateBuilder.setCurrentMediaItemIndex(0)
+            stateBuilder.setCurrentMediaItemIndex(if (playlist.size > 1) queueIndex else 0)
             stateBuilder.setContentPositionMs(engine.positionMs.coerceAtLeast(0L))
         } else {
             stateBuilder.setCurrentMediaItemIndex(C.INDEX_UNSET)
@@ -123,7 +169,9 @@ class PlaybackEngineMedia3Player(
         positionMs: Long,
         seekCommand: Int
     ): ListenableFuture<*> {
-        if (positionMs != C.TIME_UNSET) {
+        if (queue != null && mediaItemIndex != C.INDEX_UNSET && mediaItemIndex != queue.currentIndex) {
+            queue.skipTo(mediaItemIndex)
+        } else if (positionMs != C.TIME_UNSET) {
             engine.seekTo(positionMs)
         }
         invalidateState()
@@ -166,6 +214,9 @@ class PlaybackEngineMedia3Player(
     override fun onPlayWhenReadyChanged(playWhenReady: Boolean) {
         invalidateState()
     }
+
+    /** Re-reads the queue after the app changed the current item. */
+    fun refresh() = invalidateState()
 
     fun releaseAdapter() {
         engine.removeListener(this)
