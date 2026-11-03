@@ -1609,6 +1609,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="upscaler_off">Off</string>
     <string name="upscaler_profile">CuNNy %1$s</string>
     <string name="upscaler_unavailable">Upscaler files are missing or damaged</string>
+    <string name="upscaler_vulkan_failed">Vulkan could not start on this device; the upscaler is off until the app restarts</string>
     <!-- Audio night mode (feature/audio-night-mode) -->
     <string name="audio_night_mode_on">Audio night mode: On</string>
     <string name="audio_night_mode_off">Audio night mode: Off</string>
