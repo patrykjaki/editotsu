@@ -46,12 +46,14 @@ class GlesShaderCompatTest {
     }
 
     @Test
-    fun `every shipped cunny shader is patched cleanly with the same line count`() {
+    fun `every shipped GLES cunny shader is patched cleanly with the same line count`() {
         val dir = listOf(
             File("src/main/assets/upscaler_bundles/cunny"),
             File("app/src/main/assets/upscaler_bundles/cunny")
         ).first { it.isDirectory }
-        val shaders = dir.listFiles { f -> f.name.endsWith(".glsl") }!!.sortedBy { it.name }
+        // The dp4a (-Q) files run only on Vulkan, unpatched.
+        val shaders = dir.listFiles { f -> f.name.endsWith(".glsl") && !f.name.endsWith("-Q.glsl") }!!
+            .sortedBy { it.name }
         assertEquals(3, shaders.size)
         for (shader in shaders) {
             val src = shader.readText()

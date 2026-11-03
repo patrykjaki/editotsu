@@ -73,8 +73,19 @@ class CunnyBundleTest {
             assertTrue("missing $name", f.exists())
             assertEquals("checksum $name", hash, UpscalerBundleInstaller.sha256(f))
         }
-        // Every provider profile is backed by the manifest and vice versa.
-        assertEquals(CunnyUpscalerProvider.PROFILES.map { it.id }.toSet(), m.profiles.keys)
+        // Every provider profile is backed by the manifest, once for GLES and once for Vulkan,
+        // and the manifest has no other profiles.
+        val gles = CunnyUpscalerProvider.PROFILES.map { it.id }
+        val vulkan = gles + CunnyUpscalerProvider.VULKAN_PROFILES.map { it.id }
+        assertEquals(
+            (gles + vulkan.map { it + CunnyUpscalerProvider.VULKAN_SUFFIX }).toSet(),
+            m.profiles.keys
+        )
+        // Vulkan chains use only the dp4a files, GLES chains never do.
+        for ((profile, files) in m.profiles) {
+            val vulkan = profile.endsWith(CunnyUpscalerProvider.VULKAN_SUFFIX)
+            for (file in files) assertEquals("$profile -> $file", vulkan, file.endsWith("-Q.glsl"))
+        }
     }
 
     @Test
@@ -116,6 +127,39 @@ class CunnyBundleTest {
     }
 
     @Test
+    fun `on vulkan every profile resolves to the unmodified dp4a shader`() {
+        manager()
+        val provider = CunnyUpscalerProvider({ File(filesDir, "upscaler/$it") }, useVulkan = { true })
+        val expected = mapOf(
+            "fast" to "CuNNy-veryfast-SOFT-Q.glsl",
+            "balanced" to "CuNNy-faster-SOFT-Q.glsl",
+            "quality" to "CuNNy-fast-SOFT-Q.glsl",
+        ) + listOf("2x12", "3x12", "4x12", "4x16", "4x24").flatMap { model ->
+            listOf(model to "CuNNy-$model-SOFT-Q.glsl", "$model-ds" to "CuNNy-$model-DS-Q.glsl")
+        }
+        assertEquals(expected.keys.toList(), provider.profiles().map { it.id })
+        for ((profile, file) in expected) {
+            val installed = File(filesDir, "upscaler/cunny/$file")
+            assertEquals(installed.absolutePath, provider.resolveShaderChain(profile))
+            assertEquals(
+                File(assetRoot, "upscaler_bundles/cunny/$file").readText(),
+                installed.readText()
+            )
+        }
+        assertFalse(File(filesDir, "upscaler/cunny-gles-compat").exists())
+        assertNull(provider.resolveShaderChain("unknown"))
+    }
+
+    @Test
+    fun `larger models are not offered or resolved without vulkan`() {
+        val provider = manager().providerFor(CunnyUpscalerProvider.ID)!!
+        assertEquals(listOf("fast", "balanced", "quality"), provider.profiles().map { it.id })
+        // A saved Vulkan-only choice fails closed on GLES (no shaders), it never falls back.
+        assertNull(provider.resolveShaderChain("4x16"))
+        assertNull(provider.resolveShaderChain("4x16-ds"))
+    }
+
+    @Test
     fun `resolver applies the chain only for a cunny selection`() {
         val provider = manager().providerFor(CunnyUpscalerProvider.ID)
         val on = VideoPipelineResolver.resolve(
@@ -133,7 +177,7 @@ class CunnyBundleTest {
     fun `tampered installed shader makes the provider unavailable`() {
         manager()
         File(filesDir, "upscaler/cunny/CuNNy-fast-SOFT.glsl").writeText("broken")
-        val provider = CunnyUpscalerProvider { File(filesDir, "upscaler/$it") }
+        val provider = CunnyUpscalerProvider(bundleDirLookup = { File(filesDir, "upscaler/$it") })
         assertFalse(provider.isAvailable())
         assertNull(provider.resolveShaderChain("quality"))
         // A fresh manager repairs the install from assets (same revision, invalid install).
