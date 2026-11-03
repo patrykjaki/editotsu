@@ -49,6 +49,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -223,9 +224,11 @@ class NovelDownloaderService : Service() {
                             try {
                                 download(task)
                             } finally {
-                                mutex.withLock {
-                                    NovelServiceDataSingleton.currentTasks.remove(task)
-                                    NovelServiceDataSingleton.progress.remove(taskKey)
+                                withContext(NonCancellable) {
+                                    mutex.withLock {
+                                        NovelServiceDataSingleton.currentTasks.remove(task)
+                                        NovelServiceDataSingleton.progress.remove(taskKey)
+                                    }
                                 }
                             }
                         }
@@ -235,9 +238,14 @@ class NovelDownloaderService : Service() {
                         // permit entry (a waiter never runs the inner
                         // finally). Identity-safe: never removes a fresher
                         // replacement recorded under the same key.
-                        mutex.withLock {
-                            if (self != null && downloadJobs[taskKey] === self) {
-                                downloadJobs.remove(taskKey)
+                        // The purge cancels this job while holding the mutex; a
+                        // cancellable lock here would throw at once and skip the
+                        // retirement, so the purge would wait for it and time out.
+                        withContext(NonCancellable) {
+                            mutex.withLock {
+                                if (self != null && downloadJobs[taskKey] === self) {
+                                    downloadJobs.remove(taskKey)
+                                }
                             }
                         }
                         updateNotification()

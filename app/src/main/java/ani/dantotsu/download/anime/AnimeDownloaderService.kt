@@ -61,6 +61,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -291,9 +292,14 @@ class AnimeDownloaderService : Service() {
                         // permit entry (a waiter never runs the inner
                         // finally). Identity-safe: never removes a fresher
                         // replacement recorded under the same key.
-                        mutex.withLock {
-                            if (self != null && downloadJobs[task.getTaskName()] === self) {
-                                downloadJobs.remove(task.getTaskName())
+                        // The purge cancels this job while holding the mutex; a
+                        // cancellable lock here would throw at once and skip the
+                        // retirement, so the purge would wait for it and time out.
+                        withContext(NonCancellable) {
+                            mutex.withLock {
+                                if (self != null && downloadJobs[task.getTaskName()] === self) {
+                                    downloadJobs.remove(task.getTaskName())
+                                }
                             }
                         }
                         updateNotification()
