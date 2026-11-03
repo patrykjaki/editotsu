@@ -109,8 +109,10 @@ class ExtensionsActivity : AppCompatActivity() {
                 searchView.clearFocus()
                 viewPager.setCurrentItem(page, false)
             }
+            binding.searchView.hint = getString(searchHint(type))
         }
         viewPager.setCurrentItem(startPage, false)
+        binding.searchView.hint = getString(searchHint(ExtensionPages.typeOf(startPage)))
         binding.extensionsTypeToggle.addOnButtonCheckedListener { _, _, isChecked ->
             if (isChecked) selectPage()
         }
@@ -193,15 +195,14 @@ class ExtensionsActivity : AppCompatActivity() {
         }
     }
 
-    private fun openRepositories(type: MediaType) {
-        val repos: Set<String> = when (type) {
-            MediaType.ANIME -> PrefManager.getVal(PrefName.AnimeExtensionRepos)
-            MediaType.MANGA -> PrefManager.getVal(PrefName.MangaExtensionRepos)
-            MediaType.NOVEL -> PrefManager.getVal(PrefName.NovelExtensionRepos)
-        }
+    fun showAvailable() {
+        binding.extensionsStatusChips.check(R.id.extensionsChipAvailable)
+    }
+
+    fun openRepositories(type: MediaType) {
         AddRepositoryBottomSheet.newInstance(
             type,
-            repos.toList(),
+            ExtensionEmptyState.repositories(type).toList(),
             AddRepositoryBottomSheet::addRepo,
             AddRepositoryBottomSheet::removeRepo
         ).show(supportFragmentManager, "add_repo")
@@ -219,6 +220,12 @@ class ExtensionsActivity : AppCompatActivity() {
         binding.searchView.isVisible = !show
         binding.fragmentExtensionsContainer.isGone = !show
         binding.extensions.text = if (show && title != null) title else getString(R.string.extensions)
+    }
+
+    private fun searchHint(type: MediaType): Int = when (type) {
+        MediaType.ANIME -> R.string.extensions_search_anime
+        MediaType.MANGA -> R.string.extensions_search_manga
+        MediaType.NOVEL -> R.string.extensions_search_novel
     }
 
     private companion object {
