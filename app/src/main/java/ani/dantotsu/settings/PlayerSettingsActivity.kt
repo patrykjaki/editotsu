@@ -87,6 +87,9 @@ class PlayerSettingsActivity :
             onBackPressedDispatcher.onBackPressed()
         }
 
+        binding.playerAnimeRows.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        binding.playerAnimeRows.adapter = SettingsAdapter(ArrayList(MediaSettingsRows.anime(this)))
+
         // Video
 
         val speeds =
@@ -193,24 +196,7 @@ class PlayerSettingsActivity :
             PrefManager.setVal(PrefName.AutoSkipFiller, isChecked)
         }
 
-        // Update Progress
-        binding.playerSettingsAskUpdateProgress.isChecked =
-            PrefManager.getVal(PrefName.AskIndividualPlayer)
-        binding.playerSettingsAskUpdateProgress.setOnCheckedChangeListener { _, isChecked ->
-            PrefManager.setVal(PrefName.AskIndividualPlayer, isChecked)
-            binding.playerSettingsAskChapterZero.isEnabled = !isChecked
-        }
-        binding.playerSettingsAskChapterZero.isChecked =
-            PrefManager.getVal(PrefName.ChapterZeroPlayer)
-        binding.playerSettingsAskChapterZero.setOnCheckedChangeListener { _, isChecked ->
-            PrefManager.setVal(PrefName.ChapterZeroPlayer, isChecked)
-        }
-        binding.playerSettingsAskUpdateHentai.isChecked =
-            PrefManager.getVal(PrefName.UpdateForHPlayer)
-        binding.playerSettingsAskUpdateHentai.setOnCheckedChangeListener { _, isChecked ->
-            PrefManager.setVal(PrefName.UpdateForHPlayer, isChecked)
-            if (isChecked) snackString(getString(R.string.very_bold))
-        }
+        // Watch-complete percentage (the ask-to-update switches are in Settings > Tracking)
         binding.playerSettingsCompletePercentage.value =
             (PrefManager.getVal<Float>(PrefName.WatchPercentage) * 100).roundToInt().toFloat()
         binding.playerSettingsCompletePercentage.addOnChangeListener { _, value, _ ->
