@@ -47,6 +47,27 @@ data class PickerRow(
 
 data class QualityVariant(val ref: RowRef, val label: String, val resolution: Int?, val transport: String?)
 
+/** What a stream card shows: the quality it plays, and the other links for its "Also" row. */
+object StreamCardQualities {
+    /** The variant a tap on the card plays: [defaultRef] when it is one of the card's, else the first. */
+    fun main(entry: PickerEntry.StreamGroup, defaultRef: RowRef?): QualityVariant? =
+        (entry.primary + entry.alternates).firstOrNull { it.ref == defaultRef } ?: entry.primary.firstOrNull()
+
+    /**
+     * Every other link, highest quality first: "720p", "480p"; a label shared by two
+     * links gets its transport ("1080p · MP4").
+     */
+    fun others(entry: PickerEntry.StreamGroup, main: QualityVariant?): List<Pair<QualityVariant, String>> {
+        val all = entry.primary + entry.alternates
+        val shared = all.groupingBy { it.label }.eachCount().filterValues { it > 1 }.keys
+        return all.filter { it !== main }
+            .sortedByDescending { it.resolution ?: -1 }
+            .map { v ->
+                v to if (v.label in shared && !v.transport.isNullOrBlank()) "${v.label} · ${v.transport}" else v.label
+            }
+    }
+}
+
 sealed class PickerEntry {
     abstract val audioKind: AudioKind?
     abstract val refs: List<RowRef>
