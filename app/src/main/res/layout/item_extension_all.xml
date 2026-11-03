@@ -6,15 +6,15 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:paddingTop="10dp"
-    android:paddingBottom="10dp">
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
 
     <ImageView
         android:id="@+id/extensionIconImageView"
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:layout_gravity="center_vertical"
-        android:layout_marginEnd="3dp"
+        android:layout_marginEnd="12dp"
         tools:ignore="ContentDescription" />
 
     <LinearLayout
@@ -36,17 +36,18 @@
             android:id="@+id/extensionVersionTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/poppins_semi_bold"
-            android:alpha="0.7"
+            android:fontFamily="@font/poppins"
             android:text="@string/extension_version"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="12sp" />
     </LinearLayout>
 
     <ImageView
         android:id="@+id/closeTextView"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:padding="10dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="8dp"
+        android:padding="12dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/extensions_row_install"
         android:layout_gravity="center_vertical"

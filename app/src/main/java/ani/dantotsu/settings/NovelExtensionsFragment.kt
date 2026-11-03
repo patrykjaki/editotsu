@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.paging.CombinedLoadStates
 import androidx.recyclerview.widget.LinearLayoutManager
 import ani.dantotsu.R
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
@@ -34,6 +35,16 @@ class NovelExtensionsFragment : Fragment(),
     SearchQueryHandler, OnNovelInstallClickListener {
     private var _binding: FragmentNovelExtensionsBinding? = null
     private val binding get() = _binding!!
+
+    private var searchQuery = ""
+    private val loadStateListener: (CombinedLoadStates) -> Unit = { states ->
+        _binding?.let {
+            ExtensionEmptyState.onLoadStates(
+                ExtensionEmptyState.Views(it.extensionsEmpty, it.extensionsEmptyText, it.extensionsEmptyAction),
+                states, adapter.itemCount, MediaType.NOVEL, searchQuery
+            )
+        }
+    }
 
     private val viewModel: NovelExtensionsViewModel by viewModels {
         NovelExtensionsViewModelFactory(novelExtensionManager)
@@ -70,10 +81,12 @@ class NovelExtensionsFragment : Fragment(),
 
         viewModel.invalidatePager() // Force a refresh of the pager
         ExtensionRefresh.bind(binding.extensionsSwipeRefresh, viewLifecycleOwner, MediaType.NOVEL)
+        adapter.addLoadStateListener(loadStateListener)
         return binding.root
     }
 
     override fun updateContentBasedOnQuery(query: String?) {
+        searchQuery = query?.trim().orEmpty()
         viewModel.setSearchQuery(query ?: "")
     }
 
@@ -152,6 +165,7 @@ class NovelExtensionsFragment : Fragment(),
     }
 
     override fun onDestroyView() {
+        adapter.removeLoadStateListener(loadStateListener)
         super.onDestroyView();_binding = null
     }
 

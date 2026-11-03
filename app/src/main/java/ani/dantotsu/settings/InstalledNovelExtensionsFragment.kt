@@ -50,6 +50,7 @@ import java.util.Locale
 
 class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
     private var _binding: FragmentNovelExtensionsBinding? = null
+    private var searchQuery = ""
     private val binding get() = _binding!!
     private lateinit var extensionsRecyclerView: RecyclerView
     private val skipIcons: Boolean = PrefManager.getVal(PrefName.SkipExtensionIcons)
@@ -245,6 +246,11 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
             novelExtensionManager.findAvailableExtensions()
         }
         ExtensionRefresh.bind(binding.extensionsSwipeRefresh, viewLifecycleOwner, MediaType.NOVEL)
+        extensionsAdapter.onListChanged = { count ->
+            _binding?.let {
+                ExtensionEmptyState.onInstalledList(emptyViews(it), count, MediaType.NOVEL, searchQuery)
+            }
+        }
         return binding.root
     }
 
@@ -275,10 +281,16 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
 
 
     override fun onDestroyView() {
+        extensionsAdapter.onListChanged = null
         super.onDestroyView();_binding = null
     }
 
+    private fun emptyViews(b: FragmentNovelExtensionsBinding) = ExtensionEmptyState.Views(
+        b.extensionsEmpty, b.extensionsEmptyText, b.extensionsEmptyAction
+    )
+
     override fun updateContentBasedOnQuery(query: String?) {
+        searchQuery = query?.trim().orEmpty()
         lifecycleScope.launch {
             val allInstalled = novelExtensionManager.allInstalledExtensionsFlow.first()
             extensionsAdapter.filter(
@@ -299,6 +311,15 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
     ) : ListAdapter<NovelExtension, NovelExtensionsAdapter.ViewHolder>(
         DIFF_CALLBACK_INSTALLED
     ) {
+
+        var onListChanged: ((Int) -> Unit)? = null
+
+        override fun onCurrentListChanged(
+            previousList: MutableList<NovelExtension>,
+            currentList: MutableList<NovelExtension>
+        ) {
+            onListChanged?.invoke(currentList.size)
+        }
 
         fun updateData(newExtensions: List<NovelExtension>) {
             submitList(newExtensions)
@@ -327,8 +348,7 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
                     val lang = LanguageMapper.getLanguageName(extension.lang)
                     // Upstream 4b8d09be: origin-repo badge.
                     val repo = extension.repoName ?: extension.repository?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) } ?: ani.dantotsu.parsers.ExtensionRepoMetaHelper.getInstalledRepo(extension.pkgName)?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) }
-                    val repoBadge = if (!repo.isNullOrBlank()) "@$repo" else ""
-                    holder.extensionVersionTextView.text = listOf(lang, extension.versionName, repoBadge).filter { it.isNotBlank() }.joinToString(" ")
+                    holder.extensionVersionTextView.text = ExtensionRowText.versionLine(lang, extension.versionName, false, repo)
                     if (!skipIcons) {
                         holder.extensionIconImageView.setImageDrawable(extension.icon)
                     }
@@ -338,8 +358,7 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
                     val lang = LanguageMapper.getLanguageName(extension.plugin.lang)
                     // Upstream 4b8d09be: JS plugins resolve via installed map only.
                     val repo = ani.dantotsu.parsers.ExtensionRepoMetaHelper.getInstalledRepo(extension.pkgName)?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) }
-                    val repoBadge = if (!repo.isNullOrBlank()) "@$repo" else ""
-                    holder.extensionVersionTextView.text = listOf(lang, extension.versionName, repoBadge).filter { it.isNotBlank() }.joinToString(" ")
+                    holder.extensionVersionTextView.text = ExtensionRowText.versionLine(lang, extension.versionName, false, repo)
                     if (!skipIcons) {
                         Glide.with(holder.itemView.context)
                             .load(extension.iconUrl)
