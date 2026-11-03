@@ -290,9 +290,13 @@ android {
             applicationIdSuffix = ".beta"
             if (testBuildId.isNotEmpty()) versionNameSuffix = "+$testBuildId"
             buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$testBuildId\"")
-            resValue("string", "app_build_label", "Editotsu β")
-            manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_beta"
-            manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_beta_round"
+            // Alpha versions (x.y.z-alphaNN) ship through this build type too: same
+            // package, so they update betas in place, but with the alpha name and icon.
+            val alphaVersion = editotsuVersion.contains("-alpha")
+            resValue("string", "app_build_label", if (alphaVersion) "Editotsu α" else "Editotsu β")
+            val channelIcon = if (alphaVersion) "ic_launcher_alpha" else "ic_launcher_beta"
+            manifestPlaceholders["icon_placeholder"] = "@mipmap/$channelIcon"
+            manifestPlaceholders["icon_placeholder_round"] = "@mipmap/${channelIcon}_round"
             isDebuggable = false
             isJniDebuggable = false
             isMinifyEnabled = true

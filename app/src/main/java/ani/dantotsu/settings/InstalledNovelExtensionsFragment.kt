@@ -251,6 +251,8 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
                 ExtensionEmptyState.onInstalledList(emptyViews(it), count, MediaType.NOVEL, searchQuery)
             }
         }
+        // The installed list can load before this hook is set; show its state now too.
+        extensionsAdapter.onListChanged?.invoke(extensionsAdapter.currentList.size)
         return binding.root
     }
 

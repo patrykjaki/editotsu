@@ -11,43 +11,65 @@ class SettingsSectionsTest {
         Settings(type = SettingsRowType.CLICK, name = name, desc = "", icon = 0, isVisible = visible)
 
     @Test
-    fun headerRowsThenAdvancedToggleThenAdvancedRows() {
+    fun advancedRowsStayInTheirSectionWithOneToggleAtTheEnd() {
         val out = SettingsSections.flatten(
-            listOf(SettingsSection("Extensions", listOf(row("a"), row("b")), listOf(row("x")))),
-            advancedLabel = "Advanced",
+            listOf(
+                SettingsSection("Storage", listOf(row("a")), listOf(row("x"))),
+                SettingsSection("Downloads", listOf(row("b")), listOf(row("y"))),
+            ),
+            advancedLabel = "Show advanced settings",
         )
         assertEquals(
-            listOf(SettingsRowType.HEADER, 1, 1, SettingsRowType.ADVANCED, 1),
-            out.map { it.type },
+            listOf("Storage", "a", "x", "Downloads", "b", "y", "Show advanced settings"),
+            out.map { it.name },
         )
-        assertEquals("Extensions", out[0].name)
-        val toggle = out[3]
+        assertEquals(1, out.count { it.type == SettingsRowType.ADVANCED })
+        val toggle = out.last()
         assertFalse(toggle.isChecked)
-        assertFalse(out[4].isVisible)
-        assertEquals(listOf(out[4]), toggle.advancedRows)
+        assertFalse(out.first { it.name == "x" }.isVisible)
+        assertFalse(out.first { it.name == "y" }.isVisible)
+        assertEquals(listOf("x", "y"), toggle.advancedRows.map { it.name })
     }
 
     @Test
     fun emptySectionIsSkippedAndNoToggleWithoutAdvancedRows() {
         val out = SettingsSections.flatten(
             listOf(SettingsSection("Empty", emptyList()), SettingsSection("Search", listOf(row("s")))),
-            advancedLabel = "Advanced",
+            advancedLabel = "Show advanced settings",
         )
         assertEquals(listOf("Search", "s"), out.map { it.name })
     }
 
     @Test
+    fun sectionWithOnlyAdvancedRowsHidesItsHeaderUntilExpanded() {
+        val out = SettingsSections.flatten(
+            listOf(
+                SettingsSection("Storage", listOf(row("a"))),
+                SettingsSection("Maintenance", emptyList(), listOf(row("purge"))),
+            ),
+            advancedLabel = "Show advanced settings",
+        )
+        val header = out.first { it.name == "Maintenance" }
+        assertFalse(header.isVisible)
+        assertTrue(out.last().advancedRows.contains(header))
+    }
+
+    @Test
     fun searchHighlightOnAnAdvancedRowStartsExpanded() {
         val out = SettingsSections.flatten(
-            listOf(SettingsSection("Torrents", listOf(row("enable")), listOf(row("Port"), row("Hidden", visible = false)))),
-            advancedLabel = "Advanced",
+            listOf(
+                SettingsSection("Sources", listOf(row("repos")), listOf(row("DNS"))),
+                SettingsSection("Torrents", listOf(row("enable")), listOf(row("Port"), row("Hidden", visible = false))),
+            ),
+            advancedLabel = "Show advanced settings",
             expandName = "port",
         )
         val toggle = out.first { it.type == SettingsRowType.ADVANCED }
         assertTrue(toggle.isChecked)
         assertTrue(out.first { it.name == "Port" }.isVisible)
+        assertTrue(out.first { it.name == "DNS" }.isVisible)
         // A row hidden for its own reason stays hidden, and keeps that condition for later.
         assertFalse(out.first { it.name == "Hidden" }.isVisible)
-        assertEquals(listOf(true, false), toggle.advancedVisibility)
+        assertEquals(listOf(true, true, false), toggle.advancedVisibility)
     }
 }

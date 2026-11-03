@@ -1603,7 +1603,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="notifications_off_for_app">Notifications are off for Editotsu</string>
     <string name="settings_section_backups">Backups</string>
     <string name="settings_section_privacy">Privacy</string>
-    <string name="settings_advanced">Advanced</string>
+    <string name="settings_advanced">Show advanced settings</string>
+    <string name="settings_advanced_hide">Hide advanced settings</string>
     <string name="extension_installer">Extension installer</string>
     <string name="expanded">Expanded</string>
     <string name="collapsed">Collapsed</string>

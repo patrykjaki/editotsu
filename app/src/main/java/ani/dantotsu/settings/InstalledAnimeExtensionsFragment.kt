@@ -230,6 +230,8 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
                 ExtensionEmptyState.onInstalledList(emptyViews(it), count, MediaType.ANIME, searchQuery)
             }
         }
+        // The installed list can load before this hook is set; show its state now too.
+        extensionsAdapter.onListChanged?.invoke(extensionsAdapter.currentList.size)
         return binding.root
     }
 
