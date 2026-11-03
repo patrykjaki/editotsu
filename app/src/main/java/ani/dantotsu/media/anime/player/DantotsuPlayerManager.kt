@@ -31,6 +31,9 @@ class DantotsuPlayerManager(
         private set
     var mediaSession: MediaSession? = null
         private set
+
+    /** Playlist the session exposes (theme mode); set before [initPlayer]. */
+    var mediaQueue: MediaQueue? = null
     var media3PlayerAdapter: PlaybackEngineMedia3Player? = null
         private set
     var becomingNoisyReceiver: BecomingNoisyReceiver? = null
@@ -186,7 +189,7 @@ class DantotsuPlayerManager(
         becomingNoisyReceiver?.register(activity)
 
         try {
-            val adapter = PlaybackEngineMedia3Player(engine, coord)
+            val adapter = PlaybackEngineMedia3Player(engine, coord, queue = mediaQueue)
             this.media3PlayerAdapter = adapter
             val rightNow = Calendar.getInstance()
             mediaSession = MediaSession.Builder(activity, adapter)
