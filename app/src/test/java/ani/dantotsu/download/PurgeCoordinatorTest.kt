@@ -432,13 +432,15 @@ class PurgeCoordinatorTest {
                             entered.add(key)
                             delay(Long.MAX_VALUE)
                         } finally {
-                            mutex.withLock { current.remove(key) }
+                            withContext(NonCancellable) { mutex.withLock { current.remove(key) } }
                         }
                     }
                 } finally {
-                    mutex.withLock {
-                        if (self != null && downloadJobs[key] === self) {
-                            downloadJobs.remove(key)
+                    withContext(NonCancellable) {
+                        mutex.withLock {
+                            if (self != null && downloadJobs[key] === self) {
+                                downloadJobs.remove(key)
+                            }
                         }
                     }
                     events.add("retire-$key")
@@ -512,12 +514,16 @@ class PurgeCoordinatorTest {
                     events.add("enter")
                     delay(Long.MAX_VALUE)
                 } finally {
-                    withContext(NonCancellable) { delay(300) }
-                    mutex.withLock { current.remove(key) }
+                    withContext(NonCancellable) {
+                        delay(300)
+                        mutex.withLock { current.remove(key) }
+                    }
                 }
             } finally {
-                mutex.withLock {
-                    if (self != null && records[key] === self) records.remove(key)
+                withContext(NonCancellable) {
+                    mutex.withLock {
+                        if (self != null && records[key] === self) records.remove(key)
+                    }
                 }
                 events.add("retire")
             }
