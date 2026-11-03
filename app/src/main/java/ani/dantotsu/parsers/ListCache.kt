@@ -9,7 +9,7 @@ import java.security.MessageDigest
 
 /**
  * Last episode/chapter list per source + title, so opening a title shows it at once while
- * the extension is asked again (roadmap A3, after upstream 9723f959). Only a display
+ * the extension is asked again (after upstream 9723f959). Only a display
  * cache: any read failure (class changed, file damaged) counts as "nothing cached".
  */
 class ListCache<T : Serializable>(private val dir: () -> File?) {

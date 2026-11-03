@@ -1578,7 +1578,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <!-- MAX MERGE M3: data and storage (upstream e954d9f1) -->
     <string name="label_data_storage">Data and Storage</string>
     <string name="label_data_storage_desc">Storage usage, cache cleaning, and automated backups</string>
-    <!-- Settings groups (roadmap D) -->
+    <!-- Settings groups -->
     <string name="settings_appearance">Appearance</string>
     <string name="settings_appearance_desc">Theme, colors, home layout, animations</string>
     <string name="settings_player">Player</string>

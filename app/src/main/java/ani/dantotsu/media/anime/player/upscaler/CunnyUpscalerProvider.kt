@@ -60,7 +60,7 @@ class CunnyUpscalerProvider(
         /**
          * Vulkan only, in quality order (CuNNy README: 4x24 > 4x16 > 4x12 > 3x12 > 2x12 > fast).
          * Plain ids are SOFT; `-ds` is the denoise-and-sharpen variant. Until the phone
-         * measurement (roadmap C3) picks the presets, every bundled model is listed.
+         * phone measurement picks the presets, every bundled model is listed.
          */
         val VULKAN_PROFILES = listOf("2x12", "3x12", "4x12", "4x16", "4x24").flatMap { model ->
             listOf(
