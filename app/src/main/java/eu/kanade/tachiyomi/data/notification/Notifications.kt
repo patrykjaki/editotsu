@@ -73,8 +73,10 @@ object Notifications {
      * Notification channel and ids used subscription checks.
      */
     const val GROUP_SUBSCRIPTION_CHECK = "group_subscription_check"
-    const val CHANNEL_SUBSCRIPTION_CHECK = "subscription_check_channel"
-    const val CHANNEL_SUBSCRIPTION_CHECK_PROGRESS = "subscription_check_progress_channel"
+    // New ids: channel importance cannot change after creation, and the old pair had
+    // new-episode alerts on LOW and the progress bar on DEFAULT.
+    const val CHANNEL_SUBSCRIPTION_CHECK = "subscription_new_channel"
+    const val CHANNEL_SUBSCRIPTION_CHECK_PROGRESS = "subscription_progress_channel"
     const val ID_SUBSCRIPTION_CHECK = -1001
     const val ID_SUBSCRIPTION_CHECK_PROGRESS = -1002
 
@@ -105,6 +107,8 @@ object Notifications {
         "library_skipped_channel",
         "library_errors_channel",
         "library_progress_channel",
+        "subscription_check_channel",
+        "subscription_check_progress_channel",
     )
 
     /**
@@ -175,12 +179,13 @@ object Notifications {
                     setName("Anilist")
                     setGroup(GROUP_ANILIST)
                 },
-                buildNotificationChannel(CHANNEL_SUBSCRIPTION_CHECK, IMPORTANCE_LOW) {
+                buildNotificationChannel(CHANNEL_SUBSCRIPTION_CHECK, IMPORTANCE_DEFAULT) {
                     setName("Subscription Checks")
                     setGroup(GROUP_SUBSCRIPTION_CHECK)
                 },
-                buildNotificationChannel(CHANNEL_SUBSCRIPTION_CHECK_PROGRESS, IMPORTANCE_DEFAULT) {
+                buildNotificationChannel(CHANNEL_SUBSCRIPTION_CHECK_PROGRESS, IMPORTANCE_LOW) {
                     setName("Subscription Checks Progress")
+                    setShowBadge(false)
                     setGroup(GROUP_SUBSCRIPTION_CHECK)
                 },
                 buildNotificationChannel(CHANNEL_APP_GLOBAL, IMPORTANCE_HIGH) {

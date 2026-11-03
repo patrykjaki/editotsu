@@ -173,54 +173,74 @@ class SettingsAccountActivity : AppCompatActivity() {
             }
             reload()
         }
-        val highlightKey = intent.getStringExtra(ani.dantotsu.settings.search.SettingsSearchAdapter.EXTRA_HIGHLIGHT_KEY)
-            binding.settingsRecyclerView.adapter = SettingsAdapter(
-                arrayListOf(
-                    Settings(
-                        type = 2,
-                        name = getString(R.string.discord_rich_presence),
-                        desc = getString(R.string.discord_rich_presence_desc),
-                        icon = R.drawable.interests_24,
-                        isChecked = PrefManager.getVal(PrefName.DiscordRichPresenceEnabled),
-                        switch = { isChecked, _ ->
-                            PrefManager.setVal(PrefName.DiscordRichPresenceEnabled, isChecked)
-                            // OFF -> clear presence + shutdown/unbind immediately (no restart needed).
-                            if (!isChecked) DiscordRpcPublisher.teardown()
-                        },
-                        // Visible without a Discord account login; tokenless transport needs no token.
-                        isVisible = true
-                    ),
-                Settings(
-                    type = 1,
-                    name = getString(R.string.anilist_settings),
-                    desc = getString(R.string.alsettings_desc),
-                    icon = R.drawable.ic_anilist,
-                    onClick = {
-                        lifecycleScope.launch {
-                            Anilist.query.getUserData()
-                            startActivity(Intent(context, AnilistSettingsActivity::class.java))
-                        }
-                    },
-                    isActivity = true
-                ),
-                Settings(
-                    type = 2,
-                    name = getString(R.string.comments_button),
-                    desc = getString(R.string.comments_button_desc),
-                    icon = R.drawable.ic_round_comment_24,
-                    isChecked = PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1,
-                    switch = { isChecked, _ ->
-                        PrefManager.setVal(PrefName.CommentsEnabled, if (isChecked) 1 else 2)
-                        reload()
-                    },
-                    isVisible = Anilist.token != null
-                ),
-            ),
-            highlightKey = highlightKey
-        )
         binding.settingsRecyclerView.layoutManager =
             LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
+        showRows(intent.getStringExtra(ani.dantotsu.settings.search.SettingsSearchAdapter.EXTRA_HIGHLIGHT_KEY))
+    }
 
+    /** Accounts, progress updates and notifications; rebuilt when a switch changes what is shown. */
+    private fun showRows(highlightKey: String? = null) {
+        val context = this
+        val accounts = listOf(
+            Settings(
+                type = 2,
+                name = getString(R.string.discord_rich_presence),
+                desc = getString(R.string.discord_rich_presence_desc),
+                icon = R.drawable.interests_24,
+                isChecked = PrefManager.getVal(PrefName.DiscordRichPresenceEnabled),
+                switch = { isChecked, _ ->
+                    PrefManager.setVal(PrefName.DiscordRichPresenceEnabled, isChecked)
+                    // OFF -> clear presence + shutdown/unbind immediately (no restart needed).
+                    if (!isChecked) DiscordRpcPublisher.teardown()
+                },
+                // Visible without a Discord account login; tokenless transport needs no token.
+                isVisible = true
+            ),
+            Settings(
+                type = 1,
+                name = getString(R.string.anilist_settings),
+                desc = getString(R.string.alsettings_desc),
+                icon = R.drawable.ic_anilist,
+                onClick = {
+                    lifecycleScope.launch {
+                        Anilist.query.getUserData()
+                        startActivity(Intent(context, AnilistSettingsActivity::class.java))
+                    }
+                },
+                isActivity = true
+            ),
+            Settings(
+                type = 2,
+                name = getString(R.string.comments_button),
+                desc = getString(R.string.comments_button_desc),
+                icon = R.drawable.ic_round_comment_24,
+                isChecked = PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1,
+                switch = { isChecked, _ ->
+                    PrefManager.setVal(PrefName.CommentsEnabled, if (isChecked) 1 else 2)
+                    reload()
+                },
+                isVisible = Anilist.token != null
+            )
+        )
+        val sections = listOf(
+            SettingsSection(getString(R.string.settings_section_accounts), accounts),
+            ProgressSettingsRows.section(this) { showRows() },
+            NotificationSettingsRows.section(this),
+        )
+        binding.settingsRecyclerView.adapter = SettingsAdapter(
+            SettingsSections.flatten(sections, getString(R.string.settings_advanced), highlightKey),
+            highlightKey = highlightKey
+        )
+    }
+
+    private var notificationsAllowed: Boolean? = null
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh the permission row after a trip to the system notification settings.
+        val allowed = ani.dantotsu.hasNotificationPermission(this)
+        if (notificationsAllowed != null && notificationsAllowed != allowed) showRows()
+        notificationsAllowed = allowed
     }
 
     fun reload() {
