@@ -16,6 +16,7 @@ import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.widget.ViewPager2
+import ani.dantotsu.media.MediaType
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.textfield.TextInputLayout
 import ani.dantotsu.settings.extensionprefs.NovelSourcePreferencesFragment
@@ -243,6 +244,7 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             novelExtensionManager.findAvailableExtensions()
         }
+        ExtensionRefresh.bind(binding.extensionsSwipeRefresh, viewLifecycleOwner, MediaType.NOVEL)
         return binding.root
     }
 

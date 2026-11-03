@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import ani.dantotsu.R
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.databinding.FragmentNovelExtensionsBinding
+import ani.dantotsu.media.MediaType
 import ani.dantotsu.parsers.novel.NovelExtension
 import ani.dantotsu.parsers.novel.NovelExtensionManager
 import ani.dantotsu.settings.paging.NovelExtensionAdapter
@@ -68,6 +69,7 @@ class NovelExtensionsFragment : Fragment(),
         }
 
         viewModel.invalidatePager() // Force a refresh of the pager
+        ExtensionRefresh.bind(binding.extensionsSwipeRefresh, viewLifecycleOwner, MediaType.NOVEL)
         return binding.root
     }
 

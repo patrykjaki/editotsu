@@ -11,6 +11,7 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import ani.dantotsu.databinding.FragmentExtensionsBinding
+import ani.dantotsu.media.MediaType
 import ani.dantotsu.settings.paging.AnimeExtensionAdapter
 import ani.dantotsu.settings.paging.AnimeExtensionsViewModel
 import ani.dantotsu.settings.paging.AnimeExtensionsViewModelFactory
@@ -59,6 +60,7 @@ class AnimeExtensionsFragment : Fragment(),
 
         viewModel.invalidatePager() // Force a refresh of the pager
 
+        ExtensionRefresh.bind(binding.extensionsSwipeRefresh, viewLifecycleOwner, MediaType.ANIME)
         return binding.root
     }
 

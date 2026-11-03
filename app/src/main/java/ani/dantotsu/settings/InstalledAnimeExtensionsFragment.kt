@@ -24,6 +24,7 @@ import androidx.viewpager2.widget.ViewPager2
 import ani.dantotsu.R
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.databinding.FragmentExtensionsBinding
+import ani.dantotsu.media.MediaType
 import ani.dantotsu.others.LanguageMapper.Companion.getLanguageName
 import ani.dantotsu.parsers.AnimeSources
 import ani.dantotsu.settings.extensionprefs.AnimeSourcePreferencesFragment
@@ -222,6 +223,7 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
                 )
             }
         }
+        ExtensionRefresh.bind(binding.extensionsSwipeRefresh, viewLifecycleOwner, MediaType.ANIME)
         return binding.root
     }
 
