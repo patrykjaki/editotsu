@@ -68,7 +68,7 @@ class UpscalerBundleManager internal constructor(
                     cacheDir = context.applicationContext.cacheDir,
                     assets = AndroidAssetReader(context.applicationContext)
                 ).also { manager ->
-                    manager.register(CunnyUpscalerProvider(manager::installedBundleDir))
+                    manager.register(CunnyUpscalerProvider(manager::installedBundleDir) { ani.dantotsu.media.anime.player.VulkanLibmpv.available })
                     instance = manager
                 }
             }
