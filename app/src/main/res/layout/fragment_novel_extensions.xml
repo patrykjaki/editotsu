@@ -18,10 +18,17 @@
         android:visibility="gone"
         app:icon="@drawable/ic_round_sync_24" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/allNovelExtensionsRecyclerView"
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/extensionsSwipeRefresh"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/allNovelExtensionsRecyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
 </LinearLayout>
