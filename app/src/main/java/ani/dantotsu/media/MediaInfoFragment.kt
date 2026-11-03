@@ -27,7 +27,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import ani.dantotsu.media.anime.ExoplayerView
 import ani.dantotsu.animethemes.AnimeThemes
-import ani.dantotsu.animethemes.AnimeThemesStripAdapter
+import ani.dantotsu.animethemes.AnimeThemesList
 import ani.dantotsu.animethemes.ThemeChoice
 import ani.dantotsu.animethemes.ThemeQueue
 import ani.dantotsu.animethemes.ThemeTrack
@@ -705,7 +705,7 @@ class MediaInfoFragment : Fragment() {
                             subtitles = ani.dantotsu.animethemes.SubtitlesPref.fromInt(PrefManager.getVal(PrefName.AnimeThemesPreferredSubtitles)),
                         )
                         val tracks = data?.let { ThemeQueue.choices(it, prefs) }.orEmpty()
-                        if (tracks.isEmpty()) showAniListText() else showThemeStrip(slot, media, tracks)
+                        if (tracks.isEmpty()) showAniListText() else showThemeList(slot, media, tracks)
                     }
                 }
 
@@ -1170,23 +1170,17 @@ class MediaInfoFragment : Fragment() {
         super.onDestroy()
     }
 
-    private fun showThemeStrip(slot: ViewGroup, media: Media, choices: List<ThemeChoice>) {
+    private fun showThemeList(slot: ViewGroup, media: Media, choices: List<ThemeChoice>) {
         val shieldOn: Boolean = PrefManager.getVal(PrefName.HideEpisodeSpoilers)
         val shielded = { t: ThemeTrack -> ThemeQueue.shielded(shieldOn, t.episodes, media.userProgress) }
-        ItemTitleRecyclerBinding.inflate(layoutInflater, slot, false).apply {
-            itemTitle.setText(R.string.anime_themes_title)
-            itemRecycler.layoutManager =
-                LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-            itemRecycler.adapter = AnimeThemesStripAdapter(choices, shielded, childFragmentManager) { tapped, shown ->
-                val queue = ThemeQueue.playQueue(shown, tapped, shielded)
-                ExoplayerView.openThemes(
-                    requireContext(),
-                    queue,
-                    queue.indexOfFirst { it.themeId == tapped.themeId }.coerceAtLeast(0),
-                    media.userPreferredName,
-                )
-            }
-            slot.addView(root)
-        }
+        slot.addView(AnimeThemesList.inflate(slot, choices, shielded) { tapped, shown ->
+            val queue = ThemeQueue.playQueue(shown, tapped, shielded)
+            ExoplayerView.openThemes(
+                requireContext(),
+                queue,
+                queue.indexOfFirst { it.themeId == tapped.themeId }.coerceAtLeast(0),
+                media.userPreferredName,
+            )
+        })
     }
 }
