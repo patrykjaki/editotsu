@@ -44,7 +44,13 @@ import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.TimeBar
 import ani.dantotsu.Mapper
 import ani.dantotsu.defaultHeaders
+import ani.dantotsu.animethemes.ThemeDownloads
+import ani.dantotsu.animethemes.ThemeFavourites
+import ani.dantotsu.animethemes.ThemeFileKind
 import ani.dantotsu.animethemes.ThemeQueue
+import ani.dantotsu.animethemes.ThemeRadioSession
+import ani.dantotsu.animethemes.ThemeReach
+import ani.dantotsu.animethemes.ThemeReachResult
 import ani.dantotsu.animethemes.ThemeTrack
 import ani.dantotsu.media.anime.player.PlaybackRequest
 import ani.dantotsu.media.anime.player.PlaybackSourceClass
@@ -114,6 +120,8 @@ import com.bumptech.glide.Glide
 import com.google.android.material.slider.Slider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -230,11 +238,25 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private var themeMode = false
     private var themeTracks: List<ThemeTrack> = emptyList()
     private var themeIndex = 0
-    private var themeFailures = 0
     private var themeLastPositionMs = 0L
     private var themeAnime = ""
-    private val themeHandler = Handler(Looper.getMainLooper())
-    private var themeRetry: Runnable? = null
+    /** Every attempt for the current theme (saved copy, audio, video, other videos). */
+    private var themePlan: List<ThemeQueue.Attempt> = emptyList()
+    private var themeAttempt = 0
+    private var themeJob: Job? = null
+    /** Shuffle from completed shows: the queue grows from [ThemeRadioSession]. */
+    private var themeRadio = false
+    private var themeRadioJob: Job? = null
+    private lateinit var themeFailedPanel: View
+    private lateinit var themeCenter: View
+    private lateinit var themeFavourite: ImageButton
+    private lateinit var themeAudio: ImageButton
+    private lateinit var themeAdapter: NoPaddingArrayAdapter<String>
+
+    // Episodes: "now playing" chip for the opening/ending on screen (inside the controls).
+    private var nowPlayingChoices: List<ani.dantotsu.animethemes.ThemeChoice> = emptyList()
+    private var nowPlayingTrack: ThemeTrack? = null
+    private var nowPlayingView: TextView? = null
     private var isPlayerPlaying = true
     // Discontinuity-based throttle: publishes only on seeks, scrub stops, and play/pause —
     // NOT during ordinary linear playback. Replaces the previous 2-second periodic approach
@@ -306,9 +328,13 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         private const val EXTRA_THEMES = "themes"
         private const val EXTRA_THEME_START = "themeStart"
         private const val EXTRA_THEME_ANIME = "themeAnime"
+        private const val EXTRA_THEME_RADIO = "themeRadio"
 
-        /** Plays AnimeThemes openings/endings in this player, starting at [start]. */
-        fun openThemes(context: Context, tracks: List<ThemeTrack>, start: Int, animeTitle: String) {
+        /**
+         * Plays AnimeThemes openings/endings in this player, starting at [start]. With
+         * [radio] the queue keeps growing from [ThemeRadioSession] when it runs out.
+         */
+        fun openThemes(context: Context, tracks: List<ThemeTrack>, start: Int, animeTitle: String, radio: Boolean = false) {
             if (tracks.isEmpty()) return
             context.startActivity(
                 Intent(context, ExoplayerView::class.java)
@@ -316,6 +342,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     .putExtra(EXTRA_THEMES, Mapper.json.encodeToString(ListSerializer(ThemeTrack.serializer()), tracks))
                     .putExtra(EXTRA_THEME_START, start)
                     .putExtra(EXTRA_THEME_ANIME, animeTitle)
+                    .putExtra(EXTRA_THEME_RADIO, radio)
             )
         }
     }
@@ -664,6 +691,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         // Handle Media
         if (!initialized) return startMainActivity(this)
         model.setMedia(media)
+        setupNowPlaying()
         title = media.userPreferredName
         val eps = media.anime?.episodes
         if (eps.isNullOrEmpty()) {
@@ -1310,6 +1338,54 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (this::episode.isInitialized && isPlayerPlaying && discordThrottle.onPlaybackPositionChanged(positionMs, currentSpeed)) {
             discordManager.updatePresence(media, episode, positionMs, durationMs, true)
         }
+        if (!themeMode) updateNowPlaying(positionMs)
+    }
+
+    /** Looks up the show's themes (cache first) for the now-playing chip; no lookup offline. */
+    private fun setupNowPlaying() {
+        val view = playerView.findViewById<TextView>(R.id.exo_now_playing)
+        nowPlayingView = view
+        view.setOnClickListener {
+            val track = nowPlayingTrack ?: return@setOnClickListener
+            val fav = ThemeFavourites.toggle(media.id, media.userPreferredName, track)
+            if (fav) toast(getString(R.string.theme_favourite_added))
+            bindNowPlaying(track)
+        }
+        if (media.anime == null || PrefManager.getVal<Boolean>(PrefName.OfflineMode)) return
+        lifecycleScope.launch {
+            val result = runCatching {
+                ani.dantotsu.animethemes.AnimeThemes.repository.lookup(media.id, media.idMAL)
+            }.getOrNull()
+            val data = (result as? ani.dantotsu.animethemes.ThemesLookup.Found)?.data ?: return@launch
+            nowPlayingChoices = ThemeQueue.choices(data, ani.dantotsu.animethemes.MediaThemesFragment.themePrefs())
+                .map { ThemeQueue.withShow(it, media.id, media.userPreferredName) }
+        }
+    }
+
+    private fun updateNowPlaying(positionMs: Long) {
+        val view = nowPlayingView ?: return
+        val ending = ani.dantotsu.animethemes.NowPlaying.kindAt(model.timeStamps.value, positionMs / 1000.0)
+        val epNum = ani.dantotsu.animethemes.NowPlaying.episodeNumber(
+            if (this::episode.isInitialized) episode.number else media.anime?.selectedEpisode
+        )
+        val track = if (ending == null || epNum == null || nowPlayingChoices.isEmpty()) null
+        else ThemeQueue.nowPlaying(nowPlayingChoices, ending, epNum)
+        if (track?.themeId != nowPlayingTrack?.themeId || (track == null) != (view.visibility != View.VISIBLE)) {
+            nowPlayingTrack = track
+            if (track == null) view.visibility = View.GONE else bindNowPlaying(track)
+        }
+    }
+
+    private fun bindNowPlaying(track: ThemeTrack) {
+        val view = nowPlayingView ?: return
+        val fav = ThemeFavourites.isFavourite(track.themeId)
+        view.text = ani.dantotsu.animethemes.NowPlaying.label(track)
+        view.setCompoundDrawablesRelativeWithIntrinsicBounds(
+            if (fav) R.drawable.ic_round_favorite_24 else R.drawable.ic_round_audiotrack_24, 0, 0, 0,
+        )
+        view.contentDescription = view.text.toString() + ", " +
+            getString(if (fav) R.string.theme_favourite_remove else R.string.theme_favourite_add)
+        view.visibility = View.VISIBLE
     }
 
     override fun onTracksChanged(tracks: List<PlayerTrack>) {
@@ -1989,7 +2065,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 stoppedExtractor?.onVideoStopped(stoppedVideo)
             } catch (_: Exception) {}
         }
-        themeRetry?.let { themeHandler.removeCallbacks(it) }
+        themeJob?.cancel()
+        themeRadioJob?.cancel()
         if (themeMode) {
             AnimePlayerService.stop(this)
             if (this::playerManager.isInitialized && playerManager.isInitialized) playerManager.releasePlayer()
@@ -2017,6 +2094,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             finish()
             return
         }
+        themeRadio = intent.getBooleanExtra(EXTRA_THEME_RADIO, false)
         themeAnime = intent.getStringExtra(EXTRA_THEME_ANIME).orEmpty()
         title = themeAnime
         animeTitle.text = themeAnime
@@ -2027,9 +2105,30 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             exoSkipOpEd, customCastButton, skipTimeButton, exoSkip
         ).forEach { it.visibility = View.GONE }
 
-        episodeTitle.adapter = NoPaddingArrayAdapter(
-            this, R.layout.item_dropdown, ArrayList(themeTracks.map { ThemeQueue.label(it) })
-        )
+        themeFailedPanel = playerView.findViewById(R.id.exo_theme_failed)
+        themeCenter = playerView.findViewById(R.id.exo_center_cont)
+        playerView.findViewById<View>(R.id.exo_theme_retry).setOnClickListener { playTheme(themeIndex) }
+        playerView.findViewById<View>(R.id.exo_theme_skip).setOnClickListener { playTheme(themeIndex + 1) }
+
+        themeFavourite = playerView.findViewById(R.id.exo_theme_favourite)
+        themeFavourite.visibility = View.VISIBLE
+        themeFavourite.setOnClickListener {
+            val track = themeTracks.getOrNull(themeIndex) ?: return@setOnClickListener
+            ThemeFavourites.toggle(track.mediaId, track.showTitle.ifBlank { themeAnime }, track)
+            bindThemeButtons()
+        }
+        themeAudio = playerView.findViewById(R.id.exo_theme_audio)
+        themeAudio.visibility = View.VISIBLE
+        themeAudio.setOnClickListener {
+            val on = !PrefManager.getVal<Boolean>(PrefName.AnimeThemesAudioOnly)
+            PrefManager.setVal(PrefName.AnimeThemesAudioOnly, on)
+            bindThemeButtons()
+            // Same theme from where it is, as audio or video.
+            playTheme(themeIndex, startMs = themeLastPositionMs)
+        }
+
+        themeAdapter = NoPaddingArrayAdapter(this, R.layout.item_dropdown, ArrayList(themeTracks.map { ThemeQueue.label(it) }))
+        episodeTitle.adapter = themeAdapter
         episodeTitle.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, position: Int, p3: Long) {
                 if (position != themeIndex) playTheme(position)
@@ -2048,7 +2147,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
         // The session lists the themes, so the notification and lock screen get previous/next.
         playerManager.mediaQueue = object : ani.dantotsu.media.anime.player.MediaQueue {
-            override val titles = themeTracks.map { ThemeQueue.label(it) }
+            override val titles get() = themeTracks.map { ThemeQueue.label(it) }
             override val currentIndex get() = themeIndex
             override fun skipTo(index: Int) = playTheme(index)
         }
@@ -2074,33 +2173,104 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         AnimePlayerService.start(this, session)
     }
 
-    /** Starts theme [index]; [url] and [startMs] are set when retrying the same theme. */
-    private fun playTheme(index: Int, url: String? = null, startMs: Long = 0L) {
-        if (index !in themeTracks.indices) return
-        themeRetry?.let { themeHandler.removeCallbacks(it) }
-        themeRetry = null
-        if (url == null) {
-            themeFailures = 0
-            themeLastPositionMs = 0L
+    private fun bindThemeButtons() {
+        val track = themeTracks.getOrNull(themeIndex) ?: return
+        val fav = ThemeFavourites.isFavourite(track.themeId)
+        themeFavourite.setImageResource(if (fav) R.drawable.ic_round_favorite_24 else R.drawable.ic_round_favorite_border_24)
+        getString(if (fav) R.string.theme_favourite_remove else R.string.theme_favourite_add).let {
+            themeFavourite.contentDescription = it
+            themeFavourite.tooltipText = it
         }
+        val audioOnly = PrefManager.getVal<Boolean>(PrefName.AnimeThemesAudioOnly)
+        themeAudio.alpha = if (audioOnly) 1f else 0.5f
+        getString(if (audioOnly) R.string.theme_audio_only_on else R.string.theme_audio_only_off).let {
+            themeAudio.contentDescription = it
+            themeAudio.tooltipText = it
+        }
+    }
+
+    private fun showThemeFailed(show: Boolean) {
+        themeFailedPanel.visibility = if (show) View.VISIBLE else View.GONE
+        themeCenter.visibility = if (show) View.INVISIBLE else View.VISIBLE
+        if (show) playerView.showController()
+    }
+
+    /**
+     * Starts theme [index] at its first attempt, or at [attempt] when retrying it.
+     * Network attempts are checked with a one-byte request first, so a dead or
+     * rate-limiting CDN shows up in seconds instead of after mpv's 20 s timeout.
+     */
+    private fun playTheme(index: Int, attempt: Int = 0, startMs: Long = 0L) {
+        if (index == themeTracks.size && themeRadio) return radioNext(play = true)
+        if (index !in themeTracks.indices) return
+        themeJob?.cancel()
+        showThemeFailed(false)
+        val newTheme = attempt == 0 && (index != themeIndex || themePlan.isEmpty() || startMs == 0L)
         themeIndex = index
+        themeAttempt = attempt
+        if (attempt == 0) themeLastPositionMs = startMs
         val track = themeTracks[index]
+        if (episodeTitle.selectedItemPosition != index) episodeTitle.setSelection(index)
+        animeTitle.text = track.showTitle.ifBlank { themeAnime }
+        bindThemeButtons()
+        if (themeRadio && index >= themeTracks.lastIndex) radioNext(play = false)
+        themeJob = lifecycleScope.launch {
+            if (attempt == 0) {
+                val audioOnly = PrefManager.getVal<Boolean>(PrefName.AnimeThemesAudioOnly)
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching {
+                        ThemeDownloads(this@ExoplayerView)
+                            .savedUri(track, if (audioOnly) ThemeFileKind.AUDIO else ThemeFileKind.VIDEO)?.toString()
+                    }.getOrNull()
+                }
+                if (audioOnly && track.audioUrl == null && saved == null && newTheme) {
+                    toast(getString(R.string.theme_no_audio, track.tag))
+                }
+                themePlan = ThemeQueue.attempts(ThemeQueue.sources(track, audioOnly, saved))
+            }
+            val next = themePlan.getOrNull(attempt) ?: return@launch showThemeFailed(true)
+            setThemeStatus(next, null)
+            if (ThemeReach.needsCheck(next.url)) {
+                val reach = ThemeReach.check(next.url, defaultHeaders)
+                if (reach != ThemeReachResult.Ok) return@launch onThemeFailed("check: $reach", reach)
+            }
+            loadTheme(track, next.url, themeLastPositionMs)
+        }
+    }
+
+    private fun setThemeStatus(attempt: ThemeQueue.Attempt, reach: ThemeReachResult?) {
+        val n = themePlan.indexOf(attempt).coerceAtLeast(0) + 1
+        val total = themePlan.size
+        videoInfo.text = when {
+            reach is ThemeReachResult.RateLimited -> getString(R.string.theme_status_rate_limited, reach.retryAfterS)
+            reach is ThemeReachResult.HttpError && reach.code > 0 -> getString(R.string.theme_status_http, reach.code, n, total)
+            reach == ThemeReachResult.Unreachable -> getString(R.string.theme_status_unreachable, n, total)
+            !ThemeReach.needsCheck(attempt.url) -> getString(R.string.theme_status_saved)
+            else -> getString(R.string.theme_status_connecting, n, total)
+        }
+    }
+
+    private fun loadTheme(track: ThemeTrack, url: String, startMs: Long) {
         // One player for the whole queue: the next theme loads into the running engine,
         // so the media session (and its notification) stays the same.
         val running = playerManager.playbackEngine.takeIf { playerManager.isInitialized }
         val engine = running ?: playerManager.initPlayer(startMs, 1f, themeListener)
         if (running == null) startThemeService()
-        if (episodeTitle.selectedItemPosition != index) episodeTitle.setSelection(index)
-        videoInfo.text = ""
+        val audio = ThemeQueue.isAudio(url)
+        videoInfo.text = when {
+            !ThemeReach.needsCheck(url) -> getString(R.string.theme_status_saved)
+            audio -> getString(R.string.theme_status_audio)
+            else -> ""
+        }
         engine.loadMedia(
             PlaybackRequest(
-                uri = url ?: track.url,
+                uri = url,
                 startPositionMs = startMs,
                 headers = defaultHeaders,
                 title = ThemeQueue.label(track),
-                seriesTitle = themeAnime,
-                mimeType = "video/webm",
-                sourceClass = PlaybackSourceClass.DIRECT_HTTP,
+                seriesTitle = track.showTitle.ifBlank { themeAnime },
+                mimeType = if (audio) "audio/ogg" else "video/webm",
+                sourceClass = if (url.startsWith("content://")) PlaybackSourceClass.CONTENT_FD else PlaybackSourceClass.DIRECT_HTTP,
             )
         )
         playerManager.playbackCoordinator?.play() ?: engine.play()
@@ -2108,21 +2278,57 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         applyResizeMode(isFullscreen)
     }
 
-    private fun onThemeFailed(reason: String?) {
+    /** Next attempt for the current theme, or the failure panel when none is left. */
+    private fun onThemeFailed(reason: String?, reach: ThemeReachResult? = null) {
         val track = themeTracks.getOrNull(themeIndex) ?: return
-        themeFailures++
-        val next = ThemeQueue.nextAttempt(track, themeFailures)
-        Logger.log("AnimeThemes: ${track.tag} failed (${reason ?: "unknown"}), failure $themeFailures, next ${next?.url}")
+        val index = themeIndex
+        val nextAttempt = themeAttempt + 1
+        val next = themePlan.getOrNull(nextAttempt)
+        Logger.log("AnimeThemes: ${track.tag} failed (${reason ?: "unknown"}), attempt $nextAttempt of ${themePlan.size}")
+        themeJob?.cancel()
         if (next == null) {
-            toast(getString(R.string.theme_error_named, track.tag))
+            videoInfo.text = ""
+            showThemeFailed(true)
+            // In a queue, move on after a moment; Retry stays on screen until then.
+            if (index < themeTracks.lastIndex || themeRadio) {
+                themeJob = lifecycleScope.launch {
+                    delay(5_000L)
+                    if (themeIndex == index && !isDestroyed) playTheme(index + 1)
+                }
+            }
             return
         }
-        val index = themeIndex
+        setThemeStatus(next, reach)
         val resumeAt = themeLastPositionMs
-        themeRetry = Runnable {
-            themeRetry = null
-            if (themeIndex == index && !isDestroyed) playTheme(index, next.url, resumeAt)
-        }.also { themeHandler.postDelayed(it, next.delayMs) }
+        themeJob = lifecycleScope.launch {
+            delay(ThemeQueue.delayFor(next, reach))
+            if (themeIndex == index && !isDestroyed) playTheme(index, nextAttempt, resumeAt)
+        }
+    }
+
+    /** Shuffle: looks up the next theme; plays it when [play] (the queue ran out). */
+    private fun radioNext(play: Boolean) {
+        if (themeRadioJob?.isActive == true && !play) return
+        if (!ThemeRadioSession.active) {
+            if (play) showThemeFailed(true)
+            return
+        }
+        if (play) videoInfo.text = getString(R.string.themes_finding)
+        themeRadioJob?.cancel()
+        themeRadioJob = lifecycleScope.launch {
+            val track = runCatching { ThemeRadioSession.next() }.getOrNull()
+            if (track == null) {
+                if (play) {
+                    videoInfo.text = ""
+                    toast(getString(R.string.themes_none_found))
+                }
+                return@launch
+            }
+            themeTracks = themeTracks + track
+            themeAdapter.add(ThemeQueue.label(track))
+            playerManager.media3PlayerAdapter?.refresh()
+            if (play) playTheme(themeTracks.lastIndex)
+        }
     }
 
     private val themeListener = object : PlaybackListener {

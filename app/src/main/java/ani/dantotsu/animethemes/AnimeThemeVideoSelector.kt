@@ -136,7 +136,8 @@ object AnimeThemeVideoSelector {
                         isSpoiler = entry.isSpoiler,
                         isNsfw = entry.isNsfw,
                         displayLabel = label,
-                        warningType = warning
+                        warningType = warning,
+                        audioUrl = video.audioUrl
                     )
                 )
             }

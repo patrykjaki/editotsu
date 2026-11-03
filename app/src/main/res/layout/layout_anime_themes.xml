@@ -1,21 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Openings & endings on the details screen: two grouped lists, versions open in place. -->
+<!-- Openings & endings: title row with the video settings icon, then two grouped lists. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:paddingBottom="8dp">
 
-    <TextView
-        android:id="@+id/themesTitle"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="24dp"
-        android:fontFamily="@font/poppins_bold"
-        android:padding="8dp"
-        android:text="@string/anime_themes_title"
-        android:textSize="16sp" />
+        android:layout_marginEnd="16dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/themesTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:accessibilityHeading="true"
+            android:fontFamily="@font/poppins_bold"
+            android:padding="8dp"
+            android:text="@string/anime_themes_title"
+            android:textSize="16sp" />
+
+        <ImageButton
+            android:id="@+id/themesSettings"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/theme_video_settings"
+            android:src="@drawable/ic_round_video_settings_24"
+            android:tooltipText="@string/theme_video_settings"
+            app:tint="?attr/colorOnSurfaceVariant" />
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/themesSections"

@@ -105,6 +105,12 @@ enum class PrefName(val data: Pref) {
     AnimeThemesPreferredSource(Pref(Location.General, Int::class, 0)),
     AnimeThemesPreferredCredits(Pref(Location.General, Int::class, 0)),
     AnimeThemesPreferredSubtitles(Pref(Location.General, Int::class, 0)),
+    // Favourite openings/endings: JSON list of FavouriteTheme.
+    AnimeThemesFavourites(Pref(Location.General, String::class, "[]")),
+    // Theme player plays the .ogg instead of the video when AnimeThemes has one.
+    AnimeThemesAudioOnly(Pref(Location.General, Boolean::class, false)),
+    // Themes screen filter: 0 openings and endings, 1 openings, 2 endings.
+    AnimeThemesRadioKinds(Pref(Location.General, Int::class, 0)),
     AnimeDefaultView(Pref(Location.UI, Int::class, 0)),
     MangaDefaultView(Pref(Location.UI, Int::class, 0)),
     BlurBanners(Pref(Location.UI, Boolean::class, true)),
