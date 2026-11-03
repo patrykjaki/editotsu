@@ -100,7 +100,7 @@ fun validateBackupPayload(json: String): BackupCheck {
 /** Null when valid, else the rejection reason. */
 private fun checkLocationsMap(map: JsonObject): String? {
     if (map.isEmpty()) return "no preference locations"
-    val knownNames = Location.entries.map { it.name }.toSet()
+    val knownNames = Location.entries.map { it.name }.toSet() + BackupSections.EXTRA_KEYS
     for ((location, entries) in map) {
         if (location !in knownNames && !location.startsWith("source_")) {
             return "unknown location: $location"

@@ -58,48 +58,6 @@ class SettingsCommonActivity : AppCompatActivity() {
         val context = this
         binding = ActivitySettingsCommonBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        val openDocumentLauncher =
-            registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-                if (uri != null) {
-                    try {
-                        val jsonString =
-                            contentResolver.openInputStream(uri)?.readBytes()
-                                ?: throw Exception("Error reading file")
-                        val name = DocumentFile.fromSingleUri(this, uri)?.name ?: "settings"
-                        // .sani is encrypted, .ani is not
-                        if (name.endsWith(".sani")) {
-                            passwordAlertDialog(false) { password ->
-                                if (password != null) {
-                                    val salt = jsonString.copyOfRange(0, 16)
-                                    val encrypted = jsonString.copyOfRange(16, jsonString.size)
-                                    val decryptedJson =
-                                        try {
-                                            PreferenceKeystore.decryptWithPassword(
-                                                password,
-                                                encrypted,
-                                                salt,
-                                            )
-                                        } catch (e: Exception) {
-                                            toast(getString(R.string.incorrect_password))
-                                            return@passwordAlertDialog
-                                        }
-                                    if (PreferencePackager.unpack(decryptedJson)) restartApp()
-                                } else {
-                                    toast(getString(R.string.password_cannot_be_empty))
-                                }
-                            }
-                        } else if (name.endsWith(".ani")) {
-                            val decryptedJson = jsonString.toString(Charsets.UTF_8)
-                            if (PreferencePackager.unpack(decryptedJson)) restartApp()
-                        } else {
-                            toast(getString(R.string.unknown_file_type))
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        toast(getString(R.string.error_importing_settings))
-                    }
-                }
-            }
         val contract = ActivityResultContracts.OpenDocumentTree()
         launcher = LauncherWrapper(this, contract)
 
@@ -295,55 +253,9 @@ class SettingsCommonActivity : AppCompatActivity() {
                             desc = getString(R.string.backup_restore_desc),
                             icon = R.drawable.backup_restore,
                             onClick = {
-                                StoragePermissions.downloadsPermission(context)
-                                val filteredLocations = Location.entries.filter { it.exportable }
-                                val selectedArray = BooleanArray(filteredLocations.size) { false }
-                                context.customAlertDialog().apply {
-                                    setTitle(R.string.backup_restore)
-                                    multiChoiceItems(
-                                        filteredLocations.map { it.name }.toTypedArray(),
-                                        selectedArray,
-                                    ) { updatedSelection ->
-                                        for (i in updatedSelection.indices) {
-                                            selectedArray[i] = updatedSelection[i]
-                                        }
-                                    }
-                                    setPosButton(R.string.button_restore) {
-                                        openDocumentLauncher.launch(arrayOf("*/*"))
-                                    }
-                                    setNegButton(R.string.button_backup) {
-                                        if (!selectedArray.contains(true)) {
-                                            toast(R.string.no_location_selected)
-                                            return@setNegButton
-                                        }
-                                        val selected =
-                                            filteredLocations.filterIndexed { index, _ -> selectedArray[index] }
-                                        if (selected.contains(Location.Protected)) {
-                                            passwordAlertDialog(true) { password ->
-                                                if (password != null) {
-                                                    savePrefsToDownloads(
-                                                        "DantotsuSettings",
-                                                        PrefManager.exportAllPrefs(selected),
-                                                        context,
-                                                        password,
-                                                    )
-                                                } else {
-                                                    toast(R.string.password_cannot_be_empty)
-                                                }
-                                            }
-                                        } else {
-                                            savePrefsToDownloads(
-                                                "DantotsuSettings",
-                                                PrefManager.exportAllPrefs(selected),
-                                                context,
-                                                null,
-                                            )
-                                        }
-                                    }
-                                    setNeutralButton(R.string.cancel) {}
-                                    show()
-                                }
+                                startActivity(Intent(context, ani.dantotsu.settings.data.SettingsDataActivity::class.java))
                             },
+                            isActivity = true
                         ),
                         Settings(
                             type = 1,
@@ -533,69 +445,6 @@ class SettingsCommonActivity : AppCompatActivity() {
             uiSettingsManga.setOnClickListener {
                 uiDefault(2, it)
             }
-        }
-    }
-
-    private fun passwordAlertDialog(
-        isExporting: Boolean,
-        callback: (CharArray?) -> Unit,
-    ) {
-        val password = CharArray(16).apply { fill('0') }
-
-        // Inflate the dialog layout
-        val dialogView = DialogUserAgentBinding.inflate(layoutInflater)
-        val box = dialogView.userAgentTextBox
-        box.hint = getString(R.string.label_password)
-        box.setSingleLine()
-
-        val dialog =
-            AlertDialog
-                .Builder(this, R.style.MyPopup)
-                .setTitle(getString(R.string.enter_password))
-                .setView(dialogView.root)
-                .setPositiveButton(R.string.ok, null)
-                .setNegativeButton(R.string.cancel) { dialog, _ ->
-                    password.fill('0')
-                    dialog.dismiss()
-                    callback(null)
-                }.create()
-
-        fun handleOkAction() {
-            val editText = dialogView.userAgentTextBox
-            if (editText.text?.isNotBlank() == true) {
-                editText.text
-                    ?.toString()
-                    ?.trim()
-                    ?.toCharArray(password)
-                dialog.dismiss()
-                callback(password)
-            } else {
-                toast(getString(R.string.password_cannot_be_empty))
-            }
-        }
-        box.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE) {
-                handleOkAction()
-                true
-            } else {
-                false
-            }
-        }
-        dialogView.subtitle.visibility = View.VISIBLE
-        if (!isExporting) {
-            dialogView.subtitle.text =
-                getString(R.string.enter_password_to_decrypt_file)
-        }
-
-        dialog.window?.apply {
-            setDimAmount(0.8f)
-            attributes.windowAnimations = android.R.style.Animation_Dialog
-        }
-        dialog.show()
-
-        // Override the positive button here
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            handleOkAction()
         }
     }
 }

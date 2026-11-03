@@ -64,8 +64,6 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefManager.asLiveBool
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.settings.saving.SharedPreferenceBooleanLiveData
-import ani.dantotsu.settings.saving.internal.PreferenceKeystore
-import ani.dantotsu.settings.saving.internal.PreferencePackager
 import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.util.AudioHelper
 import ani.dantotsu.util.Logger
@@ -689,73 +687,10 @@ class MainActivity : AppCompatActivity() {
                     ?: throw Exception("Error reading file")
             val name =
                 DocumentFile.fromSingleUri(this, uri)?.name ?: "settings"
-            //.sani is encrypted, .ani is not
-            if (name.endsWith(".sani")) {
-                passwordAlertDialog { password ->
-                    if (password != null) {
-                        val salt = jsonString.copyOfRange(0, 16)
-                        val encrypted = jsonString.copyOfRange(16, jsonString.size)
-                        val decryptedJson = try {
-                            PreferenceKeystore.decryptWithPassword(
-                                password,
-                                encrypted,
-                                salt
-                            )
-                        } catch (e: Exception) {
-                            toast("Incorrect password")
-                            return@passwordAlertDialog
-                        }
-                        if (PreferencePackager.unpack(decryptedJson)) {
-                            val newIntent = Intent(this, this.javaClass)
-                            this.finish()
-                            startActivity(newIntent)
-                        }
-                    } else {
-                        toast("Password cannot be empty")
-                    }
-                }
-            } else if (name.endsWith(".ani")) {
-                val decryptedJson = jsonString.toString(Charsets.UTF_8)
-                if (PreferencePackager.unpack(decryptedJson)) {
-                    val newIntent = Intent(this, this.javaClass)
-                    this.finish()
-                    startActivity(newIntent)
-                }
-            } else {
-                toast("Invalid file type")
-            }
+            ani.dantotsu.settings.data.BackupRestore.restore(this, jsonString, name)
         } catch (e: Exception) {
             e.printStackTrace()
             toast("Error importing settings")
-        }
-    }
-
-    private fun passwordAlertDialog(callback: (CharArray?) -> Unit) {
-        val password = CharArray(16).apply { fill('0') }
-
-        // Inflate the dialog layout
-        val dialogView = DialogUserAgentBinding.inflate(layoutInflater).apply {
-            userAgentTextBox.hint = "Password"
-            subtitle.visibility = View.VISIBLE
-            subtitle.text = getString(R.string.enter_password_to_decrypt_file)
-        }
-        customAlertDialog().apply {
-            setTitle("Enter Password")
-            setCustomView(dialogView.root)
-            setPosButton(R.string.yes) {
-                val editText = dialogView.userAgentTextBox
-                if (editText.text?.isNotBlank() == true) {
-                    editText.text?.toString()?.trim()?.toCharArray(password)
-                    callback(password)
-                } else {
-                    toast("Password cannot be empty")
-                }
-            }
-            setNegButton(R.string.cancel) {
-                password.fill('0')
-                callback(null)
-            }
-            show()
         }
     }
 
