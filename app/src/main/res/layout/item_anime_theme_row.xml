@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One theme. Background is set in code (grouped corners). Tapping the row plays it. -->
+<!-- One theme. Background is set in code (grouped corners). Tapping the row plays it; the heart saves it. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -68,11 +68,21 @@
                 tools:text="Kessoku Band · Ep 12 · Spoiler" />
         </LinearLayout>
 
+        <ImageButton
+            android:id="@+id/themeFavourite"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_round_favorite_border_24"
+            app:tint="?attr/colorOnSurfaceVariant"
+            tools:contentDescription="Add to favourites" />
+
         <ImageView
             android:id="@+id/themePlay"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:layout_marginStart="12dp"
+            android:layout_marginStart="4dp"
             android:background="@drawable/theme_play_circle"
             android:importantForAccessibility="no"
             android:padding="7dp"

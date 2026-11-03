@@ -21,6 +21,12 @@ data class ThemeTrack(
     val entryId: Int = 0,
     val version: Int = 1,
     val versionCount: Int = 1,
+    /** AnimeThemes .ogg of this version; null when AnimeThemes has none (or the cache predates v3). */
+    val audioUrl: String? = null,
+    val isEnding: Boolean = false,
+    /** AniList id and title of the show; set by the screen that builds the queue. */
+    val mediaId: Int = 0,
+    val showTitle: String = "",
 )
 
 /** One theme on the details strip: its playable versions and the one the selector prefers. */
@@ -43,6 +49,12 @@ object ThemeQueue {
         data: AnimeThemesData,
         prefs: ThemePlaybackPreferences = ThemePlaybackPreferences(),
     ): List<ThemeChoice> = (data.openings + data.endings).mapNotNull { choice(it, prefs) }
+
+    /** [choice] with every version tagged with its show, for queues that mix shows. */
+    fun withShow(choice: ThemeChoice, mediaId: Int, title: String): ThemeChoice = choice.copy(
+        versions = choice.versions.map { it.copy(mediaId = mediaId, showTitle = title) },
+        auto = choice.auto.copy(mediaId = mediaId, showTitle = title),
+    )
 
     fun track(theme: ThemeUiModel, prefs: ThemePlaybackPreferences = ThemePlaybackPreferences()): ThemeTrack? =
         choice(theme, prefs)?.auto
@@ -95,6 +107,8 @@ object ThemeQueue {
             entryId = entry.entryId,
             version = entry.version,
             versionCount = count,
+            audioUrl = chosen.audioUrl ?: variants.firstNotNullOfOrNull { it.audioUrl },
+            isEnding = theme.type.equals("ED", ignoreCase = true),
         )
     }
 
@@ -159,10 +173,79 @@ object ThemeQueue {
      * more (the CDN answers 503 under load), then each of the theme's other videos.
      * Null when everything was tried.
      */
-    fun nextAttempt(track: ThemeTrack, failures: Int): Attempt? = when {
-        failures <= 0 -> Attempt(track.url, 0L)
-        failures == 1 -> Attempt(track.url, 1_000L)
-        failures == 2 -> Attempt(track.url, 3_000L)
-        else -> track.fallbackUrls.getOrNull(failures - 3)?.let { Attempt(it, 500L) }
+    fun nextAttempt(track: ThemeTrack, failures: Int): Attempt? =
+        attempts(sources(track)).getOrNull(failures.coerceAtLeast(0))
+
+    /**
+     * Where [track] can be played from, in order: the saved copy, then the .ogg when
+     * [audioOnly] is on, then the chosen video and the version's other videos.
+     */
+    fun sources(track: ThemeTrack, audioOnly: Boolean = false, saved: String? = null): List<String> =
+        (listOfNotNull(saved, track.audioUrl?.takeIf { audioOnly }) + track.url + track.fallbackUrls).distinct()
+
+    /**
+     * Every attempt for [sources]: a local copy once, the first network source three
+     * times (0 s, 1 s, 3 s), each other source once after 0.5 s.
+     */
+    fun attempts(sources: List<String>): List<Attempt> {
+        val out = mutableListOf<Attempt>()
+        var firstNetwork = true
+        sources.forEach { url ->
+            when {
+                !ThemeReach.needsCheck(url) -> out += Attempt(url, if (out.isEmpty()) 0L else 500L)
+                firstNetwork -> {
+                    firstNetwork = false
+                    val start = if (out.isEmpty()) 0L else 500L
+                    out += Attempt(url, start)
+                    out += Attempt(url, 1_000L)
+                    out += Attempt(url, 3_000L)
+                }
+                else -> out += Attempt(url, 500L)
+            }
+        }
+        return out
+    }
+
+    /** Delay before [attempt] after the CDN answered [reach]; a rate limit waits as long as it asks. */
+    fun delayFor(attempt: Attempt, reach: ThemeReachResult?): Long = when (reach) {
+        is ThemeReachResult.RateLimited -> maxOf(attempt.delayMs, reach.retryAfterS * 1_000L)
+        else -> attempt.delayMs
+    }
+
+    /** True when [url] is the AnimeThemes audio file rather than a video. */
+    fun isAudio(url: String): Boolean = url.substringBefore('?').endsWith(".ogg", ignoreCase = true)
+
+    /**
+     * True when AnimeThemes' episode field covers [episode]: "1-12", "13-", "2-5, 8-11",
+     * "1000". Null when the field has no number (unknown).
+     */
+    fun coversEpisode(episodes: String?, episode: Int): Boolean? {
+        if (episodes.isNullOrBlank()) return null
+        var known = false
+        episodes.split(',').forEach { part ->
+            val nums = Regex("\\d+").findAll(part).map { it.value.toInt() }.toList()
+            if (nums.isEmpty()) return@forEach
+            known = true
+            val from = nums[0]
+            val to = when {
+                nums.size >= 2 -> nums[1]
+                part.trim().endsWith("-") -> Int.MAX_VALUE
+                else -> from
+            }
+            if (episode in from..to) return true
+        }
+        return if (known) false else null
+    }
+
+    /**
+     * The opening ([ending] false) or ending playing in [episode]: the version whose
+     * episodes cover it; when no version says, the only theme of that kind. Null when
+     * it can't be told.
+     */
+    fun nowPlaying(choices: List<ThemeChoice>, ending: Boolean, episode: Int): ThemeTrack? {
+        val kind = choices.filter { it.isEnding == ending }
+        kind.forEach { c -> c.versions.firstOrNull { coversEpisode(it.episodes, episode) == true }?.let { return it } }
+        val unknown = kind.filter { c -> c.versions.all { coversEpisode(it.episodes, episode) == null } }
+        return if (kind.size == 1 && unknown.size == 1) kind[0].auto else null
     }
 }

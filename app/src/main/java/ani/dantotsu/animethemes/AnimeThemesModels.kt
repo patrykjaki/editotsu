@@ -118,6 +118,12 @@ data class AnimeThemesVideoDto(
     val source: String? = null,
     val overlap: String? = null,
     val tags: String? = null,
+    val link: String,
+    val audio: AnimeThemesAudioDto? = null
+)
+
+@Serializable
+data class AnimeThemesAudioDto(
     val link: String
 )
 
@@ -125,7 +131,8 @@ data class AnimeThemesVideoDto(
 // Persistent Disk Cache DTOs (@Serializable)
 // ==========================================
 
-const val CACHE_VERSION = 2
+// 3: videos carry their audio link (audio-only playback and downloads).
+const val CACHE_VERSION = 3
 
 @Serializable
 data class AnimeThemesDiskCache(
@@ -181,7 +188,8 @@ data class ThemeVideoCacheDto(
     val overlap: String? = null,
     val tags: String? = null,
     val isSubbed: Boolean = false,
-    val badgeLabel: String
+    val badgeLabel: String,
+    val audioUrl: String? = null
 )
 
 // ==========================================
@@ -230,7 +238,8 @@ data class ThemeVideoUiModel(
     val overlap: String?,
     val tags: String?,
     val isSubbed: Boolean,
-    val badgeLabel: String // e.g. "1080p • BD • NC"
+    val badgeLabel: String, // e.g. "1080p • BD • NC"
+    val audioUrl: String? = null
 )
 
 data class ThemeVideoVariant(
@@ -247,7 +256,8 @@ data class ThemeVideoVariant(
     val isSpoiler: Boolean,
     val isNsfw: Boolean,
     val displayLabel: String,
-    val warningType: ThemeWarningType
+    val warningType: ThemeWarningType,
+    val audioUrl: String? = null
 )
 
 // ==========================================
@@ -380,7 +390,8 @@ fun ThemeVideoUiModel.toCacheDto(): ThemeVideoCacheDto {
         overlap = overlap,
         tags = tags,
         isSubbed = isSubbed,
-        badgeLabel = badgeLabel
+        badgeLabel = badgeLabel,
+        audioUrl = audioUrl
     )
 }
 
@@ -394,7 +405,8 @@ fun ThemeVideoCacheDto.toDomain(): ThemeVideoUiModel {
         overlap = overlap,
         tags = tags,
         isSubbed = isSubbed,
-        badgeLabel = badgeLabel
+        badgeLabel = badgeLabel,
+        audioUrl = audioUrl
     )
 }
 

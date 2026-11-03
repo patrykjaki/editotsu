@@ -54,6 +54,29 @@
                     tools:ignore="LabelFor,TextContrastCheck" />
             </com.google.android.material.textfield.TextInputLayout>
 
+            <!-- Anime home only: opens the Themes screen (favourite themes, shuffle). -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/themesButtonContainer"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginEnd="8dp"
+                android:visibility="gone"
+                app:cardCornerRadius="26dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp">
+
+                <ImageButton
+                    android:id="@+id/themesButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/themes_screen"
+                    android:src="@drawable/ic_round_audiotrack_24"
+                    android:tooltipText="@string/themes_screen"
+                    app:tint="?attr/colorOnBackground" />
+            </com.google.android.material.card.MaterialCardView>
+
             <FrameLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content">
