@@ -19,9 +19,11 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
 import ani.dantotsu.util.Logger
-import com.anggrayudi.storage.callback.FolderCallback
+import com.anggrayudi.storage.moveTo
+import com.anggrayudi.storage.toStorageFile
+import com.anggrayudi.storage.transfer.TransferErrorCode
+import com.anggrayudi.storage.transfer.TransferResult
 import com.anggrayudi.storage.file.deleteRecursively
-import com.anggrayudi.storage.file.moveFolderTo
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
@@ -308,53 +310,33 @@ class DownloadsManager(private val context: Context) {
                     DocumentFile.fromTreeUri(context, newUri) ?: throw Exception("New base is null")
                 val folder =
                     oldBase.findFolder(BASE_LOCATION) ?: throw Exception("Base folder not found")
-                folder.moveFolderTo(context, newBase, false, BASE_LOCATION, object :
-                    FolderCallback() {
-                    override fun onFailed(errorCode: ErrorCode) {
-                        when (errorCode) {
-                            ErrorCode.CANCELED -> finished(false, "Move canceled")
-                            ErrorCode.CANNOT_CREATE_FILE_IN_TARGET -> finished(
-                                false,
-                                "Cannot create file in target"
-                            )
-
-                            ErrorCode.INVALID_TARGET_FOLDER -> finished(
-                                true,
-                                "Invalid target folder"
-                            ) // seems to still work
-                            ErrorCode.NO_SPACE_LEFT_ON_TARGET_PATH -> finished(
-                                false,
-                                "No space left on target path"
-                            )
-
-                            ErrorCode.UNKNOWN_IO_ERROR -> finished(false, "Unknown IO error")
-                            ErrorCode.SOURCE_FOLDER_NOT_FOUND -> finished(
-                                false,
-                                "Source folder not found"
-                            )
-
-                            ErrorCode.STORAGE_PERMISSION_DENIED -> finished(
-                                false,
-                                "Storage permission denied"
-                            )
-
-                            ErrorCode.TARGET_FOLDER_CANNOT_HAVE_SAME_PATH_WITH_SOURCE_FOLDER -> finished(
-                                false,
-                                "Target folder cannot have same path with source folder"
-                            )
-
-                            else -> finished(false, "Failed to move downloads: $errorCode")
+                // storage 3: one suspending transfer; skipEmptyFiles = false as before.
+                val result = folder.toStorageFile(context).moveTo(newBase.toStorageFile(context)) {
+                    skipEmptyFiles = false
+                }
+                when (result) {
+                    is TransferResult.Success<*> -> finished(true, "Successfully moved downloads")
+                    is TransferResult.Skipped -> finished(false, "Move skipped: target already exists")
+                    is TransferResult.Failure -> {
+                        when (result.errorCode) {
+                            TransferErrorCode.CANCELED -> finished(false, "Move canceled")
+                            TransferErrorCode.CANNOT_CREATE_FILE_IN_TARGET ->
+                                finished(false, "Cannot create file in target")
+                            // Reported by storage 1.x after a move that had worked.
+                            TransferErrorCode.INVALID_TARGET -> finished(true, "Invalid target folder")
+                            TransferErrorCode.NO_SPACE_LEFT_ON_TARGET ->
+                                finished(false, "No space left on target path")
+                            TransferErrorCode.UNKNOWN_IO_ERROR -> finished(false, "Unknown IO error")
+                            TransferErrorCode.SOURCE_NOT_FOUND -> finished(false, "Source folder not found")
+                            TransferErrorCode.STORAGE_PERMISSION_DENIED ->
+                                finished(false, "Storage permission denied")
+                            TransferErrorCode.TARGET_SAME_AS_SOURCE ->
+                                finished(false, "Target folder cannot have same path with source folder")
+                            else -> finished(false, "Failed to move downloads: ${result.errorCode}")
                         }
-                        Logger.log("Failed to move downloads: $errorCode")
-                        super.onFailed(errorCode)
+                        Logger.log("Failed to move downloads: ${result.errorCode} ${result.message.orEmpty()}")
                     }
-
-                    override fun onCompleted(result: Result) {
-                        finished(true, "Successfully moved downloads")
-                        super.onCompleted(result)
-                    }
-
-                })
+                }
 
             } catch (e: Exception) {
                 snackString("Error: ${e.message}")

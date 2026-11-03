@@ -16,8 +16,8 @@ import org.json.JSONObject
 import java.util.UUID
 
 /**
- * MAX MERGE M4B DRM (upstream be6c4d99, adapted to the pinned Media3 1.8.0
- * [MediaDrmCallback] shape, whose key/provision calls return raw bytes):
+ * MAX MERGE M4B DRM (upstream be6c4d99; Media3 1.11 [MediaDrmCallback] calls
+ * return a [MediaDrmCallback.Response] whose `data` holds the bytes):
  * normalises license responses from servers that do not return a bare
  * Widevine blob - base64 text, or a JSON envelope like
  * `{"status":"OK","license":"<base64>"}`. MediaDrm expects decoded protobuf
@@ -30,13 +30,21 @@ class WrappedDrmCallback(private val delegate: HttpMediaDrmCallback) : MediaDrmC
     override fun executeProvisionRequest(
         uuid: UUID,
         request: ExoMediaDrm.ProvisionRequest,
-    ): ByteArray = delegate.executeProvisionRequest(uuid, request)
+    ): MediaDrmCallback.Response = delegate.executeProvisionRequest(uuid, request)
 
     override fun executeKeyRequest(
         uuid: UUID,
         request: ExoMediaDrm.KeyRequest,
-    ): ByteArray {
-        val response = delegate.executeKeyRequest(uuid, request)
+    ): MediaDrmCallback.Response {
+        val delegateResponse = delegate.executeKeyRequest(uuid, request)
+        val normalized = normalizeKeyResponse(uuid, delegateResponse.data)
+        if (normalized === delegateResponse.data) return delegateResponse
+        val builder = MediaDrmCallback.Response.Builder(normalized)
+        delegateResponse.loadEventInfo?.let { builder.setLoadEventInfo(it) }
+        return builder.build()
+    }
+
+    private fun normalizeKeyResponse(uuid: UUID, response: ByteArray): ByteArray {
         // HOLD3: scheme-aware normalization. Only Widevine bodies are
         // unwrapped; PlayReady/ClearKey/unknown responses pass through
         // untouched so their formats can never be mishandled here.
