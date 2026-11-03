@@ -1127,7 +1127,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="manga_desc">Choose how you read</string>
     <string name="extensions_desc">Manage your reliable stores</string>
     <string name="addons_desc">Get more features out of your app</string>
-    <string name="alsettings_desc">Change your AniList settings</string>
+    <string name="alsettings_desc">Title language, score format, custom lists, time zone</string>
     <string name="airing_notifications">Airing Anime notifications</string>
     <string name="airing_notifications_desc">Get notified whenever a new episode drops</string>
     <string name="display_adult_content">18+ Content</string>
@@ -1593,7 +1593,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="settings_section_extensions">Extensions</string>
     <string name="settings_section_torrents">Torrents</string>
     <string name="settings_section_search">Search</string>
-    <string name="settings_section_accounts">Accounts</string>
+    <string name="settings_section_accounts">Services</string>
     <string name="settings_section_progress">Progress updates</string>
     <string name="settings_section_notifications">Notifications</string>
     <string name="settings_section_storage">Storage</string>
