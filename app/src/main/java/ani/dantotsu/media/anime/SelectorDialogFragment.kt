@@ -61,6 +61,7 @@ import ani.dantotsu.parsers.preferredPlayableFallback
 import ani.dantotsu.media.anime.selector.SourceMetaIcon
 import ani.dantotsu.media.anime.selector.SourcePillKind
 import ani.dantotsu.media.anime.selector.SourceRowPill
+import ani.dantotsu.media.anime.selector.StreamCardQualities
 import ani.dantotsu.media.anime.selector.SourceRowSummarizer
 import ani.dantotsu.media.anime.selector.ShowTitles
 import ani.dantotsu.media.anime.selector.SourceRowViewModel
@@ -978,7 +979,6 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         private val expanded = mutableSetOf<String>()
         private val tagsExpanded = mutableSetOf<String>()
         /** Cards whose other qualities are shown. */
-        private val qualitiesOpen = mutableSetOf<String>()
         private val viewTypeStream = 0
         private val viewTypeRelease = 1
 
@@ -1404,23 +1404,30 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 b.sourceCard.setOnLongClickListener(null)
             }
 
-            val main = entry.primary.firstOrNull { it.ref == defaultRef } ?: entry.primary.firstOrNull()
-            bindQualityRow(
-                b.streamQualities, keyOf(entry), entry.name,
-                main?.let { it.ref to it.label },
-                entry.primary.filter { it !== main }.map { Triple(it.ref, it.label, it.label) },
-            )
-            b.streamAlternates.removeAllViews()
-            b.streamAlternatesRow.isVisible = entry.alternates.isNotEmpty()
-            if (entry.alternates.isNotEmpty()) {
-                b.streamAlternatesLabel.text = entry.alternateLabel?.let { getString(R.string.picker_also_as, it) }
-                    ?: getString(R.string.picker_also)
-                entry.alternates.forEach { variant ->
-                    b.streamAlternates.addView(qualityButton(
-                        b.streamAlternates, entry.name, variant.ref, variant.label,
-                        filled = false, compact = true,
-                    ))
+            // like a release card: the quality it plays as a tag, the other links under "Also"
+            val main = StreamCardQualities.main(entry, defaultRef)
+            b.streamQualities.removeAllViews()
+            b.streamQualities.isVisible = main != null
+            if (main != null) {
+                b.streamQualities.addView(
+                    makePillTextView(b.root.context, SourceRowPill(main.label, SourcePillKind.QUALITY)),
+                    flexParams(b.root.context, endDp = 4, bottomDp = 0),
+                )
+                main.transport?.takeIf { it.isNotBlank() }?.let { transport ->
+                    b.streamQualities.addView(
+                        makePillTextView(b.root.context, SourceRowPill(transport, SourcePillKind.CODEC)),
+                        flexParams(b.root.context, endDp = 4, bottomDp = 0),
+                    )
                 }
+            }
+            val others = StreamCardQualities.others(entry, main)
+            b.streamAlternates.removeAllViews()
+            b.streamAlternatesRow.isVisible = others.isNotEmpty()
+            others.forEach { (variant, label) ->
+                b.streamAlternates.addView(qualityButton(
+                    b.streamAlternates, entry.name, variant.ref, label,
+                    filled = false, compact = true,
+                ))
             }
             bindExpand(b.streamExpand, b.streamDetails, entry) {
                 (entry.primary + entry.alternates).joinToString("\n") { v ->
@@ -1439,75 +1446,6 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 marginEnd = (endDp * d).toInt()
                 bottomMargin = (bottomDp * d).toInt()
             }
-
-        /**
-         * One filled "Play <quality>" button, then "720p · 480p" that shows the other
-         * qualities as plain buttons on the next line. Every quality button plays.
-         * [others]: ref, short label for the toggle, full label for its button.
-         */
-        private fun bindQualityRow(
-            container: com.google.android.flexbox.FlexboxLayout,
-            cardKey: String,
-            name: String,
-            main: Pair<RowRef, CharSequence>?,
-            others: List<Triple<RowRef, String, CharSequence>>,
-        ) {
-            container.removeAllViews()
-            val context = container.context
-            if (main != null) {
-                val label = android.text.SpannableStringBuilder(getString(R.string.picker_play_prefix)).append(main.second)
-                container.addView(qualityButton(container, name, main.first, label, filled = true))
-            }
-            if (others.isEmpty()) return
-            val open = cardKey in qualitiesOpen
-            val d = context.resources.displayMetrics.density
-            val toggle = android.widget.TextView(context).apply {
-                text = others.joinToString(" · ") { it.second }
-                textSize = 14f
-                typeface = ResourcesCompat.getFont(context, R.font.poppins_semi_bold)
-                setTextColor(context.getThemeColor(com.google.android.material.R.attr.colorPrimary))
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                minHeight = (44 * d).toInt()
-                setPadding((8 * d).toInt(), 0, (4 * d).toInt(), 0)
-                val ripple = android.util.TypedValue()
-                context.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
-                setBackgroundResource(ripple.resourceId)
-                val chevron = ContextCompat.getDrawable(context, R.drawable.ic_round_arrow_drop_down_24)?.mutate()
-                chevron?.setTint(currentTextColor)
-                setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, chevron, null)
-                contentDescription = getString(
-                    if (open) R.string.picker_hide_qualities else R.string.picker_show_qualities,
-                    others.joinToString(", ") { it.second },
-                )
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    if (cardKey in qualitiesOpen) qualitiesOpen.remove(cardKey) else qualitiesOpen.add(cardKey)
-                    bindQualityRow(container, cardKey, name, main, others)
-                }
-            }
-            toggle.layoutParams = flexParams(context, endDp = 8, bottomDp = 8)
-            container.addView(toggle)
-            if (!open) return
-            // A real up/down state: flip the arrow while the list is open.
-            toggle.compoundDrawablesRelative[2]?.let { arrow ->
-                val flipped = android.graphics.drawable.RotateDrawable().apply {
-                    drawable = arrow
-                    fromDegrees = 180f
-                    toDegrees = 180f
-                    level = 1
-                }
-                flipped.setBounds(0, 0, arrow.intrinsicWidth, arrow.intrinsicHeight)
-                toggle.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, flipped, null)
-            }
-            others.forEachIndexed { i, (ref, _, full) ->
-                val button = qualityButton(container, name, ref, full, filled = false)
-                if (i == 0) {
-                    (button.layoutParams as com.google.android.flexbox.FlexboxLayout.LayoutParams).isWrapBefore = true
-                }
-                container.addView(button)
-            }
-        }
 
         private fun qualityButton(
             parent: ViewGroup,

@@ -385,4 +385,33 @@ class PickerListTest {
         val preferred = listOf(stream(0, "MTBB", 1080), stream(1, "MTBB", 720, preferred = true))
         assertTrue(filled(PickerListBuilder.build(preferred)).isEmpty())
     }
+
+    private fun variant(i: Int, label: String, res: Int?, transport: String?) =
+        QualityVariant(RowRef(i, 0), label, res, transport)
+
+    private fun group(primary: List<QualityVariant>, alternates: List<QualityVariant> = emptyList()) =
+        PickerEntry.StreamGroup("MTBB", null, null, primary, alternates, null)
+
+    @Test
+    fun streamCardPlaysDefaultAndListsTheRestUnderAlso() {
+        val g = group(listOf(variant(0, "1080p", 1080, "HLS"), variant(1, "720p", 720, "HLS"), variant(2, "360p", 360, "HLS")))
+        val main = StreamCardQualities.main(g, RowRef(1, 0))!!
+        assertEquals("720p", main.label)
+        assertEquals(listOf("1080p", "360p"), StreamCardQualities.others(g, main).map { it.second })
+        assertEquals("1080p", StreamCardQualities.main(g, null)!!.label)
+        assertEquals("1080p", StreamCardQualities.main(g, RowRef(9, 0))!!.label)
+    }
+
+    @Test
+    fun streamCardNamesTransportOnlyForSharedQualities() {
+        val g = group(
+            listOf(variant(0, "1080p", 1080, "HLS"), variant(1, "720p", 720, "HLS")),
+            listOf(variant(2, "1080p", 1080, "MP4")),
+        )
+        val main = StreamCardQualities.main(g, null)
+        assertEquals(listOf("1080p · MP4", "720p"), StreamCardQualities.others(g, main).map { it.second })
+        // remembered MP4 link: the HLS one moves to "Also"
+        val mp4 = StreamCardQualities.main(g, RowRef(2, 0))
+        assertEquals(listOf("1080p · HLS", "720p"), StreamCardQualities.others(g, mp4).map { it.second })
+    }
 }
