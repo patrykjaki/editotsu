@@ -105,21 +105,6 @@ object ThemeQueue {
         return open.firstOrNull { it.warning == ThemeWarningType.NONE } ?: open.firstOrNull() ?: choice.auto
     }
 
-    /** "v2 · Eps 13–24 · Spoiler"; a hidden version reads "v3 · Hidden until episode 25". */
-    fun versionLabel(
-        track: ThemeTrack,
-        shielded: Boolean,
-        hiddenUntil: (Int) -> String,
-        flag: (ThemeWarningType) -> String?,
-    ): String {
-        val first = firstEpisode(track.episodes)
-        val parts = mutableListOf("v${track.version}")
-        if (shielded && first != null) parts += hiddenUntil(first)
-        else episodesLabel(track.episodes)?.let { parts += it }
-        flag(track.warning)?.let { parts += it }
-        return parts.joinToString(" · ")
-    }
-
     /**
      * First episode a theme plays in, from AnimeThemes' free-form episode field
      * ("1-12", "2-13, 24", "1000", "13-"). Null when the field has no number.

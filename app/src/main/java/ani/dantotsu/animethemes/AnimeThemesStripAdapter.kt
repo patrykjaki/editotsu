@@ -9,7 +9,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.color.MaterialColors
 import ani.dantotsu.R
 import ani.dantotsu.databinding.ItemAnimeThemeCardBinding
-import ani.dantotsu.util.customAlertDialog
 
 /**
  * Horizontal openings & endings cards on the details screen. A card plays one version
@@ -18,6 +17,7 @@ import ani.dantotsu.util.customAlertDialog
 class AnimeThemesStripAdapter(
     private val choices: List<ThemeChoice>,
     private val isShielded: (ThemeTrack) -> Boolean,
+    private val fragmentManager: androidx.fragment.app.FragmentManager,
     private val onPlay: (tapped: ThemeTrack, shown: List<ThemeTrack>) -> Unit,
 ) : RecyclerView.Adapter<AnimeThemesStripAdapter.Holder>() {
 
@@ -39,7 +39,7 @@ class AnimeThemesStripAdapter(
         val context = b.root.context
         b.themeTag.text = track.tag
         b.themeEpisodes.text = ThemeQueue.episodesLabel(track.episodes).orEmpty()
-        val flag = flagText(context, track.warning)
+        val flag = themeFlagText(context, track.warning)
         b.themeFlag.text = flag
         b.themeFlag.visibility = if (flag == null) View.GONE else View.VISIBLE
         val shielded = isShielded(track)
@@ -66,7 +66,7 @@ class AnimeThemesStripAdapter(
             context.getString(R.string.theme_versions_action, track.tag, it)
         }
         b.themeVersions.setOnClickListener {
-            holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let { showVersions(context, it) }
+            holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let { showVersions(it) }
         }
         b.root.contentDescription = listOf(
             if (count > 1) "${track.tag} v${track.version}" else track.tag,
@@ -78,39 +78,13 @@ class AnimeThemesStripAdapter(
         b.root.setOnClickListener { onPlay(track, shown.toList()) }
     }
 
-    private fun showVersions(context: Context, position: Int) {
+    private fun showVersions(position: Int) {
         val choice = choices[position]
-        val current = shown[position]
-        val rows = choice.versions.map { v ->
-            ThemeQueue.versionLabel(
-                v,
-                isShielded(v),
-                hiddenUntil = { context.getString(R.string.theme_hidden_until, it) },
-                flag = { flagText(context, it) },
-            )
-        }
-        val title = if (isShielded(current)) current.tag else "${current.tag} · ${current.songTitle}"
-        context.customAlertDialog().apply {
-            setTitle(title)
-            singleChoiceItems(
-                rows.toTypedArray(),
-                choice.versions.indexOfFirst { it.entryId == current.entryId },
-            ) { which ->
-                val picked = choice.versions[which]
-                shown[position] = picked
-                notifyItemChanged(position)
-                onPlay(picked, shown.toList())
-            }
-            show()
-        }
-    }
-
-    private fun flagText(context: Context, warning: ThemeWarningType): String? = when (warning) {
-        ThemeWarningType.NONE -> null
-        ThemeWarningType.SPOILER -> context.getString(R.string.theme_flag_spoiler)
-        ThemeWarningType.NSFW -> context.getString(R.string.theme_flag_nsfw)
-        ThemeWarningType.SPOILER_AND_NSFW ->
-            context.getString(R.string.theme_flag_spoiler) + " · " + context.getString(R.string.theme_flag_nsfw)
+        ThemeVersionsSheet.newInstance(choice.versions, shown[position].entryId, isShielded) { picked ->
+            shown[position] = picked
+            notifyItemChanged(position)
+            onPlay(picked, shown.toList())
+        }.show(fragmentManager, "themeVersions")
     }
 
     private fun onSurface(context: Context) =

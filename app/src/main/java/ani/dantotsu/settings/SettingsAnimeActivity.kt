@@ -135,6 +135,34 @@ class SettingsAnimeActivity : AppCompatActivity() {
                             PrefManager.setVal(PrefName.SmartDownloadAnime, isChecked)
                         }
                     ),
+                    themeChoice(
+                        R.string.theme_pref_resolution, R.drawable.ic_round_high_quality_24,
+                        PrefName.AnimeThemesPreferredResolution,
+                        arrayOf(
+                            getString(R.string.theme_opt_auto), "1080p", "720p", getString(R.string.theme_opt_480p_or_lower),
+                        ),
+                    ),
+                    themeChoice(
+                        R.string.theme_pref_source, R.drawable.ic_round_movie_filter_24,
+                        PrefName.AnimeThemesPreferredSource,
+                        arrayOf(getString(R.string.theme_opt_auto), getString(R.string.theme_opt_bd), getString(R.string.theme_opt_web)),
+                    ),
+                    themeChoice(
+                        R.string.theme_pref_credits, R.drawable.ic_round_video_settings_24,
+                        PrefName.AnimeThemesPreferredCredits,
+                        arrayOf(
+                            getString(R.string.theme_opt_auto), getString(R.string.theme_opt_creditless),
+                            getString(R.string.theme_opt_with_credits),
+                        ),
+                    ),
+                    themeChoice(
+                        R.string.theme_pref_subtitles, R.drawable.ic_round_subtitles_24,
+                        PrefName.AnimeThemesPreferredSubtitles,
+                        arrayOf(
+                            getString(R.string.theme_opt_auto), getString(R.string.theme_opt_no_subtitles),
+                            getString(R.string.theme_opt_subtitled),
+                        ),
+                    ),
                 ),
                 highlightKey = highlightKey
             )
@@ -171,4 +199,22 @@ class SettingsAnimeActivity : AppCompatActivity() {
 
         }
     }
+
+    /** One AnimeThemes video preference: the row shows the current option, a tap lists them. */
+    private fun themeChoice(name: Int, icon: Int, pref: PrefName, options: Array<String>) = Settings(
+        type = 1,
+        name = getString(name),
+        desc = getString(R.string.theme_pref_desc, options.getOrElse(PrefManager.getVal<Int>(pref)) { options[0] }),
+        icon = icon,
+        onClick = { b ->
+            customAlertDialog().apply {
+                setTitle(getString(name))
+                singleChoiceItems(options, PrefManager.getVal<Int>(pref).coerceIn(0, options.lastIndex)) { which ->
+                    PrefManager.setVal(pref, which)
+                    b.settingsDesc.text = getString(R.string.theme_pref_desc, options[which])
+                }
+                show()
+            }
+        },
+    )
 }
