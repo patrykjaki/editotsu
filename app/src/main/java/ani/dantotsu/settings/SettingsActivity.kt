@@ -280,14 +280,8 @@ class SettingsActivity : AppCompatActivity() {
                 settingBuyMeCoffee.pop()
             }
 
-            loginDiscord.setOnClickListener {
-                openLinkInBrowser(getString(R.string.discord))
-            }
             loginGithub.setOnClickListener {
                 openLinkInBrowser(getString(R.string.github))
-            }
-            loginTelegram.setOnClickListener {
-                openLinkInBrowser(getString(R.string.telegram))
             }
 
 
