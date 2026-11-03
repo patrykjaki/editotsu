@@ -7,6 +7,7 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.R
 import ani.dantotsu.databinding.ItemSettingsBinding
+import ani.dantotsu.databinding.ItemSettingsAdvancedBinding
 import ani.dantotsu.databinding.ItemSettingsHeaderBinding
 import ani.dantotsu.databinding.ItemSettingsSwitchBinding
 import ani.dantotsu.setAnimation
@@ -25,6 +26,9 @@ class SettingsAdapter(
     inner class SettingsHeaderViewHolder(val binding: ItemSettingsHeaderBinding) :
         RecyclerView.ViewHolder(binding.root)
 
+    inner class SettingsAdvancedViewHolder(val binding: ItemSettingsAdvancedBinding) :
+        RecyclerView.ViewHolder(binding.root)
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return when (viewType) {
             1 -> SettingsViewHolder(
@@ -39,8 +43,14 @@ class SettingsAdapter(
                 )
             )
 
-            SettingsRowType.HEADER, SettingsRowType.ADVANCED -> SettingsHeaderViewHolder(
+            SettingsRowType.HEADER -> SettingsHeaderViewHolder(
                 ItemSettingsHeaderBinding.inflate(
+                    LayoutInflater.from(parent.context), parent, false
+                )
+            )
+
+            SettingsRowType.ADVANCED -> SettingsAdvancedViewHolder(
+                ItemSettingsAdvancedBinding.inflate(
                     LayoutInflater.from(parent.context), parent, false
                 )
             )
@@ -136,37 +146,50 @@ class SettingsAdapter(
                 settings.attachToSwitch?.invoke(b)
             }
 
-            SettingsRowType.HEADER, SettingsRowType.ADVANCED ->
-                bindHeader(holder as SettingsHeaderViewHolder, settings)
+            SettingsRowType.HEADER -> bindHeader(holder as SettingsHeaderViewHolder, settings)
+            SettingsRowType.ADVANCED -> bindAdvanced(holder as SettingsAdvancedViewHolder, settings)
         }
     }
 
     private fun bindHeader(holder: SettingsHeaderViewHolder, settings: Settings) {
         val b = holder.binding
         b.settingsHeader.text = settings.name
-        if (settings.type == SettingsRowType.HEADER) {
-            b.settingsHeader.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
-            b.settingsHeader.setOnClickListener(null)
-            b.settingsHeader.isClickable = false
-            return
+        if (settings.isVisible) {
+            b.settingsHeader.visibility = View.VISIBLE
+            b.settingsHeader.layoutParams = RecyclerView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = (28 * b.root.context.resources.displayMetrics.density).toInt()
+            }
+        } else {
+            b.settingsHeader.visibility = View.GONE
+            b.settingsHeader.layoutParams = RecyclerView.LayoutParams(0, 0)
         }
-        // Advanced: tap to show or hide the rows after it.
-        b.settingsHeader.setCompoundDrawablesRelativeWithIntrinsicBounds(
-            0, 0, R.drawable.ic_round_arrow_drop_down_24, 0
+    }
+
+    /** The screen's one advanced toggle: shows or hides every advanced row. */
+    private fun bindAdvanced(holder: SettingsAdvancedViewHolder, settings: Settings) {
+        val b = holder.binding
+        val context = b.root.context
+        b.settingsAdvanced.setText(
+            if (settings.isChecked) R.string.settings_advanced_hide else R.string.settings_advanced
+        )
+        b.settingsAdvanced.setCompoundDrawablesRelativeWithIntrinsicBounds(
+            0, 0,
+            if (settings.isChecked) R.drawable.ic_round_arrow_drop_up_24 else R.drawable.ic_round_arrow_drop_down_24,
+            0
         )
         androidx.core.view.ViewCompat.setStateDescription(
-            b.settingsHeader,
-            b.root.context.getString(if (settings.isChecked) R.string.expanded else R.string.collapsed)
+            b.settingsAdvanced,
+            context.getString(if (settings.isChecked) R.string.expanded else R.string.collapsed)
         )
-        b.settingsHeader.setOnClickListener {
+        b.settingsAdvanced.setOnClickListener {
             settings.isChecked = !settings.isChecked
             settings.advancedRows.forEachIndexed { i, row ->
                 row.isVisible = settings.isChecked && settings.advancedVisibility.getOrElse(i) { true }
             }
-            val start = holder.bindingAdapterPosition
-            if (start != RecyclerView.NO_POSITION) {
-                notifyItemRangeChanged(start, settings.advancedRows.size + 1)
-            }
+            notifyItemRangeChanged(0, itemCount)
         }
     }
 

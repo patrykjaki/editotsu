@@ -611,6 +611,458 @@ object SettingsRegistry {
             )
         )
 
+        // Rows that were missing when the settings were regrouped for 0.7.
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.airing_notifications),
+                desc = context.getString(R.string.airing_notifications_desc),
+                icon = R.drawable.ic_round_notifications_active_24,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)} > ${context.getString(R.string.anilist_settings)}",
+                targetActivity = AnilistSettingsActivity::class.java,
+                highlightKey = context.getString(R.string.airing_notifications)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.anilist_notification_filters),
+                desc = context.getString(R.string.anilist_notification_filters_desc),
+                icon = R.drawable.ic_anilist,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)}",
+                targetActivity = SettingsAccountActivity::class.java,
+                highlightKey = context.getString(R.string.anilist_notification_filters)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.ask_update_progress_chapter_zero),
+                desc = context.getString(R.string.ask_update_progress_info_zero),
+                icon = R.drawable.ic_round_sync_24,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)}",
+                targetActivity = SettingsAccountActivity::class.java,
+                highlightKey = context.getString(R.string.ask_update_progress_chapter_zero)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.auto_backup),
+                desc = "",
+                icon = R.drawable.backup_restore,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
+                highlightKey = context.getString(R.string.auto_backup)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.auto_backup_interval),
+                desc = "",
+                icon = R.drawable.ic_round_auto_awesome_24,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
+                highlightKey = context.getString(R.string.auto_backup_interval)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.auto_backup_max_copies),
+                desc = "",
+                icon = R.drawable.backup_restore,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
+                highlightKey = context.getString(R.string.auto_backup_max_copies)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.auto_select_resolution_priority),
+                desc = context.getString(R.string.auto_select_resolution_priority_desc),
+                icon = R.drawable.ic_round_high_quality_24,
+                category = context.getString(R.string.settings_player),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_player)}",
+                targetActivity = PlayerSettingsActivity::class.java,
+                highlightKey = context.getString(R.string.auto_select_resolution_priority)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.backup_now),
+                desc = context.getString(R.string.backup_now_desc),
+                icon = R.drawable.backup_restore,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
+                highlightKey = context.getString(R.string.backup_now)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.check_app_updates),
+                desc = context.getString(R.string.check_app_updates_desc),
+                icon = R.drawable.ic_round_new_releases_24,
+                category = context.getString(R.string.about),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.about)}",
+                targetActivity = SettingsAboutActivity::class.java,
+                highlightKey = context.getString(R.string.check_app_updates)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.clear_cache),
+                desc = "",
+                icon = R.drawable.ic_round_delete_24,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
+                highlightKey = context.getString(R.string.clear_cache)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.disclaimer),
+                desc = context.getString(R.string.disclaimer_desc),
+                icon = R.drawable.ic_round_info_24,
+                category = context.getString(R.string.about),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.about)}",
+                targetActivity = SettingsAboutActivity::class.java,
+                highlightKey = context.getString(R.string.disclaimer)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.display_adult_content),
+                desc = context.getString(R.string.display_adult_content_desc),
+                icon = R.drawable.ic_round_nsfw_24,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)} > ${context.getString(R.string.anilist_settings)}",
+                targetActivity = AnilistSettingsActivity::class.java,
+                highlightKey = context.getString(R.string.display_adult_content)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.edit_bio),
+                desc = context.getString(R.string.restrict_messages_desc),
+                icon = R.drawable.ic_round_edit_note_24,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)} > ${context.getString(R.string.anilist_settings)}",
+                targetActivity = AnilistSettingsActivity::class.java,
+                highlightKey = context.getString(R.string.edit_bio)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.enable_torrent),
+                desc = context.getString(R.string.enable_torrent_desc),
+                icon = R.drawable.ic_round_dns_24,
+                category = context.getString(R.string.settings_sources),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_sources)}",
+                targetActivity = SettingsGroupActivity::class.java,
+                highlightKey = context.getString(R.string.enable_torrent)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.extension_installer),
+                desc = "",
+                icon = R.drawable.ic_round_new_releases_24,
+                category = context.getString(R.string.settings_sources),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_sources)}",
+                targetActivity = SettingsGroupActivity::class.java,
+                highlightKey = context.getString(R.string.extension_installer)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.extension_test),
+                desc = context.getString(R.string.extension_test_desc),
+                icon = R.drawable.ic_round_search_sources_24,
+                category = context.getString(R.string.settings_sources),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_sources)}",
+                targetActivity = SettingsGroupActivity::class.java,
+                highlightKey = context.getString(R.string.extension_test)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.import_anilist_lists_to_subscriptions),
+                desc = context.getString(R.string.import_anilist_lists_to_subscriptions_desc),
+                icon = R.drawable.ic_round_playlist_add_24,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)}",
+                targetActivity = SettingsAccountActivity::class.java,
+                highlightKey = context.getString(R.string.import_anilist_lists_to_subscriptions)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.import_anilist_statuses_to_subscriptions),
+                desc = context.getString(R.string.import_anilist_statuses_to_subscriptions_desc),
+                icon = R.drawable.ic_round_playlist_add_24,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)}",
+                targetActivity = SettingsAccountActivity::class.java,
+                highlightKey = context.getString(R.string.import_anilist_statuses_to_subscriptions)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.log_to_file),
+                desc = context.getString(R.string.logging_warning),
+                icon = R.drawable.ic_round_edit_note_24,
+                category = context.getString(R.string.about),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.about)}",
+                targetActivity = SettingsAboutActivity::class.java,
+                highlightKey = context.getString(R.string.log_to_file)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.notification_for_checking_subscriptions),
+                desc = context.getString(R.string.notification_for_checking_subscriptions_desc),
+                icon = R.drawable.ic_round_smart_button_24,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)}",
+                targetActivity = SettingsAccountActivity::class.java,
+                highlightKey = context.getString(R.string.notification_for_checking_subscriptions)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.notification_permission),
+                desc = "",
+                icon = R.drawable.ic_round_notifications_none_24,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)}",
+                targetActivity = SettingsAccountActivity::class.java,
+                highlightKey = context.getString(R.string.notification_permission)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.play_magnet_or_torrent),
+                desc = context.getString(R.string.play_magnet_or_torrent_desc),
+                icon = R.drawable.ic_round_play_arrow_24,
+                category = context.getString(R.string.settings_sources),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_sources)}",
+                targetActivity = SettingsGroupActivity::class.java,
+                highlightKey = context.getString(R.string.play_magnet_or_torrent)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.preferred_download_resolutions),
+                desc = context.getString(R.string.auto_select_resolution_priority_desc),
+                icon = R.drawable.ic_round_high_quality_24,
+                category = context.getString(R.string.settings_player),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_player)}",
+                targetActivity = PlayerSettingsActivity::class.java,
+                highlightKey = context.getString(R.string.preferred_download_resolutions)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.proxy_setup),
+                desc = context.getString(R.string.proxy_setup_desc),
+                icon = R.drawable.lan_24,
+                category = context.getString(R.string.settings_sources),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_sources)}",
+                targetActivity = SettingsGroupActivity::class.java,
+                highlightKey = context.getString(R.string.proxy_setup)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.purge_anime_downloads),
+                desc = context.getString(R.string.purge_anime_downloads_desc),
+                icon = R.drawable.ic_round_delete_24,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
+                highlightKey = context.getString(R.string.purge_anime_downloads)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.purge_downloads),
+                desc = context.getString(R.string.purge_downloads_desc),
+                icon = R.drawable.ic_round_delete_24,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
+                highlightKey = context.getString(R.string.purge_downloads)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.purge_manga_downloads),
+                desc = context.getString(R.string.purge_manga_downloads_desc),
+                icon = R.drawable.ic_round_delete_24,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
+                highlightKey = context.getString(R.string.purge_manga_downloads)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.purge_novel_downloads),
+                desc = context.getString(R.string.purge_novel_downloads_desc),
+                icon = R.drawable.ic_round_delete_24,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
+                highlightKey = context.getString(R.string.purge_novel_downloads)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.rebuild_download_index),
+                desc = context.getString(R.string.rebuild_download_index_desc),
+                icon = R.drawable.ic_download_24,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
+                highlightKey = context.getString(R.string.rebuild_download_index)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.restore_backup),
+                desc = context.getString(R.string.restore_backup_desc),
+                icon = R.drawable.backup_restore,
+                category = context.getString(R.string.label_data_storage),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.label_data_storage)}",
+                targetActivity = ani.dantotsu.settings.data.SettingsDataActivity::class.java,
+                highlightKey = context.getString(R.string.restore_backup)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.restrict_messages),
+                desc = context.getString(R.string.restrict_messages_desc),
+                icon = R.drawable.ic_round_lock_open_24,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)} > ${context.getString(R.string.anilist_settings)}",
+                targetActivity = AnilistSettingsActivity::class.java,
+                highlightKey = context.getString(R.string.restrict_messages)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.selected_dns),
+                desc = "",
+                icon = R.drawable.lan_24,
+                category = context.getString(R.string.settings_sources),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_sources)}",
+                targetActivity = SettingsGroupActivity::class.java,
+                highlightKey = context.getString(R.string.selected_dns)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.share_username_in_crash_reports),
+                desc = context.getString(R.string.share_username_in_crash_reports_desc),
+                icon = R.drawable.ic_round_search_24,
+                category = context.getString(R.string.about),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.about)}",
+                targetActivity = SettingsAboutActivity::class.java,
+                highlightKey = context.getString(R.string.share_username_in_crash_reports)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.skip_loading_extension_icons),
+                desc = context.getString(R.string.skip_loading_extension_icons_desc),
+                icon = R.drawable.ic_round_no_icon_24,
+                category = context.getString(R.string.settings_sources),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_sources)}",
+                targetActivity = SettingsGroupActivity::class.java,
+                highlightKey = context.getString(R.string.skip_loading_extension_icons)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.smart_download_anime),
+                desc = context.getString(R.string.smart_download_anime_desc),
+                icon = R.drawable.ic_download_24,
+                category = context.getString(R.string.settings_player),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_player)}",
+                targetActivity = PlayerSettingsActivity::class.java,
+                highlightKey = context.getString(R.string.smart_download_anime)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.smart_download_manga),
+                desc = context.getString(R.string.smart_download_manga_desc),
+                icon = R.drawable.ic_download_24,
+                category = context.getString(R.string.settings_reading),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_reading)}",
+                targetActivity = ReaderSettingsActivity::class.java,
+                highlightKey = context.getString(R.string.smart_download_manga)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.subscription_prompt_at_end),
+                desc = context.getString(R.string.subscription_prompt_at_end_desc),
+                icon = R.drawable.ic_round_smart_button_24,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)}",
+                targetActivity = SettingsAccountActivity::class.java,
+                highlightKey = context.getString(R.string.subscription_prompt_at_end)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.use_alarm_manager_reliable),
+                desc = context.getString(R.string.use_alarm_manager_reliable_desc),
+                icon = R.drawable.ic_anilist,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)}",
+                targetActivity = SettingsAccountActivity::class.java,
+                highlightKey = context.getString(R.string.use_alarm_manager_reliable)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.user_agent),
+                desc = context.getString(R.string.user_agent_desc),
+                icon = R.drawable.ic_round_video_settings_24,
+                category = context.getString(R.string.settings_sources),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_sources)}",
+                targetActivity = SettingsGroupActivity::class.java,
+                highlightKey = context.getString(R.string.user_agent)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.view_subscriptions),
+                desc = context.getString(R.string.view_subscriptions_desc),
+                icon = R.drawable.ic_round_search_24,
+                category = context.getString(R.string.settings_tracking),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.settings_tracking)}",
+                targetActivity = SettingsAccountActivity::class.java,
+                highlightKey = context.getString(R.string.view_subscriptions)
+            )
+        )
+        list.add(
+            SearchableSetting(
+                title = context.getString(R.string.workstream_build),
+                desc = context.getString(R.string.faq_desc),
+                icon = R.drawable.ic_round_info_24,
+                category = context.getString(R.string.about),
+                breadcrumbs = "${context.getString(R.string.settings)} > ${context.getString(R.string.about)}",
+                targetActivity = SettingsAboutActivity::class.java,
+                highlightKey = context.getString(R.string.workstream_build)
+            )
+        )
         return list
     }
 
