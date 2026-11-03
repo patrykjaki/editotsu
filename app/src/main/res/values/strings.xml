@@ -257,6 +257,7 @@
         <item quantity="one">%d version</item>
         <item quantity="other">%d versions</item>
     </plurals>
+    <string name="theme_version_selected">Selected</string>
     <string name="theme_versions_action">%1$s, %2$s, choose version</string>
     <string name="prequel">Prequel</string>
     <string name="sequel">Sequel</string>
