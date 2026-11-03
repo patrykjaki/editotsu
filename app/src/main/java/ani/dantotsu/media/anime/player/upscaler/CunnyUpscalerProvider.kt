@@ -30,6 +30,12 @@ class CunnyUpscalerProvider(
      * bundle) with the mid-body float16 `#extension` neutralised so `vo=gpu` on GLES compiles
      * it. Fails closed (null = no shaders) if a copy can't be written.
      */
+    /** The larger models (dp4a only) are listed only while the Vulkan libmpv is in use. */
+    override fun profiles(): List<UpscalerProfile> {
+        val base = super.profiles()
+        return if (base.isNotEmpty() && useVulkan()) base + VULKAN_PROFILES else base
+    }
+
     override fun resolveShaderChain(profileId: String): String? {
         // Vulkan (libplacebo) runs the upstream files as they are: fp16 + dp4a, no GLES copy.
         if (useVulkan()) return super.resolveShaderChain("$profileId$VULKAN_SUFFIX")
@@ -50,5 +56,17 @@ class CunnyUpscalerProvider(
             UpscalerProfile("balanced", "Balanced"),
             UpscalerProfile("quality", "Quality"),
         )
+
+        /**
+         * Vulkan only, in quality order (CuNNy README: 4x24 > 4x16 > 4x12 > 3x12 > 2x12 > fast).
+         * Plain ids are SOFT; `-ds` is the denoise-and-sharpen variant. Until the phone
+         * measurement (roadmap C3) picks the presets, every bundled model is listed.
+         */
+        val VULKAN_PROFILES = listOf("2x12", "3x12", "4x12", "4x16", "4x24").flatMap { model ->
+            listOf(
+                UpscalerProfile(model, model),
+                UpscalerProfile("$model-ds", "$model Sharpen"),
+            )
+        }
     }
 }

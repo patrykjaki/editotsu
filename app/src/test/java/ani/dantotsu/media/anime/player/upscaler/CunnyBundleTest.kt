@@ -75,9 +75,10 @@ class CunnyBundleTest {
         }
         // Every provider profile is backed by the manifest, once for GLES and once for Vulkan,
         // and the manifest has no other profiles.
-        val ids = CunnyUpscalerProvider.PROFILES.map { it.id }
+        val gles = CunnyUpscalerProvider.PROFILES.map { it.id }
+        val vulkan = gles + CunnyUpscalerProvider.VULKAN_PROFILES.map { it.id }
         assertEquals(
-            (ids + ids.map { it + CunnyUpscalerProvider.VULKAN_SUFFIX }).toSet(),
+            (gles + vulkan.map { it + CunnyUpscalerProvider.VULKAN_SUFFIX }).toSet(),
             m.profiles.keys
         )
         // Vulkan chains use only the dp4a files, GLES chains never do.
@@ -133,7 +134,10 @@ class CunnyBundleTest {
             "fast" to "CuNNy-veryfast-SOFT-Q.glsl",
             "balanced" to "CuNNy-faster-SOFT-Q.glsl",
             "quality" to "CuNNy-fast-SOFT-Q.glsl",
-        )
+        ) + listOf("2x12", "3x12", "4x12", "4x16", "4x24").flatMap { model ->
+            listOf(model to "CuNNy-$model-SOFT-Q.glsl", "$model-ds" to "CuNNy-$model-DS-Q.glsl")
+        }
+        assertEquals(expected.keys.toList(), provider.profiles().map { it.id })
         for ((profile, file) in expected) {
             val installed = File(filesDir, "upscaler/cunny/$file")
             assertEquals(installed.absolutePath, provider.resolveShaderChain(profile))
@@ -144,6 +148,15 @@ class CunnyBundleTest {
         }
         assertFalse(File(filesDir, "upscaler/cunny-gles-compat").exists())
         assertNull(provider.resolveShaderChain("unknown"))
+    }
+
+    @Test
+    fun `larger models are not offered or resolved without vulkan`() {
+        val provider = manager().providerFor(CunnyUpscalerProvider.ID)!!
+        assertEquals(listOf("fast", "balanced", "quality"), provider.profiles().map { it.id })
+        // A saved Vulkan-only choice fails closed on GLES (no shaders), it never falls back.
+        assertNull(provider.resolveShaderChain("4x16"))
+        assertNull(provider.resolveShaderChain("4x16-ds"))
     }
 
     @Test

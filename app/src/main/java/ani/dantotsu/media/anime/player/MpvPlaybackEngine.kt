@@ -212,7 +212,20 @@ class MpvPlaybackEngine(
     // Stage A Pre-Ready Desired State Accumulators
     private var pendingSurface: Surface? = null
     /** See [VulkanLibmpv]. */
-    private val vulkanLibmpv: Boolean = VulkanLibmpv.available
+    private val vulkanLibmpv: Boolean = VulkanLibmpv.supported
+
+    /**
+     * Vulkan output that fails to start (driver or loader problem) would leave a black screen.
+     * mpv logs it on its own thread; the engine then returns to OpenGL without the upscaler for
+     * the rest of this process ([VulkanLibmpv.markFailed]).
+     */
+    private val voFailureObserver = object : MPV.LogObserver {
+        override fun logMessage(prefix: String, level: Int, text: String) {
+            if (!VulkanLibmpv.isVoInitFailure(level, text)) return
+            engineDispatcher.post { onVulkanOutputFailed(text.trim()) }
+        }
+    }
+    private var logObserverRegistered = false
 
     /** Output to use while a surface is attached; see [VideoOutputPolicy]. Engine thread only. */
     private var desiredOutput: VideoOutputPolicy.Output = VideoOutputPolicy.outputFor("", vulkanLibmpv)
@@ -324,6 +337,10 @@ class MpvPlaybackEngine(
             ani.dantotsu.util.Logger.log("MPVSTEP 07 before addObserver")
             mpvClient.addObserver(this)
             observerRegistered = true
+            if (vulkanLibmpv) {
+                mpvClient.addLogObserver(voFailureObserver)
+                logObserverRegistered = true
+            }
             ani.dantotsu.util.Logger.log("MPVSTEP 08 after addObserver")
 
             // Register observers
@@ -377,6 +394,10 @@ class MpvPlaybackEngine(
                 if (observerRegistered) {
                     mpvClient.removeObserver(this)
                     observerRegistered = false
+                }
+                if (logObserverRegistered) {
+                    mpvClient.removeLogObserver(voFailureObserver)
+                    logObserverRegistered = false
                 }
             } catch (_: Throwable) {}
             try {
@@ -573,6 +594,21 @@ class MpvPlaybackEngine(
             output.gpuContext?.let { mpvClient.setPropertyString("gpu-context", it) }
         }
         mpvClient.setPropertyString("vo", output.vo)
+    }
+
+    /** Engine thread. Only acts while the Vulkan output is the one being started. */
+    private fun onVulkanOutputFailed(message: String) {
+        if (desiredOutput.gpuApi != "vulkan" || VulkanLibmpv.failed) return
+        VulkanLibmpv.markFailed()
+        ani.dantotsu.util.Logger.log("MpvPlaybackEngine: Vulkan output failed ($message); OpenGL without upscaler")
+        try {
+            mpvClient.setPropertyString("glsl-shaders", "")
+            desiredOutput = VideoOutputPolicy.outputFor("", vulkanLibmpv)
+            if (pendingSurface?.isValid == true) applyOutput(desiredOutput)
+        } catch (e: Exception) {
+            ani.dantotsu.util.Logger.log("MpvPlaybackEngine: OpenGL fallback error: ${e.message}")
+        }
+        postToMain { ani.dantotsu.snackString(ani.dantotsu.R.string.upscaler_vulkan_failed) }
     }
 
     private fun setVideoSurfaceInternal(surface: Surface?) {
@@ -1242,7 +1278,9 @@ class MpvPlaybackEngine(
             // guaranteeing a previously applied upscaler never outlives its selection.
             // Compute shaders can't run on Android GLES; while a shader chain is active use
             // gpu-next (on Vulkan when the libmpv has it), back when it's cleared. mpv re-inits the VO.
-            val output = VideoOutputPolicy.outputFor(resolved.glslShaderChain, vulkanLibmpv)
+            // After a Vulkan start failure the shaders can't run (GLES has no compute): clear them.
+            val shaderChain = if (VulkanLibmpv.failed) "" else resolved.glslShaderChain
+            val output = VideoOutputPolicy.outputFor(shaderChain, vulkanLibmpv)
             if (output != desiredOutput) {
                 desiredOutput = output
                 if (pendingSurface?.isValid == true) {
@@ -1250,7 +1288,7 @@ class MpvPlaybackEngine(
                 }
                 ani.dantotsu.util.Logger.log("MpvPlaybackEngine: output -> $output")
             }
-            mpvClient.setPropertyString("glsl-shaders", resolved.glslShaderChain)
+            mpvClient.setPropertyString("glsl-shaders", shaderChain)
 
             // 4. Sync & volume properties
             resolved.syncProperties.forEach { (k, v) ->
@@ -1332,6 +1370,10 @@ class MpvPlaybackEngine(
                 if (observerRegistered) {
                     mpvClient.removeObserver(this)
                     observerRegistered = false
+                }
+                if (logObserverRegistered) {
+                    mpvClient.removeLogObserver(voFailureObserver)
+                    logObserverRegistered = false
                 }
 
                 operationsByGen.values.forEach { op ->

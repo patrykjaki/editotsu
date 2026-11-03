@@ -15,6 +15,19 @@ with the Vulkan libmpv, vo=gpu-next):
   CuNNy-veryfast-SOFT-Q.glsl
   CuNNy-faster-SOFT-Q.glsl
   CuNNy-fast-SOFT-Q.glsl
+  CuNNy-2x12-SOFT-Q.glsl
+  CuNNy-3x12-SOFT-Q.glsl
+  CuNNy-4x12-SOFT-Q.glsl
+  CuNNy-4x16-SOFT-Q.glsl
+  CuNNy-4x24-SOFT-Q.glsl
+
+Files, copied unmodified from mpv/ds/dp4a/ at that revision (used only
+with the Vulkan libmpv, vo=gpu-next):
+  CuNNy-2x12-DS-Q.glsl
+  CuNNy-3x12-DS-Q.glsl
+  CuNNy-4x12-DS-Q.glsl
+  CuNNy-4x16-DS-Q.glsl
+  CuNNy-4x24-DS-Q.glsl
 
 These files are the complete source of the shaders. Editotsu loads them
 into libmpv through the glsl-shaders option. On OpenGL ES (vo=gpu) the

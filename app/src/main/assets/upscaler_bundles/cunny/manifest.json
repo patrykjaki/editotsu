@@ -1,5 +1,5 @@
 {
-  "bundleRevision": 2,
+  "bundleRevision": 3,
   "provider": "cunny",
   "upstreamRevision": "906031bb00c15dd6a6bbbaa21c0eb0b724ca8437",
   "files": {
@@ -8,10 +8,20 @@
     "CuNNy-fast-SOFT.glsl": "7f5077ebe18ac599f088e8d8c0401a195132bcc1b078c9f3bb2f1baf16a92c8c",
     "LICENSE-LGPL-3.0.txt": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
     "LICENSE-GPL-3.0.txt": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-    "NOTICE.txt": "07a1a0791d47959c498f0d0049a55e6e3fe2aa15a28026f652053735080ea21e",
+    "NOTICE.txt": "2bde83fa45866d70ca4a620b3aaf5a08b29897309530e94ffc853d691a152fb4",
     "CuNNy-veryfast-SOFT-Q.glsl": "aff8624c3663ca69a92e3f03fa41a6f139cc74cb03f070e1cdc3ec2d4d28d35c",
     "CuNNy-faster-SOFT-Q.glsl": "9caf11134c598927a000650c9ba4d1c7cd2b7a6b62e06e2db44836756ec7ba6f",
-    "CuNNy-fast-SOFT-Q.glsl": "96af5170cdb0c06e7dac6bb18bb3b22d812af40fcf447ef2a291e6720d7a5114"
+    "CuNNy-fast-SOFT-Q.glsl": "96af5170cdb0c06e7dac6bb18bb3b22d812af40fcf447ef2a291e6720d7a5114",
+    "CuNNy-2x12-SOFT-Q.glsl": "64f7a5f7bbd8a8ee8569c2f860ff9324024e38bc298b08576aa1631ef6310fd4",
+    "CuNNy-2x12-DS-Q.glsl": "7c4903f0aa1645ad959e742540fef6a90651ad1425fc2104caf7f7ec604ec40b",
+    "CuNNy-3x12-SOFT-Q.glsl": "b7389343a251665db510251e7d3b0617581472cd86058ff7bca21a7a3851904d",
+    "CuNNy-3x12-DS-Q.glsl": "a89a9144fb87226d9412ec6f739f33853347996a087225e8aaa95754caca8a53",
+    "CuNNy-4x12-SOFT-Q.glsl": "cce51261a146bd96177e5a87fbe3fc03c5d9536b2a53ff569baeb18cb65a93a1",
+    "CuNNy-4x12-DS-Q.glsl": "f4f4cde3abd91700ff14eb8032c074b863dc5ed120948455ee67f2ca5516994e",
+    "CuNNy-4x16-SOFT-Q.glsl": "fa340e16e3e97982e7bdee40122d3e859d50c9848da40ae8cd5e6fc45a39c13f",
+    "CuNNy-4x16-DS-Q.glsl": "cc2668d5ac33fc46e9714c81b74a3852564ac79053d6ab04bf79a584db282213",
+    "CuNNy-4x24-SOFT-Q.glsl": "6ea3f5fa4aea4cff54c38cdd012c90ad96884d27b66c28617b6ab61a81728a29",
+    "CuNNy-4x24-DS-Q.glsl": "fa3ac42aa7fec4292ba11c870c269a75e3a50a2fc308ef48f8bf7b52ad99407d"
   },
   "profiles": {
     "fast": [
@@ -31,6 +41,36 @@
     ],
     "quality@vulkan": [
       "CuNNy-fast-SOFT-Q.glsl"
+    ],
+    "2x12@vulkan": [
+      "CuNNy-2x12-SOFT-Q.glsl"
+    ],
+    "2x12-ds@vulkan": [
+      "CuNNy-2x12-DS-Q.glsl"
+    ],
+    "3x12@vulkan": [
+      "CuNNy-3x12-SOFT-Q.glsl"
+    ],
+    "3x12-ds@vulkan": [
+      "CuNNy-3x12-DS-Q.glsl"
+    ],
+    "4x12@vulkan": [
+      "CuNNy-4x12-SOFT-Q.glsl"
+    ],
+    "4x12-ds@vulkan": [
+      "CuNNy-4x12-DS-Q.glsl"
+    ],
+    "4x16@vulkan": [
+      "CuNNy-4x16-SOFT-Q.glsl"
+    ],
+    "4x16-ds@vulkan": [
+      "CuNNy-4x16-DS-Q.glsl"
+    ],
+    "4x24@vulkan": [
+      "CuNNy-4x24-SOFT-Q.glsl"
+    ],
+    "4x24-ds@vulkan": [
+      "CuNNy-4x24-DS-Q.glsl"
     ]
   }
 }
