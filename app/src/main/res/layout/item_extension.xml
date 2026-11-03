@@ -6,25 +6,25 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:paddingTop="10dp"
-    android:paddingBottom="10dp">
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
 
     <ImageView
         android:id="@+id/extensionPinImageView"
-        android:layout_width="40dp"
-        android:layout_height="24dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
         android:layout_gravity="center_vertical"
-        android:layout_marginStart="-10dp"
-        android:layout_marginEnd="3dp"
-        android:src="@drawable/ic_round_equal_24"
-        tools:ignore="ContentDescription" />
+        android:layout_marginStart="-12dp"
+        android:contentDescription="@string/extensions_row_reorder"
+        android:padding="12dp"
+        android:src="@drawable/ic_round_equal_24" />
 
     <ImageView
         android:id="@+id/extensionIconImageView"
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:layout_gravity="center_vertical"
-        android:layout_marginEnd="9dp"
+        android:layout_marginEnd="12dp"
         tools:ignore="ContentDescription" />
 
     <LinearLayout
@@ -46,9 +46,9 @@
             android:id="@+id/extensionVersionTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/poppins_semi_bold"
-            android:alpha="0.7"
+            android:fontFamily="@font/poppins"
             android:text="@string/extension_version"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="12sp" />
     </LinearLayout>
 
@@ -74,41 +74,39 @@
 
     <ImageView
         android:id="@+id/updateTextView"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:padding="10dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:padding="12dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/extensions_row_update"
         android:layout_gravity="center_vertical"
         android:layout_weight="0"
-        android:layout_marginEnd="4dp"
         android:src="@drawable/ic_round_sync_24"
-        app:tint="?attr/colorOnBackground"
-        tools:ignore="ContentDescription" />
+        app:tint="?attr/colorOnBackground" />
 
     <ImageView
         android:id="@+id/deleteTextView"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:padding="10dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:padding="12dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/extensions_row_uninstall"
         android:layout_gravity="center_vertical"
         android:layout_weight="0"
-        android:layout_marginEnd="4dp"
         android:src="@drawable/ic_round_delete_24"
-        app:tint="?attr/colorOnBackground"
-        tools:ignore="ContentDescription" />
+        app:tint="?attr/colorOnBackground" />
 
     <ImageView
         android:id="@+id/settingsImageView"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:padding="10dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:padding="12dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/extensions_more_options"
         android:layout_gravity="center_vertical"
-        android:layout_marginEnd="10dp"
+        android:layout_marginEnd="8dp"
         android:layout_weight="0"
         android:src="@drawable/ic_round_dots_vertical_24"
-        app:tint="?attr/colorOnBackground"
-        tools:ignore="ContentDescription" />
+        app:tint="?attr/colorOnBackground" />
 
 </LinearLayout>
