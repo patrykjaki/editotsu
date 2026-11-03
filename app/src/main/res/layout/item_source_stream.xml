@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Source Picker v3 Final: one stream card (e.g. AnimePahe "MTBB").
-    All links from one group and audio share the card; each quality is
-    a button, highest first. Second links for an existing quality sit
-    on the "Also as MP4" line.
+    One stream card (e.g. AnimePahe "MTBB"), laid out like a release card.
+    All links from one group and audio share the card. A tap plays the
+    remembered quality, else the highest, shown as a tag; every other
+    link is a small button on the "Also" line.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -108,7 +108,9 @@
                 android:id="@+id/streamQualities"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:paddingEnd="12dp"
+                app:alignItems="center"
                 app:flexWrap="wrap" />
 
             <LinearLayout
