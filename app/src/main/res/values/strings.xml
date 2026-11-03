@@ -11,9 +11,8 @@
     <string name="logout">Logout</string>
 
     <string name="dantotsu" translatable="false">https://github.com/patrykjaki/editotsu</string>
-    <string name="discord" translatable="false">https://discord.gg/4HPZ5nAWwM</string>
     <string name="github" translatable="false">https://github.com/patrykjaki/editotsu</string>
-    <string name="telegram" translatable="false" tools:ignore="Typos">https://t.me/+gzBCQExtLQo1YTNh </string>
+    <string name="github_name" translatable="false">GitHub</string>
     <string name="coffee" translatable="false">https://github.com/sponsors/rebelonion</string>
 
     <string name="anilist_link">https://anilist.co/user/%1$s/</string>
