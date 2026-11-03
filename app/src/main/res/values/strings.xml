@@ -287,6 +287,11 @@
     <string name="extensions_select_source">Select a source</string>
     <string name="extensions_not_configurable">This source has no settings</string>
     <string name="extensions_update_all">Update all (%1$d)</string>
+    <string name="extensions_refresh_none">No extension updates</string>
+    <plurals name="extensions_refresh_updates">
+        <item quantity="one">%1$d extension update</item>
+        <item quantity="other">%1$d extension updates</item>
+    </plurals>
     <string name="extension_updates_available">Extension updates available</string>
     <string name="player_settings">Player Settings</string>
     <string name="recentlyListOnly">Only show my content in \"Recently Updated\"</string>
