@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
+import ani.dantotsu.connections.mal.MALKeystore
 import ani.dantotsu.parsers.novel.NovelExtensionManager
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.util.Logger
@@ -169,13 +170,35 @@ class PreferencePackager {
         private fun packagePreferences(map: Map<Location, SharedPreferences>): Map<String, Map<String, Any>> {
             val result = mutableMapOf<String, Map<String, Any>>()
             for ((location, preferences) in map) {
-                result[location.name] = if (location == Location.Irrelevant) {
-                    packageOne(preferences) { BackupSections.keepHistoryKey(it) }
-                } else {
-                    packageOne(preferences)
+                result[location.name] = when (location) {
+                    Location.Irrelevant -> packageOne(preferences) { BackupSections.keepHistoryKey(it) }
+                    Location.Protected -> packageOne(preferences) { BackupSections.keepProtectedKey(it) } +
+                        malTokenForBackup(preferences)
+                    else -> packageOne(preferences)
                 }
             }
             return result
+        }
+
+        private fun malTokenForBackup(protected: SharedPreferences): Map<String, Any> {
+            val encrypted = protected.getString("MALEncryptedToken", null)
+            if (encrypted.isNullOrBlank()) return emptyMap()
+            val plain = MALKeystore.decrypt(encrypted).getOrNull() ?: return emptyMap()
+            return mapOf(BackupSections.MAL_TOKEN_BACKUP to typed(plain))
+        }
+
+        /** Encrypts a restored MAL token with this install's key; drops the plaintext copy. */
+        private fun restoreMalToken(context: Context) {
+            val protected = context.getSharedPreferences(Location.Protected.location, Context.MODE_PRIVATE)
+            val plain = protected.getString(BackupSections.MAL_TOKEN_BACKUP, null)
+            protected.edit().remove(BackupSections.MAL_TOKEN_BACKUP).commit()
+            if (plain.isNullOrBlank()) return
+            val encrypted = MALKeystore.encrypt(plain).getOrNull()
+            if (encrypted == null) {
+                Logger.log("Backup restore: MAL token could not be encrypted; MAL login not restored")
+                return
+            }
+            protected.edit().putString("MALEncryptedToken", encrypted).commit()
         }
 
         /**
@@ -207,6 +230,7 @@ class PreferencePackager {
                     locationEnum == Location.ExtensionSettings -> Unit
                     locationEnum != null -> {
                         if (!PrefManager.importAllPrefs(prefMap, locationEnum)) success = false
+                        if (locationEnum == Location.Protected) restoreMalToken(context)
                     }
                     location.startsWith("source_") -> {
                         val pref = context.getSharedPreferences(location, Context.MODE_PRIVATE)

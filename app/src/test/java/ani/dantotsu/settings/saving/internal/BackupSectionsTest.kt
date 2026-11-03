@@ -69,4 +69,13 @@ class BackupSectionsTest {
         assertFalse(BackupSections.keepAppPrefKey("animeext_updates_count"))
         assertTrue(BackupSections.keepAppPrefKey("hidden_anime_catalogues"))
     }
+
+    @Test
+    fun loginsSkipInstallBoundMalState() {
+        assertFalse(BackupSections.keepProtectedKey("MALEncryptedToken"))
+        assertFalse(BackupSections.keepProtectedKey("MALAuthSession"))
+        assertTrue(BackupSections.keepProtectedKey("AnilistToken"))
+        assertTrue(BackupSections.keepProtectedKey("MALUserName"))
+        assertTrue(BackupSections.keepProtectedKey("BiometricToken"))
+    }
 }
