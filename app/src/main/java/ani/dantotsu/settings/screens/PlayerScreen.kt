@@ -10,6 +10,7 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.core.content.res.ResourcesCompat
 import ani.dantotsu.R
+import ani.dantotsu.connections.subtitles.OnlineSubtitleLanguages
 import ani.dantotsu.media.anime.player.ActiveVideoPipeline
 import ani.dantotsu.media.anime.player.PlaybackSpeedSelection
 import ani.dantotsu.media.anime.player.SubtitleStylingMode
@@ -65,9 +66,6 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
 
     private val PROVIDERS = listOf("Wyzie", "Stremio", "SubSource", "OpenSubtitles")
     private val PROVIDER_LABELS = listOf("Wyzie", "Stremio OpenSubtitles", "SubSource", "OpenSubtitles REST")
-    private val ONLINE_LANGUAGES = listOf(
-        "en", "ar", "pt", "es", "id", "fr", "ru", "zh", "ja", "tr", "it", "de", "pl", "th", "vi", "ko",
-    )
 
     private val DEBAND_KEYS = listOf("None", "CPU", "GPU")
     private val PROFILES = listOf(
@@ -131,16 +129,18 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
         @DrawableRes icon: Int,
         values: List<String>,
         labels: List<String>,
+        /** Stored set as [values]; the languages pref may hold old names instead of codes. */
+        read: (Set<String>) -> Set<String> = { it },
     ) = actionRow(
         key.name, title, icon = icon, enabled = onlineSubsOn, keys = listOf(key),
         current = { c ->
-            val set = PrefManager.getVal<Set<String>>(key)
+            val set = read(PrefManager.getVal(key))
             values.indices.filter { values[it] in set }.joinToString(", ") { labels[it] }
                 .ifEmpty { c.getString(R.string.nothing_selected) }
         },
     ) { host, _ ->
         val c = host.activity
-        val set = PrefManager.getVal<Set<String>>(key)
+        val set = read(PrefManager.getVal(key))
         c.customAlertDialog().apply {
             setTitle(c.getString(title))
             multiChoiceItems(labels.toTypedArray(), BooleanArray(values.size) { values[it] in set }) { checked ->
@@ -234,7 +234,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
             pickRow(
                 PrefName.VideoDebandMode.name, R.string.deband_mode, R.drawable.ic_palette,
                 listOf(PrefName.VideoDebandMode),
-                labels = { listOf(it.getString(R.string.none), it.getString(R.string.deband_cpu), it.getString(R.string.deband_gpu)) },
+                labels = { listOf(it.getString(R.string.deband_off), it.getString(R.string.deband_cpu), it.getString(R.string.deband_gpu)) },
                 current = { DEBAND_KEYS.indexOf(PrefManager.getVal<String>(PrefName.VideoDebandMode)).coerceAtLeast(0) },
             ) { _, i ->
                 PrefManager.setVal(PrefName.VideoDebandMode, DEBAND_KEYS[i])
@@ -318,8 +318,9 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
             multiRow(PrefName.OnlineSubtitleProviders, R.string.online_subtitle_providers,
                 R.drawable.ic_round_view_list_24, PROVIDERS, PROVIDER_LABELS),
             multiRow(PrefName.OnlineSubtitleLanguages, R.string.online_subtitle_languages,
-                R.drawable.ic_round_translate_24, ONLINE_LANGUAGES,
-                ONLINE_LANGUAGES.map { Locale.forLanguageTag(it).getDisplayLanguage(Locale.ENGLISH) }),
+                R.drawable.ic_round_translate_24, OnlineSubtitleLanguages.CODES,
+                OnlineSubtitleLanguages.CODES.map(OnlineSubtitleLanguages::englishName),
+                read = OnlineSubtitleLanguages::codes),
         )),
         Section(R.string.subtitles, listOf(
             // Live sample of the colour, font, size and window settings below.
@@ -356,13 +357,13 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
             choiceRow(PrefName.SubLanguage, R.string.subtitle_langauge, R.drawable.ic_round_subtitles_24,
                 enabled = subsOn, labels = { SUB_LANGUAGES }),
             // Box behind each line, and the strip around it (window).
-            colorRow(PrefName.SubBackground, R.string.sub_background_color_select, advanced = true),
-            colorRow(PrefName.SubWindow, R.string.sub_window_color_select, R.string.sub_window_color_info, advanced = true),
+            colorRow(PrefName.SubBackground, R.string.sub_background_color_select),
+            colorRow(PrefName.SubWindow, R.string.sub_window_color_select, R.string.sub_window_color_info),
             sliderRow(PrefName.SubAlpha, R.string.sub_alpha, icon = R.drawable.ic_round_color_24, from = 0f, to = 1f,
-                step = 0.1f, format = ::percent, advanced = true, enabled = subsOn, onChange = refreshPreview),
+                step = 0.1f, format = ::percent, enabled = subsOn, onChange = refreshPreview),
             // Scales subtitles that keep the source's styling.
             sliderRow(PrefName.SourceSubScale, R.string.source_sub_size, icon = R.drawable.ic_round_color_24,
-                from = 0.5f, to = 2f, step = 0.05f, format = ::percent, advanced = true, enabled = subsOn),
+                from = 0.5f, to = 2f, step = 0.05f, format = ::percent, enabled = subsOn),
             // Draws subs with an Android TextView instead of the renderer; stroke and margin apply only here.
             switchRow(PrefName.TextviewSubtitles, R.string.textview_sub, icon = R.drawable.ic_round_subtitles_24,
                 advanced = true, enabled = subsOn, refresh = true),
