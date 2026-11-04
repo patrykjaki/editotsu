@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The screen's one "Show advanced settings" toggle, after the last section. -->
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/settingsAdvanced"
+    android:id="@+id/advancedToggle"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="32dp"
+    android:layout_marginTop="24dp"
     android:background="?attr/selectableItemBackground"
     android:drawablePadding="4dp"
     android:drawableTint="?attr/colorPrimary"
@@ -11,6 +12,5 @@
     android:fontFamily="@font/poppins_semi_bold"
     android:gravity="center"
     android:minHeight="56dp"
-    android:text="@string/settings_advanced"
     android:textColor="?attr/colorPrimary"
     android:textSize="14sp" />

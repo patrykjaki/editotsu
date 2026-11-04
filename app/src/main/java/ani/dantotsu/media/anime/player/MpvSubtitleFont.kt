@@ -21,7 +21,7 @@ package ani.dantotsu.media.anime.player
  * - levenim_mt_bold.ttf        -> "Levenim MT"
  * - blocky.ttf                 -> "Minecraft"
  *
- * Indices match the font dropdown order in PlayerSettingsActivity and the
+ * Indices match the font list order in PlayerScreen and the
  * stored [ani.dantotsu.settings.PrefName.Font] value. UI labels are
  * intentionally untouched; only the mpv-facing family strings are exact.
  */
