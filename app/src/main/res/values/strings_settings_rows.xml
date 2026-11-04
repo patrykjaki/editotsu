@@ -48,8 +48,9 @@
     <string name="percent_value">%1$d%%</string>
     <string name="player_filters">Video filters &amp; shaders</string>
     <string name="deband_mode">Debanding</string>
-    <string name="deband_cpu">CPU (gradfun)</string>
-    <string name="deband_gpu">GPU (libmpv)</string>
+    <string name="deband_off">Off</string>
+    <string name="deband_cpu">CPU</string>
+    <string name="deband_gpu">GPU</string>
     <string name="upscaler">Upscaler</string>
     <string name="audio_night_mode">Audio night mode</string>
     <string name="color_profile">Color profile</string>

@@ -45,7 +45,7 @@ object SubSourceSubtitles {
 
                 // Fetch subtitles for this movie
                 val userLangs = try {
-                    PrefManager.getVal<Set<String>>(PrefName.OnlineSubtitleLanguages).joinToString(",") { it.lowercase(Locale.ROOT) }
+                    OnlineSubtitleLanguages.forSubSource()
                 } catch (_: Exception) { "" }
 
                 val subUrl = if (userLangs.isNotBlank()) {
