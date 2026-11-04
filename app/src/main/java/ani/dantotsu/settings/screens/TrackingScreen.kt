@@ -14,6 +14,7 @@ import ani.dantotsu.connections.anilist.api.NotificationType
 import ani.dantotsu.connections.discord.rpc.DiscordRpcPublisher
 import ani.dantotsu.connections.mal.MAL
 import ani.dantotsu.databinding.ItemSettingAccountsBinding
+import ani.dantotsu.settings.rows.SettingsCards
 import ani.dantotsu.loadImage
 import ani.dantotsu.media.Media
 import ani.dantotsu.notifications.TaskScheduler
@@ -210,6 +211,10 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
     private fun bindAccounts(host: SettingsHost, b: ItemSettingAccountsBinding) {
         val activity = host.activity
         val restart = { (activity as? SettingsAccountActivity)?.restartMainOnBack() }
+        SettingsCards.applyToCard(b.settingsAnilistCard)
+        SettingsCards.applyToCard(b.settingsMalCard)
+        b.settingsMalLogo.alpha = 1f
+        b.settingsMALAvatarContainer.alpha = 1f
         b.settingsAccountHelp.setOnClickListener {
             CustomBottomDialog.newInstance().apply {
                 setTitleText(activity.getString(R.string.account_help))
@@ -229,9 +234,14 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
             b.settingsAnilistScrim.visibility = View.GONE
             b.settingsAnilistLogin.setText(R.string.account_login)
             b.settingsAnilistLogin.setOnClickListener { Anilist.loginIntent(activity) }
+            // MAL needs an AniList login first: same card, dimmed, nothing to tap but help.
             b.settingsMALLoginRequired.visibility = View.VISIBLE
             b.settingsMALLogin.visibility = View.GONE
             b.settingsMALUsername.visibility = View.GONE
+            b.settingsMALAvatar.setImageResource(R.drawable.ic_round_person_24)
+            b.settingsMALAvatar.setOnClickListener(null)
+            b.settingsMalLogo.alpha = 0.5f
+            b.settingsMALAvatarContainer.alpha = 0.5f
             return
         }
 

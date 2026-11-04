@@ -45,6 +45,7 @@ internal object SettingsCards {
     fun applyToCard(card: MaterialCardView) {
         card.setCardBackgroundColor(fill(card))
         card.radius = OUTER_DP * card.resources.displayMetrics.density
+        card.strokeWidth = 0
         margins(card, top = 8)
     }
 
