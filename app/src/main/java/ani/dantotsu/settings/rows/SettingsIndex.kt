@@ -38,11 +38,12 @@ object SettingsIndex {
                 val summary = entry.row.summary?.let(context::getString)
                 val keywords = entry.row.keywords.joinToString(" ") { context.getString(it) }
                 val screen = context.getString(entry.screen.title)
-                val section = context.getString(entry.section.title)
+                // Single-section screens (About) have no section title.
+                val section = entry.section.title.takeIf { it != 0 }?.let(context::getString)
                 val score = score(q, words, title.lowercase(), summary?.lowercase().orEmpty(),
-                    keywords.lowercase(), "$screen $section".lowercase())
+                    keywords.lowercase(), "$screen ${section.orEmpty()}".lowercase())
                 if (score == 0) null
-                else score to Hit(title, summary, "$root > $screen > $section",
+                else score to Hit(title, summary, listOfNotNull(root, screen, section).joinToString(" > "),
                     entry.row.icon ?: R.drawable.ic_round_settings_24, entry)
             }
             .sortedByDescending { it.first }
