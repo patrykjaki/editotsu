@@ -192,11 +192,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:layout_marginBottom="14dp"
-                android:layout_marginHorizontal="32dp"
+                android:layout_marginHorizontal="8dp"
                 android:nestedScrollingEnabled="false"
                 android:requiresFadingEdge="vertical"
                 tools:itemCount="2"
-                tools:listitem="@layout/item_settings" />
+                tools:listitem="@layout/item_setting_row" />
         </ani.dantotsu.others.Xpandable>
 
         <ani.dantotsu.others.Xpandable
@@ -402,10 +402,10 @@
             android:id="@+id/settingsRecyclerView2"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_marginHorizontal="32dp"
+            android:layout_marginHorizontal="8dp"
             android:nestedScrollingEnabled="false"
             android:requiresFadingEdge="vertical"
             tools:itemCount="1"
-            tools:listitem="@layout/item_settings" />
+            tools:listitem="@layout/item_setting_row" />
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

@@ -25,6 +25,12 @@ import ani.dantotsu.databinding.ActivitySettingsAnilistBinding
 import ani.dantotsu.initActivity
 import ani.dantotsu.navBarHeight
 import ani.dantotsu.restartApp
+import ani.dantotsu.settings.rows.Kind
+import ani.dantotsu.settings.rows.Row
+import ani.dantotsu.settings.rows.RowAdapter
+import ani.dantotsu.settings.rows.ScreenItem
+import ani.dantotsu.settings.rows.SettingsHost
+import ani.dantotsu.settings.rows.actionRow
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.toast
@@ -33,7 +39,7 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.launch
 
-class AnilistSettingsActivity : AppCompatActivity() {
+class AnilistSettingsActivity : AppCompatActivity(), SettingsHost {
     private lateinit var binding: ActivitySettingsAnilistBinding
     private lateinit var anilistMutations: AnilistMutations
 
@@ -200,80 +206,61 @@ class AnilistSettingsActivity : AppCompatActivity() {
                 settingsAnilistTimezone.clearFocus()
             }
 
-            val displayAdultContent = Anilist.adult
-            val airingNotifications = Anilist.airingNotifications
-
-            binding.settingsRecyclerView1.adapter = SettingsAdapter(
-                arrayListOf(
-                    Settings(
-                        type = 2,
-                        name = getString(R.string.airing_notifications),
-                        desc = getString(R.string.airing_notifications_desc),
-                        icon = R.drawable.ic_round_notifications_active_24,
-                        isChecked = airingNotifications,
-                        switch = { isChecked, _ ->
-                            lifecycleScope.launch {
-                                anilistMutations.updateSettings(airingNotifications = isChecked)
-                                Anilist.airingNotifications = isChecked
-                                restartApp()
-                            }
-                        }
-                    ),
-                    Settings(
-                        type = 2,
-                        name = getString(R.string.display_adult_content),
-                        desc = getString(R.string.display_adult_content_desc),
-                        icon = R.drawable.ic_round_nsfw_24,
-                        isChecked = displayAdultContent,
-                        switch = { isChecked, _ ->
-                            lifecycleScope.launch {
-                                anilistMutations.updateSettings(displayAdultContent = isChecked)
-                                Anilist.adult = isChecked
-                                restartApp()
-                            }
-                        }
-                    ),
-                )
-            )
             binding.settingsRecyclerView1.layoutManager =
                 LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
-
+            binding.settingsRecyclerView1.adapter = RowAdapter(this@AnilistSettingsActivity) {}.also { notificationRows = it }
         }
 
-        binding.settingsRecyclerView2.adapter = SettingsAdapter(
-            arrayListOf(
-                Settings(
-                    type = 1,
-                    name = getString(R.string.edit_bio),
-                    desc = "Update your AniList profile bio and 'About Me' description",
-                    icon = R.drawable.ic_round_edit_note_24,
-                    onClick = {
-                        startActivity(
-                            Intent(this, ani.dantotsu.util.ActivityMarkdownCreator::class.java).apply {
-                                putExtra("type", "bio")
-                            }
-                        )
-                    }
-                ),
-                Settings(
-                    type = 2,
-                    name = getString(R.string.restrict_messages),
-                    desc = getString(R.string.restrict_messages_desc),
-                    icon = R.drawable.ic_round_lock_open_24,
-                    isChecked = Anilist.restrictMessagesToFollowing,
-                    switch = { isChecked, _ ->
-                        lifecycleScope.launch {
-                            anilistMutations.updateSettings(restrictMessagesToFollowing = isChecked)
-                            Anilist.restrictMessagesToFollowing = isChecked
-                            restartApp()
-                        }
-                    }
-                ),
-            )
-        )
         binding.settingsRecyclerView2.layoutManager =
             LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
+        binding.settingsRecyclerView2.adapter = RowAdapter(this) {}.also { profileRows = it }
+        refresh()
+    }
 
+    override val activity: AppCompatActivity get() = this
+    private var notificationRows: RowAdapter? = null
+    private var profileRows: RowAdapter? = null
+
+    /** An AniList account setting: saved on AniList first, then the app restarts to load it. */
+    private fun accountSwitch(id: String, title: Int, summary: Int, icon: Int, get: () -> Boolean,
+                              save: suspend (Boolean) -> Unit) = Row(
+        id = id, title = title, summary = summary, icon = icon,
+        kind = Kind.Switch(get = get, set = { _, checked ->
+            lifecycleScope.launch {
+                save(checked)
+                restartApp()
+            }
+        }),
+    )
+
+    override fun refresh() {
+        notificationRows?.submitList(listOf(
+            accountSwitch("anilist_airing_notifications", R.string.airing_notifications,
+                R.string.airing_notifications_desc, R.drawable.ic_round_notifications_active_24,
+                { Anilist.airingNotifications }) {
+                anilistMutations.updateSettings(airingNotifications = it)
+                Anilist.airingNotifications = it
+            },
+            accountSwitch("anilist_adult", R.string.display_adult_content, R.string.display_adult_content_desc,
+                R.drawable.ic_round_nsfw_24, { Anilist.adult }) {
+                anilistMutations.updateSettings(displayAdultContent = it)
+                Anilist.adult = it
+            },
+        ).map { ScreenItem.RowItem(it) })
+        profileRows?.submitList(listOf(
+            actionRow("anilist_edit_bio", R.string.edit_bio, R.string.edit_bio_desc, R.drawable.ic_round_edit_note_24) { _, _ ->
+                startActivity(
+                    Intent(this, ani.dantotsu.util.ActivityMarkdownCreator::class.java).apply {
+                        putExtra("type", "bio")
+                    }
+                )
+            },
+            accountSwitch("anilist_restrict_messages", R.string.restrict_messages, R.string.restrict_messages_desc,
+                R.drawable.ic_round_lock_open_24, { Anilist.restrictMessagesToFollowing }) {
+                anilistMutations.updateSettings(restrictMessagesToFollowing = it)
+                Anilist.restrictMessagesToFollowing = it
+            },
+        ).map { ScreenItem.RowItem(it) })
     }
 
     private fun addCustomListItem(listName: String, container: LinearLayout, isAnime: Boolean) {
