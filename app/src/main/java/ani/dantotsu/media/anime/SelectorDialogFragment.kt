@@ -1157,7 +1157,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 (PickerFilter.showButton(shownRows, effectiveFilter()) || sourceSettings != null)
             group.isVisible = show || showFilterChip || sourcePrefsOpened
             if (show) bindAudioChips(group)
-            if (showFilterChip) group.addView(actionChip(group, filterChipText()) { openFilterPanel() })
+            if (showFilterChip) group.addView(filterChip(group))
             if (sourcePrefsOpened) {
                 group.addView(actionChip(group, getString(R.string.picker_reload_sources)) {
                     sourcePrefsOpened = false
@@ -1166,9 +1166,25 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             }
         }
 
-        private fun filterChipText(): String {
+        /**
+         * Filter and sort: an icon chip (filter-list icon) at the end of the audio chips,
+         * showing how many filters are on, if any. Opens the filter panel.
+         */
+        private fun filterChip(group: ViewGroup): com.google.android.material.chip.Chip {
             val n = effectiveFilter().let { f -> FilterDimension.values().sumOf { f.values(it).size } }
-            return if (n > 0) getString(R.string.picker_filter_active, n) else getString(R.string.picker_filter)
+            return actionChip(group, if (n > 0) n.toString() else "") { openFilterPanel() }.apply {
+                chipIcon = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_round_filter_list_24)
+                isChipIconVisible = true
+                chipIconTint = textColors
+                if (n == 0) {
+                    textStartPadding = 0f
+                    textEndPadding = 0f
+                    chipEndPadding = chipStartPadding
+                }
+                contentDescription = if (n > 0) getString(R.string.picker_filter_active_cd, n)
+                else getString(R.string.picker_filter_title)
+                tooltipText = contentDescription
+            }
         }
 
         /** A plain tap chip in the audio ChipGroup; not checkable, so the audio selection is untouched. */

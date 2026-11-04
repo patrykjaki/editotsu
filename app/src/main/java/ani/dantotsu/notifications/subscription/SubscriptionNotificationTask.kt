@@ -95,6 +95,9 @@ class SubscriptionNotificationTask : Task {
                             )
                     }
 
+                    val aired = SubscriptionHelper.airedLimits(
+                        subscriptions.values.filter { m -> m.isAnime }.map { m -> m.id }
+                    )
                     var newSubscriptionCount = 0
                     subscriptions.toList().map {
                         val media = it.second
@@ -105,13 +108,11 @@ class SubscriptionNotificationTask : Task {
                             val ep: Episode? =
                                 SubscriptionHelper.getEpisode(
                                     parser,
-                                    media
+                                    media,
+                                    aired[media.id],
                                 )
                             if (ep != null) context.getString(R.string.episode) + "${ep.number}${
-                                // Sources often title an episode "Episode 4"; don't repeat it.
-                                ep.title?.trim()?.takeIf {
-                                    it.isNotEmpty() && !it.equals("Episode ${ep.number}", ignoreCase = true)
-                                }?.let { " : $it" } ?: ""
+                                SubscriptionHelper.episodeTitle(ep.number, ep.title)?.let { ": $it" } ?: ""
                             }${
                                 if (ep.isFiller) " [Filler]" else ""
                             } " + context.getString(R.string.just_released) to ep.thumbnail

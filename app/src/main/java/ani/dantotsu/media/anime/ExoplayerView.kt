@@ -1387,8 +1387,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         val view = nowPlayingView ?: return
         val fav = ThemeFavourites.isFavourite(track.themeId)
         view.text = ani.dantotsu.animethemes.NowPlaying.label(track)
+        // Same hearts as the theme lists: tapping the chip toggles the favourite.
         view.setCompoundDrawablesRelativeWithIntrinsicBounds(
-            if (fav) R.drawable.ic_round_favorite_24 else R.drawable.ic_round_audiotrack_24, 0, 0, 0,
+            if (fav) R.drawable.ic_round_favorite_24 else R.drawable.ic_round_favorite_border_24, 0, 0, 0,
         )
         view.contentDescription = view.text.toString() + ", " +
             getString(if (fav) R.string.theme_favourite_remove else R.string.theme_favourite_add)
