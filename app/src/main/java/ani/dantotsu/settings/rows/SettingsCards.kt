@@ -1,0 +1,67 @@
+package ani.dantotsu.settings.rows
+
+import android.content.res.ColorStateList
+import android.graphics.drawable.RippleDrawable
+import android.view.View
+import android.view.ViewGroup
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.color.MaterialColors
+import com.google.android.material.shape.MaterialShapeDrawable
+import com.google.android.material.shape.ShapeAppearanceModel
+
+/**
+ * Settings sections are grouped cards: one rounded card per section, rows 2dp apart, big
+ * corners on the first and last row and small ones between (same shape as the AnimeThemes
+ * list). The fill is the theme's surfaceVariant, so every app theme, Material You and the
+ * custom colour tint the cards.
+ */
+internal object SettingsCards {
+    private const val OUTER_DP = 20f
+    private const val INNER_DP = 4f
+    private const val SIDE_DP = 16
+    private const val GAP_DP = 2
+
+    fun fill(view: View) = MaterialColors.getColor(view, com.google.android.material.R.attr.colorSurfaceVariant)
+
+    /** Card background and ripple for one row at its place in the section. */
+    fun apply(view: View, first: Boolean, last: Boolean, topMarginDp: Int = 0) {
+        val d = view.resources.displayMetrics.density
+        val big = OUTER_DP * d
+        val small = INNER_DP * d
+        val shape = ShapeAppearanceModel.builder()
+            .setTopLeftCornerSize(if (first) big else small)
+            .setTopRightCornerSize(if (first) big else small)
+            .setBottomLeftCornerSize(if (last) big else small)
+            .setBottomRightCornerSize(if (last) big else small)
+            .build()
+        val content = MaterialShapeDrawable(shape).apply { fillColor = ColorStateList.valueOf(fill(view)) }
+        val mask = MaterialShapeDrawable(shape).apply { fillColor = ColorStateList.valueOf(0xFFFFFFFF.toInt()) }
+        val ripple = MaterialColors.getColor(view, androidx.appcompat.R.attr.colorControlHighlight)
+        view.background = RippleDrawable(ColorStateList.valueOf(ripple), content, mask)
+        margins(view, top = if (first) topMarginDp else GAP_DP)
+    }
+
+    /** Custom rows that are already a card (storage) get the same fill and side margins. */
+    fun applyToCard(card: MaterialCardView) {
+        card.setCardBackgroundColor(fill(card))
+        card.radius = OUTER_DP * card.resources.displayMetrics.density
+        margins(card, top = 8)
+    }
+
+    private fun margins(view: View, top: Int) {
+        val d = view.resources.displayMetrics.density
+        val lp = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val side = (SIDE_DP * d).toInt()
+        val t = (top * d).toInt()
+        if (lp.marginStart != side || lp.marginEnd != side || lp.topMargin != t || lp.bottomMargin != 0) {
+            lp.marginStart = side
+            lp.marginEnd = side
+            lp.topMargin = t
+            lp.bottomMargin = 0
+            view.layoutParams = lp
+        }
+    }
+
+    /** True when [item] is drawn as part of a section card. */
+    fun isCardRow(item: ScreenItem?) = item is ScreenItem.RowItem && item.row.kind !is Kind.Custom
+}

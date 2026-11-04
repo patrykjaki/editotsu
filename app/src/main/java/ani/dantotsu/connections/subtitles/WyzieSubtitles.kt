@@ -3,7 +3,6 @@ package ani.dantotsu.connections.subtitles
 import ani.dantotsu.Mapper
 import ani.dantotsu.client
 import ani.dantotsu.settings.saving.PrefManager
-import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,7 +16,7 @@ object WyzieSubtitles {
     suspend fun getWyzieSubtitles(imdbId: String, season: Int, episode: Int): List<WyzieSub> {
         return withContext(Dispatchers.IO) {
             try {
-                val languages = PrefManager.getVal<Set<String>>(PrefName.OnlineSubtitleLanguages).joinToString(",")
+                val languages = OnlineSubtitleLanguages.forWyzie()
                 val apiKey = try {
                     PrefManager.getNullableCustomVal("pref_wyzie_api_key", "", String::class.java).orEmpty().ifBlank { DEFAULT_API_KEY }
                 } catch (_: Exception) { DEFAULT_API_KEY }

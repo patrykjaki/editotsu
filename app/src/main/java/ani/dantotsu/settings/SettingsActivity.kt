@@ -1,6 +1,5 @@
 package ani.dantotsu.settings
 
-import android.content.Intent
 import android.graphics.drawable.Animatable
 import android.os.Build.BRAND
 import android.os.Build.DEVICE
@@ -28,7 +27,13 @@ import ani.dantotsu.others.AppUpdater
 import ani.dantotsu.others.CustomBottomDialog
 import ani.dantotsu.pop
 import ani.dantotsu.setSafeOnClickListener
+import ani.dantotsu.settings.rows.RowAdapter
+import ani.dantotsu.settings.rows.ScreenItem
+import ani.dantotsu.settings.rows.SettingsHost
+import ani.dantotsu.settings.rows.SettingsScreenActivity
+import ani.dantotsu.settings.rows.actionRow
 import ani.dantotsu.settings.saving.PrefManager
+import ani.dantotsu.settings.screens.SettingsScreens
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
 import ani.dantotsu.startMainActivity
@@ -42,7 +47,12 @@ import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : AppCompatActivity(), SettingsHost {
+    override val activity: AppCompatActivity get() = this
+
+    /** The home list has no state of its own to re-read. */
+    override fun refresh() {}
+
     lateinit var binding: ActivitySettingsBinding
     private var cursedCounter = 0
 
@@ -105,80 +115,15 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
 
-            val mainAdapter = SettingsAdapter(
-                arrayListOf(
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.settings_appearance),
-                        desc = getString(R.string.settings_appearance_desc),
-                        icon = R.drawable.ic_palette,
-                        onClick = {
-                            startActivity(Intent(context, UserInterfaceSettingsActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.settings_player),
-                        desc = getString(R.string.settings_player_desc),
-                        icon = R.drawable.ic_round_video_settings_24,
-                        onClick = {
-                            startActivity(Intent(context, PlayerSettingsActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.settings_reading),
-                        desc = getString(R.string.settings_reading_desc),
-                        icon = R.drawable.ic_round_import_contacts_24,
-                        onClick = {
-                            startActivity(Intent(context, ReaderSettingsActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.settings_sources),
-                        desc = getString(R.string.settings_sources_desc),
-                        icon = R.drawable.ic_extension,
-                        onClick = {
-                            startActivity(SettingsGroupActivity.sources(context))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.settings_tracking),
-                        desc = getString(R.string.settings_tracking_desc),
-                        icon = R.drawable.ic_round_person_24,
-                        onClick = {
-                            startActivity(Intent(context, SettingsAccountActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.label_data_storage),
-                        desc = getString(R.string.settings_data_desc),
-                        icon = R.drawable.ic_round_folder_24,
-                        onClick = {
-                            startActivity(Intent(context, ani.dantotsu.settings.data.SettingsDataActivity::class.java))
-                        },
-                        isActivity = true
-                    ),
-                    Settings(
-                        type = 1,
-                        name = getString(R.string.about),
-                        desc = getString(R.string.about_desc),
-                        icon = R.drawable.ic_round_info_24,
-                        onClick = {
-                            startActivity(Intent(context, SettingsAboutActivity::class.java))
-                        },
-                        isActivity = true
-                    )
+            // One row per screen, from the same list search indexes.
+            val mainAdapter = RowAdapter(this@SettingsActivity) {}
+            mainAdapter.submitList(SettingsScreens.all.map { screen ->
+                ScreenItem.RowItem(
+                    actionRow(screen.id, screen.title, screen.summary, screen.icon, opensScreen = true) { host, _ ->
+                        host.activity.startActivity(SettingsScreenActivity.intent(host.activity, screen))
+                    }
                 )
-            )
+            })
 
             val searchAdapter = ani.dantotsu.settings.search.SettingsSearchAdapter(emptyList())
 
@@ -194,7 +139,16 @@ class SettingsActivity : AppCompatActivity() {
                     updateBackCallback()
                     val query = s?.toString()?.trim() ?: ""
                     if (query.isNotEmpty()) {
-                        val results = ani.dantotsu.settings.search.SettingsRegistry.search(context, query)
+                        val results = ani.dantotsu.settings.rows.SettingsIndex.search(context, query).map {
+                            ani.dantotsu.settings.search.SearchableSetting(
+                                title = it.title,
+                                desc = it.summary,
+                                icon = it.icon,
+                                breadcrumbs = it.breadcrumbs,
+                                targetActivity = it.entry.screen.activity,
+                                rowId = it.entry.row.id,
+                            )
+                        }
                         if (results.isNotEmpty()) {
                             searchAdapter.updateResults(results)
                             settingsRecyclerView.adapter = searchAdapter
