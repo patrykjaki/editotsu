@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- One settings row. Every kind (switch, choice, slider, stepper, segments, action) uses
-     this layout, so size and spacing are the same on every screen. -->
+     this layout, so size and spacing are the same on every screen. The card background,
+     ripple and side margins are set in code (SettingsCards), from the theme's colours. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/rowRoot"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="?attr/selectableItemBackground"
     android:minHeight="64dp"
     android:orientation="vertical"
-    android:paddingHorizontal="24dp"
+    android:paddingHorizontal="16dp"
     android:paddingVertical="14dp">
 
     <LinearLayout
@@ -24,7 +24,7 @@
             android:id="@+id/rowIcon"
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:layout_marginEnd="24dp"
+            android:layout_marginEnd="16dp"
             app:tint="?attr/colorPrimary"
             tools:ignore="ContentDescription"
             tools:srcCompat="@drawable/ic_round_settings_24" />
@@ -39,7 +39,7 @@
                 android:id="@+id/rowTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="@font/poppins_bold"
+                android:fontFamily="@font/poppins_semi_bold"
                 android:textColor="?attr/colorOnSurface"
                 android:textSize="16sp"
                 tools:text="Title" />
@@ -49,8 +49,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:alpha="0.66"
-                android:fontFamily="@font/poppins_semi_bold"
+                android:fontFamily="@font/poppins"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="14sp"
                 tools:text="Summary" />
@@ -116,7 +115,7 @@
         android:id="@+id/rowSlider"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="36dp"
+        android:layout_marginStart="28dp"
         android:visibility="gone"
         app:labelBehavior="gone"
         app:thumbColor="?attr/colorSecondary"
@@ -127,7 +126,7 @@
         android:id="@+id/rowSegments"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="48dp"
+        android:layout_marginStart="40dp"
         android:layout_marginTop="8dp"
         android:visibility="gone"
         app:selectionRequired="true"
@@ -137,7 +136,7 @@
         android:id="@+id/rowExtra"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="48dp"
+        android:layout_marginStart="40dp"
         android:layout_marginTop="4dp"
         android:orientation="vertical"
         android:visibility="gone" />

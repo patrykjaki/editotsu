@@ -1,32 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The screen's one "Show advanced settings" toggle, after the last section. The chevron turns
-     180° when the advanced rows open (RowAdapter.bindAdvanced). -->
+<!-- The screen's one "Show advanced settings" toggle, after the last section. Drawn as a
+     one-row card (SettingsCards) so it reads as tappable. The chevron turns 180° when the
+     advanced rows open (RowAdapter.bindAdvanced). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/advancedToggle"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="24dp"
-    android:background="?attr/selectableItemBackground"
     android:focusable="true"
-    android:gravity="center"
+    android:gravity="center_vertical"
     android:minHeight="56dp"
-    android:orientation="horizontal">
+    android:orientation="horizontal"
+    android:paddingHorizontal="16dp">
+
+    <ImageView
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_marginEnd="16dp"
+        android:importantForAccessibility="no"
+        app:srcCompat="@drawable/ic_round_settings_24"
+        app:tint="?attr/colorPrimary" />
 
     <TextView
         android:id="@+id/advancedText"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_weight="1"
         android:fontFamily="@font/poppins_semi_bold"
         android:importantForAccessibility="no"
-        android:textColor="?attr/colorPrimary"
-        android:textSize="14sp" />
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="16sp" />
 
     <ImageView
         android:id="@+id/advancedChevron"
         android:layout_width="24dp"
         android:layout_height="24dp"
-        android:layout_marginStart="4dp"
+        android:layout_marginStart="16dp"
         android:importantForAccessibility="no"
-        android:src="@drawable/ic_round_expand_more_24"
-        android:tint="?attr/colorPrimary" />
+        app:srcCompat="@drawable/ic_round_expand_more_24"
+        app:tint="?attr/colorPrimary" />
 </LinearLayout>

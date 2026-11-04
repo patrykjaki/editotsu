@@ -55,8 +55,21 @@ class RowAdapter(
             is ScreenItem.RowItem -> {
                 val row = item.row
                 val kind = row.kind
-                if (kind is Kind.Custom) kind.bind(host, holder.itemView)
-                else bindRow(ItemSettingRowBinding.bind(holder.itemView), row)
+                if (kind is Kind.Custom) {
+                    kind.bind(host, holder.itemView)
+                    (holder.itemView as? com.google.android.material.card.MaterialCardView)
+                        ?.let(SettingsCards::applyToCard)
+                } else {
+                    bindRow(ItemSettingRowBinding.bind(holder.itemView), row)
+                    // Neighbours decide the corners; rows rebind on every refresh (see Diff),
+                    // so a row that becomes first or last after a visibility change is redrawn.
+                    val list = currentList
+                    SettingsCards.apply(
+                        holder.itemView,
+                        first = !SettingsCards.isCardRow(list.getOrNull(position - 1)),
+                        last = !SettingsCards.isCardRow(list.getOrNull(position + 1)),
+                    )
+                }
                 if (row.id == highlightId) {
                     highlightId = null
                     flash(holder.itemView)
@@ -88,6 +101,7 @@ class RowAdapter(
             context.getString(if (item.expanded) R.string.expanded else R.string.collapsed)
         )
         b.advancedToggle.setOnClickListener { onToggleAdvanced() }
+        SettingsCards.apply(b.advancedToggle, first = true, last = true, topMarginDp = 24)
     }
 
     private fun bindRow(b: ItemSettingRowBinding, row: Row) {
@@ -285,7 +299,7 @@ class RowAdapter(
         b.rowSwitch.alpha = alpha
         b.rowSlider.alpha = alpha
         b.rowSegments.alpha = alpha
-        b.rowSummary.alpha = SUMMARY_ALPHA * alpha
+        b.rowSummary.alpha = alpha
     }
 
     private fun flash(view: View) {
@@ -309,7 +323,6 @@ class RowAdapter(
         const val TYPE_ROW = 2
         const val TYPE_ADVANCED = 3
         private const val DISABLED_ALPHA = 0.38f
-        private const val SUMMARY_ALPHA = 0.66f
 
         /** Clamp to the range and to a whole step, as the Slider requires. */
         fun snap(value: Float, from: Float, to: Float, step: Float): Float {
