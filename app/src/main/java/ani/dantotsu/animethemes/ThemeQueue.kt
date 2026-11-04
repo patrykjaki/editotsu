@@ -177,11 +177,31 @@ object ThemeQueue {
         attempts(sources(track)).getOrNull(failures.coerceAtLeast(0))
 
     /**
-     * Where [track] can be played from, in order: the saved copy, then the .ogg when
-     * [audioOnly] is on, then the chosen video and the version's other videos.
+     * Where [track] can be played from, in order. Audio only: saved audio, the .ogg,
+     * then saved video and the videos. Otherwise: saved video, the videos, then saved
+     * audio. A saved copy of the other kind never goes before the kind asked for,
+     * except [offline], when both saved copies go first.
      */
-    fun sources(track: ThemeTrack, audioOnly: Boolean = false, saved: String? = null): List<String> =
-        (listOfNotNull(saved, track.audioUrl?.takeIf { audioOnly }) + track.url + track.fallbackUrls).distinct()
+    fun sources(
+        track: ThemeTrack,
+        audioOnly: Boolean = false,
+        savedAudio: String? = null,
+        savedVideo: String? = null,
+        offline: Boolean = false,
+    ): List<String> {
+        val videos = listOf(track.url) + track.fallbackUrls
+        val list = when {
+            offline && audioOnly -> listOfNotNull(savedAudio, savedVideo, track.audioUrl) + videos
+            offline -> listOfNotNull(savedVideo, savedAudio) + videos
+            audioOnly -> listOfNotNull(savedAudio, track.audioUrl, savedVideo) + videos
+            else -> listOfNotNull(savedVideo) + videos + listOfNotNull(savedAudio)
+        }
+        return list.distinct()
+    }
+
+    /** True when audio-only was asked for and the first source of [sources] is not audio. */
+    fun audioMissing(audioOnly: Boolean, sources: List<String>, savedAudio: String?): Boolean =
+        audioOnly && sources.firstOrNull()?.let { it != savedAudio && !isAudio(it) } ?: false
 
     /**
      * Every attempt for [sources]: a local copy once, the first network source three

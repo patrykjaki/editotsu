@@ -130,13 +130,9 @@ class ThemeDownloads(context: Context) {
         write(read() - key)
     }
 
-    /** The saved copy to play: [preferred] kind first, then the other one. */
-    fun savedUri(track: ThemeTrack, preferred: ThemeFileKind): Uri? {
-        val other = if (preferred == ThemeFileKind.AUDIO) ThemeFileKind.VIDEO else ThemeFileKind.AUDIO
-        return listOf(preferred, other).firstNotNullOfOrNull { kind ->
-            state(track, kind).takeIf { it.status == ThemeDownloadState.Status.SAVED }?.uri
-        }
-    }
+    /** Saved copy of [track] of [kind], null when there is none. */
+    fun savedUri(track: ThemeTrack, kind: ThemeFileKind): Uri? =
+        state(track, kind).takeIf { it.status == ThemeDownloadState.Status.SAVED }?.uri
 
     /** Bytes of every saved theme file. */
     fun totalBytes(): Long = read().values.sumOf { r ->

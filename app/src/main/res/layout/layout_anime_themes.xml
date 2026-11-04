@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Openings & endings: title row with the video settings icon, then two grouped lists. -->
+<!-- Openings & endings: title row with the audio-only and video settings icons, then two grouped lists. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -26,6 +26,16 @@
             android:padding="8dp"
             android:text="@string/anime_themes_title"
             android:textSize="16sp" />
+
+        <ImageButton
+            android:id="@+id/themesAudioOnly"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/theme_audio_only"
+            android:src="@drawable/ic_round_audiotrack_24"
+            android:tooltipText="@string/theme_audio_only"
+            app:tint="?attr/colorOnSurfaceVariant" />
 
         <ImageButton
             android:id="@+id/themesSettings"

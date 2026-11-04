@@ -21,10 +21,39 @@ class ThemeAttemptsTest {
         )
         assertEquals(
             listOf("content://downloads/1", "https://a.animethemes.moe/a.ogg", "https://v.animethemes.moe/a.webm", "https://v.animethemes.moe/b.webm"),
-            ThemeQueue.sources(track, audioOnly = true, saved = "content://downloads/1"),
+            ThemeQueue.sources(track, audioOnly = true, savedAudio = "content://downloads/1"),
         )
         // No audio file: audio-only falls back to the video.
         assertEquals("https://v.animethemes.moe/a.webm", ThemeQueue.sources(track.copy(audioUrl = null), audioOnly = true).first())
+    }
+
+    @Test
+    fun savedVideoNeverGoesBeforeTheAudioFile() {
+        // Audio only with only the video saved: the .ogg plays, the saved video is the fallback.
+        assertEquals(
+            listOf("https://a.animethemes.moe/a.ogg", "content://downloads/2", "https://v.animethemes.moe/a.webm", "https://v.animethemes.moe/b.webm"),
+            ThemeQueue.sources(track, audioOnly = true, savedVideo = "content://downloads/2"),
+        )
+        // Video with only the audio saved: the saved audio is the last resort.
+        assertEquals(
+            listOf("https://v.animethemes.moe/a.webm", "https://v.animethemes.moe/b.webm", "content://downloads/1"),
+            ThemeQueue.sources(track, savedAudio = "content://downloads/1"),
+        )
+        // Offline: whatever is saved goes first, the asked-for kind before the other.
+        assertEquals("content://downloads/2", ThemeQueue.sources(track, audioOnly = true, savedVideo = "content://downloads/2", offline = true).first())
+        assertEquals("content://downloads/1", ThemeQueue.sources(track, savedAudio = "content://downloads/1", offline = true).first())
+    }
+
+    @Test
+    fun audioMissingWhenAudioOnlyStartsOnAVideo() {
+        val noAudio = track.copy(audioUrl = null)
+        assertTrue(ThemeQueue.audioMissing(true, ThemeQueue.sources(noAudio, audioOnly = true), null))
+        assertFalse(ThemeQueue.audioMissing(true, ThemeQueue.sources(track, audioOnly = true), null))
+        assertFalse(ThemeQueue.audioMissing(false, ThemeQueue.sources(noAudio), null))
+        // A saved audio copy counts as audio even without an .ogg name.
+        assertFalse(ThemeQueue.audioMissing(true, ThemeQueue.sources(noAudio, audioOnly = true, savedAudio = "content://downloads/1"), "content://downloads/1"))
+        // Offline with only the video saved: the video plays, so say so.
+        assertTrue(ThemeQueue.audioMissing(true, ThemeQueue.sources(noAudio, audioOnly = true, savedVideo = "content://downloads/2", offline = true), null))
     }
 
     @Test

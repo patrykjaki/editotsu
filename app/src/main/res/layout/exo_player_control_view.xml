@@ -504,16 +504,6 @@
                         android:orientation="horizontal">
 
                         <ImageButton
-                            android:id="@+id/exo_theme_audio"
-                            android:layout_width="48dp"
-                            android:layout_height="48dp"
-                            android:backgroundTint="#00FFFFFF"
-                            android:contentDescription="@string/theme_audio_only"
-                            android:src="@drawable/ic_round_audiotrack_24"
-                            android:visibility="gone"
-                            app:tint="#fff" />
-
-                        <ImageButton
                             android:id="@+id/exo_theme_favourite"
                             android:layout_width="48dp"
                             android:layout_height="48dp"
