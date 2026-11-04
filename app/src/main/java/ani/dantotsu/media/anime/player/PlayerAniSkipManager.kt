@@ -78,8 +78,17 @@ class PlayerAniSkipManager(
         }
     }
 
+    // Dimmed icon = off; the label lets screen readers say the same thing.
+    private fun updateSkipOpEdLook() {
+        val on = PrefManager.getVal<Boolean>(PrefName.AutoSkipOPED)
+        exoSkipOpEd.alpha = if (on) 1f else 0.3f
+        exoSkipOpEd.contentDescription = activity.getString(
+            if (on) R.string.player_cd_auto_skip_on else R.string.player_cd_auto_skip_off
+        )
+    }
+
     private fun setupSkipOpEdButton() {
-        exoSkipOpEd.alpha = if (PrefManager.getVal(PrefName.AutoSkipOPED)) 1f else 0.3f
+        updateSkipOpEdLook()
         exoSkipOpEd.setOnClickListener {
             val enabled = PrefManager.getVal<Boolean>(PrefName.AutoSkipOPED)
             if (enabled) {
@@ -89,7 +98,7 @@ class PlayerAniSkipManager(
                 snackString(activity.getString(R.string.auto_skip), activity)
                 PrefManager.setVal(PrefName.AutoSkipOPED, true)
             }
-            exoSkipOpEd.alpha = if (PrefManager.getVal(PrefName.AutoSkipOPED)) 1f else 0.3f
+            updateSkipOpEdLook()
         }
     }
 
