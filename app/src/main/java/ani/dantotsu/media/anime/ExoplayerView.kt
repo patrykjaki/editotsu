@@ -177,11 +177,16 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private lateinit var exoScreenshot: ImageButton
     private lateinit var exoSleepTimer: ImageButton
     private val sleepTimer = SleepTimer()
+
+    /** Theme mode: what happens when a theme ends. */
+    private enum class ThemeRepeat { OFF, ALL, ONE }
+    private var themeRepeat = ThemeRepeat.OFF
     private val sleepTimerHandler = Handler(Looper.getMainLooper())
     private val sleepTimerFire = Runnable {
         if (sleepTimer.onDeadline(java.lang.System.currentTimeMillis())) {
             playerManager.playbackEngine?.let { engine ->
-                saveActivePosition()
+                // Themes have no resume position (and no media in theme mode).
+                if (!themeMode) saveActivePosition()
                 engine.pause()
             }
             toast(getString(R.string.sleep_timer_paused))
@@ -2023,9 +2028,55 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         videoInfo = playerView.findViewById(R.id.exo_video_info)
         // Episode-only controls.
         listOf<View>(
-            exoSource, exoSubtitle, exoAudioTrack, exoSettings, exoSpeed, exoSleepTimer,
+            exoSource, exoSubtitle, exoAudioTrack, exoSettings,
             exoSkipOpEd, customCastButton, skipTimeButton, exoSkip
         ).forEach { it.visibility = View.GONE }
+        // The sleep timer stays (wired before theme mode branches off): useful with
+        // background theme audio; "end of episode" stops after the current theme.
+
+        // Repeat: tap cycles off -> repeat the list -> repeat this theme. Dimmed when off.
+        playerView.findViewById<ImageButton>(R.id.exo_theme_repeat).apply {
+            visibility = View.VISIBLE
+            fun show() {
+                setImageResource(
+                    if (themeRepeat == ThemeRepeat.ONE) R.drawable.ic_round_repeat_one_24
+                    else R.drawable.ic_round_repeat_24
+                )
+                alpha = if (themeRepeat == ThemeRepeat.OFF) 0.6f else 1f
+                contentDescription = getString(
+                    when (themeRepeat) {
+                        ThemeRepeat.OFF -> R.string.theme_repeat_off
+                        ThemeRepeat.ALL -> R.string.theme_repeat_all
+                        ThemeRepeat.ONE -> R.string.theme_repeat_one
+                    }
+                )
+            }
+            show()
+            setOnClickListener {
+                themeRepeat = ThemeRepeat.entries[(themeRepeat.ordinal + 1) % ThemeRepeat.entries.size]
+                show()
+                snackString(contentDescription.toString())
+            }
+        }
+
+        // Playback speed works for themes too. The episode setup that normally wires it
+        // is skipped in theme mode, so it gets its own handler; the speed holds for the queue.
+        val speeds = PlaybackSpeedSelection.values(PrefManager.getVal(PrefName.CursedSpeeds))
+        // Themes start at 1x (the episode default speed is not applied to them).
+        var themeSpeed = speeds.indexOf(1f).coerceAtLeast(0)
+        exoSpeed.visibility = View.VISIBLE
+        exoSpeed.setOnClickListener {
+            customAlertDialog().apply {
+                setTitle(R.string.speed)
+                singleChoiceItems(speeds.map { "${it}x" }.toTypedArray(), themeSpeed) { i ->
+                    themeSpeed = i
+                    playerManager.playbackEngine?.setPlaybackSpeed(speeds.getOrNull(i) ?: 1f)
+                    hideSystemBars()
+                }
+                setOnCancelListener { hideSystemBars() }
+                show()
+            }
+        }
 
         episodeTitle.adapter = NoPaddingArrayAdapter(
             this, R.layout.item_dropdown, ArrayList(themeTracks.map { ThemeQueue.label(it) })
@@ -2075,6 +2126,13 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     /** Starts theme [index]; [url] and [startMs] are set when retrying the same theme. */
+    /** Where the queue goes when a theme ends on its own; past the end means stop. */
+    private fun nextThemeIndex(): Int = when (themeRepeat) {
+        ThemeRepeat.ONE -> themeIndex
+        ThemeRepeat.ALL -> if (themeIndex >= themeTracks.lastIndex) 0 else themeIndex + 1
+        ThemeRepeat.OFF -> themeIndex + 1
+    }
+
     private fun playTheme(index: Int, url: String? = null, startMs: Long = 0L) {
         if (index !in themeTracks.indices) return
         themeRetry?.let { themeHandler.removeCallbacks(it) }
@@ -2144,7 +2202,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     val pos = maxOf(state.positionMs, themeLastPositionMs)
                     // mpv reports a dropped connection as an early end of file.
                     if (ThemeQueue.endedEarly(pos, dur)) onThemeFailed("ended at $pos of $dur ms")
-                    else playTheme(themeIndex + 1)
+                    // Sleep timer "end of episode" means end of the current theme here.
+                    else if (sleepTimer.onEpisodeEnded()) {
+                        exoSleepTimer.alpha = 1f
+                        toast(getString(R.string.sleep_timer_stopped))
+                    }
+                    else playTheme(nextThemeIndex())
                 }
                 is PlaybackState.Error -> onThemeFailed(state.error.message)
                 else -> Unit

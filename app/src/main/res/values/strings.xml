@@ -1671,4 +1671,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
         <item quantity="one">%d new chapter</item>
         <item quantity="other">%d new chapters</item>
     </plurals>
+    <string name="theme_repeat">Repeat</string>
+    <string name="theme_repeat_off">Repeat off</string>
+    <string name="theme_repeat_all">Repeating the list</string>
+    <string name="theme_repeat_one">Repeating this theme</string>
 </resources>

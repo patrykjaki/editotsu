@@ -222,7 +222,7 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
                     }
 
                     subscribed =
-                        SubscriptionHelper.getSubscriptions().containsKey(media.id)
+                        SubscriptionHelper.isSubscribedOn(media.id, currentSourceName())
 
                     style = media.selected!!.recyclerStyle
                     reverse = media.selected!!.recyclerReversed
@@ -383,7 +383,9 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
         selected.sourceIndex = i
         selected.server = null
         model.saveSelected(media.id, selected)
-        if (subscribed) model.mangaReadSources?.names?.getOrNull(i)?.let { SubscriptionHelper.saveSource(media.id, it) }
+        // The subscription keeps its own source; the bell shows whether it uses this one.
+        subscribed = SubscriptionHelper.isSubscribedOn(media.id, model.mangaReadSources?.names?.getOrNull(i))
+        if (this::headerAdapter.isInitialized) headerAdapter.subscribe?.setState(subscribed)
         media.selected = selected
         return model.mangaReadSources?.get(i)!!
     }
@@ -425,11 +427,20 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
     }
 
     var subscribed = false
+
+    private fun currentSourceName(): String? =
+        media.selected?.sourceIndex?.let { model.mangaReadSources?.names?.getOrNull(it) }
+
     fun onNotificationPressed(subscribed: Boolean, source: String) {
         this.subscribed = subscribed
         saveSubscription(media, subscribed)
         if (subscribed) {
             SubscriptionHelper.saveSource(media.id, source)
+            // Only what comes after the list shown now counts as new.
+            SubscriptionHelper.saveLatest(
+                media.id,
+                maxOf(media.manga?.chapters?.values?.maxOfOrNull { MediaNameAdapter.findChapterNumber(it.number) ?: 0f } ?: 0f, media.userProgress?.toFloat() ?: 0f)
+            )
             activity?.let {
                 if (!ani.dantotsu.requestNotificationPermission(it)) {
                     snackString(getString(R.string.notifications_off_for_app))
@@ -770,7 +781,7 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
         requireActivity().setNavigationTheme()
 
         if (this::media.isInitialized && this::headerAdapter.isInitialized) {
-            val isCurrentlySubscribed = SubscriptionHelper.getSubscriptions().containsKey(media.id)
+            val isCurrentlySubscribed = SubscriptionHelper.isSubscribedOn(media.id, currentSourceName())
             if (subscribed != isCurrentlySubscribed) {
                 subscribed = isCurrentlySubscribed
                 headerAdapter.subscribe?.setState(isCurrentlySubscribed)

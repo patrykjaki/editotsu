@@ -73,6 +73,9 @@ import kotlin.time.Duration.Companion.milliseconds
 class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedListener {
     lateinit var launcher: LauncherWrapper
     lateinit var binding: ActivityMediaBinding
+
+    /** False while onCreate bailed out before inflating (the activity is finishing). */
+    val hasBinding get() = ::binding.isInitialized
     private val scope = lifecycleScope
     private val model: MediaDetailsViewModel by viewModels()
     var selected = 0
@@ -137,7 +140,9 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
         this.media = media
         if (media.name == "No media found") {
             snackString(media.name)
-            onBackPressedDispatcher.onBackPressed()
+            // finish(), not a back press: a back callback can keep the activity alive,
+            // and fragments restored by super.onCreate would then start without a binding.
+            finish()
             return
         }
         val contract = ActivityResultContracts.OpenDocumentTree()

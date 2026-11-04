@@ -166,6 +166,8 @@ class MediaInfoFragment : Fragment() {
     }
     @SuppressLint("SetJavaScriptEnabled")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        // Restored with an activity that could not reload its media and is finishing.
+        if ((requireActivity() as? MediaDetailsActivity)?.hasBinding == false) return
         val model: MediaDetailsViewModel by activityViewModels()
         val offline: Boolean =
             PrefManager.getVal(PrefName.OfflineMode) || !isOnline(requireContext())
