@@ -300,6 +300,13 @@ class TorrentHttpServer(
             // and the last tail pieces (mkv cues, read before the first frame) are raised;
             // the full window follows once data flows.
             var firstPieceIn = synchronized(lock) { if (handle.isValid) handle.havePiece(firstPiece) else false }
+            val requestT0 = android.os.SystemClock.elapsedRealtime()
+            var bytesSent = 0L
+            var endReason = "done"
+            Logger.log(
+                "TorrentRelay: req start=$rangeStart len=$contentLength piece=$firstPiece " +
+                    "pieceLen=$pieceLen have=$firstPieceIn side=$sideRead"
+            )
             applyWindow(firstPiece, headFirst = !firstPieceIn)
             // Headers go out at once: mpv waits on the body (network-timeout) instead of
             // getting a 504 after a silent 15 s wait. Bytes stream as pieces arrive.
@@ -349,9 +356,17 @@ class TorrentHttpServer(
                         ready = synchronized(lock) { if (handle.isValid) handle.havePiece(p) else false }
                     }
                     blockedOwners.remove(streamKey, socket)
-                    if (!ready) break
+                    if (!ready) {
+                        endReason = when {
+                            superseded() -> "superseded"
+                            waitedMs >= STALL_GIVE_UP_MS -> "stall"
+                            else -> "client_gone"
+                        }
+                        break
+                    }
                     if (p == firstPiece && !firstPieceIn) {
                         firstPieceIn = true
+                        Logger.log("TorrentRelay: first piece $p in after ${android.os.SystemClock.elapsedRealtime() - requestT0} ms")
                         applyWindow(p)
                     }
                     val pieceStartOffset = maxOf(rangeStart, p * pieceLen - fileOffset)
@@ -384,13 +399,21 @@ class TorrentHttpServer(
                             break
                         }
                         out.write(buffer, 0, bytesRead)
+                        bytesSent += bytesRead
                         pieceBytesToRead -= bytesRead
                         bytesRemaining -= bytesRead
                         currentPosition += bytesRead
                     }
                     out.flush()
                 }
+            } catch (e: Exception) {
+                endReason = "error:${e.javaClass.simpleName}"
+                throw e
             } finally {
+                Logger.log(
+                    "TorrentRelay: req end start=$rangeStart sent=$bytesSent " +
+                        "ms=${android.os.SystemClock.elapsedRealtime() - requestT0} reason=$endReason"
+                )
                 try { fileChannel?.close() } catch (_: Exception) {}
                 // Drop this request's pieces, except the ones the current owner (a newer
                 // request after a seek) also covers. Before, a superseded owner left its

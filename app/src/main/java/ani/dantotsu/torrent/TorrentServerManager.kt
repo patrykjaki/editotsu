@@ -539,7 +539,92 @@ class TorrentServerManager(private val context: Context) {
         scheduledTtls.clear()
         if (sessionManager.isRunning) {
             saveSessionState()
+            addedAt.keys.toList().forEach { hash ->
+                try {
+                    sessionManager.find(Sha1Hash.parseHex(hash))?.let { saveResumeDataBlocking(it, hash, 1_000L) }
+                } catch (_: Exception) {}
+            }
             sessionManager.stop()
+        }
+    }
+
+    /**
+     * Fast-resume files (one per info-hash). Re-adding a kept payload without one makes
+     * libtorrent hash every piece on disk first (CHECKING_FILES): 3.4-3.6 s before the
+     * first read of a 1.4 GB episode on the owner's phone. A file is used once and
+     * deleted on add, so a crash or a payload deleted later never leaves a stale one.
+     */
+    private val resumeDir by lazy { File(context.filesDir, "torrent/resume") }
+
+    private fun resumeFileFor(infoHash: String) = File(resumeDir, "${infoHash.uppercase()}.fastresume")
+
+    /** Writes [handle]'s resume data, waiting at most [timeoutMs]. Callers are off the main thread. */
+    private fun saveResumeDataBlocking(handle: TorrentHandle, infoHash: String, timeoutMs: Long = 1_500L) {
+        val norm = infoHash.uppercase()
+        try {
+            if (!handle.isValid || handle.torrentFile() == null) return
+            if (handle.status().totalDone() <= 0L) return
+        } catch (_: Exception) { return }
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val listener = object : AlertListener {
+            override fun types(): IntArray = intArrayOf(
+                org.libtorrent4j.alerts.AlertType.SAVE_RESUME_DATA.swig(),
+                org.libtorrent4j.alerts.AlertType.SAVE_RESUME_DATA_FAILED.swig(),
+            )
+            override fun alert(alert: org.libtorrent4j.alerts.Alert<*>) {
+                val torrentAlert = alert as? org.libtorrent4j.alerts.TorrentAlert<*> ?: return
+                val hash = try { torrentAlert.handle().infoHash().toHex() } catch (_: Exception) { return }
+                if (!hash.equals(norm, ignoreCase = true)) return
+                if (alert is org.libtorrent4j.alerts.SaveResumeDataAlert) {
+                    try {
+                        val bytes = AddTorrentParams.writeResumeDataBuf(alert.params())
+                        resumeDir.mkdirs()
+                        val tmp = File(resumeDir, "$norm.fastresume.tmp")
+                        tmp.writeBytes(bytes)
+                        if (!tmp.renameTo(resumeFileFor(norm))) tmp.delete()
+                    } catch (e: Throwable) {
+                        Logger.log("TorrentServerManager: writing resume data failed: ${e.message}")
+                    }
+                }
+                latch.countDown()
+            }
+        }
+        sessionManager.addListener(listener)
+        try {
+            synchronized(getHandleLock(norm)) { if (handle.isValid) handle.saveResumeData() else return }
+            latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (_: Exception) {
+        } finally {
+            sessionManager.removeListener(listener)
+        }
+    }
+
+    /** The resume file for [infoHash] if its payload is still on disk; deleted either way. */
+    /** Bench builds only: false ignores resume files (A/B of the hash check). */
+    @Volatile
+    internal var benchUseResume = true
+
+    private fun takeResumeFile(infoHash: String, saveDir: File): File? {
+        val file = resumeFileFor(infoHash)
+        if (!benchUseResume) {
+            file.delete()
+            return null
+        }
+        if (!file.isFile) return null
+        val payloadPresent = saveDir.walkTopDown().any { it.isFile && it.length() > 0 }
+        if (!payloadPresent) {
+            file.delete()
+            return null
+        }
+        // Read into a temp copy: libtorrent reads it during download(); the original goes now.
+        val copy = File(resumeDir, "${infoHash.uppercase()}.fastresume.using")
+        return try {
+            file.copyTo(copy, overwrite = true)
+            file.delete()
+            copy
+        } catch (_: Exception) {
+            file.delete()
+            null
         }
     }
 
@@ -670,7 +755,12 @@ class TorrentServerManager(private val context: Context) {
                         // Files stay at DEFAULT: a file at IGNORE has its data written to the
                         // part file, which the relay cannot read. Pieces decide what downloads.
                         val p = Priority.array(Priority.DEFAULT, ti.numFiles())
-                        sessionManager.download(ti, saveDir, null, p, null, TorrentFlags.AUTO_MANAGED)
+                        val resume = takeResumeFile(infoHash, saveDir)
+                        try {
+                            sessionManager.download(ti, saveDir, resume, p, null, TorrentFlags.AUTO_MANAGED)
+                        } finally {
+                            resume?.delete()
+                        }
                         handle = sessionManager.find(sha1)
                         handle?.let { ignoreAllPieces(it, getHandleLock(infoHash)) }
                     }
@@ -1062,6 +1152,9 @@ class TorrentServerManager(private val context: Context) {
             val sha1 = Sha1Hash.parseHex(normHash)
             val handle = sessionManager.find(sha1)
             if (handle != null && handle.isValid) {
+                // The payload stays in the retained cache: keep its piece state so the next
+                // add skips the full hash check.
+                saveResumeDataBlocking(handle, normHash)
                 sessionManager.remove(handle)
             }
 
