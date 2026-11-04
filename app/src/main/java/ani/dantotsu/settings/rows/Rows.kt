@@ -35,6 +35,8 @@ class Row(
     val keys: List<PrefName> = emptyList(),
     /** Content bound under the row's text (repo list, preview, buttons). */
     val extra: ((SettingsHost, ViewGroup) -> Unit)? = null,
+    /** Small icon buttons bound on the right of the row, before the switch or chevron. */
+    val trailing: ((SettingsHost, ViewGroup) -> Unit)? = null,
     val onLongClick: ((SettingsHost) -> Unit)? = null,
 )
 
@@ -131,10 +133,11 @@ fun switchRow(
     keywords: List<Int> = emptyList(),
     /** Refresh the screen after a change (other rows depend on this one). */
     refresh: Boolean = false,
+    trailing: ((SettingsHost, ViewGroup) -> Unit)? = null,
     onChange: (SettingsHost, Boolean) -> Unit = { _, _ -> },
 ) = Row(
     id = key.name, title = title, summary = summary, icon = icon, advanced = advanced,
-    visible = visible, enabled = enabled, keywords = keywords, keys = listOf(key),
+    visible = visible, enabled = enabled, keywords = keywords, keys = listOf(key), trailing = trailing,
     kind = Kind.Switch(
         get = { PrefManager.getVal(key) },
         set = { host, value ->

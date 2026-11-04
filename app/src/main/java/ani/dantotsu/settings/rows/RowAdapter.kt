@@ -275,6 +275,11 @@ class RowAdapter(
         b.rowExtra.isVisible = extra != null
         extra?.invoke(host, b.rowExtra)
 
+        val trailing = row.trailing
+        b.rowTrailing.removeAllViews()
+        b.rowTrailing.isVisible = trailing != null
+        trailing?.invoke(host, b.rowTrailing)
+
         setEnabled(b, enabled)
     }
 

@@ -232,7 +232,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
         Section(R.string.player_filters, listOf(
             // Smooths colour banding in dark gradients; CPU uses ffmpeg gradfun, GPU uses libmpv's deband.
             pickRow(
-                PrefName.VideoDebandMode.name, R.string.deband_mode, R.drawable.ic_palette,
+                PrefName.VideoDebandMode.name, R.string.deband_mode, R.drawable.ic_round_gradient_24,
                 listOf(PrefName.VideoDebandMode),
                 labels = { listOf(it.getString(R.string.deband_off), it.getString(R.string.deband_cpu), it.getString(R.string.deband_gpu)) },
                 current = { DEBAND_KEYS.indexOf(PrefManager.getVal<String>(PrefName.VideoDebandMode)).coerceAtLeast(0) },
@@ -242,7 +242,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
             },
             // CuNNy shader upscaler (mpv); off by default. Applied to the playing video at once.
             pickRow(
-                "upscaler", R.string.upscaler, R.drawable.ic_palette, advanced = true,
+                "upscaler", R.string.upscaler, R.drawable.ic_round_high_quality_24, advanced = true,
                 keys = listOf(PrefName.UpscalerProviderId, PrefName.UpscalerProfileId),
                 labels = { c ->
                     UpscalerChoices.choices(upscaler(c)).map { choice ->

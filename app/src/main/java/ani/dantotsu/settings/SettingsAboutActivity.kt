@@ -1,7 +1,6 @@
 package ani.dantotsu.settings
 
 import android.content.Intent
-import android.widget.ImageButton
 import android.widget.TextView
 import ani.dantotsu.BuildConfig
 import ani.dantotsu.R
@@ -51,22 +50,18 @@ object AboutScreen : SettingsScreen("about", R.string.about, R.drawable.ic_round
                 onChange = { _, on -> applyCrashlyticsIdentity(on) }),
             switchRow(PrefName.LogToFile, R.string.log_to_file, R.string.logging_warning,
                 R.drawable.ic_round_edit_note_24,
+                trailing = { host, box -> shareLogButton(host, box) },
                 onChange = { host, _ ->
                     Logger.clearLog()
                     host.activity.restartApp()
-                }).let { row ->
-                ani.dantotsu.settings.rows.Row(
-                    id = row.id, title = row.title, summary = row.summary, icon = row.icon, kind = row.kind,
-                    keys = row.keys, extra = { host, box -> shareLogButton(host, box) },
-                )
-            },
-            actionRow("devs", R.string.devs, R.string.devs_desc, R.drawable.ic_round_accessible_forward_24,
+                }),
+            actionRow("devs", R.string.devs, R.string.devs_desc, R.drawable.ic_round_accessible_forward_24, opensScreen = true,
                 onClick = { host, _ -> DevelopersDialogFragment().show(host.activity.supportFragmentManager, "dialog") }),
-            actionRow("forks", R.string.forks, R.string.forks_desc, R.drawable.ic_round_restaurant_24,
+            actionRow("forks", R.string.forks, R.string.forks_desc, R.drawable.ic_round_restaurant_24, opensScreen = true,
                 onClick = { host, _ -> ForksDialogFragment().show(host.activity.supportFragmentManager, "dialog") }),
-            actionRow("disclaimer", R.string.disclaimer, R.string.disclaimer_desc, R.drawable.ic_round_info_24,
+            actionRow("disclaimer", R.string.disclaimer, R.string.disclaimer_desc, R.drawable.ic_round_info_24, opensScreen = true,
                 onClick = { host, _ -> showDisclaimer(host) }),
-            actionRow("privacy_policy", R.string.privacy_policy, R.string.privacy_policy_desc, R.drawable.ic_incognito_24,
+            actionRow("privacy_policy", R.string.privacy_policy, R.string.privacy_policy_desc, R.drawable.ic_incognito_24, opensScreen = true,
                 onClick = { host, _ -> showPrivacyPolicy(host) }),
         )),
     )
@@ -89,7 +84,7 @@ object AboutScreen : SettingsScreen("about", R.string.about, R.drawable.ic_round
     private fun shareLogButton(host: SettingsHost, box: android.view.ViewGroup) {
         val context = host.activity
         val size = (48 * context.resources.displayMetrics.density).toInt()
-        box.addView(ImageButton(context).apply {
+        box.addView(android.widget.ImageButton(context).apply {
             setImageResource(R.drawable.ic_round_share_24)
             contentDescription = context.getString(R.string.share_log)
             val attrs = context.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackgroundBorderless))
