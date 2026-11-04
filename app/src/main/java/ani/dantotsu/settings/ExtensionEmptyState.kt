@@ -32,6 +32,12 @@ object ExtensionEmptyState {
         MediaType.NOVEL -> PrefManager.getVal(PrefName.NovelExtensionRepos)
     }
 
+    private fun MaterialButton.setAction(icon: Int, label: Int, onClick: () -> Unit) {
+        setIconResource(icon)
+        setText(label)
+        setOnClickListener { onClick() }
+    }
+
     private fun Context.extensionsActivity(): ExtensionsActivity? {
         var c: Context? = this
         while (c is ContextWrapper) {
@@ -86,14 +92,12 @@ object ExtensionEmptyState {
         }
         val activity = context.extensionsActivity()
         when (kind) {
-            Kind.NO_INSTALLED -> {
-                views.action.setText(R.string.extensions_empty_show_available)
-                views.action.setOnClickListener { activity?.showAvailable() }
-            }
-            Kind.NO_REPOS -> {
-                views.action.setText(R.string.extensions_empty_add_repository)
-                views.action.setOnClickListener { activity?.openRepositories(type) }
-            }
+            Kind.NO_INSTALLED -> views.action.setAction(
+                R.drawable.ic_download_24, R.string.extensions_empty_show_available
+            ) { activity?.showAvailable() }
+            Kind.NO_REPOS -> views.action.setAction(
+                R.drawable.ic_add, R.string.extensions_empty_add_repository
+            ) { activity?.openRepositories(type) }
             else -> views.action.setOnClickListener(null)
         }
         views.action.isVisible = activity != null &&
