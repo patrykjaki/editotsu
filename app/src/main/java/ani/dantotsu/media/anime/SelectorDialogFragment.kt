@@ -1232,94 +1232,158 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
         // ---- filter panel ---------------------------------------------------
 
+        /**
+         * Filter and sort sheet. Fixed header: title, source settings icon (when the
+         * extension has settings), live "N of M releases" and a Clear chip. Below it,
+         * scrolling: sort first (changed most), then resolution, codec, HDR and release
+         * groups, each chip with its release count. Groups show the 6 biggest plus
+         * selected ones; "+N more" opens the rest. Every tap applies at once.
+         */
         private fun openFilterPanel() {
             val ctx = context ?: return
             val dialog = BottomSheetDialog(ctx)
             val d = ctx.resources.displayMetrics.density
+            fun px(dp: Int) = (dp * d).toInt()
+            var groupsOpen = false
+
+            val root = android.widget.LinearLayout(ctx).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding(px(20), px(16), px(20), 0)
+            }
+            val header = android.widget.LinearLayout(ctx).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+            header.addView(android.widget.TextView(ctx).apply {
+                text = getString(R.string.picker_filter_title)
+                textSize = 18f
+                typeface = ResourcesCompat.getFont(ctx, R.font.poppins_semi_bold)
+            }, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            configurableSource()?.let { sourceId ->
+                header.addView(android.widget.ImageButton(ctx).apply {
+                    setImageResource(R.drawable.ic_round_settings_24)
+                    val tv = android.util.TypedValue()
+                    ctx.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true)
+                    setBackgroundResource(tv.resourceId)
+                    contentDescription = getString(R.string.picker_source_filters)
+                    tooltipText = contentDescription
+                    setOnClickListener {
+                        dialog.dismiss()
+                        openSourceFilters(sourceId)
+                    }
+                }, android.widget.LinearLayout.LayoutParams(px(48), px(48)))
+            }
+            root.addView(header)
+            val summary = android.widget.LinearLayout(ctx).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                minimumHeight = px(48)
+            }
+            val resultText = android.widget.TextView(ctx).apply { textSize = 14f; alpha = 0.8f }
+            summary.addView(resultText, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val clear = com.google.android.material.chip.Chip(ctx).apply {
+                text = getString(R.string.picker_filter_clear)
+                chipIcon = ContextCompat.getDrawable(ctx, R.drawable.ic_round_close_24)
+                isChipIconVisible = true
+                chipIconTint = textColors
+            }
+            summary.addView(clear)
+            root.addView(summary)
             val column = android.widget.LinearLayout(ctx).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
-                val pad = (20 * d).toInt()
-                setPadding(pad, pad, pad, pad)
+                setPadding(0, 0, 0, px(24))
             }
-            fun title(text: String, top: Int = 16) = android.widget.TextView(ctx).apply {
+            root.addView(androidx.core.widget.NestedScrollView(ctx).apply { addView(column) })
+
+            fun title(text: String) = android.widget.TextView(ctx).apply {
                 this.text = text
                 textSize = 15f
                 typeface = ResourcesCompat.getFont(ctx, R.font.poppins_semi_bold)
-                setPadding(0, (top * d).toInt(), 0, (4 * d).toInt())
+                setPadding(0, px(16), 0, px(4))
             }
-            column.addView(title(getString(R.string.picker_filter_title), top = 0).apply { textSize = 18f })
-            val options = PickerFilter.options(shownRows)
             val titles = mapOf(
                 FilterDimension.RESOLUTION to R.string.picker_filter_resolution,
                 FilterDimension.CODEC to R.string.picker_filter_codec,
                 FilterDimension.HDR to R.string.picker_filter_hdr,
                 FilterDimension.GROUP to R.string.picker_filter_group,
             )
-            for (dim in FilterDimension.values()) {
-                val values = options.getValue(dim)
-                val selected = effectiveFilter().values(dim)
-                if (values.size < 2 && selected.isEmpty()) continue
-                column.addView(title(getString(titles.getValue(dim))))
-                val chips = com.google.android.material.chip.ChipGroup(ctx)
-                values.forEach { value ->
-                    chips.addView(com.google.android.material.chip.Chip(ctx).apply {
-                        text = if (dim == FilterDimension.CODEC) CodecLabel.of(value) else value
-                        isCheckable = true
-                        isChecked = value in selected
-                        setOnCheckedChangeListener { _, _ -> setFilterState(filterState.toggled(dim, value)) }
-                    })
-                }
-                column.addView(chips)
-            }
-            column.addView(title(getString(R.string.picker_sort)))
-            val sorts = com.google.android.material.chip.ChipGroup(ctx).apply {
-                isSingleSelection = true
-                isSelectionRequired = true
-            }
             val sortLabels = mapOf(
                 PickerSort.DEFAULT to R.string.picker_sort_default,
                 PickerSort.SEEDERS to R.string.picker_sort_seeders,
                 PickerSort.SIZE to R.string.picker_sort_size,
                 PickerSort.QUALITY to R.string.picker_sort_quality,
             )
-            PickerSort.values().forEach { sort ->
-                sorts.addView(com.google.android.material.chip.Chip(ctx).apply {
-                    id = View.generateViewId()
-                    text = getString(sortLabels.getValue(sort))
-                    isCheckable = true
-                    isChecked = filterState.sort == sort
-                    setOnCheckedChangeListener { _, checked ->
-                        if (checked && filterState.sort != sort) setFilterState(filterState.copy(sort = sort))
-                    }
-                })
+
+            lateinit var render: () -> Unit
+            fun update(state: FilterState) {
+                setFilterState(state)
+                render()
             }
-            column.addView(sorts)
-            val buttons = android.widget.LinearLayout(ctx).apply {
-                orientation = android.widget.LinearLayout.HORIZONTAL
-                setPadding(0, (16 * d).toInt(), 0, 0)
-            }
-            buttons.addView(com.google.android.material.button.MaterialButton(
-                ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle,
-            ).apply {
-                text = getString(R.string.picker_filter_clear)
-                setOnClickListener {
-                    setFilterState(filterState.cleared())
-                    dialog.dismiss()
+            render = render@{
+                if (!isAdded) return@render
+                val state = effectiveFilter()
+                resultText.text = getString(R.string.picker_filter_results, filtered.entries.size, filtered.total)
+                clear.isVisible = state.hasFilters
+                clear.setOnClickListener { update(filterState.cleared()) }
+                column.removeAllViews()
+
+                column.addView(title(getString(R.string.picker_sort)).apply { setPadding(0, px(4), 0, px(4)) })
+                val sorts = com.google.android.material.chip.ChipGroup(ctx).apply {
+                    isSingleSelection = true
+                    isSelectionRequired = true
                 }
-            })
-            configurableSource()?.let { sourceId ->
-                buttons.addView(com.google.android.material.button.MaterialButton(
-                    ctx, null, androidx.appcompat.R.attr.borderlessButtonStyle,
-                ).apply {
-                    text = getString(R.string.picker_source_filters)
-                    setOnClickListener {
-                        dialog.dismiss()
-                        openSourceFilters(sourceId)
+                PickerSort.values().forEach { sort ->
+                    sorts.addView(com.google.android.material.chip.Chip(ctx).apply {
+                        id = View.generateViewId()
+                        text = getString(sortLabels.getValue(sort))
+                        isCheckable = true
+                        isChecked = filterState.sort == sort
+                        setOnCheckedChangeListener { _, checked ->
+                            if (checked && filterState.sort != sort) update(filterState.copy(sort = sort))
+                        }
+                    })
+                }
+                column.addView(sorts)
+
+                val options = PickerFilter.options(shownRows)
+                val counts = PickerFilter.counts(list.entries, shownFacets)
+                for (dim in FilterDimension.values()) {
+                    val values = options.getValue(dim)
+                    val selected = state.values(dim)
+                    if (values.size < 2 && selected.isEmpty()) continue
+                    column.addView(title(getString(titles.getValue(dim))))
+                    val dimCounts = counts.getValue(dim)
+                    val (shown, hidden) = if (dim == FilterDimension.GROUP) {
+                        PickerFilter.groupList(values, dimCounts, selected).let {
+                            if (groupsOpen) it.shown + it.hidden to emptyList() else it.shown to it.hidden
+                        }
+                    } else values to emptyList()
+                    val chips = com.google.android.material.chip.ChipGroup(ctx).apply {
+                        chipSpacingVertical = px(4)
                     }
-                })
+                    shown.forEach { value ->
+                        val label = if (dim == FilterDimension.CODEC) CodecLabel.of(value) else value
+                        chips.addView(com.google.android.material.chip.Chip(ctx).apply {
+                            text = dimCounts[value]?.let { getString(R.string.picker_filter_value_count, label, it) } ?: label
+                            isCheckable = true
+                            isChecked = value in selected
+                            setOnCheckedChangeListener { _, _ -> update(filterState.toggled(dim, value)) }
+                        })
+                    }
+                    if (hidden.isNotEmpty()) {
+                        chips.addView(com.google.android.material.chip.Chip(ctx).apply {
+                            text = getString(R.string.picker_filter_more, hidden.size)
+                            setOnClickListener {
+                                groupsOpen = true
+                                render()
+                            }
+                        })
+                    }
+                    column.addView(chips)
+                }
             }
-            column.addView(buttons)
-            dialog.setContentView(androidx.core.widget.NestedScrollView(ctx).apply { addView(column) })
+            render()
+            dialog.setContentView(root)
             dialog.show()
         }
 
