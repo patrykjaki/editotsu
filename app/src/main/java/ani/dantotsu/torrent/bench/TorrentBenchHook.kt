@@ -24,6 +24,9 @@ import java.util.concurrent.Executors
  *
  *   add:    --es cmd add --es uri_b64 <base64 magnet/url> [--ei index N]
  *   remove: --es cmd remove --es hash <infohash>
+ *   play:   --es cmd play --es uri_b64 <base64> [--ei index N]   (opens the player)
+ *   cfg:    --es cmd cfg --ez resume B   (A/B of fast-resume)
+ *   seek:   --es cmd seek --ef pct <0..100>   (the open player; timing in MPVSTEP 50/51)
  *
  * Output goes to logcat tag EditotsuBench as `key=value` pairs. Torrent and file
  * names are never logged (owner's private magnets); only hash, index and sizes.
@@ -124,6 +127,60 @@ object TorrentBenchHook {
                         "payloadDeleted=$deleted deleteAttempts=$attempts " +
                         "totalMs=${SystemClock.elapsedRealtime() - t0}"
                 )
+            }
+            "play" -> {
+                // Player path, as the manual torrent sheet's Play: prebuffer, relay link,
+                // unlinked episode, ExoplayerView. Timing: MPVSTEP 42 -> MPVSTEP 50.
+                val b64 = intent.getStringExtra("uri_b64") ?: run {
+                    Log.i(TAG, "event=error msg=missing_uri")
+                    return
+                }
+                val uri = String(Base64.decode(b64, Base64.DEFAULT), Charsets.UTF_8).trim()
+                val t0 = SystemClock.elapsedRealtime()
+                val torrent = manager.addTorrent(uri, title = "bench")
+                val files = torrent.file_stats.orEmpty()
+                val requested = intent.getIntExtra("index", -1)
+                val file = if (requested >= 0) files.firstOrNull { it.id == requested } else files.maxByOrNull { it.length }
+                val hash = torrent.hash
+                if (hash == null || file == null) {
+                    Log.i(TAG, "event=add_failed metaMs=${SystemClock.elapsedRealtime() - t0} files=${files.size}")
+                    return
+                }
+                val index = file.id ?: files.indexOf(file)
+                manager.prebufferTorrent(uri, index, "bench")
+                val link = manager.getLink(hash, index)
+                val unlinked = ani.dantotsu.torrent.buildUnlinkedPlayback("bench", "bench", index)
+                ani.dantotsu.torrent.attachManualVideo(unlinked.episode, "bench", uri, link)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    ani.dantotsu.media.anime.ExoplayerView.media = unlinked.media
+                    ani.dantotsu.media.anime.ExoplayerView.initialized = true
+                    app.startActivity(
+                        android.content.Intent(app, ani.dantotsu.media.anime.ExoplayerView::class.java)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+                Log.i(
+                    TAG,
+                    "event=playing hash=$hash index=$index len=${file.length} files=${files.size} " +
+                        "metaMs=${SystemClock.elapsedRealtime() - t0}"
+                )
+                startStatusLog(manager, hash, t0)
+            }
+            "cfg" -> {
+                // A/B knob: resume (true/false) turns the fast-resume files on or off.
+                manager.benchUseResume = intent.getBooleanExtra("resume", true)
+                Log.i(TAG, "event=cfg resume=${manager.benchUseResume}")
+            }
+            "seek" -> {
+                // Player path: seek the open mpv player to pct% of the file.
+                val pct = intent.getFloatExtra("pct", 50f).toDouble()
+                val engine = ani.dantotsu.media.anime.player.MpvPlaybackEngine.benchInstance
+                if (engine == null) {
+                    Log.i(TAG, "event=error msg=no_player")
+                    return
+                }
+                engine.benchSeekPercent(pct)
+                Log.i(TAG, "event=seek pct=$pct")
             }
             else -> Log.i(TAG, "event=error msg=unknown_cmd")
         }
