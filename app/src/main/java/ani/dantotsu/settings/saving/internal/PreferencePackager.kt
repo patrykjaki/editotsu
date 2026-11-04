@@ -113,6 +113,11 @@ class PreferencePackager {
                     return false
                 }
             }
+            return unpackagePreferences(decodePayload(payloadJson))
+        }
+
+        /** Payload json to location -> key -> typed value; null for types restore cannot write. */
+        internal fun decodePayload(payloadJson: String): Map<String, Map<String, Any?>> {
             val type = object :
                 TypeToken<Map<String, Map<String, Map<String, Any>>>>() {}.type
             val rawPrefsMap: Map<String, Map<String, Map<String, Any>>> =
@@ -135,7 +140,7 @@ class PreferencePackager {
                 }
                 deserializedMap[prefName] = innerMap
             }
-            return unpackagePreferences(deserializedMap)
+            return deserializedMap
         }
 
         private fun typed(value: Any): Map<String, Any> = mapOf(
