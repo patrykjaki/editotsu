@@ -102,6 +102,32 @@ object PickerFilter {
             }
         }
 
+    /** Per dimension and value: how many cards (releases) have a row with that value. */
+    fun counts(entries: List<PickerEntry>, facets: Map<RowRef, RowFacets>): Map<FilterDimension, Map<String, Int>> =
+        FilterDimension.values().associateWith { d ->
+            val out = HashMap<String, Int>()
+            entries.forEach { e ->
+                e.refs.mapNotNull { facets[it]?.let { f -> valueOf(f, d) } }.toSet()
+                    .forEach { v -> out[v] = (out[v] ?: 0) + 1 }
+            }
+            out
+        }
+
+    /**
+     * Release groups for the filter sheet: most releases first (ties by name), the
+     * first [limit] shown plus any selected ones; [hidden] is what "+N more" opens.
+     */
+    data class GroupList(val shown: List<String>, val hidden: List<String>)
+
+    fun groupList(values: List<String>, counts: Map<String, Int>, selected: Set<String>, limit: Int = 6): GroupList {
+        val ordered = values.sortedWith(
+            compareByDescending<String> { counts[it] ?: 0 }.thenBy { it.lowercase() }
+        )
+        val head = ordered.take(limit)
+        val tail = ordered.drop(limit)
+        return GroupList(head + tail.filter { it in selected }, tail.filterNot { it in selected })
+    }
+
     /** The Filter button is worth showing when some dimension has two or more values. */
     fun showButton(rows: List<PickerRow>, state: FilterState): Boolean =
         state.hasFilters || options(rows).values.any { it.size >= 2 }

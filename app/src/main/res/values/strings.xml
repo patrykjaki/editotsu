@@ -222,6 +222,9 @@
     <string name="picker_filter_count">%1$s · %2$d of %3$d</string>
     <string name="picker_filter_hidden_all">Filters hide all %1$d streams</string>
     <string name="picker_filter_clear">Clear filters</string>
+    <string name="picker_filter_results">%1$d of %2$d releases</string>
+    <string name="picker_filter_value_count">%1$s · %2$d</string>
+    <string name="picker_filter_more">+%1$d more</string>
     <string name="picker_source_filters">Source filters</string>
     <string name="picker_source_filters_failed">Could not open the source settings</string>
     <string name="picker_reload_sources">Reload sources</string>

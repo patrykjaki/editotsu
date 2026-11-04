@@ -135,4 +135,28 @@ class PickerFilterTest {
         assertEquals("HEVC", f.codec)
         assertTrue(f.seeders != null && f.sizeBytes != null)
     }
+
+    @Test
+    fun counts_are_cards_per_value() {
+        val c = PickerFilter.counts(list.entries, facets)
+        val toonsCards = list.entries.count { e -> e.refs.any { it == RowRef(0, 0) || it == RowRef(1, 0) } }
+        assertEquals(toonsCards, c.getValue(FilterDimension.GROUP)["ToonsHub"])
+        assertEquals(1, c.getValue(FilterDimension.GROUP)["NTb"])
+        assertEquals(1, c.getValue(FilterDimension.CODEC)["HEVC"])
+        // A card counts once per value even when two of its rows share it.
+        assertTrue(c.getValue(FilterDimension.CODEC).getValue("AVC") <= 2)
+        assertEquals(null, c.getValue(FilterDimension.GROUP)["Nobody"])
+    }
+
+    @Test
+    fun groups_most_releases_first_and_selected_stay_visible() {
+        val values = listOf("b", "a", "c", "d", "e")
+        val counts = mapOf("a" to 1, "b" to 5, "c" to 3, "d" to 1, "e" to 9)
+        val g = PickerFilter.groupList(values, counts, selected = setOf("d"), limit = 2)
+        assertEquals(listOf("e", "b", "d"), g.shown)
+        assertEquals(listOf("c", "a"), g.hidden)
+        val all = PickerFilter.groupList(values, counts, emptySet(), limit = 10)
+        assertEquals(listOf("e", "b", "c", "a", "d"), all.shown)
+        assertTrue(all.hidden.isEmpty())
+    }
 }
