@@ -41,6 +41,7 @@ import ani.dantotsu.databinding.ActivityMediaBinding
 import ani.dantotsu.getThemeColor
 import ani.dantotsu.initActivity
 import ani.dantotsu.loadImage
+import ani.dantotsu.animethemes.MediaThemesFragment
 import ani.dantotsu.media.anime.AnimeWatchFragment
 import ani.dantotsu.media.comments.CommentsFragment
 import ani.dantotsu.media.manga.MangaReadFragment
@@ -78,7 +79,9 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
     val hasBinding get() = ::binding.isInitialized
     private val scope = lifecycleScope
     private val model: MediaDetailsViewModel by viewModels()
+    /** Saved tab value ([MediaTabs]); [tabWindows] maps it to a page. */
     var selected = 0
+    private var tabWindows: List<Int> = MediaTabs.windows(anime = true, comments = false)
     lateinit var navBar: AnimatedBottomBar
     var anime = true
     private var adult = false
@@ -475,7 +478,9 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
             )
             anime = false
         }
-        selected = if (PrefManager.getVal<Int>(PrefName.CommentsEnabled) != 1 && media.selected!!.window == 2 || rescueMode && media.selected!!.window == 2) 1 else media.selected!!.window
+        val commentsOn = PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1 && !rescueMode
+        tabWindows = MediaTabs.windows(anime, commentsOn)
+        selected = media.selected!!.window.takeIf { it in tabWindows } ?: MediaTabs.MAIN
         binding.mediaTitle.translationX = -screenWidth
 
         val infoTab = navBar.createTab(R.drawable.ic_round_info_24, R.string.info, R.id.info)
@@ -486,28 +491,28 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
         } else {
             navBar.createTab(R.drawable.ic_round_import_contacts_24, R.string.read, R.id.read)
         }
+        val themesTab = navBar.createTab(R.drawable.ic_round_audiotrack_24, R.string.theme_tab, R.id.themes)
         val commentTab =
             navBar.createTab(R.drawable.ic_round_comment_24, R.string.comments, R.id.comment)
-        navBar.addTab(infoTab)
-        navBar.addTab(watchTab)
-        if (PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1 && !rescueMode) {
-            navBar.addTab(commentTab)
+        tabWindows.forEach {
+            navBar.addTab(when (it) {
+                MediaTabs.INFO -> infoTab
+                MediaTabs.THEMES -> themesTab
+                MediaTabs.COMMENTS -> commentTab
+                else -> watchTab
+            })
         }
         if (model.continueMedia == null && media.cameFromContinue) {
             model.continueMedia = PrefManager.getVal(PrefName.ContinueMedia)
-            selected = 1
+            selected = MediaTabs.MAIN
         }
-        if (intent.getStringExtra("FRAGMENT_TO_LOAD") != null && PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1 && !rescueMode) selected = 2
-        if (viewPager.currentItem != selected) viewPager.post {
-            viewPager.setCurrentItem(selected, false)
+        if (intent.getStringExtra("FRAGMENT_TO_LOAD") != null && commentsOn) selected = MediaTabs.COMMENTS
+        val page = MediaTabs.pageOf(selected, tabWindows)
+        if (viewPager.currentItem != page) viewPager.post {
+            viewPager.setCurrentItem(page, false)
         }
-        binding.commentInputLayout.isVisible = selected == 2
-
-        // Ensure that if we are returning from the comments tab, we go back to the media content tab
-        if (selected == 2 && (PrefManager.getVal<Int>(PrefName.CommentsEnabled) != 1 || rescueMode)) {
-            selected = 1
-        }
-        navBar.selectTabAt(selected)
+        binding.commentInputLayout.isVisible = selected == MediaTabs.COMMENTS
+        navBar.selectTabAt(page)
         navBar.setOnTabSelectListener(object : AnimatedBottomBar.OnTabSelectListener {
             override fun onTabSelected(
                 lastIndex: Int,
@@ -515,9 +520,9 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
                 newIndex: Int,
                 newTab: AnimatedBottomBar.Tab
             ) {
-                selected = newIndex
-                binding.commentInputLayout.isVisible = selected == 2
-                viewPager.setCurrentItem(selected, true)
+                selected = MediaTabs.windowAt(newIndex, tabWindows)
+                binding.commentInputLayout.isVisible = selected == MediaTabs.COMMENTS
+                viewPager.setCurrentItem(newIndex, true)
                 val sel = model.loadSelected(media, isDownload)
                 sel.window = selected
                 model.saveSelected(media.id, sel)
@@ -574,10 +579,10 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
         binding.mediaViewPager.isVisible = !hasExtFragment
         binding.mediaCover.isVisible = !hasExtFragment
         binding.mediaClose.isVisible = !hasExtFragment
-        binding.commentInputLayout.isVisible = !hasExtFragment && selected == 2
+        binding.commentInputLayout.isVisible = !hasExtFragment && selected == MediaTabs.COMMENTS
         if (::navBar.isInitialized) {
             navBar.isVisible = !hasExtFragment
-            if (!hasExtFragment) navBar.selectTabAt(selected)
+            if (!hasExtFragment) navBar.selectTabAt(MediaTabs.pageOf(selected, tabWindows))
         }
     }
 
@@ -595,32 +600,31 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
     ) :
         FragmentStateAdapter(fragmentManager, lifecycle) {
 
-        override fun getItemCount(): Int = if (PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1 && !PrefManager.getVal<Boolean>(PrefName.RescueMode)) 3 else 2
+        private val windows = MediaTabs.windows(
+            anime = mediaType == SupportedMedia.ANIME,
+            comments = PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1 && !PrefManager.getVal<Boolean>(PrefName.RescueMode),
+        )
 
-        override fun createFragment(position: Int): Fragment = when (position) {
-            0 -> MediaInfoFragment()
-            1 -> when (mediaType) {
+        override fun getItemCount(): Int = windows.size
+
+        override fun createFragment(position: Int): Fragment = when (MediaTabs.windowAt(position, windows)) {
+            MediaTabs.INFO -> MediaInfoFragment()
+            MediaTabs.THEMES -> MediaThemesFragment()
+            MediaTabs.COMMENTS -> {
+                val fragment = CommentsFragment()
+                val bundle = Bundle()
+                bundle.putInt("mediaId", media.id)
+                bundle.putString("mediaName", media.mainName())
+                bundle.putString("mediaFormat", media.format)
+                if (commentId != -1) bundle.putInt("commentId", commentId)
+                fragment.arguments = bundle
+                fragment
+            }
+            else -> when (mediaType) {
                 SupportedMedia.ANIME -> AnimeWatchFragment()
                 SupportedMedia.MANGA -> MangaReadFragment()
                 SupportedMedia.NOVEL -> NovelReadFragment()
             }
-
-            2 -> { // Index 2
-                if (PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1 && !PrefManager.getVal<Boolean>(PrefName.RescueMode)) {
-                    val fragment = CommentsFragment()
-                    val bundle = Bundle()
-                    bundle.putInt("mediaId", media.id)
-                    bundle.putString("mediaName", media.mainName())
-                    bundle.putString("mediaFormat", media.format)
-                    if (commentId != -1) bundle.putInt("commentId", commentId)
-                    fragment.arguments = bundle
-                    fragment
-                } else {
-                    MediaInfoFragment() // Fallback to Info tab if comments are disabled
-                }
-            }
-
-            else -> MediaInfoFragment()
         }
     }
 

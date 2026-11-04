@@ -25,12 +25,6 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
-import ani.dantotsu.media.anime.ExoplayerView
-import ani.dantotsu.animethemes.AnimeThemes
-import ani.dantotsu.animethemes.AnimeThemesList
-import ani.dantotsu.animethemes.ThemeChoice
-import ani.dantotsu.animethemes.ThemeQueue
-import ani.dantotsu.animethemes.ThemeTrack
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.GenresViewModel
@@ -58,24 +52,18 @@ import ani.dantotsu.toast
 import ani.dantotsu.media.mangaupdates.MangaAnimeUtil
 import ani.dantotsu.util.Logger
 import com.xwray.groupie.GroupieAdapter
-import io.noties.markwon.Markwon
-import io.noties.markwon.SoftBreakAddsNewLinePlugin
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.Serializable
-import java.net.URLEncoder
 
 
 class MediaInfoFragment : Fragment() {
     private var _binding: FragmentMediaInfoBinding? = null
     private val binding get() = _binding!!
     private var timer: CountDownTimer? = null
-    private var themesJob: Job? = null
     private var loaded = false
     private var type = "ANIME"
     private val genreModel: GenresViewModel by activityViewModels()
@@ -616,100 +604,7 @@ class MediaInfoFragment : Fragment() {
                     parent.addView(bind.root)
                 }
 
-                if (media.anime != null && !offline) {
-                    // AnimeThemes openings & endings; AniList's text list when there is no match.
-                    val slot = LinearLayout(requireContext()).apply {
-                        orientation = LinearLayout.VERTICAL
-                        tag = "dynamic_view"
-                    }
-                    parent.addView(slot)
-                    val showAniListText = {
-                        val markWon = Markwon.builder(requireContext())
-                            .usePlugin(SoftBreakAddsNewLinePlugin.create()).build()
-
-                        fun makeLink(a: String): String {
-                            val first = a.indexOf('"').let { if (it != -1) it else return a } + 1
-                            val end = a.indexOf('"', first).let { if (it != -1) it else return a }
-                            val name = a.subSequence(first, end).toString()
-                            return "${a.subSequence(0, first)}" +
-                                    "[$name](https://www.youtube.com/results?search_query=${
-                                        URLEncoder.encode(
-                                            name,
-                                            "utf-8"
-                                        )
-                                    })" +
-                                    "${a.subSequence(end, a.length)}"
-                        }
-
-                        fun makeText(textView: TextView, arr: ArrayList<String>) {
-                            var op = ""
-                            arr.forEach {
-                                op += "\n"
-                                op += makeLink(it)
-                            }
-                            op = op.removePrefix("\n")
-                            textView.setOnClickListener {
-                                if (textView.maxLines == 4) {
-                                    ObjectAnimator.ofInt(textView, "maxLines", 100)
-                                        .setDuration(950).start()
-                                } else {
-                                    ObjectAnimator.ofInt(textView, "maxLines", 4)
-                                        .setDuration(400).start()
-                                }
-                            }
-                            markWon.setMarkdown(textView, op)
-                        }
-
-                        if (media.anime.op.isNotEmpty()) {
-                            val bind = ItemTitleTextBinding.inflate(
-                                LayoutInflater.from(context),
-                                slot,
-                                false
-                            )
-                            bind.itemTitle.setText(R.string.opening)
-                            makeText(bind.itemText, media.anime.op)
-                            bind.root.tag = "dynamic_view"
-                            slot.addView(bind.root)
-                        }
-
-
-                        if (media.anime.ed.isNotEmpty()) {
-                            val bind = ItemTitleTextBinding.inflate(
-                                LayoutInflater.from(context),
-                                slot,
-                                false
-                            )
-                            bind.itemTitle.setText(R.string.ending)
-                            makeText(bind.itemText, media.anime.ed)
-                            bind.root.tag = "dynamic_view"
-                            slot.addView(bind.root)
-                        }
-                    }
-                    themesJob?.cancel()
-                    themesJob = viewLifecycleOwner.lifecycleScope.launch {
-                        // AnimeThemes can take 20-40 s; say so unless the cache answers first.
-                        val loading = launch {
-                            delay(300)
-                            ItemTitleTextBinding.inflate(LayoutInflater.from(context), slot, false).apply {
-                                itemTitle.setText(R.string.anime_themes_title)
-                                itemText.setText(R.string.anime_themes_loading)
-                                slot.addView(root)
-                            }
-                        }
-                        val data = AnimeThemes.repository.getThemesForMedia(media)
-                        loading.cancel()
-                        if (_binding == null || slot.parent == null) return@launch
-                        slot.removeAllViews()
-                        val prefs = ani.dantotsu.animethemes.ThemePlaybackPreferences(
-                            resolution = ani.dantotsu.animethemes.ResolutionPref.fromInt(PrefManager.getVal(PrefName.AnimeThemesPreferredResolution)),
-                            source = ani.dantotsu.animethemes.SourcePref.fromInt(PrefManager.getVal(PrefName.AnimeThemesPreferredSource)),
-                            credits = ani.dantotsu.animethemes.CreditsPref.fromInt(PrefManager.getVal(PrefName.AnimeThemesPreferredCredits)),
-                            subtitles = ani.dantotsu.animethemes.SubtitlesPref.fromInt(PrefManager.getVal(PrefName.AnimeThemesPreferredSubtitles)),
-                        )
-                        val tracks = data?.let { ThemeQueue.choices(it, prefs) }.orEmpty()
-                        if (tracks.isEmpty()) showAniListText() else showThemeList(slot, media, tracks)
-                    }
-                }
+                // Openings & endings are on the Themes tab (MediaThemesFragment).
 
                 if (media.genres.isNotEmpty()) {
                     val bind = ActivityGenreBinding.inflate(
@@ -1170,19 +1065,5 @@ class MediaInfoFragment : Fragment() {
     override fun onDestroy() {
         timer?.cancel()
         super.onDestroy()
-    }
-
-    private fun showThemeList(slot: ViewGroup, media: Media, choices: List<ThemeChoice>) {
-        val shieldOn: Boolean = PrefManager.getVal(PrefName.HideEpisodeSpoilers)
-        val shielded = { t: ThemeTrack -> ThemeQueue.shielded(shieldOn, t.episodes, media.userProgress) }
-        slot.addView(AnimeThemesList.inflate(slot, choices, shielded) { tapped, shown ->
-            val queue = ThemeQueue.playQueue(shown, tapped, shielded)
-            ExoplayerView.openThemes(
-                requireContext(),
-                queue,
-                queue.indexOfFirst { it.themeId == tapped.themeId }.coerceAtLeast(0),
-                media.userPreferredName,
-            )
-        })
     }
 }

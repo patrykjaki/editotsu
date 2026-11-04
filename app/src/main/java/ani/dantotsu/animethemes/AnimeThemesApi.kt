@@ -93,6 +93,9 @@ query GetAnimeThemesByExternalId(${'$'}site: ResourceSite!, ${'$'}id: [Int!]) {
                         overlap
                         tags
                         link
+                        audio {
+                            link
+                        }
                     }
                 }
             }
