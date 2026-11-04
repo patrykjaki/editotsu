@@ -69,15 +69,20 @@
 
             <TextView
                 android:layout_width="match_parent"
-                android:layout_height="64dp"
+                android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
+                android:background="?attr/selectableItemBackground"
+                android:drawablePadding="16dp"
+                android:focusable="true"
                 android:fontFamily="@font/poppins_bold"
                 android:gravity="center_vertical"
+                android:minHeight="64dp"
                 android:paddingHorizontal="32dp"
                 android:text="@string/anime_manga"
-                android:textColor="?attr/colorSecondary"
-                app:drawableEndCompat="@drawable/ic_round_arrow_drop_down_24"
-                tools:ignore="TextContrastCheck" />
+                android:textColor="?attr/colorOnBackground"
+                android:textSize="16sp"
+                app:drawableEndCompat="@drawable/ic_round_expand_more_24"
+                app:drawableTint="?attr/colorOnBackground" />
 
             <TextView
                 android:layout_width="match_parent"
@@ -206,15 +211,20 @@
 
         <TextView
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:background="?attr/selectableItemBackground"
+            android:drawablePadding="16dp"
+            android:focusable="true"
             android:fontFamily="@font/poppins_bold"
             android:gravity="center_vertical"
+            android:minHeight="64dp"
             android:paddingHorizontal="32dp"
             android:text="@string/list_settings"
-            android:textColor="?attr/colorSecondary"
-            app:drawableEndCompat="@drawable/ic_round_arrow_drop_down_24"
-            tools:ignore="TextContrastCheck" />
+            android:textColor="?attr/colorOnBackground"
+            android:textSize="16sp"
+            app:drawableEndCompat="@drawable/ic_round_expand_more_24"
+            app:drawableTint="?attr/colorOnBackground" />
 
             <TextView
                 android:layout_width="match_parent"
