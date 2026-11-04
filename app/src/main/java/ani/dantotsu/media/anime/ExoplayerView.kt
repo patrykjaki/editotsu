@@ -596,9 +596,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             }
         }
 
-        // Screenshot (M6 minimal MPV-native capture): one tap captures via
-        // mpv's screenshot command into the app-private Pictures/Editotsu
-        // dir. No long-press/share, no gallery flow — recorded follow-up.
+        // Screenshot button (bottom right): see takePlayerScreenshot.
         exoScreenshot.setOnClickListener {
             takePlayerScreenshot()
         }
@@ -752,7 +750,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 if (epKey != selectedEpisodeKey()) return@observe
                 val savedPosition = savedEpisodePosition(epKey)
                 val startPosition = playbackSession.resumePosition(epKey, savedPosition)
-                // LANE-B P1 (#4 changingServer): across an engine swap the
+                // Server change: across an engine swap the
                 // old trackers must not keep polling a released engine, and
                 // the pre-release save must not re-fire mid-switch (the
                 // explicit sourceClick save already captured it). Trackers
@@ -791,15 +789,15 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         isFullscreen = PrefManager.getCustomVal("${media.id}_fullscreenInt", PrefManager.getVal<Int>(PrefName.Resize))
         applyResizeMode(isFullscreen)
 
+        // Scaling button (bottom right): cycles fit -> zoom (crop) -> stretch, remembered per show.
         exoScreen.setOnClickListener {
             isFullscreen = if (isFullscreen < 2) isFullscreen + 1 else 0
             applyResizeMode(isFullscreen)
-            snackString(when (isFullscreen) {
-                0 -> "Original"
-                1 -> "Zoom"
-                2 -> "Stretch"
-                else -> "Original"
-            }, this)
+            snackString(getString(when (isFullscreen) {
+                1 -> R.string.player_scale_zoom
+                2 -> R.string.player_scale_stretch
+                else -> R.string.player_scale_original
+            }), this)
             PrefManager.setCustomVal("${media.id}_fullscreenInt", isFullscreen)
         }
 
@@ -813,6 +811,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 putExtra("subtitle", subtitle)
             }
             onChangeSettings.launch(intent)
+        }
+        // Long-press on the gear: the "secret menu" listing gestures that have no button.
+        exoSettings.setOnLongClickListener {
+            showPlayerShortcuts()
+            true
         }
 
         // Speed Dialog
@@ -976,15 +979,15 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         val lang = subLanguages.getOrNull(PrefManager.getVal<Int>(PrefName.SubLanguage)) ?: "English"
         var savedSubLang: String? = PrefManager.getNullableCustomVal(legacySubLangKey(media.id, episode.number), null, String::class.java)
         if (savedSubLang?.startsWith("Online:") == true) {
-            // LANE-B P1 (#72): the per-episode store is now the source of
+            // The per-episode store is now the source of
             // truth for online choices; legacy keys migrate away.
             PrefManager.setCustomVal(legacySubLangKey(media.id, episode.number), null)
             savedSubLang = null
         }
         val intentSubtitle: ani.dantotsu.parsers.Subtitle? = intent.getSerialized("subtitle")
-        // LANE-B HOLD1 item 1 (upstream 36d57c56, guarded): a validated
+        // A validated
         // persisted record suppresses legacy selection here; the actual
-        // attach happens after the engine exists (HOLD2 blocker 1), so a
+        // attach happens after the engine exists, so a
         // restore is never reported without being attached-or-scheduled.
         // Explicit intent subtitle, Off, or embedded/local choice disables
         // restore entirely.
@@ -1114,7 +1117,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (pendingOnlineRestore) {
             subtitleManager.restoreSavedOnlineSubtitle(media.id, episode.number)
         }
-        // MAX MERGE M3 (upstream e954d9f1): smart-download hook. Fires per
+        // Smart-download hook. Fires per
         // playback start; the trigger itself is duplicate-guarded, so
         // re-entry (server changes, episode moves) is harmless.
         checkSmartDownloadAnime()
@@ -1165,7 +1168,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             savedPosition,
             currentSpeed,
             object : PlaybackListener {},
-            // MAX MERGE M4B DRM: DRM-tagged streams route to the narrow
+            // DRM-tagged streams route to the narrow
             // Media3 DRM backend; everything else stays on MPV.
             preferDrmBackend = drmDecision is ani.dantotsu.media.anime.player.DrmBackendPolicy.BackendDecision.DrmReady
         )
@@ -1410,7 +1413,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (!aniSkipManager.isTimeStampsLoaded && PrefManager.getVal(PrefName.TimeStampsEnabled)) {
             val dur = engine.durationMs
             val extTimestamps = extractor?.server?.video?.timestamps ?: emptyList()
-            // M5 correction: no duration gate here. Live AniSkip still
+            // No duration gate here. Live AniSkip still
             // needs duration, but CSV/IntroDB bounded ranges may resolve
             // without it; the ViewModel dispatches per provider.
             val epString = if (this::episode.isInitialized) episode.number else (media.anime?.selectedEpisode ?: "1")
@@ -1477,7 +1480,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     /**
-     * MAX MERGE M6 (upstream 5a27fa8d, MPV-adapted): PiP RemoteActions.
+     * Picture-in-picture buttons (play/pause, seek, next).
      * Actions route strictly through stable seams — PlaybackCoordinator /
      * PlaybackEngine for transport, [changeEpisode] for episode moves. No
      * Exo internals, no Media3 session changes.
@@ -1495,7 +1498,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private fun buildPipActions(isPlaying: Boolean): List<RemoteAction> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return emptyList()
 
-        // M6 HOLD: one configured distance feeds both labels and seeks —
+        // One configured distance feeds both labels and seeks —
         // UI and behavior cannot diverge.
         val seekSec = pipSeekSeconds(PrefManager.getVal(PrefName.SeekTime))
         val rewindTitle = getString(R.string.pip_rewind, seekSec)
@@ -1647,7 +1650,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     /**
-     * MAX MERGE M3 (upstream e954d9f1): while watching a downloaded
+     * While watching a downloaded
      * episode, queue the next one. OFF by default; duplicate-guarded
      * (downloaded check, in-progress check, queue check); enqueues through
      * [Helper.startAnimeDownloadService] so Wi-Fi gating, duplicate guards
@@ -1739,35 +1742,107 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     /**
-     * MAX MERGE M6 (upstream 05d5da4b screenshot concept, MPV-native):
-     * one-tap frame capture through [PlaybackEngine.captureScreenshot].
-     * No PixelCopy/Exo path, no storage-layer change: captures land in the
-     * app-private Pictures dir.
+     * Screenshot button (bottom right): mpv writes the current frame, subtitles included,
+     * to a temp file, which is then copied into the gallery under Pictures/Editotsu.
+     * Android 9 and older (no scoped storage) keep it in the app's own Pictures folder,
+     * which needs no storage permission but doesn't show up in the gallery.
+     * Names come from [ScreenshotName]: title, episode or theme, playback time.
      */
     private fun takePlayerScreenshot() {
         val engine = if (this::playerManager.isInitialized) playerManager.playbackEngine else null
         if (engine == null) {
-            toast("Player not ready")
+            toast(getString(R.string.screenshot_not_ready))
             return
         }
-        val safeTitle = (if (initialized) media.userPreferredName else "editotsu")
-            .replace(Regex("[^A-Za-z0-9 _-]"), "").trim().takeIf { it.isNotEmpty() } ?: "editotsu"
-        val epLabel = if (this::episodeArr.isInitialized) {
-            episodeArr.getOrNull(currentEpisodeIndex) ?: ""
-        } else ""
-        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
-            .format(java.util.Date())
-        val dir = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
-            ?.let { java.io.File(it, "Editotsu") }
-        if (dir == null) {
-            toast("Screenshot unavailable")
-            return
-        }
-        val file = java.io.File(dir, "${safeTitle}_${epLabel}_${stamp}.jpg".replace("__", "_"))
-        if (engine.captureScreenshot(file)) {
-            toast("Screenshot saved: ${file.absolutePath}")
+        val position = engine.positionMs
+        val name = if (themeMode) {
+            ani.dantotsu.media.anime.player.ScreenshotName.theme(
+                themeAnime,
+                themeTracks.getOrNull(themeIndex)?.let { ThemeQueue.label(it) },
+                position,
+            )
         } else {
-            toast("Screenshot failed")
+            ani.dantotsu.media.anime.player.ScreenshotName.episode(
+                if (initialized) media.userPreferredName else null,
+                if (this::episodeArr.isInitialized) episodeArr.getOrNull(currentEpisodeIndex) else null,
+                position,
+            )
+        }
+        val toGallery = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        val dir = if (toGallery) java.io.File(cacheDir, "screenshots")
+        else getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)?.let { java.io.File(it, "Editotsu") }
+        if (dir == null) {
+            toast(getString(R.string.screenshot_failed))
+            return
+        }
+        val file = java.io.File(dir, name)
+        // mpv's screenshot-to-file command returns after the file is written.
+        if (!engine.captureScreenshot(file) || !file.exists()) {
+            toast(getString(R.string.screenshot_failed))
+            return
+        }
+        if (!toGallery) {
+            toast(getString(R.string.screenshot_saved_app, file.absolutePath))
+            return
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val saved = copyScreenshotToGallery(file, name)
+            file.delete()
+            withContext(Dispatchers.Main) {
+                toast(getString(if (saved) R.string.screenshot_saved else R.string.screenshot_failed))
+            }
+        }
+    }
+
+    /** Inserts [file] into MediaStore under Pictures/Editotsu; the gallery renames duplicates itself. */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    private fun copyScreenshotToGallery(file: java.io.File, name: String): Boolean {
+        val resolver = contentResolver
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Editotsu")
+            put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = try {
+            resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        } catch (e: Exception) {
+            Logger.log("screenshot insert failed: ${e.message}")
+            null
+        } ?: return false
+        return try {
+            resolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }
+                ?: throw java.io.IOException("no output stream")
+            values.clear()
+            values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            true
+        } catch (e: Exception) {
+            Logger.log("screenshot copy failed: ${e.message}")
+            try { resolver.delete(uri, null, null) } catch (_: Exception) {}
+            false
+        }
+    }
+
+    /** Lists only the gestures that are switched on in player settings. */
+    private fun showPlayerShortcuts() {
+        val lines = buildList {
+            if (PrefManager.getVal<Boolean>(PrefName.DoubleTap)) {
+                add(getString(R.string.player_shortcuts_seek, PrefManager.getVal<Int>(PrefName.SeekTime)))
+            } else {
+                add(getString(R.string.player_shortcuts_seek_off))
+            }
+            if (PrefManager.getVal<Boolean>(PrefName.FastForward)) add(getString(R.string.player_shortcuts_hold))
+            if (PrefManager.getVal<Boolean>(PrefName.Gestures)) add(getString(R.string.player_shortcuts_swipe))
+            add(getString(R.string.player_shortcuts_skip))
+            add(getString(R.string.player_shortcuts_title_tap))
+            add(getString(R.string.player_shortcuts_lock))
+        }
+        customAlertDialog().apply {
+            setTitle(R.string.player_shortcuts_title)
+            setMessage(lines.joinToString("\n\n") { "• $it" } + "\n\n" + getString(R.string.player_shortcuts_settings))
+            setPosButton(R.string.ok)
+            show()
         }
     }
 
@@ -2229,7 +2304,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 }
 
 /**
- * LANE-A P0 (slider snap): clamps a user-typed skip time into the dialog
+ * Clamps a user-typed skip time into the dialog
  * range and snaps it to the slider step grid, so assigning
  * `Slider.value` can never throw IllegalArgumentException. Step/max mirror
  * `item_seekbar_dialog.xml` (stepSize 1 since upstream 55501e6e, 0..120); player
