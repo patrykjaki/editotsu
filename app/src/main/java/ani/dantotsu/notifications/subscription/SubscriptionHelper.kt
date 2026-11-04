@@ -78,8 +78,62 @@ class SubscriptionHelper {
         fun saveLatest(mediaId: Int, latest: Float) =
             PrefManager.setCustomVal("$LATEST$mediaId", latest.toString())
 
+        /**
+         * The episode's own title for the notification, without a leading "Episode 5",
+         * "Episode 5:", "Ep. 5 -" the source already put in; null when nothing is left.
+         */
+        internal fun episodeTitle(number: String, title: String?): String? {
+            val t = title?.trim().orEmpty()
+            val prefix = Regex(
+                "^(episode|ep\\.?)\\s*0*" + Regex.escape(number.trim().trimStart('0').ifEmpty { "0" }) +
+                    "(?![0-9])\\s*[:\\-–—.]?\\s*",
+                RegexOption.IGNORE_CASE,
+            )
+            return t.replaceFirst(prefix, "").trim().takeIf { it.isNotEmpty() }
+        }
+
+        /**
+         * How many episodes AniList says have aired: next airing episode - 1 while
+         * releasing, the episode count once finished, 0 before release; null if unknown.
+         */
+        internal fun airedLimit(status: String?, airedBeforeNext: Int?, totalEpisodes: Int?): Int? =
+            when (status?.uppercase()) {
+                "RELEASING" -> airedBeforeNext
+                "FINISHED" -> totalEpisodes
+                "NOT_YET_RELEASED" -> 0
+                else -> null
+            }
+
+        internal fun withinAired(number: Float?, limit: Int?): Boolean =
+            limit == null || number == null || number <= limit
+
+        /** Aired limits for the subscribed anime, one AniList request; empty when it fails. */
+        suspend fun airedLimits(ids: List<Int>): Map<Int, Int> {
+            if (ids.isEmpty()) return emptyMap()
+            // Raw AniList fields: Media.status in the app model is a translated label.
+            val list = try {
+                ids.chunked(50).flatMap { chunk ->
+                    ani.dantotsu.connections.anilist.Anilist.executeQuery<ani.dantotsu.connections.anilist.api.Query.MediaList>(
+                        "{Page(page:1,perPage:50){media(id_in:[${chunk.joinToString(",")}]){id status episodes nextAiringEpisode{episode}}}}",
+                        force = true,
+                    )?.data?.page?.media.orEmpty()
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.log("subscription aired check failed: ${e.message}")
+                emptyList()
+            }
+            return list.mapNotNull { m ->
+                airedLimit(m.status?.name, m.nextAiringEpisode?.episode?.minus(1), m.episodes)?.let { m.id to it }
+            }.toMap()
+        }
+
+        /** Only a check with a saved baseline may announce something; the first one seeds it. */
+        internal fun announce(baseline: Float?): Boolean = baseline != null
+
         // Kept as text: a Float pref reads 0 when missing, and missing must mean
-        // "use the old Selected value" for subscriptions made before this.
+        // "nothing seen yet" for subscriptions made before this.
         internal fun loadLatest(mediaId: Int): Float? =
             PrefManager.getNullableCustomVal("$LATEST$mediaId", null, String::class.java)?.toFloatOrNull()
 
@@ -97,12 +151,19 @@ class SubscriptionHelper {
             return parser
         }
 
+        /**
+         * [airedLimit]: episodes AniList says have aired (null = unknown, no limit).
+         * An episode above it is a mislabelled or early upload: neither announced nor
+         * recorded, so it still gets announced once it really airs.
+         */
         suspend fun getEpisode(
             parser: AnimeParser,
-            subscribeMedia: SubscribeMedia
+            subscribeMedia: SubscribeMedia,
+            airedLimit: Int? = null,
         ): Episode? {
 
             val selected = loadSelected(subscribeMedia.id)
+            val baseline = loadLatest(subscribeMedia.id)
             val ep = withTimeoutOrNull(10 * 1000) {
                 tryWithSuspend {
                     val show = parser.loadSavedShowResponse(subscribeMedia.id)
@@ -116,15 +177,20 @@ class SubscriptionHelper {
                     show.sAnime?.let {
                         parser.getLatestEpisode(
                             show.link, show.extra,
-                            it, loadLatest(subscribeMedia.id) ?: selected.latest
+                            it, baseline ?: -1f
                         )
                     }
                 }
             }
 
-            return ep?.apply {
-                saveLatest(subscribeMedia.id, number.toFloatOrNull() ?: 0f)
+            if (ep != null && !withinAired(ep.number.toFloatOrNull(), airedLimit)) {
+                Logger.log("subscription ${subscribeMedia.id}: episode ${ep.number} not aired yet (AniList: $airedLimit)")
+                return null
             }
+            ep?.let { saveLatest(subscribeMedia.id, it.number.toFloatOrNull() ?: 0f) }
+            // No baseline yet (subscribed before it existed): this check only records
+            // the newest episode. Announcing it would repeat an old episode as new.
+            return ep?.takeIf { announce(baseline) }
         }
 
         fun getMangaParser(id: Int): MangaParser {
@@ -144,6 +210,7 @@ class SubscriptionHelper {
             subscribeMedia: SubscribeMedia
         ): MangaChapter? {
             val selected = loadSelected(subscribeMedia.id)
+            val baseline = loadLatest(subscribeMedia.id)
             val chp = withTimeoutOrNull(10 * 1000) {
                 tryWithSuspend {
                     val show = parser.loadSavedShowResponse(subscribeMedia.id)
@@ -157,15 +224,14 @@ class SubscriptionHelper {
                     show.sManga?.let {
                         parser.getLatestChapter(
                             show.link, show.extra,
-                            it, loadLatest(subscribeMedia.id) ?: selected.latest
+                            it, baseline ?: -1f
                         )
                     }
                 }
             }
 
-            return chp?.apply {
-                saveLatest(subscribeMedia.id, MediaNameAdapter.findChapterNumber(number) ?: 0f)
-            }
+            chp?.let { saveLatest(subscribeMedia.id, MediaNameAdapter.findChapterNumber(it.number) ?: 0f) }
+            return chp?.takeIf { announce(baseline) }
         }
 
         private suspend fun forceLoadShowResponse(

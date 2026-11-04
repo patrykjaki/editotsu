@@ -209,6 +209,7 @@
     <string name="picker_filter">Filter</string>
     <string name="picker_filter_active">Filter · %1$d</string>
     <string name="picker_filter_title">Filter and sort</string>
+    <string name="picker_filter_active_cd">Filter and sort, %1$d on</string>
     <string name="picker_filter_resolution">Resolution</string>
     <string name="picker_filter_codec">Codec</string>
     <string name="picker_filter_hdr">HDR</string>
