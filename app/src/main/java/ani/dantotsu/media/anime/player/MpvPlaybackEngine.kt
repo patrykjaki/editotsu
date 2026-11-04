@@ -87,6 +87,10 @@ class MpvPlaybackEngine(
     )
 
     companion object {
+        /** Torrent bench builds only (BuildConfig.TORRENT_BENCH): the live engine, for adb-driven seeks. */
+        @Volatile
+        internal var benchInstance: MpvPlaybackEngine? = null
+
         /**
          * CP4v1-04: single source for content-URI open-failure diagnostics — BOTH the cause
          * message and the URI are scrubbed before the text can reach logs/share files.
@@ -227,6 +231,10 @@ class MpvPlaybackEngine(
     }
     private var logObserverRegistered = false
 
+    /** Engine thread only: when the last loadfile / user seek went to mpv, for the playback-restart log. */
+    private var loadIssuedAtMs = 0L
+    private var seekIssuedAtMs = 0L
+
     /** Output to use while a surface is attached; see [VideoOutputPolicy]. Engine thread only. */
     private var desiredOutput: VideoOutputPolicy.Output = VideoOutputPolicy.outputFor("", vulkanLibmpv)
     private var pendingSurfaceWidth: Int = 0
@@ -287,8 +295,28 @@ class MpvPlaybackEngine(
         get() = activeOperation?.request ?: pendingLoadRequest
 
     init {
+        if (ani.dantotsu.BuildConfig.TORRENT_BENCH && context != null) benchInstance = this
         engineDispatcher.post {
             initMpv()
+        }
+    }
+
+    /** Bench builds only: seek to [percent] of the file, timed like a user seek. */
+    internal fun benchSeekPercent(percent: Double) {
+        if (!ani.dantotsu.BuildConfig.TORRENT_BENCH) return
+        engineDispatcher.post {
+            if (releaseRequested.get() || !isInitialized) return@post
+            val op = activeOperation
+            try {
+                val duration = mpvClient.getPropertyDouble("duration") ?: return@post
+                val target = duration * percent / 100.0
+                seekIssuedAtMs = android.os.SystemClock.elapsedRealtime()
+                ani.dantotsu.util.Logger.log("MPVSTEP 51 bench seek to ${"%.1f".format(target)}s of ${"%.1f".format(duration)}s")
+                mpvClient.command("seek", target.toString(), "absolute+keyframes")
+                releaseTorrentReadIfUncached(op, target)
+            } catch (e: Exception) {
+                ani.dantotsu.util.Logger.log("MpvPlaybackEngine: bench seek failed: ${e.message}")
+            }
         }
     }
 
@@ -488,6 +516,7 @@ class MpvPlaybackEngine(
             } else {
                 val sec = TimeConverter.msToSeconds(positionMs)
                 try {
+                    seekIssuedAtMs = android.os.SystemClock.elapsedRealtime()
                     mpvClient.command("seek", sec.toString(), "absolute+keyframes")
                     releaseTorrentReadIfUncached(op, positionMs / 1000.0)
                 } catch (e: Exception) {
@@ -519,6 +548,7 @@ class MpvPlaybackEngine(
                 ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekRelative offsetMs=$offsetMs -> ${sec}s")
                 try {
                     val fromSec = mpvClient.getPropertyDouble("time-pos")
+                    seekIssuedAtMs = android.os.SystemClock.elapsedRealtime()
                     mpvClient.command("seek", sec.toString(), "relative+keyframes")
                     if (fromSec != null) releaseTorrentReadIfUncached(op, fromSec + offsetMs / 1000.0)
                 } catch (e: Exception) {
@@ -811,6 +841,8 @@ class MpvPlaybackEngine(
             } else {
                 mpvClient.command("loadfile", loadUri, "replace")
             }
+            loadIssuedAtMs = android.os.SystemClock.elapsedRealtime()
+            seekIssuedAtMs = 0L
             ani.dantotsu.util.Logger.log("MPVSTEP 42 after loadfile command")
 
             // Immediately bind playlist entry ID if available from MPV playlist
@@ -1347,6 +1379,7 @@ class MpvPlaybackEngine(
 
     override fun release() {
         if (releaseRequested.getAndSet(true)) return
+        if (benchInstance === this) benchInstance = null
         isInitialized = false
         engineLifecycle = EngineLifecycle.Released
         listeners.clear()
@@ -1882,6 +1915,13 @@ class MpvPlaybackEngine(
                     val playingId = getPlayingEntryId()
                     val op = if (playingId != null) operationsByEntryId[playingId] else activeOperation
                     if (op != null && (playingId == null || op.playlistEntryId == playingId)) {
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        ani.dantotsu.util.Logger.log(
+                            "MPVSTEP 50 playback-restart first=${!op.firstFrameShown} " +
+                                "sinceLoadMs=${if (loadIssuedAtMs > 0) now - loadIssuedAtMs else -1} " +
+                                "sinceSeekMs=${if (seekIssuedAtMs > 0) now - seekIssuedAtMs else -1}"
+                        )
+                        seekIssuedAtMs = 0L
                         op.firstFrameShown = true
                         updateSnapshot(currentSnapshot.copy(
                             playbackState = PlaybackState.Ready
