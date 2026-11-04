@@ -67,14 +67,22 @@ class RowAdapter(
 
     private fun bindAdvanced(b: ItemSettingAdvancedBinding, item: ScreenItem.AdvancedToggle) {
         val context = b.root.context
-        b.advancedToggle.setText(
+        val label = context.getString(
             if (item.expanded) R.string.settings_advanced_hide else R.string.settings_advanced
         )
-        b.advancedToggle.setCompoundDrawablesRelativeWithIntrinsicBounds(
-            0, 0,
-            if (item.expanded) R.drawable.ic_round_arrow_drop_up_24 else R.drawable.ic_round_arrow_drop_down_24,
-            0
-        )
+        b.advancedText.text = label
+        b.advancedToggle.contentDescription = label
+        // Turn the chevron when the state changes on the same view; set it outright on first bind.
+        val target = if (item.expanded) 180f else 0f
+        val shown = b.advancedChevron.getTag(R.id.advancedChevron) as? Boolean
+        b.advancedChevron.animate().cancel()
+        if (shown != null && shown != item.expanded) {
+            // ViewPropertyAnimator follows the system animator duration scale.
+            b.advancedChevron.animate().rotation(target).setDuration(200).start()
+        } else {
+            b.advancedChevron.rotation = target
+        }
+        b.advancedChevron.setTag(R.id.advancedChevron, item.expanded)
         ViewCompat.setStateDescription(
             b.advancedToggle,
             context.getString(if (item.expanded) R.string.expanded else R.string.collapsed)
