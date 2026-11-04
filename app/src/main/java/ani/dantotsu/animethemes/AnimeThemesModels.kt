@@ -351,7 +351,7 @@ fun ThemeCacheDto.toDomain(): ThemeUiModel {
         themeId = themeId,
         type = type,
         sequence = sequence,
-        displayTag = displayTag,
+        displayTag = ThemeTags.normalize(displayTag),
         songTitle = songTitle,
         artistDisplay = artistDisplay,
         alternateVersions = alternateVersions.map { it.toDomain() }

@@ -33,6 +33,8 @@ object ThemeFavouriteList {
         if (json.isNullOrBlank()) return emptyList()
         return runCatching { Mapper.json.decodeFromString(ListSerializer(FavouriteTheme.serializer()), json) }
             .getOrDefault(emptyList())
+            // Favourites saved before tags were normalised read "ED1".
+            .map { it.copy(track = it.track.copy(tag = ThemeTags.normalize(it.track.tag))) }
     }
 
     fun encode(list: List<FavouriteTheme>): String =

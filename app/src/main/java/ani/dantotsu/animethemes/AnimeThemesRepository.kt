@@ -202,7 +202,7 @@ class AnimeThemesRepository(
                 )
             }
 
-            val displayTag = if (theme.sequence != null) "${theme.type} ${theme.sequence}" else theme.slug
+            val displayTag = ThemeTags.display(theme.type, theme.sequence, theme.slug)
 
             return ThemeUiModel(
                 themeId = theme.id,

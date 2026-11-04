@@ -255,7 +255,6 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private lateinit var themeFailedPanel: View
     private lateinit var themeCenter: View
     private lateinit var themeFavourite: ImageButton
-    private lateinit var themeAudio: ImageButton
     private lateinit var themeAdapter: NoPaddingArrayAdapter<String>
 
     // Episodes: "now playing" chip for the opening/ending on screen (inside the controls).
@@ -2246,15 +2245,6 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             ThemeFavourites.toggle(track.mediaId, track.showTitle.ifBlank { themeAnime }, track)
             bindThemeButtons()
         }
-        themeAudio = playerView.findViewById(R.id.exo_theme_audio)
-        themeAudio.visibility = View.VISIBLE
-        themeAudio.setOnClickListener {
-            val on = !PrefManager.getVal<Boolean>(PrefName.AnimeThemesAudioOnly)
-            PrefManager.setVal(PrefName.AnimeThemesAudioOnly, on)
-            bindThemeButtons()
-            // Same theme from where it is, as audio or video.
-            playTheme(themeIndex, startMs = themeLastPositionMs)
-        }
 
         themeAdapter = NoPaddingArrayAdapter(this, R.layout.item_dropdown, ArrayList(themeTracks.map { ThemeQueue.label(it) }))
         episodeTitle.adapter = themeAdapter
@@ -2318,12 +2308,6 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             themeFavourite.contentDescription = it
             themeFavourite.tooltipText = it
         }
-        val audioOnly = PrefManager.getVal<Boolean>(PrefName.AnimeThemesAudioOnly)
-        themeAudio.alpha = if (audioOnly) 1f else 0.5f
-        getString(if (audioOnly) R.string.theme_audio_only_on else R.string.theme_audio_only_off).let {
-            themeAudio.contentDescription = it
-            themeAudio.tooltipText = it
-        }
     }
 
     private fun showThemeFailed(show: Boolean) {
@@ -2353,17 +2337,22 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (themeRadio && index >= themeTracks.lastIndex) radioNext(play = false)
         themeJob = lifecycleScope.launch {
             if (attempt == 0) {
+                // Audio only is chosen in the theme lists (Themes tab, Themes screen).
                 val audioOnly = PrefManager.getVal<Boolean>(PrefName.AnimeThemesAudioOnly)
-                val saved = withContext(Dispatchers.IO) {
+                val (savedAudio, savedVideo) = withContext(Dispatchers.IO) {
                     runCatching {
-                        ThemeDownloads(this@ExoplayerView)
-                            .savedUri(track, if (audioOnly) ThemeFileKind.AUDIO else ThemeFileKind.VIDEO)?.toString()
-                    }.getOrNull()
+                        val downloads = ThemeDownloads(this@ExoplayerView)
+                        downloads.savedUri(track, ThemeFileKind.AUDIO)?.toString() to
+                            downloads.savedUri(track, ThemeFileKind.VIDEO)?.toString()
+                    }.getOrDefault(null to null)
                 }
-                if (audioOnly && track.audioUrl == null && saved == null && newTheme) {
+                val offline = PrefManager.getVal<Boolean>(PrefName.OfflineMode) || !isOnline(this@ExoplayerView)
+                val sources = ThemeQueue.sources(track, audioOnly, savedAudio, savedVideo, offline)
+                if (newTheme && ThemeQueue.audioMissing(audioOnly, sources, savedAudio)) {
                     toast(getString(R.string.theme_no_audio, track.tag))
                 }
-                themePlan = ThemeQueue.attempts(ThemeQueue.sources(track, audioOnly, saved))
+                Logger.log("AnimeThemes: ${track.tag} audioOnly=$audioOnly first=${sources.firstOrNull()?.substringAfterLast('/')} of ${sources.size}")
+                themePlan = ThemeQueue.attempts(sources)
             }
             val next = themePlan.getOrNull(attempt) ?: return@launch showThemeFailed(true)
             setThemeStatus(next, null)

@@ -287,6 +287,8 @@
     <string name="theme_audio_only">Audio only</string>
     <string name="theme_audio_only_on">Audio only: on</string>
     <string name="theme_audio_only_off">Audio only: off</string>
+    <string name="theme_state_on">On</string>
+    <string name="theme_state_off">Off</string>
     <string name="theme_no_audio">No audio file for %1$s, playing the video</string>
     <string name="themes_screen">Themes</string>
     <string name="themes_back">Back</string>
@@ -314,6 +316,8 @@
     <string name="themes_finding">Looking up themes</string>
     <string name="themes_none_found">No themes found for these shows</string>
     <string name="themes_more">More</string>
+    <string name="theme_download">Download</string>
+    <string name="theme_downloading_more">Downloading</string>
     <string name="themes_open_show">Open show</string>
     <string name="prequel">Prequel</string>
     <string name="sequel">Sequel</string>

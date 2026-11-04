@@ -19,8 +19,6 @@ import ani.dantotsu.databinding.ItemAnimeThemeSectionBinding
 import ani.dantotsu.databinding.ItemAnimeThemeVersionBinding
 import ani.dantotsu.databinding.LayoutAnimeThemesBinding
 import com.google.android.material.color.MaterialColors
-import com.google.android.material.shape.MaterialShapeDrawable
-import com.google.android.material.shape.ShapeAppearanceModel
 
 /**
  * Openings & endings on the Themes tab: an Openings and an Endings group, four rows
@@ -35,10 +33,11 @@ class AnimeThemesList(
     private val onPlay: (tapped: ThemeTrack, shown: List<ThemeTrack>) -> Unit,
     private val onPlayAll: (queue: List<ThemeTrack>) -> Unit = {},
     private val onSettings: () -> Unit = {},
+    private val downloads: ThemeDownloadControls? = null,
 ) {
+    val root: View get() = binding.root
     private val context: Context = binding.root.context
     private val inflater = LayoutInflater.from(context)
-    private val density = context.resources.displayMetrics.density
 
     /** Version each row shows; starts at the shield-aware default, changes when one is chosen. */
     private val shown: MutableList<ThemeTrack> =
@@ -49,6 +48,7 @@ class AnimeThemesList(
 
     init {
         binding.themesSettings.setOnClickListener { onSettings() }
+        ThemeAudioToggle.bind(binding.themesAudioOnly)
         val indexed = choices.withIndex()
         section(R.string.theme_section_openings, R.string.theme_show_all_openings, indexed.filter { !it.value.isEnding }.map { it.index })
         section(R.string.theme_section_endings, R.string.theme_show_all_endings, indexed.filter { it.value.isEnding }.map { it.index })
@@ -145,6 +145,7 @@ class AnimeThemesList(
             }
         }
         bindFavourite(row, track)
+        bindDownload(row, track)
 
         val count = choice.versions.size
         if (count < 2) {
@@ -192,6 +193,7 @@ class AnimeThemesList(
             vr.root.setOnClickListener {
                 shown[i] = v
                 bindRow(i)
+                downloads?.refresh(shown.toList())
                 onPlay(v, shown.toList())
             }
             row.themeVersions.addView(vr.root)
@@ -230,20 +232,21 @@ class AnimeThemesList(
         return sb
     }
 
-    /** Grouped list: large outer corners on the first and last visible row, small between. */
-    private fun shape(view: View, first: Boolean, last: Boolean) {
-        val big = 20 * density
-        val small = 4 * density
-        val model = ShapeAppearanceModel.builder()
-            .setTopLeftCornerSize(if (first) big else small)
-            .setTopRightCornerSize(if (first) big else small)
-            .setBottomLeftCornerSize(if (last) big else small)
-            .setBottomRightCornerSize(if (last) big else small)
-            .build()
-        view.background = MaterialShapeDrawable(model).apply {
-            fillColor = ColorStateList.valueOf(color(com.google.android.material.R.attr.colorSurfaceVariant))
-        }
-        view.clipToOutline = true
+    private fun shape(view: View, first: Boolean, last: Boolean) = ThemeRowShape.apply(view, first, last)
+
+    /** Download button per row; hidden when the list has no download controls. */
+    private fun bindDownload(row: ItemAnimeThemeRowBinding, track: ThemeTrack) {
+        val controls = downloads
+        (row.themeDownload.parent as View).visibility = if (controls == null) View.GONE else View.VISIBLE
+        controls?.bind(row.themeDownload, row.themeDownloadProgress, track, mediaId = 0)
+    }
+
+    /** Tracks the rows show, for reading their download states. */
+    fun shownTracks(): List<ThemeTrack> = shown.toList()
+
+    /** Redraws the download buttons after the states changed. */
+    fun refreshDownloads() {
+        rows.forEach { (i, row) -> bindDownload(row, shown[i]) }
     }
 
     private fun color(attr: Int) = MaterialColors.getColor(context, attr, 0)
@@ -259,10 +262,10 @@ class AnimeThemesList(
             onPlay: (tapped: ThemeTrack, shown: List<ThemeTrack>) -> Unit,
             onPlayAll: (queue: List<ThemeTrack>) -> Unit = {},
             onSettings: () -> Unit = {},
-        ): View {
+            downloads: ThemeDownloadControls? = null,
+        ): AnimeThemesList {
             val b = LayoutAnimeThemesBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-            AnimeThemesList(b, choices, isShielded, onPlay, onPlayAll, onSettings)
-            return b.root
+            return AnimeThemesList(b, choices, isShielded, onPlay, onPlayAll, onSettings, downloads)
         }
     }
 }

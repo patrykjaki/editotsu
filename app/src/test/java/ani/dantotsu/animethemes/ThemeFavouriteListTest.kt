@@ -38,4 +38,10 @@ class ThemeFavouriteListTest {
         assertEquals(3, decoded.single().track.themeId)
         assertEquals(null, decoded.single().track.audioUrl)
     }
+
+    @Test
+    fun savedSlugTagsComeBackNormalised() {
+        val json = ThemeFavouriteList.encode(listOf(fav(1).let { it.copy(track = it.track.copy(tag = "ED1")) }))
+        assertEquals("ED 1", ThemeFavouriteList.decode(json).single().track.tag)
+    }
 }

@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
@@ -40,6 +41,8 @@ class MediaThemesFragment : Fragment() {
     private val model: MediaDetailsViewModel by activityViewModels()
     private var job: Job? = null
     private var shownFor: Int? = null
+    private var list: AnimeThemesList? = null
+    private var downloads: ThemeDownloadControls? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentMediaThemesBinding.inflate(inflater, container, false)
@@ -64,6 +67,7 @@ class MediaThemesFragment : Fragment() {
         binding.themesLoading.isVisible = true
         binding.themesFailed.isVisible = false
         binding.themesContent.removeAllViews()
+        list = null
         val offline = PrefManager.getVal<Boolean>(PrefName.OfflineMode) || !isOnline(requireContext())
         job = viewLifecycleOwner.lifecycleScope.launch {
             val result = AnimeThemes.repository.lookup(media.id, media.idMAL, forceRefresh = force)
@@ -91,8 +95,9 @@ class MediaThemesFragment : Fragment() {
     private fun showList(media: Media, choices: List<ThemeChoice>) {
         val shieldOn: Boolean = PrefManager.getVal(PrefName.HideEpisodeSpoilers)
         val shielded = { t: ThemeTrack -> ThemeQueue.shielded(shieldOn, t.episodes, media.userProgress) }
-        binding.themesContent.addView(
-            AnimeThemesList.inflate(
+        val controls = ThemeDownloadControls(requireActivity() as androidx.appcompat.app.AppCompatActivity) { list?.refreshDownloads() }
+        downloads = controls
+        val themes = AnimeThemesList.inflate(
                 binding.themesContent, choices, shielded,
                 onPlay = { tapped, shown ->
                     val queue = ThemeQueue.playQueue(shown, tapped, shielded)
@@ -104,8 +109,11 @@ class MediaThemesFragment : Fragment() {
                 },
                 onPlayAll = { queue -> ExoplayerView.openThemes(requireContext(), queue, 0, media.userPreferredName) },
                 onSettings = { startActivity(Intent(requireContext(), PlayerSettingsActivity::class.java)) },
+                downloads = controls,
             )
-        )
+        list = themes
+        binding.themesContent.addView(themes.root)
+        controls.refresh(themes.shownTracks())
     }
 
     /** AniList's own opening/ending lines, each linked to a YouTube search. */
@@ -143,8 +151,24 @@ class MediaThemesFragment : Fragment() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Audio only may have changed on the Themes screen.
+        _binding?.themesContent?.findViewById<ImageButton>(R.id.themesAudioOnly)?.let(ThemeAudioToggle::show)
+        // Downloads may have finished or been deleted on the Themes screen.
+        list?.let { downloads?.refresh(it.shownTracks()) }
+    }
+
+    override fun onPause() {
+        downloads?.stop()
+        super.onPause()
+    }
+
     override fun onDestroyView() {
         job?.cancel()
+        downloads?.stop()
+        list = null
+        downloads = null
         _binding = null
         super.onDestroyView()
     }
