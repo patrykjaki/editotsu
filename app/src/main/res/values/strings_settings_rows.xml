@@ -79,5 +79,6 @@
     <string name="source_sub_size">Source subtitle size</string>
     <string name="sub_preview">Subtitle preview</string>
     <string name="seconds_value">%1$d s</string>
+    <string name="anime_themes_section">Anime themes (openings &amp; endings)</string>
     <string name="edit_bio_desc">Your AniList profile bio and About Me</string>
 </resources>

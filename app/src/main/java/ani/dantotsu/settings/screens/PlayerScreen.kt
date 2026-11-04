@@ -420,7 +420,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
                 advanced = true),
         )),
         Section(R.string.anime, listOf(
-            // Anime pages: episode list layout, dub preference, downloads, and AnimeThemes video picks.
+            // Anime pages: episode list layout, dub preference, downloads.
             choiceRow(PrefName.AnimeDefaultView, R.string.default_ep_view, R.drawable.view_list_24, labels = {
                 listOf(it.getString(R.string.list), it.getString(R.string.grid), it.getString(R.string.compact))
             }),
@@ -438,6 +438,10 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
                 R.string.auto_select_resolution_priority_desc, R.drawable.ic_round_high_quality_24),
             switchRow(PrefName.SmartDownloadAnime, R.string.smart_download_anime, R.string.smart_download_anime_desc,
                 R.drawable.ic_download_24),
+        )),
+        Section(R.string.anime_themes_section, listOf(
+            // The Themes tab on anime pages (AnimeThemes openings and endings): which video file
+            // plays when there are several. Its own section, not part of the anime rows above.
             themeRow(R.string.theme_pref_resolution, R.drawable.ic_round_high_quality_24,
                 PrefName.AnimeThemesPreferredResolution) { c ->
                 listOf(c.getString(R.string.theme_opt_auto), "1080p", "720p", c.getString(R.string.theme_opt_480p_or_lower))
