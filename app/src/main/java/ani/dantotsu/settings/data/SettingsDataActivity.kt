@@ -1,6 +1,5 @@
 package ani.dantotsu.settings.data
 
-import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -8,105 +7,59 @@ import android.os.StatFs
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.text.format.Formatter
-import android.view.ViewGroup
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.view.updateLayoutParams
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
-import com.anggrayudi.storage.file.getAbsolutePath
-import androidx.recyclerview.widget.LinearLayoutManager
-import ani.dantotsu.BuildConfig
 import ani.dantotsu.R
-import ani.dantotsu.databinding.ActivitySettingsDataBinding
-import ani.dantotsu.download.DownloadsManager
+import ani.dantotsu.databinding.ItemSettingStorageBinding
 import ani.dantotsu.download.anime.AnimeDownloaderService
-import ani.dantotsu.download.manga.MangaDownloaderService
 import ani.dantotsu.download.novel.NovelDownloaderService
-import ani.dantotsu.initActivity
-import ani.dantotsu.media.MediaType
-import ani.dantotsu.navBarHeight
-import ani.dantotsu.util.LauncherWrapper
-import ani.dantotsu.restartApp
-import ani.dantotsu.savePrefsToDownloads
-import ani.dantotsu.settings.Settings
-import ani.dantotsu.settings.CommonSettingsRows
-import ani.dantotsu.settings.MediaSettingsRows
-import ani.dantotsu.settings.SettingsAdapter
-import ani.dantotsu.settings.SettingsSection
-import ani.dantotsu.settings.SettingsSections
-import ani.dantotsu.settings.search.SettingsSearchAdapter
+import ani.dantotsu.settings.rows.SettingsScreenActivity
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
-import ani.dantotsu.util.Logger
-import ani.dantotsu.statusBarHeight
-import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.toast
 import ani.dantotsu.torrent.TorrentCacheManager
-import ani.dantotsu.util.customAlertDialog
+import ani.dantotsu.util.LauncherWrapper
+import com.anggrayudi.storage.file.getAbsolutePath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
- * MAX MERGE M3 (upstream e954d9f1): Data and Storage screen — storage
- * usage, cache clearing, manual/auto backup, restore, download-dir move,
- * download purge. Adapted: Editotsu branding; no rebuild-index row (no
- * local index API — not invented); manga purge travels the service scope
- * barrier (direct purge refuses manga); restore handles `.ani` and `.sani`.
- * Also hosts the download, privacy and per-type purge rows from the old
- * Common/Anime/Manga screens.
+ * Settings > Data & storage ([DataScreen]). The rows live in [DataScreen]; this activity
+ * holds what they need from an activity: file pickers, the purge-done receiver and the
+ * cache size, which is measured in the background.
  */
-class SettingsDataActivity : AppCompatActivity() {
-    private lateinit var binding: ActivitySettingsDataBinding
-    private lateinit var launcher: LauncherWrapper
-    private var cacheSize: Long = 0L
+class SettingsDataActivity : SettingsScreenActivity() {
+    override val screen get() = DataScreen
+
+    internal lateinit var folderPicker: LauncherWrapper
+    internal lateinit var openBackup: ActivityResultLauncher<Array<String>>
+    private var createDocumentLauncher: ActivityResultLauncher<String>? = null
     private var pendingBackupPayload: ByteArray? = null
     private var pendingBackupName: String? = null
-    private var createDocumentLauncher: androidx.activity.result.ActivityResultLauncher<String>? = null
+    private var purgeDoneReceiver: android.content.BroadcastReceiver? = null
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        ThemeManager(this).applyTheme()
-        initActivity(this)
-        binding = ActivitySettingsDataBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+    /** Bytes in the app cache dirs; null until measured. */
+    internal var cacheSize: Long? = null
+        private set
 
-        val context = this
-        binding.settingsDataLayout.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-            topMargin = statusBarHeight
-            bottomMargin = navBarHeight
-        }
-        binding.dataSettingsBack.setOnClickListener {
-            onBackPressedDispatcher.onBackPressed()
-        }
-
-        val contract = ActivityResultContracts.OpenDocumentTree()
-        launcher = LauncherWrapper(this, contract)
-
-        val openDocumentLauncher =
-            registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> restoreFromUri(uri) }
-
+    override fun onScreenCreate(savedInstanceState: Bundle?) {
+        folderPicker = LauncherWrapper(this, ActivityResultContracts.OpenDocumentTree())
+        openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> restoreFromUri(uri) }
         createDocumentLauncher =
             registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-                // M3 HOLD Blocker 3: user-chosen destination, no legacy
-                // permission flow; write is atomic from the app side
-                // (single stream write, failure deletes nothing else).
+                // User-chosen destination; one stream write, a failure deletes nothing else.
                 if (uri != null) {
                     try {
-                        val payload = pendingBackupPayload
-                            ?: throw Exception("Nothing to back up")
-                        contentResolver.openOutputStream(uri)?.use { out ->
-                            out.write(payload)
-                        } ?: throw Exception("Could not open destination")
-                        toast(getString(R.string.backup_saved, DocumentFile.fromSingleUri(this, uri)?.name ?: pendingBackupName.orEmpty()))
+                        val payload = pendingBackupPayload ?: throw Exception("Nothing to back up")
+                        contentResolver.openOutputStream(uri)?.use { out -> out.write(payload) }
+                            ?: throw Exception("Could not open destination")
+                        toast(getString(R.string.backup_saved,
+                            DocumentFile.fromSingleUri(this, uri)?.name ?: pendingBackupName.orEmpty()))
                     } catch (e: Exception) {
                         e.printStackTrace()
                         toast(getString(R.string.error_saving_settings))
@@ -116,43 +69,39 @@ class SettingsDataActivity : AppCompatActivity() {
                     }
                 }
             }
-
-        updateStorageInfo()
-        setupRecyclerView(openDocumentLauncher)
         calculateCacheSize()
         registerPurgeDoneReceivers()
     }
 
-    /**
-     * M3 HOLD Blocker 2: purge completion arrives from the services
-     * (cancel → join → purge → report). Refresh storage info on either
-     * outcome; surface timeout failures instead of pretending success.
-     */
-    private var purgeDoneReceiver: android.content.BroadcastReceiver? = null
+    /** Ask where to save [payload] as [name]. */
+    internal fun saveBackup(payload: ByteArray, name: String) {
+        pendingBackupPayload = payload
+        pendingBackupName = name
+        createDocumentLauncher?.launch(name)
+    }
 
+    /**
+     * Purge completion arrives from the services (cancel, join, purge, report). Refresh
+     * storage on either outcome; say so when it timed out instead of pretending success.
+     */
     private fun registerPurgeDoneReceivers() {
         val receiver = object : android.content.BroadcastReceiver() {
             override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
-                val success = intent?.getBooleanExtra(
-                    AnimeDownloaderService.EXTRA_PURGE_SUCCESS, true
-                ) != false && intent?.getBooleanExtra(
-                    NovelDownloaderService.EXTRA_PURGE_SUCCESS, true
-                ) != false
-                updateStorageInfo()
-                if (!success) {
-                    toast(getString(R.string.purge_incomplete))
-                }
+                val success = intent?.getBooleanExtra(AnimeDownloaderService.EXTRA_PURGE_SUCCESS, true) != false &&
+                    intent?.getBooleanExtra(NovelDownloaderService.EXTRA_PURGE_SUCCESS, true) != false
+                refresh()
+                if (!success) toast(getString(R.string.purge_incomplete))
             }
         }
         purgeDoneReceiver = receiver
-        androidx.core.content.ContextCompat.registerReceiver(
+        ContextCompat.registerReceiver(
             this,
             receiver,
             android.content.IntentFilter().apply {
                 addAction(AnimeDownloaderService.ACTION_PURGE_ALL_ANIME_DONE)
                 addAction(NovelDownloaderService.ACTION_PURGE_ALL_NOVEL_DONE)
             },
-            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+            ContextCompat.RECEIVER_NOT_EXPORTED
         )
     }
 
@@ -167,29 +116,20 @@ class SettingsDataActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private fun updateStorageInfo() {
+    /** Fills the storage card. */
+    internal fun bindStorage(b: ItemSettingStorageBinding) {
         try {
-            val path = Environment.getDataDirectory().path
-            val stat = StatFs(path)
-            val blockSize = stat.blockSizeLong
-            val totalBlocks = stat.blockCountLong
-            val availableBlocks = stat.availableBlocksLong
-
-            val totalBytes = totalBlocks * blockSize
-            val availableBytes = availableBlocks * blockSize
+            val stat = StatFs(Environment.getDataDirectory().path)
+            val totalBytes = stat.blockCountLong * stat.blockSizeLong
+            val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
             val usedBytes = totalBytes - availableBytes
-
-            val progress = if (totalBytes > 0) ((usedBytes * 100) / totalBytes).toInt() else 0
-            binding.storageProgressBar.progress = progress
-
-            val freeFormatted = Formatter.formatFileSize(this, availableBytes)
-            val totalFormatted = Formatter.formatFileSize(this, totalBytes)
-            binding.storageAvailableText.text =
-                getString(R.string.storage_available_info, freeFormatted, totalFormatted)
-
-            val downloadsDirUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
-            val displayPath = getReadableDownloadPath(downloadsDirUri)
-            binding.storageDirectoryText.text = "Downloads: $displayPath"
+            b.storageProgressBar.progress = if (totalBytes > 0) ((usedBytes * 100) / totalBytes).toInt() else 0
+            b.storageAvailableText.text = getString(
+                R.string.storage_available_info,
+                Formatter.formatFileSize(this, availableBytes),
+                Formatter.formatFileSize(this, totalBytes),
+            )
+            b.storageDirectoryText.text = getString(R.string.storage_downloads_path, downloadsPath())
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -209,6 +149,7 @@ class SettingsDataActivity : AppCompatActivity() {
         }
     }
 
+    internal fun downloadsPath(): String = getReadableDownloadPath(PrefManager.getVal(PrefName.DownloadsDir))
 
     private fun getReadableDownloadPath(uriString: String): String {
         val defaultPath =
@@ -253,8 +194,7 @@ class SettingsDataActivity : AppCompatActivity() {
                             val rel = if (relIdx != -1) cursor.getString(relIdx) else null
                             val name = if (nameIdx != -1) cursor.getString(nameIdx) else null
                             if (!rel.isNullOrBlank()) {
-                                val sub = rel.trimEnd('/')
-                                return "/storage/emulated/0/$sub"
+                                return "/storage/emulated/0/${rel.trimEnd('/')}"
                             } else if (!name.isNullOrBlank()) {
                                 return "/storage/emulated/0/Download/$name"
                             }
@@ -293,9 +233,9 @@ class SettingsDataActivity : AppCompatActivity() {
             var size = 0L
             cacheDir?.let { size += getFolderSize(it) }
             externalCacheDir?.let { size += getFolderSize(it) }
-            cacheSize = size
             withContext(Dispatchers.Main) {
-                binding.dataSettingsRecyclerView.adapter?.notifyDataSetChanged()
+                cacheSize = size
+                refresh()
             }
         }
     }
@@ -309,314 +249,26 @@ class SettingsDataActivity : AppCompatActivity() {
         return size
     }
 
-    private fun torrentQuotaOptions(): Pair<Array<String>, LongArray> {
-        val options = arrayOf("1 GB", "2 GB", "3 GB", "5 GB", "10 GB", "No Auto-Eviction (Unlimited)")
-        val values = longArrayOf(
-            1L * 1024L * 1024L * 1024L,
-            2L * 1024L * 1024L * 1024L,
-            3L * 1024L * 1024L * 1024L,
-            5L * 1024L * 1024L * 1024L,
-            10L * 1024L * 1024L * 1024L,
-            0L
-        )
-        return options to values
-    }
-
-    private fun torrentQuotaIndex(): Int {
-        val (_, values) = torrentQuotaOptions()
-        return values.indexOf(PrefManager.getVal<Long>(PrefName.TorrentRetainedCacheQuota)).let { if (it >= 0) it else 2 }
-    }
-
-    private fun torrentCacheUsageText(): String {
+    internal fun torrentCacheUsageText(): String {
         val breakdown = TorrentCacheManager.getInstance(this).getStorageBreakdown()
-        return "${formatStorageSize(breakdown.torrentCacheBytes)} used"
+        return getString(R.string.torrent_cache_used, formatStorageSize(breakdown.torrentCacheBytes))
     }
 
-    private fun clearAppCache() {
+    internal fun clearAppCache() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val sizeToClear = cacheSize
+            val sizeToClear = cacheSize ?: 0L
             try {
                 cacheDir?.deleteRecursively()
                 externalCacheDir?.deleteRecursively()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-            cacheSize = 0L
             withContext(Dispatchers.Main) {
-                val formatted = formatStorageSize(sizeToClear)
-                toast(getString(R.string.cache_cleared, formatted))
-                binding.dataSettingsRecyclerView.adapter?.notifyDataSetChanged()
+                cacheSize = 0L
+                toast(getString(R.string.cache_cleared, formatStorageSize(sizeToClear)))
+                refresh()
                 calculateCacheSize()
-                updateStorageInfo()
             }
-        }
-    }
-
-    @SuppressLint("SimpleDateFormat")
-    private fun setupRecyclerView(openDocumentLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>) {
-        val context = this
-        val intervals = arrayOf(
-            getString(R.string.auto_backup_interval_off),
-            getString(R.string.auto_backup_interval_6h),
-            getString(R.string.auto_backup_interval_12h),
-            getString(R.string.auto_backup_interval_24h),
-            getString(R.string.auto_backup_interval_48h),
-            getString(R.string.auto_backup_interval_weekly)
-        )
-        val copyCounts = arrayOf("1", "2", "3", "5")
-
-        val storage = listOf(
-            Settings(
-                type = 1,
-                name = getString(R.string.clear_cache),
-                desc = getString(
-                    R.string.clear_cache_desc,
-                    if (cacheSize > 0) formatStorageSize(cacheSize) else getString(R.string.cache_calculating)
-                ),
-                icon = R.drawable.ic_round_delete_24,
-                onClick = {
-                    context.customAlertDialog().apply {
-                        setTitle(R.string.clear_cache)
-                        setMessage(R.string.clear_cache)
-                        setPosButton(R.string.ok) {
-                            clearAppCache()
-                        }
-                        setNegButton(R.string.cancel)
-                        show()
-                    }
-                }
-            ),
-            Settings(
-                type = 1,
-                name = getString(R.string.purge_downloads),
-                desc = getString(R.string.purge_downloads_desc),
-                icon = R.drawable.ic_round_delete_24,
-                onClick = {
-                    context.customAlertDialog().apply {
-                        setTitle(R.string.purge_downloads)
-                        setMessage(
-                            R.string.purge_confirm,
-                            "${getString(R.string.anime)}, ${getString(R.string.manga)} & ${getString(R.string.novels)}"
-                        )
-                        setPosButton(R.string.yes) {
-                            // M3 HOLD Blocker 2: purge runs INSIDE the
-                            // services (cancel → join → purge → report).
-                            // The activity never deletes directories
-                            // directly; completion refreshes below.
-                            ContextCompat.startForegroundService(
-                                context,
-                                android.content.Intent(context, AnimeDownloaderService::class.java).apply {
-                                    action = AnimeDownloaderService.ACTION_PURGE_ALL_ANIME
-                                }
-                            )
-                            ContextCompat.startForegroundService(
-                                context,
-                                android.content.Intent(context, NovelDownloaderService::class.java).apply {
-                                    action = NovelDownloaderService.ACTION_PURGE_ALL_NOVEL
-                                }
-                            )
-                            val purgeIntent = android.content.Intent(
-                                context,
-                                MangaDownloaderService::class.java
-                            ).apply {
-                                action = MangaDownloaderService.ACTION_PURGE_MANGA
-                            }
-                            ContextCompat.startForegroundService(context, purgeIntent)
-                        }
-                        setNegButton(R.string.no)
-                        show()
-                    }
-                }
-            ),
-            Settings(
-                type = 1,
-                name = getString(R.string.torrent_cache_quota),
-                desc = torrentQuotaOptions().let { opts ->
-                    opts.first[torrentQuotaIndex()]
-                },
-                icon = R.drawable.ic_round_folder_24,
-                onClick = { view ->
-                    val (options, values) = torrentQuotaOptions()
-                    val selected = torrentQuotaIndex()
-                    context.customAlertDialog().apply {
-                        setTitle(getString(R.string.torrent_cache_quota))
-                        singleChoiceItems(options, selected) { index ->
-                            val chosenQuota = values[index]
-                            PrefManager.setVal(PrefName.TorrentRetainedCacheQuota, chosenQuota)
-                            view.settingsDesc.text = options[index]
-                            val cacheMgr = TorrentCacheManager.getInstance(context)
-                            lifecycleScope.launch(Dispatchers.IO) {
-                                cacheMgr.evictIfNeeded(chosenQuota)
-                            }
-                        }
-                        show()
-                    }
-                }
-            ),
-            Settings(
-                type = 1,
-                name = getString(R.string.clear_torrent_cache),
-                desc = torrentCacheUsageText(),
-                icon = R.drawable.ic_round_delete_24,
-                onClick = { view ->
-                    context.customAlertDialog().apply {
-                        setTitle(getString(R.string.clear_torrent_cache))
-                        setMessage("Purge all dormant/retained torrent downloads? Active playback streams will be preserved.")
-                        setPosButton(R.string.yes) {
-                            lifecycleScope.launch(Dispatchers.IO) {
-                                val cacheManager = TorrentCacheManager.getInstance(context)
-                                val result = cacheManager.clearTorrentCache()
-                                val updated = torrentCacheUsageText()
-                                withContext(Dispatchers.Main) {
-                                    view.settingsDesc.text = updated
-                                    val skippedMsg = if (result.activeBytesSkipped > 0) " (${formatStorageSize(result.activeBytesSkipped)} active stream skipped)" else ""
-                                    toast("Freed ${formatStorageSize(result.bytesFreed)}$skippedMsg")
-                                }
-                            }
-                        }
-                        setNegButton(R.string.no)
-                        show()
-                    }
-                }
-            ),
-        )
-        val downloads = listOf(
-            Settings(
-                type = 1,
-                name = getString(R.string.change_download_directory),
-                desc = getString(R.string.change_download_directory_desc),
-                icon = R.drawable.ic_round_folder_24,
-                onClick = {
-                    val oldUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
-                    context.customAlertDialog().apply {
-                        setTitle(R.string.change_download_directory)
-                        setMessage(R.string.change_download_directory_confirm)
-                        setPosButton(R.string.ok) {
-                            launcher.registerForCallback { success ->
-                                if (success) {
-                                    toast(getString(R.string.please_wait))
-                                    val newUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
-                                    lifecycleScope.launch(Dispatchers.IO) {
-                                        Injekt.get<DownloadsManager>().moveDownloadsDir(
-                                            context,
-                                            Uri.parse(oldUri),
-                                            Uri.parse(newUri),
-                                        ) { finished, message ->
-                                            if (finished) {
-                                                toast(getString(R.string.success))
-                                                updateStorageInfo()
-                                            } else {
-                                                toast(message)
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    toast(getString(R.string.error))
-                                }
-                            }
-                            launcher.launch()
-                        }
-                        setNegButton(R.string.cancel)
-                        show()
-                    }
-                }
-            ),
-        ) + CommonSettingsRows.downloads(this)
-        val backups = listOf(
-            Settings(
-                type = 1,
-                name = getString(R.string.backup_now),
-                desc = getString(R.string.backup_now_desc),
-                icon = R.drawable.backup_restore,
-                onClick = {
-                    BackupRestore.chooseSections(this@SettingsDataActivity) { sections, password ->
-                        val timestampStr = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault()).format(Date())
-                        pendingBackupPayload = BackupRestore.create(sections, password)
-                        password?.fill('0')
-                        val ext = if (password != null) "sani" else "ani"
-                        pendingBackupName = "Editotsu_${timestampStr}.$ext"
-                        pendingBackupName?.let { createDocumentLauncher?.launch(it) }
-                    }
-                }
-            ),
-            Settings(
-                type = 1,
-                name = getString(R.string.restore_backup),
-                desc = getString(R.string.restore_backup_desc),
-                icon = R.drawable.backup_restore,
-                onClick = {
-                    // M3 HOLD cleanup: SAF picker grants its own access;
-                    // no legacy storage permission needed.
-                    openDocumentLauncher.launch(arrayOf("*/*"))
-                }
-            ),
-            Settings(
-                type = 1,
-                name = getString(R.string.auto_backup_interval),
-                desc = intervals.getOrElse(PrefManager.getVal(PrefName.AutoBackupInterval)) { intervals[0] },
-                icon = R.drawable.ic_round_auto_awesome_24,
-                onClick = {
-                    val current = PrefManager.getVal<Int>(PrefName.AutoBackupInterval)
-                    context.customAlertDialog().apply {
-                        setTitle(R.string.auto_backup_interval)
-                        singleChoiceItems(intervals, current) { which ->
-                            PrefManager.setVal(PrefName.AutoBackupInterval, which)
-                            AutoBackupWorker.schedule(context, which)
-                            binding.dataSettingsRecyclerView.adapter?.notifyDataSetChanged()
-                        }
-                        setPosButton(R.string.ok)
-                        show()
-                    }
-                }
-            ),
-            Settings(
-                type = 1,
-                name = getString(R.string.auto_backup_max_copies),
-                desc = "${PrefManager.getVal<Int>(PrefName.AutoBackupMaxCopies)} backups",
-                icon = R.drawable.backup_restore,
-                onClick = {
-                    val current = PrefManager.getVal<Int>(PrefName.AutoBackupMaxCopies)
-                    val currentIndex = copyCounts.indexOf(current.toString()).coerceAtLeast(0)
-                    context.customAlertDialog().apply {
-                        setTitle(R.string.auto_backup_max_copies)
-                        singleChoiceItems(copyCounts, currentIndex) { which ->
-                            val copies = copyCounts[which].toIntOrNull() ?: 3
-                            PrefManager.setVal(PrefName.AutoBackupMaxCopies, copies)
-                            binding.dataSettingsRecyclerView.adapter?.notifyDataSetChanged()
-                        }
-                        setPosButton(R.string.ok)
-                        show()
-                    }
-                }
-            ),
-            Settings(
-                type = 1,
-                name = getString(R.string.auto_backup),
-                desc = run {
-                    val timestamp = PrefManager.getVal<Long>(PrefName.LastAutoBackupTimestamp)
-                    if (timestamp > 0) {
-                        val formattedDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(timestamp))
-                        getString(R.string.last_auto_backup, formattedDate)
-                    } else {
-                        getString(R.string.last_auto_backup_never)
-                    }
-                },
-                icon = R.drawable.backup_restore,
-                onClick = {}
-            ),
-        )
-        val sections = listOf(
-            SettingsSection(getString(R.string.settings_section_storage), storage, CommonSettingsRows.maintenance(this)),
-            SettingsSection(getString(R.string.downloads), downloads, MediaSettingsRows.purges(this)),
-            SettingsSection(getString(R.string.settings_section_backups), backups),
-            SettingsSection(getString(R.string.settings_section_privacy), CommonSettingsRows.privacy(this)),
-        )
-        val highlightKey = intent.getStringExtra(SettingsSearchAdapter.EXTRA_HIGHLIGHT_KEY)
-        val settingsList = SettingsSections.flatten(sections, getString(R.string.settings_advanced), highlightKey)
-
-        binding.dataSettingsRecyclerView.apply {
-            layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
-            adapter = SettingsAdapter(settingsList, highlightKey = highlightKey)
         }
     }
 }
