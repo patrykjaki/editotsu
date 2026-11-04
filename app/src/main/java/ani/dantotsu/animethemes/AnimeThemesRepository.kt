@@ -86,11 +86,13 @@ class AnimeThemesRepository(
         const val NEGATIVE_TTL_MS = 24 * 60 * 60 * 1000L // 24 Hours
         const val CACHE_FILE_NAME = "animethemes_metadata_cache.json"
 
-        fun getCacheKey(media: Media): String? {
-            return if (media.id > 0) {
-                "anilist_${media.id}"
-            } else if (media.idMAL != null && media.idMAL!! > 0) {
-                "mal_${media.idMAL}"
+        fun getCacheKey(media: Media): String? = getCacheKey(media.id, media.idMAL)
+
+        fun getCacheKey(id: Int, idMal: Int?): String? {
+            return if (id > 0) {
+                "anilist_$id"
+            } else if (idMal != null && idMal > 0) {
+                "mal_$idMal"
             } else {
                 null
             }
@@ -193,7 +195,8 @@ class AnimeThemesRepository(
                             overlap = v.overlap,
                             tags = v.tags,
                             isSubbed = v.subbed,
-                            badgeLabel = createBadgeLabel(v)
+                            badgeLabel = createBadgeLabel(v),
+                            audioUrl = v.audio?.link?.takeIf { it.isNotBlank() }
                         )
                     }
                 )
@@ -233,8 +236,16 @@ class AnimeThemesRepository(
      * Uses in-memory & disk cache unless [forceRefresh] is true.
      * Guaranteed fail-closed resolution on ambiguity.
      */
-    suspend fun getThemesForMedia(media: Media, forceRefresh: Boolean = false): AnimeThemesData? {
-        val cacheKey = getCacheKey(media) ?: return null
+    suspend fun getThemesForMedia(media: Media, forceRefresh: Boolean = false): AnimeThemesData? =
+        (lookup(media.id, media.idMAL, forceRefresh) as? ThemesLookup.Found)?.data
+
+    /** [getThemesForMedia] by ids, for lists that only carry them (the shuffle). */
+    suspend fun getThemesForIds(id: Int, idMal: Int?): AnimeThemesData? =
+        (lookup(id, idMal) as? ThemesLookup.Found)?.data
+
+    /** Like [getThemesForMedia], but tells "AnimeThemes has nothing" from "AnimeThemes did not answer". */
+    suspend fun lookup(id: Int, idMal: Int?, forceRefresh: Boolean = false): ThemesLookup {
+        val cacheKey = getCacheKey(id, idMal) ?: return ThemesLookup.NoMatch
 
         if (!forceRefresh) {
             val cached = getCachedEntry(cacheKey)
@@ -242,7 +253,8 @@ class AnimeThemesRepository(
                 val now = System.currentTimeMillis()
                 val ttl = if (cached.isNegativeMatch) NEGATIVE_TTL_MS else POSITIVE_TTL_MS
                 if (now < cached.timestamp + ttl) {
-                    return if (cached.isNegativeMatch) null else cached.payload?.toDomain()
+                    return if (cached.isNegativeMatch) ThemesLookup.NoMatch
+                    else cached.payload?.toDomain()?.let { ThemesLookup.Found(it) } ?: ThemesLookup.NoMatch
                 }
             }
         }
@@ -252,12 +264,12 @@ class AnimeThemesRepository(
                 var selectedAnime: AnimeThemesAnimeDto? = null
                 var isAuthoritativeNoMatch = false
 
-                if (media.id > 0) {
-                    when (val aniListResult = api.queryAnimeByExternalSite("ANILIST", media.id)) {
+                if (id > 0) {
+                    when (val aniListResult = api.queryAnimeByExternalSite("ANILIST", id)) {
                         is AnimeThemesApiResult.Failure -> {
                             // Technical / transport failure -> do NOT fallback to MAL as "0 match", do NOT negative cache
                             Logger.log("AnimeThemesRepository: AniList query failed technically: ${aniListResult.reason} - ${aniListResult.message}")
-                            return@withContext null
+                            return@withContext ThemesLookup.Failed
                         }
                         is AnimeThemesApiResult.Success -> {
                             val aniListResults = aniListResult.response.data?.findAnimeByExternalSite ?: emptyList()
@@ -266,11 +278,11 @@ class AnimeThemesRepository(
                                 selectedAnime = aniListResults[0]
                             } else if (aniListResults.isEmpty()) {
                                 // Authoritative 0 results from AniList -> attempt MAL fallback if MAL ID exists
-                                if (media.idMAL != null && media.idMAL!! > 0) {
-                                    when (val malResult = api.queryAnimeByExternalSite("MAL", media.idMAL!!)) {
+                                if (idMal != null && idMal!! > 0) {
+                                    when (val malResult = api.queryAnimeByExternalSite("MAL", idMal!!)) {
                                         is AnimeThemesApiResult.Failure -> {
                                             Logger.log("AnimeThemesRepository: MAL fallback query failed technically: ${malResult.reason} - ${malResult.message}")
-                                            return@withContext null
+                                            return@withContext ThemesLookup.Failed
                                         }
                                         is AnimeThemesApiResult.Success -> {
                                             val malResults = malResult.response.data?.findAnimeByExternalSite ?: emptyList()
@@ -286,11 +298,11 @@ class AnimeThemesRepository(
                                 }
                             } else {
                                 // Ambiguous AniList (> 1 matches) -> attempt MAL intersection
-                                if (media.idMAL != null && media.idMAL!! > 0) {
-                                    when (val malResult = api.queryAnimeByExternalSite("MAL", media.idMAL!!)) {
+                                if (idMal != null && idMal!! > 0) {
+                                    when (val malResult = api.queryAnimeByExternalSite("MAL", idMal!!)) {
                                         is AnimeThemesApiResult.Failure -> {
                                             Logger.log("AnimeThemesRepository: MAL intersection query failed technically: ${malResult.reason} - ${malResult.message}")
-                                            return@withContext null
+                                            return@withContext ThemesLookup.Failed
                                         }
                                         is AnimeThemesApiResult.Success -> {
                                             val malResults = malResult.response.data?.findAnimeByExternalSite ?: emptyList()
@@ -309,11 +321,11 @@ class AnimeThemesRepository(
                             }
                         }
                     }
-                } else if (media.idMAL != null && media.idMAL!! > 0) {
-                    when (val malResult = api.queryAnimeByExternalSite("MAL", media.idMAL!!)) {
+                } else if (idMal != null && idMal!! > 0) {
+                    when (val malResult = api.queryAnimeByExternalSite("MAL", idMal!!)) {
                         is AnimeThemesApiResult.Failure -> {
                             Logger.log("AnimeThemesRepository: MAL-only query failed technically: ${malResult.reason} - ${malResult.message}")
-                            return@withContext null
+                            return@withContext ThemesLookup.Failed
                         }
                         is AnimeThemesApiResult.Success -> {
                             val malResults = malResult.response.data?.findAnimeByExternalSite ?: emptyList()
@@ -338,8 +350,8 @@ class AnimeThemesRepository(
                         .map { mapThemeToUiModel(it) }
 
                     if (openings.isEmpty() && endings.isEmpty()) {
-                        saveCacheEntry(cacheKey, media.id, isNegative = true, data = null)
-                        null
+                        saveCacheEntry(cacheKey, id, isNegative = true, data = null)
+                        ThemesLookup.NoMatch
                     } else {
                         val animeThemesData = AnimeThemesData(
                             animeId = selectedAnime.id,
@@ -347,20 +359,20 @@ class AnimeThemesRepository(
                             openings = openings,
                             endings = endings
                         )
-                        saveCacheEntry(cacheKey, media.id, isNegative = false, data = animeThemesData)
-                        animeThemesData
+                        saveCacheEntry(cacheKey, id, isNegative = false, data = animeThemesData)
+                        ThemesLookup.Found(animeThemesData)
                     }
                 } else if (isAuthoritativeNoMatch) {
-                    saveCacheEntry(cacheKey, media.id, isNegative = true, data = null)
-                    null
+                    saveCacheEntry(cacheKey, id, isNegative = true, data = null)
+                    ThemesLookup.NoMatch
                 } else {
-                    null
+                    ThemesLookup.Failed
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.log(e)
-                null
+                ThemesLookup.Failed
             }
         }
     }
@@ -493,4 +505,13 @@ class AnimeThemesRepository(
             throw e
         }
     }
+}
+
+/** Result of [AnimeThemesRepository.lookup]. */
+sealed interface ThemesLookup {
+    data class Found(val data: AnimeThemesData) : ThemesLookup
+    /** AnimeThemes answered and has no themes for the show (cached for a day). */
+    data object NoMatch : ThemesLookup
+    /** AnimeThemes did not answer or answered with an error; not cached. */
+    data object Failed : ThemesLookup
 }

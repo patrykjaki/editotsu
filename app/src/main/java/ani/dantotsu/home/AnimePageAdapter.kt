@@ -74,6 +74,11 @@ class AnimePageAdapter : RecyclerView.Adapter<AnimePageAdapter.AnimePageViewHold
         val color = binding.root.context.getThemeColor(android.R.attr.windowBackground)
         textInputLayout.boxBackgroundColor = (color and 0x00FFFFFF) or 0x28000000
         materialCardView.setCardBackgroundColor((color and 0x00FFFFFF) or 0x28000000)
+        trendingBinding.themesButtonContainer.isVisible = true
+        trendingBinding.themesButtonContainer.setCardBackgroundColor((color and 0x00FFFFFF) or 0x28000000)
+        trendingBinding.themesButton.setSafeOnClickListener {
+            it.context.startActivity(Intent(it.context, ani.dantotsu.animethemes.ThemesActivity::class.java))
+        }
 
         trendingBinding.titleContainer.updatePadding(top = statusBarHeight)
 

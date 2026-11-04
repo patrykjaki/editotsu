@@ -2,6 +2,9 @@ package ani.dantotsu.animethemes
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.RenderEffect
+import android.graphics.Shader
+import android.os.Build
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
@@ -20,15 +23,18 @@ import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.shape.ShapeAppearanceModel
 
 /**
- * Openings & endings on the details screen: an Openings and an Endings group, four rows
+ * Openings & endings on the Themes tab: an Openings and an Endings group, four rows
  * each until "Show all". A row plays the version it shows; themes with several versions
  * open their versions in place, and choosing one plays it and makes it the row's version.
+ * Rows the episode shield hides are blurred (API 31+) until tapped once.
  */
 class AnimeThemesList(
     private val binding: LayoutAnimeThemesBinding,
     private val choices: List<ThemeChoice>,
     private val isShielded: (ThemeTrack) -> Boolean,
     private val onPlay: (tapped: ThemeTrack, shown: List<ThemeTrack>) -> Unit,
+    private val onPlayAll: (queue: List<ThemeTrack>) -> Unit = {},
+    private val onSettings: () -> Unit = {},
 ) {
     private val context: Context = binding.root.context
     private val inflater = LayoutInflater.from(context)
@@ -38,9 +44,11 @@ class AnimeThemesList(
     private val shown: MutableList<ThemeTrack> =
         choices.map { ThemeQueue.preferredVersion(it, isShielded) }.toMutableList()
     private val openRows = mutableSetOf<Int>()
+    private val revealed = mutableSetOf<Int>()
     private val rows = mutableMapOf<Int, ItemAnimeThemeRowBinding>()
 
     init {
+        binding.themesSettings.setOnClickListener { onSettings() }
         val indexed = choices.withIndex()
         section(R.string.theme_section_openings, R.string.theme_show_all_openings, indexed.filter { !it.value.isEnding }.map { it.index })
         section(R.string.theme_section_endings, R.string.theme_show_all_endings, indexed.filter { it.value.isEnding }.map { it.index })
@@ -50,6 +58,13 @@ class AnimeThemesList(
         if (indices.isEmpty()) return
         val s = ItemAnimeThemeSectionBinding.inflate(inflater, binding.themesSections, false)
         s.sectionLabel.setText(label)
+        val playAll = context.getString(if (label == R.string.theme_section_endings) R.string.theme_play_all_endings else R.string.theme_play_all_openings)
+        s.sectionPlayAll.contentDescription = playAll
+        s.sectionPlayAll.tooltipText = playAll
+        s.sectionPlayAll.setOnClickListener {
+            val queue = indices.map { shown[it] }.filterNot { hiddenNow(it) }
+            if (queue.isNotEmpty()) onPlayAll(queue)
+        }
         indices.forEach { i ->
             val row = ItemAnimeThemeRowBinding.inflate(inflater, s.sectionRows, false)
             rows[i] = row
@@ -73,33 +88,63 @@ class AnimeThemesList(
         binding.themesSections.addView(s.root)
     }
 
+    /** Shield-hidden and not revealed by a tap on its row. */
+    private fun hiddenNow(track: ThemeTrack): Boolean {
+        val i = shown.indexOfFirst { it.entryId == track.entryId && it.themeId == track.themeId }
+        return isShielded(track) && i !in revealed
+    }
+
     private fun bindRow(i: Int) {
         val row = rows[i] ?: return
         val choice = choices[i]
         val track = shown[i]
-        val hidden = isShielded(track)
+        val hidden = isShielded(track) && i !in revealed
         val flag = themeFlagText(context, track.warning)
         val episodes = ThemeQueue.episodesLabel(track.episodes)
+        val hiddenLabel = context.getString(R.string.theme_hidden_until, ThemeQueue.firstEpisode(track.episodes) ?: 0)
 
         row.themeTag.text = track.tag
-        if (hidden) {
-            row.themeSong.text = context.getString(R.string.theme_hidden_until, ThemeQueue.firstEpisode(track.episodes) ?: 0)
+        row.themeSong.typeface = ResourcesCompat.getFont(context, R.font.poppins_semi_bold)
+        row.themeSong.setTextColor(color(com.google.android.material.R.attr.colorOnSurface))
+        if (hidden && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // The title stays in place, blurred; the line below says why.
+            row.themeSong.text = track.songTitle.ifBlank { track.tag }
+            row.themeSong.setRenderEffect(RenderEffect.createBlurEffect(BLUR_PX, BLUR_PX, Shader.TileMode.CLAMP))
+            row.themeMeta.text = meta(null, hiddenLabel, flag)
+        } else if (hidden) {
+            row.themeSong.text = hiddenLabel
             row.themeSong.typeface = ResourcesCompat.getFont(context, R.font.poppins)
             row.themeSong.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            row.themeMeta.text = meta(null, episodes, flag)
         } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) row.themeSong.setRenderEffect(null)
             row.themeSong.text = track.songTitle.ifBlank { track.tag }
-            row.themeSong.typeface = ResourcesCompat.getFont(context, R.font.poppins_semi_bold)
-            row.themeSong.setTextColor(color(com.google.android.material.R.attr.colorOnSurface))
+            row.themeMeta.text = meta(track.artist, episodes, flag)
         }
-        row.themeMeta.text = meta(if (hidden) null else track.artist, episodes, flag)
         row.themeMeta.visibility = if (row.themeMeta.text.isNullOrEmpty()) View.GONE else View.VISIBLE
 
-        row.themeMain.contentDescription = listOfNotNull(
-            if (choice.versions.size > 1) "${track.tag} v${track.version}" else track.tag,
-            row.themeSong.text.toString(),
-            row.themeMeta.text?.toString()?.takeIf { it.isNotBlank() },
-        ).joinToString(", ")
-        row.themeMain.setOnClickListener { onPlay(shown[i], shown.toList()) }
+        val tag = if (choice.versions.size > 1) "${track.tag} v${track.version}" else track.tag
+        row.themeMain.contentDescription = if (hidden) {
+            listOfNotNull(tag, hiddenLabel, flag).joinToString(", ")
+        } else {
+            listOfNotNull(tag, row.themeSong.text.toString(), row.themeMeta.text?.toString()?.takeIf { it.isNotBlank() })
+                .joinToString(", ")
+        }
+        ViewCompat.replaceAccessibilityAction(
+            row.themeMain,
+            androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK,
+            context.getString(if (hidden) R.string.theme_reveal else R.string.theme_play),
+            null,
+        )
+        row.themeMain.setOnClickListener {
+            if (isShielded(shown[i]) && i !in revealed) {
+                revealed += i
+                bindRow(i)
+            } else {
+                onPlay(shown[i], shown.mapIndexed { j, t -> if (j == i || !hiddenNow(t)) t else null }.filterNotNull())
+            }
+        }
+        bindFavourite(row, track)
 
         val count = choice.versions.size
         if (count < 2) {
@@ -153,6 +198,24 @@ class AnimeThemesList(
         }
     }
 
+    private fun bindFavourite(row: ItemAnimeThemeRowBinding, track: ThemeTrack) {
+        fun apply() {
+            val fav = ThemeFavourites.isFavourite(track.themeId)
+            row.themeFavourite.setImageResource(if (fav) R.drawable.ic_round_favorite_24 else R.drawable.ic_round_favorite_border_24)
+            row.themeFavourite.imageTintList = ColorStateList.valueOf(color(
+                if (fav) androidx.appcompat.R.attr.colorPrimary else com.google.android.material.R.attr.colorOnSurfaceVariant
+            ))
+            val label = context.getString(if (fav) R.string.theme_favourite_remove else R.string.theme_favourite_add)
+            row.themeFavourite.contentDescription = label
+            row.themeFavourite.tooltipText = label
+        }
+        apply()
+        row.themeFavourite.setOnClickListener {
+            ThemeFavourites.toggle(track.mediaId, track.showTitle, track)
+            apply()
+        }
+    }
+
     /** "Artist · Eps 1–12 · Spoiler", the flag in the error colour. */
     private fun meta(artist: String?, episodes: String?, flag: String?): CharSequence {
         val sb = SpannableStringBuilder()
@@ -187,15 +250,18 @@ class AnimeThemesList(
 
     companion object {
         const val COLLAPSED = 4
+        private const val BLUR_PX = 18f
 
         fun inflate(
             parent: ViewGroup,
             choices: List<ThemeChoice>,
             isShielded: (ThemeTrack) -> Boolean,
             onPlay: (tapped: ThemeTrack, shown: List<ThemeTrack>) -> Unit,
+            onPlayAll: (queue: List<ThemeTrack>) -> Unit = {},
+            onSettings: () -> Unit = {},
         ): View {
             val b = LayoutAnimeThemesBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-            AnimeThemesList(b, choices, isShielded, onPlay)
+            AnimeThemesList(b, choices, isShielded, onPlay, onPlayAll, onSettings)
             return b.root
         }
     }
