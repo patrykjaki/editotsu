@@ -108,7 +108,10 @@ class SubscriptionNotificationTask : Task {
                                     media
                                 )
                             if (ep != null) context.getString(R.string.episode) + "${ep.number}${
-                                if (ep.title != null) " : ${ep.title}" else ""
+                                // Sources often title an episode "Episode 4"; don't repeat it.
+                                ep.title?.trim()?.takeIf {
+                                    it.isNotEmpty() && !it.equals("Episode ${ep.number}", ignoreCase = true)
+                                }?.let { " : $it" } ?: ""
                             }${
                                 if (ep.isFiller) " [Filler]" else ""
                             } " + context.getString(R.string.just_released) to ep.thumbnail

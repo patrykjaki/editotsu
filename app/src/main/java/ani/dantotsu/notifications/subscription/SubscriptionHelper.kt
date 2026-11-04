@@ -56,6 +56,33 @@ class SubscriptionHelper {
         internal fun sourceIndexFor(name: String?, names: List<String>): Int? =
             name?.let { names.indexOf(it) }?.takeIf { it >= 0 }
 
+        fun subscribedSource(mediaId: Int): String? =
+            PrefManager.getNullableCustomVal("$SOURCE_NAME$mediaId", null, String::class.java)
+
+        /**
+         * Whether the bell shows as on for [sourceName]: the title is subscribed and the
+         * subscription uses this source. Subscriptions from before 0.7 have no saved
+         * name and show on every source, as they did.
+         */
+        fun isSubscribedOn(mediaId: Int, sourceName: String?): Boolean =
+            bellOn(getSubscriptions().containsKey(mediaId), subscribedSource(mediaId), sourceName)
+
+        internal fun bellOn(subscribed: Boolean, savedSource: String?, sourceName: String?): Boolean =
+            subscribed && (savedSource == null || savedSource == sourceName)
+
+        /**
+         * Newest episode/chapter the subscription has seen, kept apart from the watch
+         * screen's "Selected" state: browsing another source reset that one and made the
+         * next check announce an episode that was not new.
+         */
+        fun saveLatest(mediaId: Int, latest: Float) =
+            PrefManager.setCustomVal("$LATEST$mediaId", latest.toString())
+
+        // Kept as text: a Float pref reads 0 when missing, and missing must mean
+        // "use the old Selected value" for subscriptions made before this.
+        internal fun loadLatest(mediaId: Int): Float? =
+            PrefManager.getNullableCustomVal("$LATEST$mediaId", null, String::class.java)?.toFloatOrNull()
+
         fun getAnimeParser(id: Int): AnimeParser {
             val sources = AnimeSources
             Logger.log("getAnimeParser size: ${sources.list.size}")
@@ -89,15 +116,14 @@ class SubscriptionHelper {
                     show.sAnime?.let {
                         parser.getLatestEpisode(
                             show.link, show.extra,
-                            it, selected.latest
+                            it, loadLatest(subscribeMedia.id) ?: selected.latest
                         )
                     }
                 }
             }
 
             return ep?.apply {
-                selected.latest = number.toFloat()
-                saveSelected(subscribeMedia.id, selected)
+                saveLatest(subscribeMedia.id, number.toFloatOrNull() ?: 0f)
             }
         }
 
@@ -131,15 +157,14 @@ class SubscriptionHelper {
                     show.sManga?.let {
                         parser.getLatestChapter(
                             show.link, show.extra,
-                            it, selected.latest
+                            it, loadLatest(subscribeMedia.id) ?: selected.latest
                         )
                     }
                 }
             }
 
             return chp?.apply {
-                selected.latest = MediaNameAdapter.findChapterNumber(number) ?: 0f
-                saveSelected(subscribeMedia.id, selected)
+                saveLatest(subscribeMedia.id, MediaNameAdapter.findChapterNumber(number) ?: 0f)
             }
         }
 
@@ -180,6 +205,7 @@ class SubscriptionHelper {
 
         private const val SUBSCRIPTIONS = "subscriptions"
         private const val SOURCE_NAME = "SubscriptionSource-"
+        private const val LATEST = "SubscriptionLatest-"
 
         @Suppress("UNCHECKED_CAST")
         fun getSubscriptions(): Map<Int, SubscribeMedia> =

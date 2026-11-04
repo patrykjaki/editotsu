@@ -190,6 +190,16 @@
                         android:contentDescription="@string/sleep_timer"
                         android:src="@drawable/ic_round_timer_24"
                         app:tint="#fff" />
+                    <!-- Theme mode only: off / repeat the list / repeat this theme. -->
+                    <ImageButton
+                        android:id="@+id/exo_theme_repeat"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:backgroundTint="#00FFFFFF"
+                        android:contentDescription="@string/theme_repeat"
+                        android:src="@drawable/ic_round_repeat_24"
+                        android:visibility="gone"
+                        app:tint="#fff" />
                     <ImageButton
                         android:id="@+id/exo_screenshot"
                         android:layout_width="48dp"

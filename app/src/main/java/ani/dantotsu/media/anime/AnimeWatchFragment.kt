@@ -218,7 +218,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
                 }
 
                 subscribed =
-                    SubscriptionHelper.getSubscriptions().containsKey(media.id)
+                    SubscriptionHelper.isSubscribedOn(media.id, currentSourceName())
 
                 style = media.selected!!.recyclerStyle
                 reverse = media.selected!!.recyclerReversed
@@ -487,7 +487,9 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         selected.sourceIndex = i
         selected.server = null
         model.saveSelected(media.id, selected)
-        if (subscribed) model.watchSources?.names?.getOrNull(i)?.let { SubscriptionHelper.saveSource(media.id, it) }
+        // The subscription keeps its own source; the bell shows whether it uses this one.
+        subscribed = SubscriptionHelper.isSubscribedOn(media.id, model.watchSources?.names?.getOrNull(i))
+        if (this::headerAdapter.isInitialized) headerAdapter.subscribe?.setState(subscribed)
         // A remembered release or group belongs to the old source; keeping it made the
         // new source auto-play its first row under the old name.
         ani.dantotsu.media.anime.selector.SelectedKeyStore.save(media.id, null)
@@ -543,11 +545,20 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
     }
 
     var subscribed = false
+
+    private fun currentSourceName(): String? =
+        media.selected?.sourceIndex?.let { model.watchSources?.names?.getOrNull(it) }
+
     fun onNotificationPressed(subscribed: Boolean, source: String) {
         this.subscribed = subscribed
         saveSubscription(media, subscribed)
         if (subscribed) {
             SubscriptionHelper.saveSource(media.id, source)
+            // Only what comes after the list shown now counts as new.
+            SubscriptionHelper.saveLatest(
+                media.id,
+                maxOf(media.anime?.episodes?.values?.maxOfOrNull { it.number.toFloatOrNull() ?: 0f } ?: 0f, media.userProgress?.toFloat() ?: 0f)
+            )
             activity?.let {
                 if (!ani.dantotsu.requestNotificationPermission(it)) {
                     snackString(getString(R.string.notifications_off_for_app))
@@ -927,7 +938,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         }
 
         if (this::media.isInitialized && this::headerAdapter.isInitialized) {
-            val isCurrentlySubscribed = SubscriptionHelper.getSubscriptions().containsKey(media.id)
+            val isCurrentlySubscribed = SubscriptionHelper.isSubscribedOn(media.id, currentSourceName())
             if (subscribed != isCurrentlySubscribed) {
                 subscribed = isCurrentlySubscribed
                 headerAdapter.subscribe?.setState(isCurrentlySubscribed)
