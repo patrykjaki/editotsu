@@ -11,12 +11,10 @@
   </p>
 </div>
 
-# Editotsu: anime and manga tracking client
+# Editotsu: AniList and MAL tracking client
 
-Editotsu is an Android client for tracking anime and manga with AniList and
-MyAnimeList, built on [Dantotsu](https://github.com/rebelonion/Dantotsu). It adds
-its own libmpv player, a reworked source picker, subtitle styling, AnimeThemes,
-and full backup and restore.
+**Editotsu** is a fork of [Dantotsu](https://github.com/rebelonion/Dantotsu), "the best of the best",
+with a few edits of its own. Hence the name.
 
 > [!IMPORTANT]
 > **Editotsu is a client and tracking app.** It does not host, provide, distribute
@@ -56,53 +54,21 @@ and full backup and restore.
 Pre-releases install as `ani.editotsu.beta` (Editotsu β / α), next to the stable
 `ani.editotsu`.
 
-## Features
+## What Editotsu adds
 
-### Player
+- **mpv player** with Vulkan rendering, hardware decoding and GPU upscaling (CuNNy shaders)
+- **AnimeThemes**: openings and endings on every anime page, with favourites, a spoiler shield and offline audio
+- **AniList and MyAnimeList** at the same time
+- **Full backup and restore** of settings and app data in one file
 
-Playback runs on libmpv: hardware decoding, external audio tracks, video
-adjustments, debanding, audio and subtitle delay, picture-in-picture, a sleep
-timer, a night mode that evens out loud and quiet scenes, and screenshots taken
-from the source frame. Resume remembers where you stopped in each episode.
+> [!TIP]
+> ⭐ **Star this repository** if you like the app. It helps more people find it.
 
-### Tracking
+## Contribute
 
-Progress syncs with AniList and MyAnimeList, and you can sign in to both. Scores
-follow the format set on your account. MyAnimeList sign-in tokens are stored
-encrypted on the device.
-
-### Source picker
-
-When an extension returns several streams for an episode, the picker shows them
-as compact cards with tags for resolution, codec, HDR, audio and subtitles, so you
-don't have to read long release names. Filters and a best-match choice come
-first; release group and file size sit on a separate line.
-
-### Subtitles
-
-ASS subtitles can keep their original styling or switch to Editotsu's style.
-Automatic mode picks between them for each show. Font, size, colours and outline
-are adjustable.
-
-### AnimeThemes
-
-Openings and endings from [AnimeThemes](https://animethemes.moe) appear on each
-anime's page. Play them as video or audio only, keep listening in the background,
-and save them to your device.
-
-### Manga and offline
-
-A built-in manga reader, plus downloads of episodes and chapters for offline use,
-with storage and cache management in settings.
-
-### Backup
-
-Full backup and restore of your settings and app data in one file.
-
-### Discord Rich Presence
-
-Optional. It can show what you are watching or reading. Editotsu never asks for
-or stores your Discord account token.
+Bug reports, ideas and pull requests are welcome. Please check the
+[open issues](https://github.com/patrykjaki/editotsu/issues) first, and open one
+before a large change.
 
 ## Privacy
 
@@ -129,3 +95,7 @@ cd editotsu
   style that Editotsu's E follows.
 - [mpv](https://mpv.io) and libmpv.
 - [AnimeThemes](https://animethemes.moe) for the themes database.
+
+## License
+
+Editotsu is licensed under the same terms as Dantotsu: the Unabandon Public License (UPL), see [LICENSE.md](LICENSE.md).
