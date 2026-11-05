@@ -70,7 +70,7 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
 
     override fun sections() = listOf(
         Section(R.string.settings_section_storage, listOf(
-            customRow("storage_usage", R.string.storage_usage, R.layout.item_setting_storage) { host, view ->
+            customRow("storage_usage", R.string.storage_usage, R.layout.item_setting_storage, inSection = true) { host, view ->
                 host.data.bindStorage(ItemSettingStorageBinding.bind(view))
             },
             actionRow("clear_cache", R.string.clear_cache, icon = R.drawable.ic_round_delete_24,

@@ -29,7 +29,9 @@ abstract class SettingsScreenActivity : AppCompatActivity(), SettingsHost {
 
     private lateinit var binding: ActivitySettingScreenBinding
     private lateinit var rows: RowAdapter
-    private var showAdvanced = false
+
+    /** Sections whose advanced rows are open; shared per screen, see [openSections]. */
+    private val expanded: MutableSet<Int> get() = openSections.getOrPut(screen.id) { HashSet() }
 
     /** Runs before the first draw, e.g. to read intent extras. */
     protected open fun onScreenCreate(savedInstanceState: Bundle?) {}
@@ -49,11 +51,13 @@ abstract class SettingsScreenActivity : AppCompatActivity(), SettingsHost {
 
         val highlight = intent.getStringExtra(EXTRA_ROW)
         val highlighted = highlight?.let { id -> screen.rows().firstOrNull { it.id == id } }
-        showAdvanced = savedInstanceState?.getBoolean(STATE_ADVANCED)
-            ?: (highlighted?.advanced == true)
+        savedInstanceState?.getIntArray(STATE_EXPANDED)?.let { expanded.addAll(it.toList()) }
+        if (highlighted?.advanced == true) {
+            expanded += ScreenItems.sectionOf(screen.sections(), highlighted.id)
+        }
 
-        rows = RowAdapter(this) {
-            showAdvanced = !showAdvanced
+        rows = RowAdapter(this) { section ->
+            if (!expanded.remove(section)) expanded += section
             refresh()
         }
         if (savedInstanceState == null) rows.highlightId = highlighted?.id
@@ -73,7 +77,7 @@ abstract class SettingsScreenActivity : AppCompatActivity(), SettingsHost {
     }
 
     override fun refresh() {
-        rows.submitList(ScreenItems.build(screen.sections(), showAdvanced))
+        rows.submitList(ScreenItems.build(screen.sections(), expanded))
     }
 
     override fun onResume() {
@@ -84,7 +88,7 @@ abstract class SettingsScreenActivity : AppCompatActivity(), SettingsHost {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putBoolean(STATE_ADVANCED, showAdvanced)
+        outState.putIntArray(STATE_EXPANDED, expanded.toIntArray())
     }
 
     private inner class TitleAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
@@ -106,7 +110,18 @@ abstract class SettingsScreenActivity : AppCompatActivity(), SettingsHost {
     companion object {
         /** Row id to scroll to and flash (from search). */
         const val EXTRA_ROW = "settings_row"
-        private const val STATE_ADVANCED = "settings_show_advanced"
+        private const val STATE_EXPANDED = "settings_open_sections"
+
+        /**
+         * Open advanced sections by screen id. Kept for the life of the process, not in
+         * prefs: some rows restart the app's task on change (DNS, proxy), and the section
+         * must still be open when the screen comes back.
+         */
+        private val openSections = HashMap<String, MutableSet<Int>>()
+
+        /** Tests start every screen with its sections closed. */
+        @androidx.annotation.VisibleForTesting
+        internal fun closeAllSections() = openSections.clear()
 
         fun intent(context: Context, screen: SettingsScreen, rowId: String? = null) =
             Intent(context, screen.activity).apply { rowId?.let { putExtra(EXTRA_ROW, it) } }

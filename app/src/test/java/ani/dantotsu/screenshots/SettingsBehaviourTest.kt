@@ -15,6 +15,7 @@ import ani.dantotsu.settings.saving.internal.BackupSection
 import ani.dantotsu.settings.saving.internal.Location
 import ani.dantotsu.settings.saving.internal.PreferencePackager
 import ani.dantotsu.settings.screens.SettingsScreens
+import ani.dantotsu.settings.screens.SourcesScreen
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -68,7 +69,8 @@ class SettingsBehaviourTest : ScreenshotTest() {
 
     @Test fun search_advanced_row_opens_with_advanced_shown() = assertSearchJumps("user agent")
 
-    @Test fun every_screen_advanced_toggle_shows_and_hides_rows() {
+    @Test fun every_screen_more_rows_show_and_hide_advanced_rows() {
+        SettingsScreenActivity.closeAllSections()
         for (screen in SettingsScreens.all) {
             if (screen.rows().none { it.advanced && runCatching { it.visible() }.getOrDefault(false) }) continue
             ActivityScenario.launch<SettingsScreenActivity>(SettingsScreenActivity.intent(context, screen)).use { scenario ->
@@ -80,21 +82,35 @@ class SettingsBehaviourTest : ScreenshotTest() {
                     val open = list.rowAdapterKeys()
                     assertTrue("${screen.id}: no rows added", open.size > before.size)
                     assertTrue("${screen.id}: rows lost", open.containsAll(before))
-                    val chevron = lastChevron(list)
-                    assertEquals("${screen.id}: chevron", 180f, chevron, 0.1f)
+                    assertTrue("${screen.id}: a section still closed",
+                        SettingsActions.items(list).filterIsInstance<ScreenItem.More>().all { it.expanded })
                     assertTrue(SettingsActions.toggleAdvanced(list) { idle() })
                     assertEquals("${screen.id}: hide again", before, list.rowAdapterKeys())
-                    assertEquals("${screen.id}: chevron back", 0f, lastChevron(list), 0.1f)
                 }
             }
         }
     }
 
-    private fun lastChevron(list: RecyclerView): Float {
-        val last = list.adapter!!.itemCount - 1
-        list.scrollToPosition(last)
-        idle(1000)
-        return list.findViewHolderForAdapterPosition(last)!!.itemView.findViewById<android.view.View>(R.id.advancedChevron).rotation
+    /** DNS and proxy restart the app's task on change; the section they are in stays open. */
+    @Test fun open_section_survives_the_screen_being_recreated() {
+        SettingsScreenActivity.closeAllSections()
+        val intent = SettingsScreenActivity.intent(context, SourcesScreen)
+        ActivityScenario.launch<SettingsScreenActivity>(intent).use { scenario ->
+            scenario.onActivity { activity ->
+                val list = activity.findViewById<RecyclerView>(R.id.settingScreenList)
+                idle()
+                assertTrue(SettingsActions.toggleAdvanced(list) { idle() })
+            }
+        }
+        ActivityScenario.launch<SettingsScreenActivity>(intent).use { scenario ->
+            scenario.onActivity { activity ->
+                val list = activity.findViewById<RecyclerView>(R.id.settingScreenList)
+                idle()
+                assertTrue("DohProvider hidden after reopening", "DohProvider" in list.rowAdapterKeys())
+                // Close them again so other tests start from the default.
+                SettingsActions.toggleAdvanced(list) { idle() }
+            }
+        }
     }
 
     private fun rowKeys(reader: Boolean) = SettingsScreens.all.flatMap { s -> s.rows().flatMap { it.keys } }.toSet()

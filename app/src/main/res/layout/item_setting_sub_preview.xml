@@ -1,24 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Settings > Player > Subtitles: how subtitles look with the current colours, font and size. -->
+<!-- Settings > Player > Subtitles: how subtitles look with the current colours, font and
+     size. First row of the subtitles section card (SettingsCards). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingHorizontal="16dp"
-    android:paddingVertical="12dp">
+    android:padding="12dp">
 
     <FrameLayout
         android:id="@+id/subPreviewFrame"
         android:layout_width="match_parent"
-        android:layout_height="120dp"
-        android:background="@drawable/linear_gradient_black"
+        android:layout_height="128dp"
+        android:background="@drawable/bg_sub_preview"
         android:importantForAccessibility="no">
 
         <FrameLayout
             android:id="@+id/subPreviewWindow"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="12dp">
+            android:layout_marginBottom="14dp">
 
             <TextView
                 android:id="@+id/subPreviewText"

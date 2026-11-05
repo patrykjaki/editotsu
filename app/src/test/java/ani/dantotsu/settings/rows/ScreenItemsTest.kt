@@ -16,39 +16,47 @@ class ScreenItemsTest {
         when (it) {
             is ScreenItem.Header -> "H${it.title}"
             is ScreenItem.RowItem -> it.row.id
-            is ScreenItem.AdvancedToggle -> if (it.expanded) "ADV+" else "ADV-"
+            is ScreenItem.More -> if (it.expanded) "LESS${it.section}" else "MORE${it.section}x${it.count}"
         }
     }
 
     @Test
-    fun advancedRowsHiddenUntilToggledAndToggleIsLast() {
+    fun advancedRowsOpenPerSectionAboveItsMoreRow() {
         val sections = listOf(
             Section(1, listOf(row("a"), row("x", advanced = true), row("b"))),
-            Section(2, listOf(row("c"))),
+            Section(2, listOf(row("c"), row("y", advanced = true))),
         )
-        assertEquals(listOf("H1", "a", "b", "H2", "c", "ADV-"), keys(ScreenItems.build(sections, false)))
-        assertEquals(listOf("H1", "a", "x", "b", "H2", "c", "ADV+"), keys(ScreenItems.build(sections, true)))
+        assertEquals(listOf("H1", "a", "b", "MORE0x1", "H2", "c", "MORE1x1"), keys(ScreenItems.build(sections, emptySet())))
+        // Opening section 0 leaves section 1 closed; the opened rows sit right above "show fewer".
+        assertEquals(listOf("H1", "a", "b", "x", "LESS0", "H2", "c", "MORE1x1"), keys(ScreenItems.build(sections, setOf(0))))
     }
 
     @Test
-    fun sectionWithOnlyAdvancedRowsHidesItsHeaderWhenCollapsed() {
+    fun sectionWithOnlyAdvancedRowsKeepsItsHeaderAndMoreRow() {
         val sections = listOf(Section(1, listOf(row("a"))), Section(2, listOf(row("x", advanced = true))))
-        assertEquals(listOf("H1", "a", "ADV-"), keys(ScreenItems.build(sections, false)))
-        assertEquals(listOf("H1", "a", "H2", "x", "ADV+"), keys(ScreenItems.build(sections, true)))
+        assertEquals(listOf("H1", "a", "H2", "MORE1x1"), keys(ScreenItems.build(sections, emptySet())))
+        assertEquals(listOf("H1", "a", "H2", "x", "LESS1"), keys(ScreenItems.build(sections, setOf(1))))
     }
 
     @Test
-    fun noToggleWithoutVisibleAdvancedRows() {
+    fun noMoreRowWithoutVisibleAdvancedRows() {
         val sections = listOf(Section(1, listOf(row("a"), row("x", advanced = true, visible = false))))
-        val items = ScreenItems.build(sections, false)
-        assertFalse(items.any { it is ScreenItem.AdvancedToggle })
+        val items = ScreenItems.build(sections, emptySet())
+        assertFalse(items.any { it is ScreenItem.More })
         assertEquals(listOf("H1", "a"), keys(items))
     }
 
     @Test
     fun hiddenRowsAndEmptySectionsAreDropped() {
         val sections = listOf(Section(1, listOf(row("a", visible = false))), Section(2, listOf(row("b"))))
-        assertEquals(listOf("H2", "b"), keys(ScreenItems.build(sections, true)))
+        assertEquals(listOf("H2", "b"), keys(ScreenItems.build(sections, setOf(0, 1))))
+    }
+
+    @Test
+    fun sectionOfFindsTheRowsSection() {
+        val sections = listOf(Section(1, listOf(row("a"))), Section(2, listOf(row("x", advanced = true))))
+        assertEquals(1, ScreenItems.sectionOf(sections, "x"))
+        assertEquals(-1, ScreenItems.sectionOf(sections, "nope"))
     }
 
     @Test
