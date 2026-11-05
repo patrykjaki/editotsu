@@ -18,7 +18,6 @@ import ani.dantotsu.settings.screens.SettingsScreens
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 
 /** Settings behaviour from the phone test list, on the JVM: search jump, advanced toggle, backup round trip. */
@@ -130,13 +129,7 @@ class SettingsBehaviourTest : ScreenshotTest() {
         assertEquals(emptyList<String>(), roundTrip(rowKeys(reader = false)))
     }
 
-    /**
-     * App bug on integration/0.8 e1b4ba88: restore wipes every reading setting. Backups keep empty
-     * groups (33206cfb); the NovelReader group is read from file "ani.dantotsu.novelReader", which
-     * PrefManager never writes (it maps NovelReader to "ani.dantotsu.reader"), so it is always empty,
-     * and importing it clears the reader file right after the Reader group was restored.
-     */
-    @Ignore("app bug: restore clears reader prefs via the empty NovelReader group")
+    /** Reading rows too: Reader and NovelReader share one file and must restore together. */
     @Test fun backup_then_restore_brings_reading_settings_back() {
         assertEquals(emptyList<String>(), roundTrip(rowKeys(reader = true)))
     }
