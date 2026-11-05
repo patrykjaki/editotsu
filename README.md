@@ -1,98 +1,117 @@
-# Editotsu
-
 <div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/editotsu-wordmark-dark.svg">
+    <img src=".github/assets/editotsu-wordmark-light.svg" alt="Editotsu" width="640">
+  </picture>
 
-[![Latest release](https://img.shields.io/github/v/release/patrykjaki/editotsu?include_prereleases&label=latest%20release&style=for-the-badge&labelColor=14161E&color=0EC2B0)](https://github.com/patrykjaki/editotsu/releases)
-![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-blue?style=for-the-badge&labelColor=14161E&color=1B1C2A)
-[![License](https://img.shields.io/badge/license-UPL%20%2F%20GPLv3-blue?style=for-the-badge&labelColor=14161E&color=1B1C2A)](LICENSE.md)
-[![Stars](https://img.shields.io/github/stars/patrykjaki/editotsu?style=for-the-badge&labelColor=14161E&color=1B1C2A)](https://github.com/patrykjaki/editotsu)
-
+  <p align="center">
+    <img src="https://img.shields.io/badge/platforms-Android%208.0%2B-00AE9F?labelColor=162129&color=1b2a33&style=for-the-badge" alt="Android 8.0+"/>
+    <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-UPL%20%2F%20GPLv3-1b2a33?labelColor=162129&style=for-the-badge" alt="License"/></a>
+    <a href="https://github.com/patrykjaki/editotsu/stargazers"><img src="https://img.shields.io/github/stars/patrykjaki/editotsu?style=for-the-badge&labelColor=162129&color=1b2a33" alt="Stars"/></a>
+  </p>
 </div>
 
-Editotsu is an Android anime and manga client based on
-[Dantotsu](https://github.com/rebelonion/Dantotsu).
+# Editotsu: anime and manga tracking client
 
-It includes a native libmpv player, AniList and MyAnimeList integration, a manga
-reader, offline downloads, subtitle controls, Discord Rich Presence and an
-updated source picker.
+Editotsu is an Android client for tracking anime and manga with AniList and
+MyAnimeList, built on [Dantotsu](https://github.com/rebelonion/Dantotsu). It adds
+its own libmpv player, a reworked source picker, subtitle styling, AnimeThemes,
+and full backup and restore.
 
-## Features
-
-### Playback
-
-Editotsu uses libmpv for video playback, with hardware decoding, external
-audio tracks, video adjustments, debanding filters, and audio/subtitle sync
-controls.
-
-### Tracking
-
-Anime and manga can be tracked with AniList and MyAnimeList, with progress
-synchronized between devices. MyAnimeList sign-in tokens are stored encrypted
-on-device.
-
-### Source picker
-
-The source picker uses compact cards and tags to make different sources easier
-to compare. Resolution, codec, HDR, audio and subtitle information can be shown
-without having to read through the entire source name.
-
-When available, details such as release group, tracker, seeders and file size
-are shown separately. Direct streams use a simpler compact layout.
-
-The picker is still being refined and its design will continue to improve in
-future releases.
-
-### Subtitles
-
-ASS subtitles can keep their original styling or use Editotsu's subtitle
-appearance. Automatic mode chooses between them based on the type of media being
-played, and custom subtitle controls are also available. Font family, size,
-colors and outline can be configured.
-
-### Manga and offline use
-
-Editotsu includes a built-in manga reader. Anime and manga can also be
-downloaded for offline use, and downloaded content and caches can be managed
-from the app.
-
-### Discord Rich Presence
-
-Optional Discord Rich Presence can show what you're currently watching or
-reading. Editotsu does not require or store a Discord account token for Rich
-Presence.
+> [!IMPORTANT]
+> **Editotsu is a client and tracking app.** It does not host, provide, distribute
+> or index any media, and it ships with no content sources.
+>
+> **Extensions are third-party.** Playback and reading only work through extensions
+> that you choose to install. They are developed and maintained by their own
+> authors, not by Editotsu. The extension system is meant for services and media
+> you are permitted to access, such as your own media server.
+>
+> **Your responsibility.** By installing or using Editotsu you agree to use it in
+> line with the law where you live and with the terms of the services you connect
+> to, and you take responsibility for any extensions you install. Editotsu is
+> provided as-is, without warranty.
+>
+> **Services.** Editotsu talks to the official APIs of AniList, MyAnimeList,
+> AnimeThemes and Discord. Questions about content belong to the service or
+> extension that provides it. See the [privacy policy](privacy_policy.md).
 
 ## Downloads
 
-Get builds from [GitHub Releases](https://github.com/patrykjaki/editotsu/releases).
+<div align="center">
+  <p>
+    <a href="https://github.com/patrykjaki/editotsu/releases/latest"><img src="https://img.shields.io/github/v/release/patrykjaki/editotsu?label=stable&style=for-the-badge&labelColor=162129&color=00AE9F" alt="Latest stable release"/></a>
+    <a href="https://github.com/patrykjaki/editotsu/releases"><img src="https://img.shields.io/github/v/release/patrykjaki/editotsu?include_prereleases&label=pre-release&style=for-the-badge&labelColor=162129&color=1b2a33" alt="Latest pre-release"/></a>
+  </p>
+</div>
 
-- **Google build** — normal build for most users.
-- **Degoogle'd build** — build without Google/Firebase integration. The
-  Degoogle'd APK uses the historical `fdroid` build-flavor name. It is built
-  by Editotsu and is not an official F-Droid repository release.
-- **arm64** builds suit most modern Android phones; **universal** builds
-  cover other architectures.
-- Verify downloads against the release's `SHA256SUMS`.
+- **Google build**: the normal build for most users.
+- **Degoogle'd build**: no Google or Firebase code. It uses the historical
+  `fdroid` flavor name, is built by Editotsu, and is not an official F-Droid
+  repository release.
+- **arm64** suits most current phones; **universal** covers the other
+  architectures.
+- Check downloads against the release's `SHA256SUMS`.
 
-Beta builds install as `ani.editotsu.beta` and coexist with the stable
-`ani.editotsu` app.
+Pre-releases install as `ani.editotsu.beta` (Editotsu β / α), next to the stable
+`ani.editotsu`.
 
-## Experimental features
+## Features
 
-Torrent playback is currently experimental and may not work reliably with every
-device or media source.
+### Player
+
+Playback runs on libmpv: hardware decoding, external audio tracks, video
+adjustments, debanding, audio and subtitle delay, picture-in-picture, a sleep
+timer, a night mode that evens out loud and quiet scenes, and screenshots taken
+from the source frame. Resume remembers where you stopped in each episode.
+
+### Tracking
+
+Progress syncs with AniList and MyAnimeList, and you can sign in to both. Scores
+follow the format set on your account. MyAnimeList sign-in tokens are stored
+encrypted on the device.
+
+### Source picker
+
+When an extension returns several streams for an episode, the picker shows them
+as compact cards with tags for resolution, codec, HDR, audio and subtitles, so you
+don't have to read long release names. Filters and a best-match choice come
+first; release group and file size sit on a separate line.
+
+### Subtitles
+
+ASS subtitles can keep their original styling or switch to Editotsu's style.
+Automatic mode picks between them for each show. Font, size, colours and outline
+are adjustable.
+
+### AnimeThemes
+
+Openings and endings from [AnimeThemes](https://animethemes.moe) appear on each
+anime's page. Play them as video or audio only, keep listening in the background,
+and save them to your device.
+
+### Manga and offline
+
+A built-in manga reader, plus downloads of episodes and chapters for offline use,
+with storage and cache management in settings.
+
+### Backup
+
+Full backup and restore of your settings and app data in one file.
+
+### Discord Rich Presence
+
+Optional. It can show what you are watching or reading. Editotsu never asks for
+or stores your Discord account token.
 
 ## Privacy
 
-Firebase crash reporting and analytics are currently disabled in Editotsu. See
-the [privacy policy](privacy_policy.md) for details.
+Firebase crash reporting and analytics are turned off. Details are in the
+[privacy policy](privacy_policy.md).
 
 ## Building
 
-Prerequisites:
-
-- Android Studio
-- Android SDK / compile API 37
-- JDK 21
+You need Android Studio, the Android SDK with compile API 37, and JDK 21.
 
 ```bash
 git clone https://github.com/patrykjaki/editotsu.git
@@ -103,24 +122,10 @@ cd editotsu
 ./gradlew :app:testGoogleDebugUnitTest :app:testFdroidDebugUnitTest
 ```
 
-## About media and third-party services
-
-Editotsu is an open-source client application and does not host or distribute
-media files.
-
-Some functionality can work with independently developed third-party extensions
-or external services. Those projects and services are not operated or controlled
-by Editotsu.
-
-Use Editotsu only with media and services you are legally permitted to access
-and according to the terms of those services.
-
 ## Credits
 
-- [Dantotsu](https://github.com/rebelonion/Dantotsu) — the original client this project is based on.
-- [mpv](https://github.com/mpv-player/mpv), [mpv-android](https://github.com/mpv-android/mpv-android) and [mpv-android-lib](https://github.com/abdallahmehiz/mpv-android-lib) — playback engine and Android bindings.
-- [Aniyomi](https://github.com/aniyomiorg/aniyomi) and [Tachiyomi](https://github.com/tachiyomiorg/tachiyomi) — extension and reader foundations.
-
-## License
-
-Editotsu is open-source software licensed under the Unabandon Public License (UPL), which incorporates the terms of the GNU General Public License v3 (GPLv3). See [LICENSE.md](LICENSE.md).
+- [Dantotsu](https://github.com/rebelonion/Dantotsu) by rebelonion and its
+  contributors: the client Editotsu is built on, including the original icon
+  style that Editotsu's E follows.
+- [mpv](https://mpv.io) and libmpv.
+- [AnimeThemes](https://animethemes.moe) for the themes database.
