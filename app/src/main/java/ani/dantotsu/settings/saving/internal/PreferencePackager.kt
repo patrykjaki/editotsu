@@ -212,7 +212,7 @@ class PreferencePackager {
             val context = Injekt.get<Application>()
             var success = true
             lastMissingExtensions = emptyList()
-            map.forEach { (location, prefMap) ->
+            mergeSharedFiles(map).forEach { (location, prefMap) ->
                 val locationEnum = Location.entries.find { it.name == location }
                 when {
                     location == BackupSections.INSTALLED_EXTENSIONS -> {
@@ -243,6 +243,19 @@ class PreferencePackager {
                 }
             }
             return success
+        }
+
+        /**
+         * Reader and NovelReader are stored in one file, and importing a group clears its file
+         * first. Backups carry both groups (NovelReader is usually empty), so importing them one
+         * after the other wiped the reading settings. Merge them into one Reader import.
+         */
+        internal fun mergeSharedFiles(map: Map<String, Map<String, *>>): Map<String, Map<String, *>> {
+            val reader = Location.Reader.name
+            val novel = Location.NovelReader.name
+            val novelPrefs = map[novel] ?: return map
+            val merged = novelPrefs + (map[reader] ?: emptyMap())
+            return map.filterKeys { it != novel && it != reader } + (reader to merged)
         }
 
         private fun writePrefs(pref: SharedPreferences, prefs: Map<String, *>, clear: Boolean): Boolean {
