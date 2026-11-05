@@ -5,7 +5,18 @@ plugins {
     alias(libs.plugins.android)
     alias(libs.plugins.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.roborazzi)
 }
+
+// Folder with the reference screenshots (kept out of git). Unset or missing: comparisons are
+// skipped. A record run (-Proborazzi.test.record=true) creates it.
+val screenshotDir: File? = (
+    providers.gradleProperty("editotsu.screenshotDir").orNull
+        ?: rootProject.file("local.properties").takeIf { it.isFile }?.let { props ->
+            Properties().apply { props.inputStream().use { load(it) } }.getProperty("editotsu.screenshotDir")
+        }
+    )?.let { file(it) }
+    ?.takeIf { it.isDirectory || (providers.gradleProperty("roborazzi.test.record").orNull == "true" && it.mkdirs()) }
 
 // CP4-C (REPO_REVIEW §3.7): Firebase google-services/Crashlytics plugins are DISABLED.
 // Telemetry is off fork-wide until an Editotsu-owned Firebase project exists.
@@ -359,6 +370,19 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Robolectric screenshot tests (app/src/test/.../screenshots) need merged resources.
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all { test ->
+            test.maxHeapSize = "3g"
+            // ScreenshotTest skips image comparisons when this folder is missing.
+            screenshotDir?.let { test.systemProperty("editotsu.screenshotDir", it.absolutePath) }
+            // Robolectric on API 36 under JDK 21 reaches into these JDK internals.
+            test.jvmArgs(
+                "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+                "--add-opens=java.base/java.io=ALL-UNNAMED",
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
+            )
+        }
     }
 
     compileOptions {
@@ -461,4 +485,19 @@ dependencies {
     implementation(libs.libtorrent4j.android.x86.x64)
 
     testImplementation(libs.junit)
+    // Screenshot tests: Robolectric (NATIVE graphics) + Roborazzi. Test classpath only.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.junit.rule)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.androidx.test.espresso)
+}
+
+// Reference screenshots live outside the repo, in the folder named by editotsu.screenshotDir
+// (local.properties, ~/.gradle/gradle.properties or -P). The unit test run compares against them
+// (roborazzi.test.verify=true in gradle.properties). Without the folder the tests still run the
+// UI code but skip the image comparison. See app/src/test/java/ani/dantotsu/screenshots/README.md.
+roborazzi {
+    outputDir.set(screenshotDir ?: layout.buildDirectory.dir("outputs/roborazzi-no-references").get().asFile)
 }
