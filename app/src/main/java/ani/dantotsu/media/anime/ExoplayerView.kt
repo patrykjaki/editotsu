@@ -1904,26 +1904,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     /** Lists only the gestures that are switched on in player settings. */
-    private fun showPlayerShortcuts() {
-        val lines = buildList {
-            if (PrefManager.getVal<Boolean>(PrefName.DoubleTap)) {
-                add(getString(R.string.player_shortcuts_seek, PrefManager.getVal<Int>(PrefName.SeekTime)))
-            } else {
-                add(getString(R.string.player_shortcuts_seek_off))
-            }
-            if (PrefManager.getVal<Boolean>(PrefName.FastForward)) add(getString(R.string.player_shortcuts_hold))
-            if (PrefManager.getVal<Boolean>(PrefName.Gestures)) add(getString(R.string.player_shortcuts_swipe))
-            add(getString(R.string.player_shortcuts_skip))
-            add(getString(R.string.player_shortcuts_title_tap))
-            add(getString(R.string.player_shortcuts_lock))
-        }
-        customAlertDialog().apply {
-            setTitle(R.string.player_shortcuts_title)
-            setMessage(lines.joinToString("\n\n") { "• $it" } + "\n\n" + getString(R.string.player_shortcuts_settings))
-            setPosButton(R.string.ok)
-            show()
-        }
-    }
+    private fun showPlayerShortcuts() = ani.dantotsu.media.anime.player.PlayerShortcuts.show(this)
 
     private fun enterPipMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

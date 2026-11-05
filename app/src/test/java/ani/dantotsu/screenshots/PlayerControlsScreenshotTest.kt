@@ -75,6 +75,13 @@ class PlayerControlsScreenshotTest : ScreenshotTest() {
 
     @Test fun theme() = shot(controls(::themeMode), "player/theme")
 
+    /** Long-press on the settings gear: the hidden controls dialog over the player. */
+    @Test fun shortcuts() {
+        val frame = controls(::episodeMode)
+        ani.dantotsu.media.anime.player.PlayerShortcuts.show(frame.context)
+        shot("player/shortcuts")
+    }
+
     @Test fun theme_failed() = shot(controls { v ->
         themeMode(v)
         v.findViewById<View>(R.id.exo_center_cont).visibility = View.GONE
