@@ -64,5 +64,10 @@ internal object SettingsCards {
     }
 
     /** True when [item] is drawn as part of a section card. */
-    fun isCardRow(item: ScreenItem?) = item is ScreenItem.RowItem && item.row.kind !is Kind.Custom
+    fun isCardRow(item: ScreenItem?) = item is ScreenItem.More ||
+        item is ScreenItem.RowItem && (item.row.kind as? Kind.Custom)?.inSection != false
+
+    /** True when [item] is a custom row drawn as its own card (accounts). */
+    fun isStandaloneCard(item: ScreenItem?) =
+        item is ScreenItem.RowItem && (item.row.kind as? Kind.Custom)?.inSection == false
 }

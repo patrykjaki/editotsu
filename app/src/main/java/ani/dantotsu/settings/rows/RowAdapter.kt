@@ -12,7 +12,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.R
-import ani.dantotsu.databinding.ItemSettingAdvancedBinding
+import ani.dantotsu.databinding.ItemSettingMoreBinding
 import ani.dantotsu.databinding.ItemSettingHeaderBinding
 import ani.dantotsu.databinding.ItemSettingRowBinding
 import ani.dantotsu.util.customAlertDialog
@@ -22,7 +22,8 @@ import kotlin.math.roundToInt
 /** Draws a screen's [ScreenItem]s. Values are read from prefs on every bind. */
 class RowAdapter(
     private val host: SettingsHost,
-    private val onToggleAdvanced: () -> Unit,
+    /** Opens or closes the advanced rows of the section at this index. */
+    private val onToggleSection: (Int) -> Unit = {},
 ) : ListAdapter<ScreenItem, RecyclerView.ViewHolder>(Diff) {
 
     /** Row id to flash once when it is first bound (search result). */
@@ -32,7 +33,7 @@ class RowAdapter(
 
     override fun getItemViewType(position: Int): Int = when (val item = getItem(position)) {
         is ScreenItem.Header -> TYPE_HEADER
-        is ScreenItem.AdvancedToggle -> TYPE_ADVANCED
+        is ScreenItem.More -> TYPE_MORE
         is ScreenItem.RowItem -> (item.row.kind as? Kind.Custom)?.layout ?: TYPE_ROW
     }
 
@@ -40,7 +41,7 @@ class RowAdapter(
         val inflater = LayoutInflater.from(parent.context)
         val view = when (viewType) {
             TYPE_HEADER -> ItemSettingHeaderBinding.inflate(inflater, parent, false).root
-            TYPE_ADVANCED -> ItemSettingAdvancedBinding.inflate(inflater, parent, false).root
+            TYPE_MORE -> ItemSettingMoreBinding.inflate(inflater, parent, false).root
             TYPE_ROW -> ItemSettingRowBinding.inflate(inflater, parent, false).root
             else -> inflater.inflate(viewType, parent, false)
         }
@@ -51,24 +52,28 @@ class RowAdapter(
         when (val item = getItem(position)) {
             is ScreenItem.Header ->
                 ItemSettingHeaderBinding.bind(holder.itemView).headerTitle.setText(item.title)
-            is ScreenItem.AdvancedToggle -> bindAdvanced(ItemSettingAdvancedBinding.bind(holder.itemView), item)
+            is ScreenItem.More -> {
+                bindMore(ItemSettingMoreBinding.bind(holder.itemView), item)
+                applyCard(holder.itemView, position)
+            }
             is ScreenItem.RowItem -> {
                 val row = item.row
                 val kind = row.kind
+                // A recycled view may still be mid-flash (search highlight); clear it.
+                holder.itemView.animate().cancel()
+                holder.itemView.alpha = 1f
+                holder.itemView.isPressed = false
                 if (kind is Kind.Custom) {
                     kind.bind(host, holder.itemView)
-                    (holder.itemView as? com.google.android.material.card.MaterialCardView)
-                        ?.let(SettingsCards::applyToCard)
+                    if (kind.inSection) {
+                        applyCard(holder.itemView, position)
+                    } else {
+                        (holder.itemView as? com.google.android.material.card.MaterialCardView)
+                            ?.let(SettingsCards::applyToCard)
+                    }
                 } else {
                     bindRow(ItemSettingRowBinding.bind(holder.itemView), row)
-                    // Neighbours decide the corners; rows rebind on every refresh (see Diff),
-                    // so a row that becomes first or last after a visibility change is redrawn.
-                    val list = currentList
-                    SettingsCards.apply(
-                        holder.itemView,
-                        first = !SettingsCards.isCardRow(list.getOrNull(position - 1)),
-                        last = !SettingsCards.isCardRow(list.getOrNull(position + 1)),
-                    )
+                    applyCard(holder.itemView, position)
                 }
                 if (row.id == highlightId) {
                     highlightId = null
@@ -78,30 +83,47 @@ class RowAdapter(
         }
     }
 
-    private fun bindAdvanced(b: ItemSettingAdvancedBinding, item: ScreenItem.AdvancedToggle) {
-        val context = b.root.context
-        val label = context.getString(
-            if (item.expanded) R.string.settings_advanced_hide else R.string.settings_advanced
+    /**
+     * Neighbours decide the corners; rows rebind on every refresh (see Diff), so a row that
+     * becomes first or last after a visibility change is redrawn. A section that follows a
+     * standalone card (accounts) gets the same 8dp gap the cards keep between themselves.
+     */
+    private fun applyCard(view: View, position: Int) {
+        val list = currentList
+        val prev = list.getOrNull(position - 1)
+        SettingsCards.apply(
+            view,
+            first = !SettingsCards.isCardRow(prev),
+            last = !SettingsCards.isCardRow(list.getOrNull(position + 1)),
+            topMarginDp = if (SettingsCards.isStandaloneCard(prev)) 8 else 0,
         )
-        b.advancedText.text = label
-        b.advancedToggle.contentDescription = label
+    }
+
+    private fun bindMore(b: ItemSettingMoreBinding, item: ScreenItem.More) {
+        val context = b.root.context
+        val label = if (item.expanded) {
+            context.getString(R.string.settings_fewer)
+        } else {
+            context.resources.getQuantityString(R.plurals.settings_more, item.count, item.count)
+        }
+        b.moreText.text = label
+        b.moreToggle.contentDescription = label
         // Turn the chevron when the state changes on the same view; set it outright on first bind.
         val target = if (item.expanded) 180f else 0f
-        val shown = b.advancedChevron.getTag(R.id.advancedChevron) as? Boolean
-        b.advancedChevron.animate().cancel()
+        val shown = b.moreChevron.getTag(R.id.moreChevron) as? Boolean
+        b.moreChevron.animate().cancel()
         if (shown != null && shown != item.expanded) {
             // ViewPropertyAnimator follows the system animator duration scale.
-            b.advancedChevron.animate().rotation(target).setDuration(200).start()
+            b.moreChevron.animate().rotation(target).setDuration(200).start()
         } else {
-            b.advancedChevron.rotation = target
+            b.moreChevron.rotation = target
         }
-        b.advancedChevron.setTag(R.id.advancedChevron, item.expanded)
+        b.moreChevron.setTag(R.id.moreChevron, item.expanded)
         ViewCompat.setStateDescription(
-            b.advancedToggle,
+            b.moreToggle,
             context.getString(if (item.expanded) R.string.expanded else R.string.collapsed)
         )
-        b.advancedToggle.setOnClickListener { onToggleAdvanced() }
-        SettingsCards.apply(b.advancedToggle, first = true, last = true, topMarginDp = 24)
+        b.moreToggle.setOnClickListener { onToggleSection(item.section) }
     }
 
     private fun bindRow(b: ItemSettingRowBinding, row: Row) {
@@ -307,11 +329,13 @@ class RowAdapter(
         b.rowSummary.alpha = alpha
     }
 
+    /** Dims the row and fades it back, once. Always ends at full alpha, not pressed. */
     private fun flash(view: View) {
         view.alpha = 0.3f
-        view.animate().alpha(1f).setDuration(600).start()
         view.isPressed = true
-        view.postDelayed({ view.isPressed = false }, 600)
+        view.animate().alpha(1f).setDuration(600)
+            .withEndAction { view.alpha = 1f; view.isPressed = false }
+            .start()
     }
 
     private object Diff : DiffUtil.ItemCallback<ScreenItem>() {
@@ -326,7 +350,7 @@ class RowAdapter(
     companion object {
         const val TYPE_HEADER = 1
         const val TYPE_ROW = 2
-        const val TYPE_ADVANCED = 3
+        const val TYPE_MORE = 3
         private const val DISABLED_ALPHA = 0.38f
 
         /** Clamp to the range and to a whole step, as the Slider requires. */

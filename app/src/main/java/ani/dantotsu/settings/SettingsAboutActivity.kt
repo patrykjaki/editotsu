@@ -99,10 +99,14 @@ object AboutScreen : SettingsScreen("about", R.string.about, R.drawable.ic_round
     private fun showDisclaimer(host: SettingsHost) = with(host.activity) {
         val text = TextView(this)
         text.setText(R.string.full_disclaimer)
+        // Strings come from the activity: inside apply, getString is the dialog fragment's,
+        // which has no context until it is shown.
+        val title = getString(R.string.disclaimer)
+        val close = getString(R.string.close)
         CustomBottomDialog.newInstance().apply {
-            setTitleText(getString(R.string.disclaimer))
+            setTitleText(title)
             addView(text)
-            setNegativeButton(getString(R.string.close)) { dismiss() }
+            setNegativeButton(close) { dismiss() }
             show(supportFragmentManager, "dialog")
         }
     }
@@ -126,10 +130,12 @@ object AboutScreen : SettingsScreen("about", R.string.about, R.drawable.ic_round
             }
             runOnUiThread { markWon.setMarkdown(text, res) }
         }
+        val title = getString(R.string.privacy_policy)
+        val close = getString(R.string.close)
         CustomBottomDialog.newInstance().apply {
-            setTitleText(getString(R.string.privacy_policy))
+            setTitleText(title)
             addView(text)
-            setNegativeButton(getString(R.string.close)) { dismiss() }
+            setNegativeButton(close) { dismiss() }
             show(supportFragmentManager, "dialog")
         }
     }

@@ -33,34 +33,39 @@ sealed interface ScreenItem {
         override val key get() = row.id
     }
 
-    data class AdvancedToggle(val expanded: Boolean) : ScreenItem {
-        override val key get() = "advanced"
+    /** Last row of a section with advanced rows: opens or closes them in that section. */
+    data class More(val section: Int, val count: Int, val expanded: Boolean) : ScreenItem {
+        override val key get() = "more:$section"
     }
 }
 
 object ScreenItems {
     /**
-     * Section headers and their rows, in definition order. Advanced rows show only when
-     * [showAdvanced] is on; a section with nothing to show loses its header, and a
-     * section titled 0 has none (single-section screens). One
-     * advanced toggle closes the screen when any visible row is advanced.
+     * Section headers and their rows. A section's advanced rows stay hidden until its
+     * index is in [expanded]; then they follow its other rows, directly above the
+     * section's [ScreenItem.More] row, so they open where the user tapped. A section with
+     * nothing to show loses its header, and a section titled 0 has none (single-section
+     * screens).
      */
     fun build(
         sections: List<Section>,
-        showAdvanced: Boolean,
+        expanded: Set<Int>,
         isVisible: (Row) -> Boolean = { it.visible() },
     ): List<ScreenItem> {
         val out = ArrayList<ScreenItem>()
-        var anyAdvanced = false
-        for (section in sections) {
+        sections.forEachIndexed { index, section ->
             val visible = section.rows.filter(isVisible)
-            if (visible.any { it.advanced }) anyAdvanced = true
-            val shown = visible.filter { showAdvanced || !it.advanced }
-            if (shown.isEmpty()) continue
+            if (visible.isEmpty()) return@forEachIndexed
+            val (advanced, basic) = visible.partition { it.advanced }
+            val open = index in expanded
             if (section.title != 0) out += ScreenItem.Header(section.title)
-            shown.forEach { out += ScreenItem.RowItem(it) }
+            basic.forEach { out += ScreenItem.RowItem(it) }
+            if (open) advanced.forEach { out += ScreenItem.RowItem(it) }
+            if (advanced.isNotEmpty()) out += ScreenItem.More(index, advanced.size, open)
         }
-        if (anyAdvanced) out += ScreenItem.AdvancedToggle(showAdvanced)
         return out
     }
+
+    /** Index of the section that holds row [id], or -1. */
+    fun sectionOf(sections: List<Section>, id: String) = sections.indexOfFirst { s -> s.rows.any { it.id == id } }
 }

@@ -530,6 +530,7 @@
     <string name="subbed">Subbed</string>
     <string name="prefer_dub">Prefer Dubbed Anime</string>
     <string name="none">None</string>
+    <string name="add_custom_list">Add list</string>
     <string name="selected_dns">Selected DNS</string>
     <string name="anime_manga">Anime and Manga</string>
     <string name="list_settings">List Settings</string>
@@ -1663,8 +1664,11 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="notifications_off_for_app">Notifications are off for Editotsu</string>
     <string name="settings_section_backups">Backups</string>
     <string name="settings_section_privacy">Privacy</string>
-    <string name="settings_advanced">Show advanced settings</string>
-    <string name="settings_advanced_hide">Hide advanced settings</string>
+    <plurals name="settings_more">
+        <item quantity="one">Show %d more</item>
+        <item quantity="other">Show %d more</item>
+    </plurals>
+    <string name="settings_fewer">Show fewer</string>
     <string name="extension_installer">Extension installer</string>
     <string name="expanded">Expanded</string>
     <string name="collapsed">Collapsed</string>

@@ -197,7 +197,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
         ) { _, i -> PrefManager.setVal(key, i) }
 
     private val subtitlePreview = customRow(
-        "sub_preview", R.string.sub_preview, R.layout.item_setting_sub_preview, visible = subsOn,
+        "sub_preview", R.string.sub_preview, R.layout.item_setting_sub_preview, visible = subsOn, inSection = true,
     ) { _, view ->
         view.findViewById<FrameLayout>(R.id.subPreviewWindow).apply {
             alpha = PrefManager.getVal(PrefName.SubAlpha)

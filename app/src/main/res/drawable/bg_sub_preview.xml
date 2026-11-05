@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stand-in video frame behind the subtitle preview: a dim scene, the same in every app
+     theme, so subtitle colours read as they would over a video. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <corners android:radius="12dp" />
+    <gradient
+        android:angle="270"
+        android:endColor="#FF101418"
+        android:startColor="#FF3B4A5A"
+        android:type="linear" />
+</shape>

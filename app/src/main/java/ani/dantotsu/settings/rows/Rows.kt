@@ -25,7 +25,7 @@ class Row(
     @StringRes val summary: Int? = null,
     @DrawableRes val icon: Int? = null,
     val kind: Kind,
-    /** Hidden until the screen's "Show advanced settings" toggle is on. */
+    /** Hidden until its section's "Show N more" row is opened. */
     val advanced: Boolean = false,
     val visible: () -> Boolean = { true },
     val enabled: () -> Boolean = { true },
@@ -102,6 +102,8 @@ sealed interface Kind {
     class Custom(
         @LayoutRes val layout: Int,
         val bind: (SettingsHost, View) -> Unit,
+        /** Drawn as a row of its section card; false for layouts that are a card themselves. */
+        val inSection: Boolean = false,
     ) : Kind
 }
 
@@ -275,11 +277,12 @@ fun customRow(
     visible: () -> Boolean = { true },
     keywords: List<Int> = emptyList(),
     keys: List<PrefName> = emptyList(),
+    inSection: Boolean = false,
     bind: (SettingsHost, View) -> Unit,
 ) = Row(
     id = id, title = title, summary = summary, icon = icon, advanced = advanced,
     visible = visible, keywords = keywords, keys = keys,
-    kind = Kind.Custom(layout, bind),
+    kind = Kind.Custom(layout, bind, inSection),
 )
 
 private fun readNumber(key: PrefName): Float = when (key.data.type) {

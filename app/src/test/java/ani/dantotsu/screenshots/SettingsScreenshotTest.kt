@@ -9,6 +9,8 @@ import ani.dantotsu.settings.AppearanceScreen
 import ani.dantotsu.settings.SettingsActivity
 import ani.dantotsu.BuildConfig
 import ani.dantotsu.settings.data.DataScreen
+import ani.dantotsu.settings.AnilistScreen
+import ani.dantotsu.settings.rows.ScreenItem
 import ani.dantotsu.settings.rows.SettingsScreen
 import ani.dantotsu.settings.rows.SettingsScreenActivity
 import ani.dantotsu.settings.screens.PlayerScreen
@@ -53,6 +55,7 @@ class SettingsScreenshotTest : ScreenshotTest() {
     @Test fun data() = screen(DataScreen, "data", perFlavor = true)
     @Test fun data_advanced() = screen(DataScreen, "data", advanced = true, perFlavor = true)
     @Test fun about() = screen(AboutScreen, "about", perFlavor = true)
+    @Test fun anilist() = screen(AnilistScreen, "anilist")
 
     @Test @Config(fontScale = LARGE_FONT)
     fun player_largeFont() = screen(PlayerScreen, "player_font130", advanced = true)
@@ -65,6 +68,7 @@ class SettingsScreenshotTest : ScreenshotTest() {
 
     /** perFlavor: the fdroid build drops a few rows (update check, share username), so these keep one golden per flavor. */
     private fun screen(screen: SettingsScreen, name: String, advanced: Boolean = false, perFlavor: Boolean = false) {
+        SettingsScreenActivity.closeAllSections()
         val intent = SettingsScreenActivity.intent(ApplicationProvider.getApplicationContext(), screen)
         ActivityScenario.launch<SettingsScreenActivity>(intent).use { scenario ->
             scenario.onActivity { activity ->
@@ -80,15 +84,29 @@ class SettingsScreenshotTest : ScreenshotTest() {
 
 /** Shared by the screenshot and behaviour tests. */
 object SettingsActions {
-    /** Scrolls to the "show advanced settings" card and taps it. Returns false when the screen has none. */
+    @Suppress("UNCHECKED_CAST")
+    fun items(list: RecyclerView): List<ScreenItem> {
+        val concat = list.adapter as androidx.recyclerview.widget.ConcatAdapter
+        return (concat.adapters[1] as androidx.recyclerview.widget.ListAdapter<ScreenItem, *>).currentList
+    }
+
+    /**
+     * Taps every section's "Show N more" row (or every "Show fewer" when they are open).
+     * Returns false when the screen has none.
+     */
     fun toggleAdvanced(list: RecyclerView, idle: () -> Unit): Boolean {
-        val last = (list.adapter?.itemCount ?: 0) - 1
-        list.scrollToPosition(last)
-        idle()
-        val toggle = list.findViewHolderForAdapterPosition(last)?.itemView
-            ?.findViewById<android.view.View>(R.id.advancedToggle) ?: return false
-        toggle.performClick()
-        idle()
+        val sections = items(list).filterIsInstance<ScreenItem.More>()
+        if (sections.isEmpty()) return false
+        val open = !sections.first().expanded
+        for (section in sections.map { it.section }) {
+            val index = items(list).indexOfFirst { it is ScreenItem.More && it.section == section }
+            if ((items(list)[index] as ScreenItem.More).expanded == open) continue
+            list.scrollToPosition(index + 1) // +1: title item
+            idle()
+            list.findViewHolderForAdapterPosition(index + 1)!!.itemView
+                .findViewById<android.view.View>(R.id.moreToggle).performClick()
+            idle()
+        }
         list.scrollToPosition(0)
         idle()
         return true
