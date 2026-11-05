@@ -59,3 +59,8 @@ keystore.properties
 *.jks
 *.keystore
 key.keystore
+
+# Reference screenshots live outside git (editotsu.screenshotDir).
+app/src/test/screenshots/
+**/*_compare.png
+**/*_actual.png
