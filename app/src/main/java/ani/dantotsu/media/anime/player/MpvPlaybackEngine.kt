@@ -265,6 +265,20 @@ class MpvPlaybackEngine(
     private var sessionSubtitleStyle: SubtitleStyle = SubtitleStyle()
     private var sessionVideoPipelineConfig: VideoPipelineConfig? = null
 
+    /** Upscaler "Auto": picks the model by GPU and steps down on dropped frames. Engine thread. */
+    private val autoUpscaler = ani.dantotsu.media.anime.player.upscaler.AutoUpscalerController(
+        renderer = { if (context != null) ani.dantotsu.media.anime.player.upscaler.GpuInfo.renderer else null },
+        vulkan = { vulkanLibmpv && !VulkanLibmpv.failed },
+        loadCap = {
+            runCatching { ani.dantotsu.settings.saving.PrefManager.getVal<String>(ani.dantotsu.settings.saving.PrefName.UpscalerAutoCap) }
+                .getOrDefault("")
+        },
+        saveCap = { cap ->
+            runCatching { ani.dantotsu.settings.saving.PrefManager.setVal(ani.dantotsu.settings.saving.PrefName.UpscalerAutoCap, cap) }
+        },
+    )
+    private var autoSampledAtMs = 0L
+
     @Volatile
     var currentSnapshot: PlaybackSnapshot = PlaybackSnapshot()
         private set
@@ -843,6 +857,7 @@ class MpvPlaybackEngine(
             }
             loadIssuedAtMs = android.os.SystemClock.elapsedRealtime()
             seekIssuedAtMs = 0L
+            autoUpscaler.onNewFile(loadIssuedAtMs)
             ani.dantotsu.util.Logger.log("MPVSTEP 42 after loadfile command")
 
             // Immediately bind playlist entry ID if available from MPV playlist
@@ -1141,8 +1156,9 @@ class MpvPlaybackEngine(
         }
     }
 
-    private fun applyVideoPipelineInternal(config: VideoPipelineConfig) {
+    private fun applyVideoPipelineInternal(stored: VideoPipelineConfig) {
         try {
+            val config = withAutoUpscaler(stored)
             // Upscaler provider lookup: injectable for tests; production resolves through the
             // installed-bundle registry (v0.2.4-alpha ships with an EMPTY registry ⇒ off).
             val provider = when {
@@ -1214,6 +1230,48 @@ class MpvPlaybackEngine(
         } catch (e: Exception) {
             ani.dantotsu.util.Logger.log("MpvPlaybackEngine: applyVideoPipelineInternal error: ${e.message}")
         }
+    }
+
+    private fun upscalerProfileIds(providerId: String): Collection<String> {
+        val provider = when {
+            upscalerProviderLookup != null -> upscalerProviderLookup.invoke(providerId)
+            context != null -> UpscalerBundleManager.getInstance(context).providerFor(providerId)
+            else -> null
+        }
+        return provider?.takeIf { it.isAvailable() }?.profiles()?.map { it.id }.orEmpty()
+    }
+
+    /** Replaces a stored "auto" upscaler selection with the model Auto runs now. */
+    private fun withAutoUpscaler(config: VideoPipelineConfig): VideoPipelineConfig {
+        val up = config.upscaler
+        if (up.profileId != ani.dantotsu.media.anime.player.upscaler.UpscalerAuto.PROFILE_ID && !autoUpscaler.active) return config
+        val (providerId, profileId) = autoUpscaler.concretize(
+            up.providerId, up.profileId, { upscalerProfileIds(up.providerId) },
+            android.os.SystemClock.elapsedRealtime(),
+        )
+        return config.copy(upscaler = UpscalerConfig(providerId, profileId))
+    }
+
+    /**
+     * Engine thread, from time-pos updates (they only arrive while the video moves). Once a
+     * second, feeds mpv's VO frame-drop counter to Auto. Seeks, buffering, network stalls,
+     * pause and speeds above 2x do not count as drops.
+     */
+    private fun sampleAutoUpscaler() {
+        if (!autoUpscaler.active || autoUpscaler.model == null) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - autoSampledAtMs < 1_000) return
+        autoSampledAtMs = now
+        val drops = mpvClient.getPropertyInt("frame-drop-count")?.toLong() ?: return
+        val disturbed = isPausedInternal || pausedForCache || seekIssuedAtMs > 0L ||
+            currentSnapshot.playbackState !is PlaybackState.Ready || currentSnapshot.playbackSpeed > 2f
+        val before = autoUpscaler.model
+        val changed = autoUpscaler.sample(now, drops, disturbed) {
+            upscalerProfileIds(ani.dantotsu.media.anime.player.upscaler.CunnyUpscalerProvider.ID)
+        }
+        if (!changed) return
+        ani.dantotsu.util.Logger.log("MpvPlaybackEngine: upscaler auto $before -> ${autoUpscaler.model ?: "off"} (dropped frames)")
+        sessionVideoPipelineConfig?.let { applyVideoPipelineInternal(it) }
     }
 
     override fun addListener(listener: PlaybackListener) {
@@ -1454,6 +1512,7 @@ class MpvPlaybackEngine(
                     updateSnapshot(currentSnapshot.copy(positionMs = posMs))
                     notifyPositionChanged(posMs, currentSnapshot.durationMs)
                 }
+                sampleAutoUpscaler()
             }
             "duration" -> {
                 val sec = mpvClient.getPropertyDouble("duration") ?: 0.0
