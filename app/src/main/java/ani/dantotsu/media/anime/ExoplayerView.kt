@@ -151,11 +151,6 @@ internal fun resumePositionKey(mediaId: Int, episodeKey: String): String =
 @SuppressLint("ClickableViewAccessibility")
 class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
-    private val resumeWindow = "resumeWindow"
-    private val resumePosition = "resumePosition"
-    private val playerFullscreen = "playerFullscreen"
-    private val playerOnPlay = "playerOnPlay"
-
     lateinit var playerManager: DantotsuPlayerManager
         private set
     lateinit var subtitleManager: PlayerSubtitleManager
@@ -244,7 +239,6 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private var video: Video? = null
     private var subtitle: Subtitle? = null
 
-    private var currentWindow = 0
     private var playbackPosition: Long = 0
     private val playbackSession = EpisodePlaybackSession()
     private var isFullscreen: Int = 0
@@ -467,9 +461,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         subtitleManager = PlayerSubtitleManager(this, model) {
             playerManager.playbackEngine
         }
-        playerManager = DantotsuPlayerManager(this, playerView, subtitleManager, client) { error ->
-            onPlayerError(error)
-        }
+        playerManager = DantotsuPlayerManager(this, playerView, subtitleManager, client)
         gestureManager = PlayerGestureManager(
             this, playerView, exoBrightnessCont, exoVolumeCont, exoBrightness, exoVolume,
             { playerManager.playbackEngine }, { playerManager.isInitialized }
@@ -599,13 +591,6 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         // squeezed the video and left the controls laid out for the wrong orientation.
         // The manifest sets the same, so the player never opens in portrait first.
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-
-        if (savedInstanceState != null) {
-            currentWindow = savedInstanceState.getInt(resumeWindow)
-            playbackPosition = savedInstanceState.getLong(resumePosition)
-            isFullscreen = savedInstanceState.getInt(playerFullscreen)
-            isPlayerPlaying = savedInstanceState.getBoolean(playerOnPlay)
-        }
 
         // UI Controls
         playerView.findViewById<ImageButton>(R.id.exo_back).setOnClickListener {
