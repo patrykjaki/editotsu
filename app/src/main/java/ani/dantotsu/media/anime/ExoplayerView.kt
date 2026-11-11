@@ -839,11 +839,13 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         exoScreen.setOnClickListener {
             isFullscreen = if (isFullscreen < 2) isFullscreen + 1 else 0
             applyResizeMode(isFullscreen)
-            snackString(getString(when (isFullscreen) {
+            val supported = playerManager.playbackEngine?.supportsResizeMode(resizeModeFor(isFullscreen)) != false
+            val label = getString(when (isFullscreen) {
                 1 -> R.string.player_scale_zoom
                 2 -> R.string.player_scale_stretch
                 else -> R.string.player_scale_original
-            }), this)
+            })
+            snackString(if (supported) label else "$label: ${getString(R.string.player_not_available_drm)}", this)
             PrefManager.setCustomVal("${media.id}_fullscreenInt", isFullscreen)
         }
 
@@ -856,6 +858,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             }
             val intent = Intent(this, PlayerSettingsActivity::class.java).apply {
                 putExtra("subtitle", subtitle)
+            }
+            if (playerManager.playbackEngine?.supportsVideoPipeline == false) {
+                toast(getString(R.string.player_filters_not_available_drm))
             }
             beginChildScreen()
             onChangeSettings.launch(intent)
@@ -935,14 +940,15 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
     }
 
+    private fun resizeModeFor(mode: Int): ResizeMode = when (mode) {
+        0 -> ResizeMode.FIT
+        1 -> ResizeMode.ZOOM
+        2 -> ResizeMode.STRETCH
+        else -> ResizeMode.FIT
+    }
+
     private fun applyResizeMode(mode: Int) {
-        val resizeMode = when (mode) {
-            0 -> ResizeMode.FIT
-            1 -> ResizeMode.ZOOM
-            2 -> ResizeMode.STRETCH
-            else -> ResizeMode.FIT
-        }
-        playerManager.playbackEngine?.setResizeMode(resizeMode)
+        playerManager.playbackEngine?.setResizeMode(resizeModeFor(mode))
     }
 
     /** Settings > Subtitle language as a name ("Polish"). */
@@ -1430,13 +1436,18 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         view.visibility = View.VISIBLE
     }
 
+    /** The engine's current tracks, for sheets that are recreated without arguments. */
+    var currentTracks: List<PlayerTrack> = emptyList()
+        private set
+
     override fun onTracksChanged(tracks: List<PlayerTrack>) {
+        currentTracks = tracks
         val audioTracks = tracks.filter { it.type == TrackType.AUDIO }
         val subTracks = tracks.filter { it.type == TrackType.SUBTITLE }
 
         exoAudioTrack.isVisible = audioTracks.size > 1
         exoAudioTrack.setOnClickListener {
-            TrackGroupDialogFragment(this, audioTracks, TrackType.AUDIO)
+            TrackGroupDialogFragment.newInstance(TrackType.AUDIO)
                 .show(supportFragmentManager, "dialog")
         }
 
@@ -1849,9 +1860,18 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         } else {
             playerErrorRetryCount = 0
             toast("Playback Error: ${error.message}")
-            sourceClick()
+            // The picker is a dialog fragment; after onSaveInstanceState (player in the
+            // background) showing it throws. Open it when the player is back instead.
+            if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                sourceClick()
+            } else {
+                sourcePickerPending = true
+            }
         }
     }
+
+    /** A playback error asked for the source picker while the player was not resumed. */
+    private var sourcePickerPending = false
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
@@ -1876,6 +1896,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         val engine = if (this::playerManager.isInitialized) playerManager.playbackEngine else null
         if (engine == null) {
             toast(getString(R.string.screenshot_not_ready))
+            return
+        }
+        if (!engine.supportsScreenshot) {
+            toast(getString(R.string.player_not_available_drm))
             return
         }
         val position = engine.positionMs
@@ -1903,20 +1927,22 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             return
         }
         val file = java.io.File(dir, name)
-        // mpv's screenshot-to-file command returns after the file is written.
-        if (!engine.captureScreenshot(file) || !file.exists()) {
-            toast(getString(R.string.screenshot_failed))
-            return
-        }
-        if (!toGallery) {
-            toast(getString(R.string.screenshot_saved_app, file.absolutePath))
-            return
-        }
-        lifecycleScope.launch(Dispatchers.IO) {
-            val saved = copyScreenshotToGallery(file, name)
-            file.delete()
-            withContext(Dispatchers.Main) {
-                toast(getString(if (saved) R.string.screenshot_saved else R.string.screenshot_failed))
+        engine.captureScreenshot(file) { written ->
+            if (isDestroyed) return@captureScreenshot
+            if (!written) {
+                toast(getString(R.string.screenshot_failed))
+                return@captureScreenshot
+            }
+            if (!toGallery) {
+                toast(getString(R.string.screenshot_saved_app, file.absolutePath))
+                return@captureScreenshot
+            }
+            lifecycleScope.launch(Dispatchers.IO) {
+                val saved = copyScreenshotToGallery(file, name)
+                file.delete()
+                withContext(Dispatchers.Main) {
+                    toast(getString(if (saved) R.string.screenshot_saved else R.string.screenshot_failed))
+                }
             }
         }
     }
@@ -2031,14 +2057,14 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             playerView.hideController()
             registerPipReceiver()
             updatePipActions(isPlayerPlaying)
+            // Auto-skip and progress tracking keep running in PiP; only the skip button
+            // is kept off the small window.
             if (this::aniSkipManager.isInitialized) {
                 aniSkipManager.hideSkipButtons()
-                aniSkipManager.stopTracking()
-            }
-            if (this::progressManager.isInitialized) {
-                progressManager.stopTracking()
+                aniSkipManager.buttonsSuppressed = true
             }
         } else {
+            if (this::aniSkipManager.isInitialized) aniSkipManager.buttonsSuppressed = false
             unregisterPipReceiver()
             hideSystemBars()
             if (!themeMode && this::aniSkipManager.isInitialized && PrefManager.getVal(PrefName.TimeStampsEnabled)) {
@@ -2068,6 +2094,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     override fun onResume() {
         super.onResume()
         launchingChildScreen = false
+        if (sourcePickerPending) {
+            sourcePickerPending = false
+            if (!themeMode) sourceClick()
+        }
         hideSystemBars()
         if (this::playerManager.isInitialized && playerManager.isInitialized) {
             playerManager.playbackCoordinator?.setLifecycleSuppressed(false)
@@ -2077,6 +2107,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     override fun onPause() {
         super.onPause()
+        // Entering PiP pauses the activity, but playback goes on in the small window.
+        val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
+        if (inPip) return
         if (this::aniSkipManager.isInitialized) {
             aniSkipManager.stopTracking()
         }
@@ -2088,6 +2121,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     override fun onStop() {
         super.onStop()
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
+        // Closing the PiP window skips onPause; the trackers stop here (onStart restarts them).
+        if (!inPip) {
+            if (this::aniSkipManager.isInitialized) aniSkipManager.stopTracking()
+            if (this::progressManager.isInitialized) progressManager.stopTracking()
+        }
         // Theme mode keeps playing in the background (AnimePlayerService); episodes pause.
         if (!themeMode && this::playerManager.isInitialized && playerManager.isInitialized && !inPip) {
             playerManager.playbackCoordinator?.setLifecycleSuppressed(true)

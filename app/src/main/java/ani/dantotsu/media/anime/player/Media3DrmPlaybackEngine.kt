@@ -520,6 +520,8 @@ class Media3DrmPlaybackEngine(
         Logger.log("Media3DrmPlaybackEngine: audio delay unsupported, ignoring ${delayMs}ms")
     }
 
+    override val supportsVideoPipeline: Boolean get() = false
+    override fun supportsResizeMode(mode: ResizeMode): Boolean = mode == ResizeMode.FIT || mode == ResizeMode.ZOOM
     override val supportsSubtitleDelay: Boolean get() = false
     override val supportsAudioDelay: Boolean get() = false
 

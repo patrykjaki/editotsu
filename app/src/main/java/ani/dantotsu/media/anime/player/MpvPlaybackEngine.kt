@@ -1224,14 +1224,25 @@ class MpvPlaybackEngine(
         listeners.remove(listener)
     }
 
-    override fun captureScreenshot(file: java.io.File): Boolean {
-        if (!isInitialized || releaseRequested.get()) return false
-        return try {
-            file.parentFile?.mkdirs()
-            mpvClient.command("screenshot-to-file", file.absolutePath, "subtitles")
-            true
-        } catch (_: Exception) {
-            false
+    override val supportsScreenshot: Boolean get() = true
+
+    override fun captureScreenshot(file: java.io.File, onResult: (Boolean) -> Unit) {
+        // On the engine thread like every other mpv command: the JPEG encode does not block
+        // the UI, and release() (also on this thread) cannot destroy the handle mid-command.
+        engineDispatcher.post {
+            val ok = if (!isInitialized || releaseRequested.get()) {
+                false
+            } else {
+                try {
+                    file.parentFile?.mkdirs()
+                    // screenshot-to-file returns after the file is written.
+                    mpvClient.command("screenshot-to-file", file.absolutePath, "subtitles")
+                    file.exists()
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            postToMain(Runnable { onResult(ok) })
         }
     }
 
