@@ -7,6 +7,11 @@ import ani.dantotsu.Mapper
 import ani.dantotsu.media.Media
 import ani.dantotsu.util.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -242,6 +247,27 @@ class AnimeThemesRepository(
     /** [getThemesForMedia] by ids, for lists that only carry them (the shuffle). */
     suspend fun getThemesForIds(id: Int, idMal: Int?): AnimeThemesData? =
         (lookup(id, idMal) as? ThemesLookup.Found)?.data
+
+    /** Lookups outlive the screen that asked: an answer can take 16-38 s and is cached when it comes. */
+    private val lookupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val inFlight = HashMap<String, Deferred<ThemesLookup>>()
+
+    /**
+     * [lookup] in an app-level scope. Cancelling the caller only stops its wait; the request
+     * and the cache write finish, and a caller asking for the same show joins the running lookup.
+     */
+    fun lookupShared(id: Int, idMal: Int?, forceRefresh: Boolean = false): Deferred<ThemesLookup> {
+        val key = getCacheKey(id, idMal) ?: return CompletableDeferred(ThemesLookup.NoMatch)
+        synchronized(inFlight) {
+            inFlight[key]?.takeIf { it.isActive }?.let { return it }
+            val job = lookupScope.async { lookup(id, idMal, forceRefresh) }
+            inFlight[key] = job
+            job.invokeOnCompletion {
+                synchronized(inFlight) { if (inFlight[key] === job) inFlight.remove(key) }
+            }
+            return job
+        }
+    }
 
     /** Like [getThemesForMedia], but tells "AnimeThemes has nothing" from "AnimeThemes did not answer". */
     suspend fun lookup(id: Int, idMal: Int?, forceRefresh: Boolean = false): ThemesLookup {

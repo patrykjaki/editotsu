@@ -43,6 +43,8 @@ class MediaThemesFragment : Fragment() {
     private var shownFor: Int? = null
     private var list: AnimeThemesList? = null
     private var downloads: ThemeDownloadControls? = null
+    /** Video preferences the shown list was built with; see [onResume]. */
+    private var shownPrefs: ThemePlaybackPreferences? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentMediaThemesBinding.inflate(inflater, container, false)
@@ -68,14 +70,17 @@ class MediaThemesFragment : Fragment() {
         binding.themesFailed.isVisible = false
         binding.themesContent.removeAllViews()
         list = null
+        shownPrefs = null
         val offline = PrefManager.getVal<Boolean>(PrefName.OfflineMode) || !isOnline(requireContext())
         job = viewLifecycleOwner.lifecycleScope.launch {
-            val result = AnimeThemes.repository.lookup(media.id, media.idMAL, forceRefresh = force)
+            // The lookup runs in the repository's scope; leaving the tab only stops this wait.
+            val result = AnimeThemes.repository.lookupShared(media.id, media.idMAL, forceRefresh = force).await()
             if (_binding == null) return@launch
             binding.themesLoading.isVisible = false
+            shownPrefs = themePrefs()
             when (result) {
                 is ThemesLookup.Found -> {
-                    val choices = ThemeQueue.choices(result.data, themePrefs())
+                    val choices = ThemeQueue.choices(result.data, shownPrefs)
                         .map { ThemeQueue.withShow(it, media.id, media.userPreferredName) }
                     if (choices.isEmpty()) showAniListText(media) else showList(media, choices)
                 }
@@ -153,6 +158,12 @@ class MediaThemesFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        // Theme video preferences may have changed in player settings: rebuild from the cache.
+        val media = model.getMedia().value
+        if (shownPrefs != null && shownPrefs != themePrefs() && media?.anime != null && media.id == shownFor) {
+            load(media, force = false)
+            return
+        }
         // Audio only may have changed on the Themes screen.
         _binding?.themesContent?.findViewById<ImageButton>(R.id.themesAudioOnly)?.let(ThemeAudioToggle::show)
         // Downloads may have finished or been deleted on the Themes screen.
@@ -169,6 +180,7 @@ class MediaThemesFragment : Fragment() {
         downloads?.stop()
         list = null
         downloads = null
+        shownPrefs = null
         _binding = null
         super.onDestroyView()
     }
