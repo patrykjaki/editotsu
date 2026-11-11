@@ -1764,6 +1764,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="screenshot_saved">Saved to Pictures/Editotsu</string>
     <string name="screenshot_saved_app">Saved to %1$s</string>
     <string name="screenshot_failed">Screenshot failed</string>
+    <string name="player_not_available_drm">Not available for DRM playback</string>
+    <string name="player_filters_not_available_drm">Night mode, colour, deband and upscaler: not available for DRM playback</string>
     <string name="screenshot_not_ready">Player not ready</string>
     <string name="player_shortcuts_title">Hidden controls</string>
     <string name="player_shortcuts_seek">Double-tap left or right: seek %1$d s</string>

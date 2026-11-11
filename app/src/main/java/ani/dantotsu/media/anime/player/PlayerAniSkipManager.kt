@@ -42,6 +42,8 @@ class PlayerAniSkipManager(
      * rebuffer does not run the provider chain again. Cleared on episode change.
      */
     var timeStampsRequestKey: String? = null
+    /** In PiP: auto-skip still runs, the skip button is not shown. */
+    var buttonsSuppressed = false
 
     private val updateRunnable = object : Runnable {
         override fun run() {
@@ -194,7 +196,7 @@ class PlayerAniSkipManager(
                 }.start()
             }
 
-            if (PrefManager.getVal(PrefName.ShowTimeStampButton)) {
+            if (!buttonsSuppressed && PrefManager.getVal(PrefName.ShowTimeStampButton)) {
                 if (!functionStarted && !disappeared && PrefManager.getVal(PrefName.AutoHideTimeStamps)) {
                     disappearSkip()
                 } else if (!PrefManager.getVal<Boolean>(PrefName.AutoHideTimeStamps)) {
