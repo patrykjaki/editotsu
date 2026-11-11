@@ -25,6 +25,7 @@ import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.defaultHeaders
 import ani.dantotsu.download.DownloadProcessorLoop
 import ani.dantotsu.download.DownloadedType
+import ani.dantotsu.download.urlHostForReport
 import ani.dantotsu.download.SingleProcessor
 import ani.dantotsu.download.notifyTimeoutPause
 import ani.dantotsu.download.WifiLossMonitor
@@ -172,7 +173,8 @@ class AnimeDownloaderService : Service() {
             this,
             cancelReceiver,
             IntentFilter(ACTION_CANCEL_DOWNLOAD),
-            ContextCompat.RECEIVER_EXPORTED
+            // Only this app may cancel downloads.
+            ContextCompat.RECEIVER_NOT_EXPORTED
         )
         ensureWifiMonitor()
     }
@@ -524,6 +526,14 @@ class AnimeDownloaderService : Service() {
             // leak this coroutine; the record stays discoverable either
             // way until the job's own finally retires it).
             withTimeoutOrNull(30_000) { victim?.join() }
+            // A cancelled episode that had started leaves a partial folder
+            // (video part, media.json, images); remove it once the writer ended.
+            live.forEach { task ->
+                downloadsManager.removeDownload(
+                    DownloadedType(task.title, task.episode, MediaType.ANIME),
+                    toast = false
+                ) {}
+            }
             // Dismiss notification when nothing is left
             val stillBusy = currentTasks.isNotEmpty() ||
                 AnimeServiceDataSingleton.downloadQueue.isNotEmpty() ||
@@ -741,7 +751,7 @@ class AnimeDownloaderService : Service() {
                             Exception(
                                 "Anime Download failed:" +
                                         " ${getTaskName(task.title, task.episode)}" +
-                                        " url: ${task.video.file.url}" +
+                                        " host: ${urlHostForReport(task.video.file.url)}" +
                                         " title: ${task.title}" +
                                         " episode: ${task.episode}"
                             )
@@ -787,7 +797,7 @@ class AnimeDownloaderService : Service() {
                             Exception(
                                 "Anime Download failed:" +
                                         " ${getTaskName(task.title, task.episode)}" +
-                                        " url: ${task.video.file.url}" +
+                                        " host: ${urlHostForReport(task.video.file.url)}" +
                                         " title: ${task.title}" +
                                         " episode: ${task.episode}"
                             )

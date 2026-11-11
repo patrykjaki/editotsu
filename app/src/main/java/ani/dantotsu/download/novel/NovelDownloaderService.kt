@@ -144,7 +144,8 @@ class NovelDownloaderService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, builder.build())
         }
-        ContextCompat.registerReceiver(this, cancelReceiver, IntentFilter(ACTION_CANCEL_DOWNLOAD), ContextCompat.RECEIVER_EXPORTED)
+        // Only this app may cancel downloads.
+        ContextCompat.registerReceiver(this, cancelReceiver, IntentFilter(ACTION_CANCEL_DOWNLOAD), ContextCompat.RECEIVER_NOT_EXPORTED)
         ensureWifiMonitor()
     }
 
@@ -520,7 +521,9 @@ class NovelDownloaderService : Service() {
     private suspend fun downloadHtmlChapter(task: DownloadTask) {
         val parser = task.lnReaderParser ?: return
         try {
-            withContext(Dispatchers.Main) {
+            // SAF calls (find/create/delete) and the file writes run off the
+            // main thread; only the snackbars go to it.
+            withContext(Dispatchers.IO) {
                 val notifi = hasNotificationPermission()
                 broadcastDownloadStarted(task.originalLink)
                 if (notifi) {
@@ -566,7 +569,7 @@ class NovelDownloaderService : Service() {
                 if (notifi) notificationManager.notify(NOTIFICATION_ID, builder.build())
 
                 broadcastDownloadFinished(task.originalLink)
-                snackString("${task.title} - ${task.chapter} Download finished")
+                snackOnMain("${task.title} - ${task.chapter} Download finished")
             }
         } catch (e: Exception) {
             Logger.log("HTML chapter download failed: ${e.message}")
@@ -578,7 +581,9 @@ class NovelDownloaderService : Service() {
 
     private suspend fun downloadEpub(task: DownloadTask) {
         try {
-            withContext(Dispatchers.Main) {
+            // SAF calls (find/create/delete) and the file writes run off the
+            // main thread; only the snackbars go to it.
+            withContext(Dispatchers.IO) {
                 val notifi = hasNotificationPermission()
                 broadcastDownloadStarted(task.originalLink)
                 if (notifi) {
@@ -590,12 +595,12 @@ class NovelDownloaderService : Service() {
                     if (isAlreadyDownloaded(task.originalLink)) {
                         Logger.log("Already downloaded")
                         broadcastDownloadFinished(task.originalLink)
-                        snackString("Already downloaded")
+                        snackOnMain("Already downloaded")
                         return@withContext
                     }
                     Logger.log("Download link is not an .epub file")
                     broadcastDownloadFailed(task.originalLink)
-                    snackString("Download link is not an .epub file")
+                    snackOnMain("Download link is not an .epub file")
                     return@withContext
                 }
 
@@ -676,7 +681,7 @@ class NovelDownloaderService : Service() {
                 saveMediaInfo(task, baseDirectory)
                 downloadsManager.addDownload(DownloadedType(task.title, task.chapter, MediaType.NOVEL))
                 broadcastDownloadFinished(task.originalLink)
-                snackString("${task.title} - ${task.chapter} Download finished")
+                snackOnMain("${task.title} - ${task.chapter} Download finished")
             }
         } catch (e: Exception) {
             Logger.log("Exception while downloading .epub: ${e.message}")
@@ -684,6 +689,10 @@ class NovelDownloaderService : Service() {
             Injekt.get<CrashlyticsInterface>().logException(e)
             broadcastDownloadFailed(task.originalLink)
         }
+    }
+
+    private suspend fun snackOnMain(message: String) {
+        withContext(Dispatchers.Main) { snackString(message) }
     }
 
     private fun hasNotificationPermission(): Boolean =
@@ -707,14 +716,14 @@ class NovelDownloaderService : Service() {
                 media.cover  = media.cover?.let  { downloadImage(it, directory, "cover.jpg") }
                 media.banner = media.banner?.let { downloadImage(it, directory, "banner.jpg") }
                 val jsonString = gson.toJson(media)
-                withContext(Dispatchers.Main) {
-                    try {
-                        file.openOutputStream(this@NovelDownloaderService, false).use { output ->
-                            if (output == null) throw Exception("Output stream is null")
-                            output.write(jsonString.toByteArray())
-                        }
-                    } catch (e: android.system.ErrnoException) {
-                        e.printStackTrace()
+                try {
+                    file.openOutputStream(this@NovelDownloaderService, false).use { output ->
+                        if (output == null) throw Exception("Output stream is null")
+                        output.write(jsonString.toByteArray())
+                    }
+                } catch (e: android.system.ErrnoException) {
+                    e.printStackTrace()
+                    withContext(Dispatchers.Main) {
                         Toast.makeText(this@NovelDownloaderService, "Error while saving: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                     }
                 }

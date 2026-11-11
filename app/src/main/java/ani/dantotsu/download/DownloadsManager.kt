@@ -725,7 +725,7 @@ class DownloadsManager(private val context: Context) {
             } else {
                 snackString("Failed to delete directory")
             }
-        } else {
+        } else if (toast) {
             snackString("Directory does not exist")
         }
     }
@@ -1063,6 +1063,10 @@ fun planIndexRecovery(
             indexed.any { sameTypedDownload(it, title, chapter, type) }
         }
         .map { (type, title, chapter) -> DownloadedType(title, chapter, type) }
+
+/** Crash-report form of a video url: the host only (signed urls carry tokens). */
+fun urlHostForReport(url: String?): String =
+    url?.let { runCatching { java.net.URI(it.trim()).host }.getOrNull() } ?: "unknown"
 
 /** True when any of the download types is busy; the folder move is refused then. */
 fun downloadsBusy(vararg busy: Boolean): Boolean = busy.any { it }
