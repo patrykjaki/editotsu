@@ -21,22 +21,26 @@ import okhttp3.OkHttpClient
 class CastProxyServerService : Service() {
 
     private var server: CastProxyServer? = null
+    private var ownedGeneration = -1L
 
     override fun onBind(p0: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
+        // A null intent is a system restart after the process died: there is no cast
+        // session to serve, so do not come back.
+        if (intent == null || intent.action == ACTION_STOP || !access.isOpen) {
             stopSelf()
             return START_NOT_STICKY
         }
+        ownedGeneration = access.generation
 
-        if (isRunning.value) return START_STICKY
+        if (isRunning.value) return START_NOT_STICKY
 
-        val address = intent?.getStringExtra(EXTRA_ADDRESS) ?: CastProxyServer.getLocalIpAddress()
+        val address = intent.getStringExtra(EXTRA_ADDRESS) ?: CastProxyServer.getLocalIpAddress()
         server = CastProxyServer(
             baseClient = OkHttpClient(),
             contentResolver = contentResolver,
-            ipAddress = address,
+            access = access,
             port = CastProxyServer.DEFAULT_PORT
         )
 
@@ -50,7 +54,6 @@ class CastProxyServerService : Service() {
         }
 
         _isRunning.update { true }
-        currentProxyServer = server
 
         val stopIntent = Intent(this, CastProxyServerService::class.java).apply {
             action = ACTION_STOP
@@ -83,7 +86,7 @@ class CastProxyServerService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun createNotificationChannel() {
@@ -100,7 +103,7 @@ class CastProxyServerService : Service() {
 
     override fun onDestroy() {
         _isRunning.update { false }
-        currentProxyServer = null
+        access.closeSession(ownedGeneration)
         try {
             server?.stop()
         } catch (e: Exception) {
@@ -115,14 +118,23 @@ class CastProxyServerService : Service() {
         const val EXTRA_ADDRESS = "EXTRA_ADDRESS"
         const val ACTION_STOP = "ani.dantotsu.cast.ACTION_STOP"
 
-        var currentProxyServer: CastProxyServer? = null
-            private set
+        /** Token and allow-list shared by the server and the code that builds cast urls. */
+        val access = CastProxyAccess()
 
         private val _isRunning = MutableStateFlow(false)
         val isRunning = _isRunning.asStateFlow()
 
-        fun start(context: Context) {
+        /**
+         * Starts the proxy. [newSession] rotates the token and clears the allow-list
+         * (a new cast session); otherwise an open session is kept.
+         */
+        fun start(context: Context, newSession: Boolean = false) {
             val address = CastProxyServer.getLocalIpAddress()
+            if (newSession) {
+                access.openSession(address, CastProxyServer.DEFAULT_PORT)
+            } else {
+                access.ensureSession(address, CastProxyServer.DEFAULT_PORT)
+            }
             val intent = Intent(context, CastProxyServerService::class.java).apply {
                 putExtra(EXTRA_ADDRESS, address)
             }

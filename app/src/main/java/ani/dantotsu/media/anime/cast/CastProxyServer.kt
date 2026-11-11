@@ -7,10 +7,8 @@ import android.net.Uri
 import androidx.core.net.toUri
 import ani.dantotsu.util.Logger
 import fi.iki.elonen.NanoHTTPD
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.parser.Parser
@@ -28,8 +26,8 @@ import javax.net.ssl.X509TrustManager
 class CastProxyServer(
     baseClient: OkHttpClient = OkHttpClient(),
     private val contentResolver: ContentResolver,
-    private val ipAddress: String,
-    private val port: Int = DEFAULT_PORT,
+    private val access: CastProxyAccess,
+    port: Int = DEFAULT_PORT,
 ) : NanoHTTPD(port) {
 
     private fun OkHttpClient.Builder.ignoreAllSSLErrors(): OkHttpClient.Builder {
@@ -56,11 +54,14 @@ class CastProxyServer(
         .build()
 
     override fun serve(session: IHTTPSession?): Response? {
-        val uri = session?.uri ?: return super.serve(session)
-        return when {
-            uri.startsWith("/local") -> localServe(session)
-            uri.startsWith("/proxy") -> proxyServe(session)
-            else -> super.serve(session)
+        val path = session?.uri ?: return super.serve(session)
+        val token = session.parameters[CastProxyAccess.TOKEN_PARAM]?.firstOrNull()
+        val url = session.parameters["url"]?.firstOrNull()
+        return when (access.decide(path, token, url)) {
+            CastProxyAccess.Decision.FORBIDDEN -> forbidden()
+            CastProxyAccess.Decision.NOT_FOUND -> notFound("Not found")
+            CastProxyAccess.Decision.ALLOW ->
+                if (path.startsWith("/local")) localServe(session, url!!) else proxyServe(session, url!!)
         }
     }
 
@@ -83,8 +84,7 @@ class CastProxyServer(
         }
     }
 
-    private fun localServe(session: IHTTPSession): Response {
-        val url = session.parameters["url"]?.firstOrNull() ?: return badRequest("No url param")
+    private fun localServe(session: IHTTPSession, url: String): Response {
         val uri = try {
             url.toUri()
         } catch (e: Exception) {
@@ -149,20 +149,9 @@ class CastProxyServer(
         }
     }
 
-    private fun proxyServe(session: IHTTPSession): Response {
-        val url = session.parameters["url"]?.firstOrNull() ?: return badRequest("No url param")
-        val headersJson = session.parameters["header"]?.firstOrNull()
-        val headers = mutableMapOf<String, String>()
-        if (!headersJson.isNullOrBlank()) {
-            try {
-                val jsonObject = JSONObject(headersJson)
-                jsonObject.keys().forEach { key ->
-                    headers[key] = jsonObject.getString(key)
-                }
-            } catch (e: Exception) {
-                Logger.log("CastProxyServer: Failed to parse headers JSON: ${e.message}")
-            }
-        }
+    private fun proxyServe(session: IHTTPSession, url: String): Response {
+        // Headers registered by the app for this url; the request cannot choose them.
+        val headers = access.proxyHeadersFor(url)?.toMutableMap() ?: return forbidden()
 
         val requestBuilder = Request.Builder().url(url)
         // Upstream efb15cf: never forward a player-supplied Accept-Encoding to
@@ -179,11 +168,11 @@ class CastProxyServer(
 
             val response = if (resp.isM3U8()) {
                 val body = gunzipIfNeeded(resp).removePrefix("\uFEFF")
-                val proxied = proxyM3U8(body, url, headers)
+                val proxied = proxyM3U8(body, resp.request.url.toString(), headers)
                 newFixedLengthResponse(status, "application/vnd.apple.mpegurl", proxied)
             } else if (resp.isDash()) {
                 val body = gunzipIfNeeded(resp).removePrefix("\uFEFF")
-                val proxied = proxyDash(body, url, headers)
+                val proxied = proxyDash(body, resp.request.url.toString(), headers)
                 newFixedLengthResponse(status, "application/dash+xml", proxied)
             } else {
                 val body = resp.body
@@ -202,8 +191,8 @@ class CastProxyServer(
 
             response.apply { addCorsHeaders(this) }
         } catch (e: Exception) {
-            Logger.log("CastProxyServer: Error proxying request to $url: ${e.message}")
-            badRequest("Proxy request failed: ${e.message}")
+            Logger.log("CastProxyServer: Error proxying request: ${e.message}")
+            badRequest("Proxy request failed")
         }
     }
 
@@ -247,7 +236,7 @@ class CastProxyServer(
                     trimmed.startsWith('#') -> appendLine(line)
                     else -> {
                         val full = resolveUrl(baseUrl, trimmed)
-                        appendLine(getProxyUrl(full, headers))
+                        appendLine(derivedProxyUrl(full, headers))
                     }
                 }
             }
@@ -258,7 +247,7 @@ class CastProxyServer(
         return ATTRIBUTE_REGEX.replace(line) { m ->
             val uri = m.groupValues[1]
             val full = resolveUrl(baseUrl, uri)
-            val proxied = getProxyUrl(full, headers)
+            val proxied = derivedProxyUrl(full, headers)
             "URI=\"$proxied\""
         }
     }
@@ -303,13 +292,18 @@ class CastProxyServer(
         val tokens = mutableListOf<String>()
         val prefix = "DASH_TOKEN_PREFIX"
 
-        val placeholderUrl = DASH_TOKEN_REGEX.replace(targetUrl) { m ->
+        val placeholderUrl = CastProxyAccess.DASH_TOKEN_REGEX.replace(targetUrl) { m ->
             val placeholder = "$prefix${tokens.size}END"
             tokens.add(m.value)
             placeholder
         }
 
-        var proxied = getProxyUrl(placeholderUrl, headers)
+        if (tokens.isEmpty()) {
+            access.allowDerived(targetUrl, headers)
+        } else {
+            access.allowTemplate(targetUrl, headers)
+        }
+        var proxied = access.proxyUrl(placeholderUrl) ?: return targetUrl
         tokens.forEachIndexed { index, token ->
             proxied = proxied.replace("$prefix${index}END", token)
         }
@@ -323,20 +317,14 @@ class CastProxyServer(
         response.addHeader("Access-Control-Expose-Headers", "content-range, content-length, accept-ranges")
     }
 
-    fun getProxyUrl(targetUrl: String, headers: Map<String, String>): String {
-        val headersJson = JSONObject(headers).toString()
-        return "http://$ipAddress:$port".toHttpUrl().newBuilder().apply {
-            addPathSegment("proxy")
-            addQueryParameter("url", targetUrl)
-            addQueryParameter("header", headersJson)
-        }.build().toString()
+    /** Proxy url for a url found in a manifest; the receiver may then fetch it. */
+    private fun derivedProxyUrl(targetUrl: String, headers: Map<String, String>): String {
+        access.allowDerived(targetUrl, headers)
+        return access.proxyUrl(targetUrl) ?: targetUrl
     }
 
-    fun getLocalUrl(localUri: String): String {
-        return "http://$ipAddress:$port".toHttpUrl().newBuilder().apply {
-            addPathSegment("local")
-            addQueryParameter("url", localUri)
-        }.build().toString()
+    private fun forbidden(): Response {
+        return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "Forbidden")
     }
 
     private fun notFound(message: String): Response {
@@ -350,9 +338,11 @@ class CastProxyServer(
     companion object {
         const val DEFAULT_PORT = 19876
         private val ATTRIBUTE_REGEX = Regex("""URI="([^"]+)"""")
-        private val HLS_TAGS = listOf("#EXT-X-KEY", "#EXT-X-MEDIA", "#EXT-X-I-FRAME-STREAM-INF")
+        private val HLS_TAGS = listOf(
+            "#EXT-X-KEY", "#EXT-X-SESSION-KEY", "#EXT-X-MEDIA", "#EXT-X-I-FRAME-STREAM-INF",
+            "#EXT-X-MAP", "#EXT-X-PART", "#EXT-X-PRELOAD-HINT",
+        )
         private val DASH_ATTRS = listOf("initialization", "media", "index")
-        private val DASH_TOKEN_REGEX = Regex("""\$[A-Za-z0-9]*(?:%0\d+d)?\$""")
 
         fun getLocalIpAddress(): String {
             try {
