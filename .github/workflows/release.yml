@@ -51,12 +51,17 @@ jobs:
     steps:
       - name: Validate candidate SHA input
         id: resolve
+        # inputs and variables go through env, never into the script text
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RC_SHA: ${{ inputs.rc_sha }}
+          APPROVED_SHA: ${{ vars.APPROVED_RELEASE_SHA }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            SHA="${{ inputs.rc_sha }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SHA="$RC_SHA"
             MODE="rc-validation"
           else
-            VARD="${{ vars.APPROVED_RELEASE_SHA }}"
+            VARD="$APPROVED_SHA"
             if ! printf '%s' "$VARD" | grep -Eq '^[0-9a-f]{40}$'; then
               echo "::error::APPROVED_RELEASE_SHA missing or not 40-hex"
               exit 1
@@ -101,40 +106,49 @@ jobs:
           EOF
           ) || { echo "::error::bad editotsu.version"; exit 1; }
           echo "$OUT" | tee -a "$GITHUB_OUTPUT"
+          NOTES=".github/release-notes/v$V.md"
           if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
             [ "$GITHUB_REF_NAME" = "v$V" ] || { echo "::error::tag $GITHUB_REF_NAME != v$V"; exit 1; }
+            # checked here so a missing file fails before anything is built
+            [ -f "$NOTES" ] || { echo "::error::$NOTES missing"; exit 1; }
+          else
+            [ -f "$NOTES" ] || echo "::warning::$NOTES missing; the tag build will fail without it"
           fi
       - name: Assert exact candidate and record provenance
+        env:
+          WANT: ${{ steps.resolve.outputs.checked_sha }}
+          MODE: ${{ steps.resolve.outputs.trigger_mode }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           mkdir -p evidence-sha
 
           HEAD_SHA=$(git rev-parse HEAD)
-          WANT="${{ steps.resolve.outputs.checked_sha }}"
-          MODE="${{ steps.resolve.outputs.trigger_mode }}"
 
           [ "$HEAD_SHA" = "$WANT" ] || {
             echo "::error::HEAD $HEAD_SHA != candidate $WANT"
             exit 1
           }
 
-          git fetch origin main
+          # The candidate must be on main or on a release/X.Y branch (patch releases
+          # for the current stable are cut there).
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main' \
+            '+refs/heads/release/*:refs/remotes/origin/release/*'
           MAIN_SHA=$(git rev-parse origin/main)
+          ON_BRANCH=""
+          for B in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin/main 'refs/remotes/origin/release/*'); do
+            if git merge-base --is-ancestor "$WANT" "$B"; then ON_BRANCH="$B"; break; fi
+          done
+          [ -n "$ON_BRANCH" ] || {
+            echo "::error::candidate $WANT is not on origin/main or any origin/release/*"
+            exit 1
+          }
+          echo "candidate reachable from $ON_BRANCH"
 
           if [ "$MODE" = "tag" ]; then
-            TAG_SHA=$(git rev-list -n 1 "${{ github.ref_name }}")
+            TAG_SHA=$(git rev-list -n 1 "$REF_NAME")
 
             [ "$TAG_SHA" = "$WANT" ] || {
               echo "::error::tag $TAG_SHA != approved $WANT"
-              exit 1
-            }
-
-            [ "$TAG_SHA" = "$MAIN_SHA" ] || {
-              echo "::error::tag $TAG_SHA != current main $MAIN_SHA"
-              exit 1
-            }
-          else
-            [ "$MAIN_SHA" = "$WANT" ] || {
-              echo "::error::candidate $WANT != current main $MAIN_SHA"
               exit 1
             }
           fi
@@ -144,6 +158,7 @@ jobs:
             echo "sha=$HEAD_SHA"
             echo "tree=$(git rev-parse HEAD^{tree})"
             echo "main=$MAIN_SHA"
+            echo "branch=$ON_BRANCH"
             echo "run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo "ref=${{ github.ref }}"
           } > evidence-sha/candidate.txt
@@ -511,18 +526,24 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
       - name: Gate on approved RC SHA (fail closed, defense in depth)
+        env:
+          VAR: ${{ vars.APPROVED_RELEASE_SHA }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          VAR="${{ vars.APPROVED_RELEASE_SHA }}"
           if ! printf '%s' "$VAR" | grep -Eq '^[0-9a-f]{40}$'; then
             echo "::error::APPROVED_RELEASE_SHA missing or not 40-hex"; exit 1
           fi
           [ -f ".github/release-notes/v$V.md" ] || { echo "::error::.github/release-notes/v$V.md missing"; exit 1; }
-          git fetch origin main
-          TAG_SHA=$(git rev-list -n 1 "${{ github.ref_name }}")
-          MAIN_SHA=$(git rev-parse origin/main)
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main' \
+            '+refs/heads/release/*:refs/remotes/origin/release/*'
+          TAG_SHA=$(git rev-list -n 1 "$REF_NAME")
           [ "$TAG_SHA" = "$VAR" ] || { echo "::error::tag $TAG_SHA != approved $VAR"; exit 1; }
-          [ "$TAG_SHA" = "$MAIN_SHA" ] || { echo "::error::tag $TAG_SHA != current main $MAIN_SHA"; exit 1; }
-          echo "tag matches approved RC SHA on current main"
+          ON_BRANCH=""
+          for B in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin/main 'refs/remotes/origin/release/*'); do
+            if git merge-base --is-ancestor "$TAG_SHA" "$B"; then ON_BRANCH="$B"; break; fi
+          done
+          [ -n "$ON_BRANCH" ] || { echo "::error::tag $TAG_SHA is not on origin/main or any origin/release/*"; exit 1; }
+          echo "tag matches the approved SHA and is on $ON_BRANCH"
       - name: Download evidence bundle
         uses: actions/download-artifact@v4
         with:

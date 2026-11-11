@@ -18,7 +18,6 @@ import ani.dantotsu.Mapper
 import ani.dantotsu.R
 import ani.dantotsu.buildMarkwon
 import ani.dantotsu.client
-import ani.dantotsu.connections.comments.CommentsAPI
 import ani.dantotsu.currContext
 import ani.dantotsu.decodeBase64ToString
 import ani.dantotsu.logError
@@ -40,40 +39,32 @@ import java.util.Locale
 
 object AppUpdater {
 
-    private suspend fun fetchUpdateInfo(repo: String, isDebug: Boolean): Pair<String, String>? {
+    private val isBetaApp get() = AppUpdatePolicy.isBetaApplication(BuildConfig.APPLICATION_ID)
+
+    private suspend fun fetchDecision(repo: String): AppUpdatePolicy.Decision? {
         return try {
-            fetchFromGithub(repo, isDebug)
+            val releases = client.get("https://api.github.com/repos/$repo/releases")
+                .parsed<JsonArray>().map {
+                    Mapper.json.decodeFromJsonElement<GithubResponse>(it)
+                }.map {
+                    AppUpdatePolicy.ReleaseInfo(
+                        tag = it.tagName,
+                        prerelease = it.prerelease,
+                        createdAt = it.createdAt,
+                        body = it.body,
+                        assetUrls = it.assets?.mapNotNull { a -> a.browserDownloadURL } ?: emptyList()
+                    )
+                }
+            // Channel safety: the beta app updates from prereleases only, stable from stable
+            // releases only (never cross-install); see AppUpdatePolicy.decide.
+            AppUpdatePolicy.decide(releases, BuildConfig.VERSION_NAME, BuildConfig.APPLICATION_ID)
         } catch (e: Exception) {
             Logger.log("Github fetch failed: ${e.message}")
             null
         }
     }
 
-    private suspend fun fetchFromGithub(repo: String, isDebug: Boolean): Pair<String, String> {
-        val res = client.get("https://api.github.com/repos/$repo/releases")
-            .parsed<JsonArray>().map {
-                Mapper.json.decodeFromJsonElement<GithubResponse>(it)
-            }
-        // Channel safety: beta applicationId follows prereleases only,
-        // stable follows stable releases only (never cross-install).
-        val wantPrerelease = AppUpdatePolicy.isBetaApplication(BuildConfig.APPLICATION_ID)
-        val r = AppUpdatePolicy.selectRelease(
-            res.map {
-                AppUpdatePolicy.ReleaseInfo(
-                    tag = it.tagName,
-                    prerelease = it.prerelease,
-                    createdAt = it.createdAt,
-                    body = it.body,
-                    assetUrls = it.assets?.mapNotNull { a -> a.browserDownloadURL } ?: emptyList()
-                )
-            },
-            wantPrerelease
-        ) ?: throw Exception("No Release Found")
-        val v = r.tag.removePrefix("v").trim()
-        return (r.body ?: "") to v.ifEmpty { throw Exception("Weird Version : ${r.tag}") }
-    }
-
-    private suspend fun fetchApkUrl(repo: String, version: String, isDebug: Boolean): String? {
+    private suspend fun fetchApkUrl(repo: String, version: String): String? {
         return try {
             fetchApkUrlFromGithub(repo, version)
         } catch (e: Exception) {
@@ -98,17 +89,17 @@ object AppUpdater {
     }
 
     /**
-     * MAX MERGE M3 (upstream e1476cc7 badge concept, own pipeline only):
-     * read-only latest-version probe for the settings outdated indicator.
-     * Reuses [fetchUpdateInfo] (own `R.string.repo`, channel-safe) and
-     * [AppUpdatePolicy.isUpdateAvailable]; quiet null on any failure.
-     * Never triggers download/install flows.
+     * Read-only latest-version probe for the settings "outdated" indicator: the newer
+     * version of this app's channel, or a newer stable release for the beta app.
+     * Quiet null on any failure; never starts a download.
      */
     suspend fun latestVersionIfNewer(activity: FragmentActivity): String? {
         return try {
-            val repo = activity.getString(R.string.repo)
-            val (_, version) = fetchUpdateInfo(repo, BuildConfig.DEBUG) ?: return null
-            if (AppUpdatePolicy.isUpdateAvailable(BuildConfig.VERSION_NAME, version)) version else null
+            when (val d = fetchDecision(activity.getString(R.string.repo))) {
+                is AppUpdatePolicy.Decision.Update -> d.version
+                is AppUpdatePolicy.Decision.StableNotice -> d.version
+                else -> null
+            }
         } catch (e: Exception) {
             Logger.log("Outdated check quiet-fail: ${e.message}")
             null
@@ -119,72 +110,111 @@ object AppUpdater {
         if (post) snackString(currContext()?.getString(R.string.checking_for_update))
         val repo = activity.getString(R.string.repo)
         tryWithSuspend {
-            val (md, version) = fetchUpdateInfo(repo, BuildConfig.DEBUG) ?: return@tryWithSuspend
+            when (val decision = fetchDecision(repo) ?: return@tryWithSuspend) {
+                is AppUpdatePolicy.Decision.Update -> showUpdate(activity, repo, decision)
+                is AppUpdatePolicy.Decision.StableNotice -> showStableNotice(activity, repo, decision, post)
+                AppUpdatePolicy.Decision.None ->
+                    if (post) snackString(currContext()?.getString(R.string.no_update_found))
+            }
+            Unit
+        }
+    }
 
-            Logger.log("Git Version : $version")
-            val dontShow = PrefManager.getCustomVal("dont_ask_for_update_$version", false)
-            if (compareVersion(version) && !dontShow && !activity.isDestroyed) activity.runOnUiThread {
-                CustomBottomDialog.newInstance().apply {
-                    setTitleText(
-                        "${if (BuildConfig.DEBUG) "Beta " else ""}Update " + currContext()!!.getString(
-                            R.string.available
-                        )
-                    )
-                    addView(
-                        TextView(activity).apply {
-                            val markWon = try {
-                                buildMarkwon(activity, false)
-                            } catch (e: IllegalArgumentException) {
-                                return@runOnUiThread
-                            }
-                            markWon.setMarkdown(this, md)
+    private fun showUpdate(activity: FragmentActivity, repo: String, decision: AppUpdatePolicy.Decision.Update) {
+        val version = decision.version
+        val md = decision.release.body ?: ""
+        Logger.log("Git Version : $version")
+        val dontShow = PrefManager.getCustomVal("dont_ask_for_update_$version", false)
+        if (dontShow || activity.isDestroyed) return
+        activity.runOnUiThread {
+            CustomBottomDialog.newInstance().apply {
+                setTitleText(
+                    "${if (isBetaApp) "Beta " else ""}Update " + activity.getString(R.string.available)
+                )
+                addView(
+                    TextView(activity).apply {
+                        val markWon = try {
+                            buildMarkwon(activity, false)
+                        } catch (e: IllegalArgumentException) {
+                            return@runOnUiThread
                         }
-                    )
+                        markWon.setMarkdown(this, md)
+                    }
+                )
 
-                    setCheck(
-                        currContext()!!.getString(R.string.dont_show_again, version),
-                        false
-                    ) { isChecked ->
-                        if (isChecked) {
-                            PrefManager.setCustomVal("dont_ask_for_update_$version", true)
-                        }
+                setCheck(activity.getString(R.string.dont_show_again, version), false) { isChecked ->
+                    if (isChecked) {
+                        PrefManager.setCustomVal("dont_ask_for_update_$version", true)
                     }
-                    setPositiveButton(currContext()!!.getString(R.string.lets_go)) {
-                        MainScope().launch(Dispatchers.IO) {
-                            try {
-                                val apkUrl = fetchApkUrl(repo, version, BuildConfig.DEBUG)
-                                if (apkUrl != null) {
-                                    activity.downloadUpdate(version, apkUrl)
-                                } else {
-                                    openLinkInBrowser("https://github.com/$repo/releases/tag/v$version")
-                                }
-                            } catch (e: Exception) {
-                                logError(e)
-                            }
-                        }
-                        dismiss()
-                    }
-                    setNegativeButton(currContext()!!.getString(R.string.cope)) {
-                        dismiss()
-                    }
-                    show(activity.supportFragmentManager, "dialog")
                 }
-            } else {
-                if (post) snackString(currContext()?.getString(R.string.no_update_found))
+                setPositiveButton(activity.getString(R.string.lets_go)) {
+                    MainScope().launch(Dispatchers.IO) {
+                        try {
+                            val apkUrl = fetchApkUrl(repo, version)
+                            if (apkUrl != null) {
+                                activity.downloadUpdate(version, apkUrl)
+                            } else {
+                                openLinkInBrowser(releasePage(repo, decision.release))
+                            }
+                        } catch (e: Exception) {
+                            logError(e)
+                        }
+                    }
+                    dismiss()
+                }
+                setNegativeButton(activity.getString(R.string.cope)) {
+                    dismiss()
+                }
+                show(activity.supportFragmentManager, "dialog")
             }
         }
     }
 
-    // Beta-aware comparison lives in AppUpdatePolicy (pure + tested);
-    // prerelease lines (0.5.0-beta01 < 0.5.0-beta02) resolve correctly.
-    private fun compareVersion(version: String): Boolean {
-        return AppUpdatePolicy.isUpdateAvailable(BuildConfig.VERSION_NAME, version)
+    /**
+     * The beta app (`ani.editotsu.beta`) cannot install a stable release (`ani.editotsu`) over
+     * itself; it only points to the release page.
+     */
+    private fun showStableNotice(
+        activity: FragmentActivity,
+        repo: String,
+        decision: AppUpdatePolicy.Decision.StableNotice,
+        post: Boolean
+    ) {
+        val version = decision.version
+        val key = "dont_show_stable_notice_$version"
+        if ((PrefManager.getCustomVal(key, false) && !post) || activity.isDestroyed) return
+        activity.runOnUiThread {
+            CustomBottomDialog.newInstance().apply {
+                setTitleText(activity.getString(R.string.stable_release_title, version))
+                addView(TextView(activity).apply {
+                    text = activity.getString(R.string.stable_release_info, version)
+                })
+                setCheck(activity.getString(R.string.dont_show_again, version), false) { isChecked ->
+                    if (isChecked) PrefManager.setCustomVal(key, true)
+                }
+                setPositiveButton(activity.getString(R.string.open_release_page)) {
+                    openLinkInBrowser(releasePage(repo, decision.release))
+                    dismiss()
+                }
+                setNegativeButton(activity.getString(R.string.close)) {
+                    dismiss()
+                }
+                show(activity.supportFragmentManager, "dialog")
+            }
+        }
     }
-    //Blatantly kanged from https://github.com/LagradOst/CloudStream-3/blob/master/app/src/main/java/com/lagradost/cloudstream3/utils/InAppUpdater.kt
+
+    private fun releasePage(repo: String, release: AppUpdatePolicy.ReleaseInfo) =
+        "https://github.com/$repo/releases/tag/${release.tag}"
+
+    // Download flow based on CloudStream's in-app updater (InAppUpdater.kt).
     private fun Activity.downloadUpdate(version: String, url: String) {
         toast(getString(R.string.downloading_update, version))
 
-        val downloadManager = this.getSystemService<DownloadManager>()!!
+        // Application context: the download outlives this screen, and the install prompt must
+        // still open after the user leaves it.
+        val app = applicationContext
+        val downloadManager = app.getSystemService<DownloadManager>()!!
 
         val request = DownloadManager.Request(Uri.parse(url))
             .setMimeType("application/vnd.android.package-archive")
@@ -205,24 +235,27 @@ object AppUpdater {
         }
         if (id == -1L) return
         ContextCompat.registerReceiver(
-            this,
+            app,
             object : BroadcastReceiver() {
                 @SuppressLint("Range")
                 override fun onReceive(context: Context?, intent: Intent?) {
+                    // Other DownloadManager downloads (theme songs, for one) finish through the
+                    // same broadcast; only this update's id opens the installer.
+                    val downloadId = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) ?: -1L
+                    if (!AppUpdatePolicy.isOwnDownload(id, downloadId)) return
                     try {
-                        val downloadId = intent?.getLongExtra(
-                            DownloadManager.EXTRA_DOWNLOAD_ID, id
-                        ) ?: id
-
-                        downloadManager.getUriForDownloadedFile(downloadId)?.let {
-                            openApk(this@downloadUpdate, it)
-                        }
+                        app.unregisterReceiver(this)
+                    } catch (e: IllegalArgumentException) {
+                        Logger.log("Update receiver already unregistered")
+                    }
+                    try {
+                        downloadManager.getUriForDownloadedFile(id)?.let { openApk(app, it) }
                     } catch (e: Exception) {
                         logError(e)
                     }
                 }
             }, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            ContextCompat.RECEIVER_EXPORTED
+            ContextCompat.RECEIVER_NOT_EXPORTED
         )
     }
 
@@ -232,6 +265,8 @@ object AppUpdater {
                 val installIntent = Intent(Intent.ACTION_VIEW).apply {
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    // Started from the application context, so it needs its own task.
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
                     data = uri
                 }

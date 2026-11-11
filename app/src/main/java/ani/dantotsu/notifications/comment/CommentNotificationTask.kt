@@ -1,5 +1,6 @@
 package ani.dantotsu.notifications.comment
 
+import ani.dantotsu.connections.comments.CommentsOptIn
 import android.Manifest
 import android.app.PendingIntent
 import android.content.Context
@@ -29,6 +30,8 @@ class CommentNotificationTask : Task {
         try {
             withContext(Dispatchers.IO) {
                 PrefManager.init(context) //make sure prefs are initialized
+                // Nothing goes to the comments server unless the user turned comments on.
+                if (!CommentsOptIn.isEnabled()) return@withContext
                 val client = OkHttpClient()
                 CommentsAPI.fetchAuthToken(context, client)
                 val notificationResponse = CommentsAPI.getNotifications(client)

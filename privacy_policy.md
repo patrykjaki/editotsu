@@ -34,19 +34,14 @@ While we facilitate these connections, we do not store your login credentials. A
 - [MyAnimeList Privacy Policy Link](https://myanimelist.net/about/privacy_policy)
 - [Discord Privacy Policy Link](https://discord.com/privacy)
 
-### Comments System
-Our in-house comments API uses your AniList authentication token for verification purposes when you initially open Editotsu. While this token is used for authentication, it is never stored on our servers. We only store:
-- Your AniList ID (for authentication)
-- Profile picture URL
-- Comments you post
-- Your upvotes on comments
+### Comments (off by default)
+Comments are off until you turn them on (Comments tab on a show's page, or Settings > Tracking). The comments server, `api.dantotsu.app`, is run by the Dantotsu project, not by Editotsu. Editotsu does not control it or the data stored there.
 
-We do not track or store:
-- Your AniList authentication token
-- Content you view or watch
-- Browsing history
-- Watch history
-- Personal information beyond what's listed above
+While comments are off, Editotsu sends nothing to that server.
+
+When you turn comments on, Editotsu sends your AniList login token to `api.dantotsu.app` to sign you in, and the server receives your AniList ID, username and avatar URL. After that it receives the comments you post and your votes. How the Dantotsu project stores or uses this data is set by that project, not by this policy.
+
+Turning comments off, or logging out of AniList, deletes the comments sign-in saved on your device. It does not delete data already held by the comments server.
 
 ## How We Use Your Information
 
@@ -62,15 +57,9 @@ You can control your privacy preferences:
 - Anonymize crash reports through app settings
 - Control app permissions through your device settings
 
-### Comments System
-We use comment data to:
-- Display your comments to other users
-- Show upvote counts
-- Associate comments with your profile
-
 ## Data Storage and Security
 - Authentication tokens are stored locally on your device
-- Comment data is stored securely on our servers
+- Comment data, if you turn comments on, is stored on the Dantotsu project's comments server (see Comments above)
 - We implement appropriate security measures to protect your information
 
 ## Data Sharing
@@ -80,14 +69,11 @@ We do not sell or share your personal information with third parties except:
 
 ## Your Rights and Data Protection
 Under the General Data Protection Regulation (GDPR) and other data protection laws, you have certain rights regarding your personal data. You can:
-- Access your comment data
-- Request deletion of your comments and associated data
+- Access the data Editotsu keeps on your device (Settings > Data lets you back it up)
+- Request deletion of your comments from the comments server; this has to be sent to the Dantotsu project, which runs it
 
-To exercise these rights or request deletion of your data, you can contact the developer:
-- On AniList: "rebelonion"
+For questions about Editotsu itself, contact:
 - GitHub: [Editotsu Issues](https://github.com/patrykjaki/editotsu/issues)
-
-While we don't have an automated process for data deletion, we will process your request manually as soon as possible.
 
 ## Children's Privacy
 Our service is not directed to children under 13. We do not knowingly collect personal information from children under 13.

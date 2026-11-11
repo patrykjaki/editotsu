@@ -11,6 +11,7 @@ import ani.dantotsu.torrent.TorrentServerManager
 import ani.dantotsu.aniyomi.anime.custom.AppModule
 import ani.dantotsu.aniyomi.anime.custom.PreferenceModule
 import ani.dantotsu.connections.comments.CommentsAPI
+import ani.dantotsu.connections.comments.CommentsOptIn
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.notifications.TaskScheduler
 import ani.dantotsu.others.DisabledReports
@@ -122,13 +123,9 @@ class App : Application() {
             LogcatLogger.install(AndroidLogcatLogger(LogPriority.VERBOSE))
         }
 
-        if (PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 0) {
-            if (BuildConfig.FLAVOR.contains("fdroid")) {
-                PrefManager.setVal(PrefName.CommentsEnabled, 2)
-            } else {
-                PrefManager.setVal(PrefName.CommentsEnabled, 1)
-            }
-        }
+        // Comments are opt-in on both flavors; installs that got "on" from the old default
+        // are switched off once.
+        CommentsOptIn.resetOnce()
 
         val scope = CoroutineScope(Dispatchers.IO)
         scope.launch {
@@ -176,7 +173,7 @@ class App : Application() {
                 Logger.log("App: TorrentCache startup reconciliation failed: ${e.message}")
             }
 
-            if (PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1) {
+            if (CommentsOptIn.isEnabled()) {
                 CommentsAPI.fetchAuthToken(this@App)
             }
 
