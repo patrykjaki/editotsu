@@ -275,8 +275,30 @@ object UpscalerBundleInstaller {
      * equality, canonical file keys, non-empty checksum-listed profiles with listed refs) BEFORE
      * verifying file existence/checksums. A tampered manifest can never make unlisted files
      * reachable through profile chains.
+     *
+     * The result is cached per process and keyed on [fingerprint] (name, size and mtime of every
+     * file in the dir): repeat calls cost a directory listing instead of hashing every shader,
+     * and any changed, added or removed file re-runs the full check.
      */
     fun isInstalledValid(installDir: File, providerId: String): Boolean {
+        val key = installDir.absolutePath + "\u0000" + providerId
+        val print = fingerprint(installDir)
+        validCache[key]?.let { (cachedPrint, valid) -> if (cachedPrint == print) return valid }
+        val valid = checkInstalled(installDir, providerId)
+        validCache[key] = print to valid
+        return valid
+    }
+
+    private val validCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Boolean>>()
+
+    private fun fingerprint(dir: File): String =
+        dir.walkTopDown()
+            .filter { it.isFile }
+            .map { "${it.relativeTo(dir).path}:${it.length()}:${it.lastModified()}" }
+            .sorted()
+            .joinToString("|")
+
+    private fun checkInstalled(installDir: File, providerId: String): Boolean {
         val manifestFile = File(installDir, "manifest.json")
         if (!manifestFile.exists()) return false
         val manifest = try {
