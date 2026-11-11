@@ -352,6 +352,20 @@
     <string name="extensions_not_configurable">This source has no settings</string>
     <string name="extensions_update_all">Update all (%1$d)</string>
     <string name="extensions_refresh_none">No extension updates</string>
+    <string name="extension_update_no_update">No update available</string>
+    <string name="extension_update_progress_title">Updating %1$s</string>
+    <string name="extension_update_step_pending">Waiting</string>
+    <string name="extension_update_step_downloading">Downloading</string>
+    <string name="extension_update_step_installing">Installing</string>
+    <string name="extension_update_failed_title">%1$s update failed</string>
+    <string name="extension_update_unknown_error">Unknown error</string>
+    <string name="extension_update_done_title">%1$s updated</string>
+    <string name="extension_update_one_failed">%1$s update failed: %2$s</string>
+    <plurals name="extension_update_summary_done">
+        <item quantity="one">%1$d extension updated</item>
+        <item quantity="other">%1$d extensions updated</item>
+    </plurals>
+    <string name="extension_update_summary_failed">%1$d updated, %2$d failed: %3$s</string>
     <string name="extensions_row_reorder">Reorder</string>
     <string name="extensions_search_anime">Search anime extensions</string>
     <string name="extensions_search_manga">Search manga extensions</string>

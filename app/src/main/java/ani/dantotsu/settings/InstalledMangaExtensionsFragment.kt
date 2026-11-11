@@ -54,59 +54,14 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
     private lateinit var extensionsRecyclerView: RecyclerView
     private val skipIcons: Boolean = PrefManager.getVal(PrefName.SkipExtensionIcons)
     private val mangaExtensionManager: MangaExtensionManager = Injekt.get()
+    private fun updateItem(ext: MangaExtension.Installed) =
+        ExtensionUpdateAll.Item(ext.pkgName, ext.name) { mangaExtensionManager.updateExtension(ext) }
+
     private val updateOne: (MangaExtension.Installed) -> Unit = { pkg ->
-            if (isAdded) {
-                val context = requireContext()
-                val notificationManager =
-                    context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-                if (pkg.hasUpdate) {
-                    mangaExtensionManager.updateExtension(pkg)
-                        .observeOn(AndroidSchedulers.mainThread())
-                        .subscribe(
-                            { installStep ->
-                                val builder = NotificationCompat.Builder(
-                                    context,
-                                    Notifications.CHANNEL_DOWNLOADER_PROGRESS
-                                )
-                                    .setSmallIcon(R.drawable.ic_round_sync_24)
-                                    .setContentTitle("Updating extension")
-                                    .setContentText("Step: $installStep")
-                                    .setPriority(NotificationCompat.PRIORITY_LOW)
-                                notificationManager.notify(1, builder.build())
-                            },
-                            { error ->
-                                Injekt.get<CrashlyticsInterface>().logException(error)
-                                Logger.log(error)
-                                val builder = NotificationCompat.Builder(
-                                    context,
-                                    Notifications.CHANNEL_DOWNLOADER_ERROR
-                                )
-                                    .setSmallIcon(R.drawable.ic_round_info_24)
-                                    .setContentTitle("Update failed: ${error.message}")
-                                    .setContentText("Error: ${error.message}")
-                                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                                notificationManager.notify(1, builder.build())
-                                snackString("Update failed: ${error.message}")
-                            },
-                            {
-                                val builder = NotificationCompat.Builder(
-                                    context,
-                                    Notifications.CHANNEL_DOWNLOADER_PROGRESS
-                                )
-                                    .setSmallIcon(R.drawable.ic_circle_check)
-                                    .setContentTitle("Update complete")
-                                    .setContentText("The extension has been successfully updated.")
-                                    .setPriority(NotificationCompat.PRIORITY_LOW)
-                                notificationManager.notify(1, builder.build())
-                                snackString("Extension updated")
-                            }
-                        )
-                } else {
-                    snackString("No update available")
-                }
-
-            }
+        if (isAdded) {
+            if (pkg.hasUpdate) ExtensionUpdateAll.run(requireContext(), listOf(updateItem(pkg)))
+            else snackString(getString(R.string.extension_update_no_update))
+        }
     }
 
     private val extensionsAdapter = MangaExtensionsAdapter(
@@ -220,7 +175,7 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
                 ExtensionUpdateAll.bind(
                     _binding?.updateAllButton ?: return@collect,
                     ExtensionUpdateAll.pending(extensions) { it.hasUpdate },
-                    updateOne
+                    ::updateItem
                 )
             }
         }

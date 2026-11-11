@@ -31,6 +31,8 @@ data class ExtensionRepoMeta(
     val website: String = "",
     val discord: String? = null,
     val githubUrl: String? = null,
+    /** Name and badge come from the URL because the repo could not be read; fetch again later. */
+    val derived: Boolean = false,
 )
 
 object ExtensionRepoMetaHelper {
@@ -234,7 +236,8 @@ object ExtensionRepoMetaHelper {
         name: String = "",
         shortName: String? = null,
         website: String = "",
-        discord: String? = null
+        discord: String? = null,
+        derived: Boolean = false,
     ): ExtensionRepoMeta {
         ensureLoaded()
         val key = cleanRepoKey(repoUrl)
@@ -246,7 +249,9 @@ object ExtensionRepoMetaHelper {
             shortName = shortName?.takeIf { it.isNotBlank() } ?: existing?.shortName,
             website = website.ifBlank { existing?.website.orEmpty() },
             discord = discord ?: existing?.discord,
-            githubUrl = githubUrl ?: existing?.githubUrl
+            githubUrl = githubUrl ?: existing?.githubUrl,
+            // a fetched name replaces a derived one; a blank fetched name keeps the derived mark
+            derived = derived || (name.isBlank() && existing?.derived == true),
         )
         metaCache[key] = meta
         persistMetaCache()
@@ -402,6 +407,16 @@ object ExtensionRepoMetaHelper {
         }
     }
 
+    /**
+     * True when [meta] came from the repo itself. URL-derived metadata (marked [ExtensionRepoMeta.derived],
+     * or saved before that mark existed, where the name is the shown URL) is fetched again.
+     */
+    fun isFinal(meta: ExtensionRepoMeta, repoUrl: String): Boolean {
+        if (meta.derived) return false
+        if (meta.name.isBlank() && meta.shortName == null) return false
+        return meta.name.isBlank() || meta.name != cleanShownUrl(repoUrl)
+    }
+
     fun getCachedMeta(repoUrl: String): ExtensionRepoMeta? {
         ensureLoaded()
         val key = cleanRepoKey(repoUrl)
@@ -432,7 +447,7 @@ object ExtensionRepoMetaHelper {
         ensureLoaded()
         val key = cleanRepoKey(repoUrl)
         val cached = metaCache[key]
-        if (cached != null && (cached.name.isNotBlank() || cached.shortName != null)) {
+        if (cached != null && isFinal(cached, repoUrl)) {
             return@withContext cached
         }
 
@@ -506,8 +521,10 @@ object ExtensionRepoMetaHelper {
                         break
                     }
                 }
-            } catch (_: Throwable) {
-                // Continue to next candidate
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Logger.log("ExtensionRepoMetaHelper: meta fetch failed for $targetUrl: $e")
             }
         }
 
@@ -521,7 +538,8 @@ object ExtensionRepoMetaHelper {
             name = cached?.name?.takeIf { it.isNotBlank() } ?: cleanShownUrl(repoUrl),
             shortName = cached?.shortName ?: extractBadgeNameFromUrl(repoUrl),
             website = cached?.website.orEmpty(),
-            discord = cached?.discord
+            discord = cached?.discord,
+            derived = true,
         )
         fallback
     }

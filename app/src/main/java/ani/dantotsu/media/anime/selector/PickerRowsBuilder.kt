@@ -66,10 +66,15 @@ class PickerRowsBuilder(
     ): Built {
         val rows = mutableListOf<PickerRow>()
         val rowViews = HashMap<RowRef, SourceRowViewModel>()
+        val familyCandidates = LinkedHashMap<String, FamilyCandidate>()
+        val familyKeyOf = HashMap<RowRef, String>()
         links.forEachIndexed { ei, extractor ->
             val server = extractor.server
             val provider = StableCandidateBuilder.providerOf(server)
-            val facts = servers.getOrPut(ServerKey(server.name, server.embed.url, provider)) {
+            // lib-16 extensions leave the embed url empty; the video url then tells
+            // two releases with the same name apart (reposts)
+            val serverUrl = server.embed.url.ifBlank { server.video?.videoUrl.orEmpty() }
+            val facts = servers.getOrPut(ServerKey(server.name, serverUrl, provider)) {
                 runCatching {
                     val data = EditotsuInternalData.of(server.video)
                     ServerFacts(
@@ -83,6 +88,10 @@ class PickerRowsBuilder(
                 }.getOrDefault(ServerFacts(null, null))
             }
             val family = facts.family
+            val inFamily = storedFamily != null && family != null &&
+                family.providerPkg == storedFamily.providerPkg &&
+                family.groupKey == storedFamily.groupKey
+            if (inFamily && family != null) familyCandidates.putIfAbsent(family.exactKey, family)
             val aniVideo = server.video
             val data = EditotsuInternalData.of(aniVideo)
             // names only (no hoster prefix or 👤/💾/⚙️ line) when the source sent them
@@ -90,6 +99,7 @@ class PickerRowsBuilder(
             extractor.videos.forEachIndexed { vi, video ->
                 val viewModel = viewOf(extractor, video)
                 rowViews[RowRef(ei, vi)] = viewModel
+                if (inFamily && family != null) familyKeyOf[RowRef(ei, vi)] = family.exactKey
                 val height = ResolutionLabel.resolve(aniVideo?.resolution, server.name)
                     ?: video.quality?.takeIf { it >= 144 }
                 rows += PickerRow(
@@ -102,9 +112,7 @@ class PickerRowsBuilder(
                     audioKind = data?.audioKind() ?: AudioKindDetector.detect(audioText),
                     preferred = extractor.isPreferred || aniVideo?.preferred == true,
                     rememberedExact = storedKey != null && facts.exact == storedKey,
-                    rememberedFamily = storedFamily != null && family != null &&
-                        family.providerPkg == storedFamily.providerPkg &&
-                        family.groupKey == storedFamily.groupKey,
+                    rememberedFamily = inFamily,
                     facets = fieldsOf(extractor, video)?.let { RowFacets.of(it, height, data?.sizeBytes) }
                         ?: RowFacets(resolution = ResolutionLabel.label(height), height = height),
                     qualityKey = if (viewModel.presentation == SourcePresentationKind.STREAM) null
@@ -112,7 +120,12 @@ class PickerRowsBuilder(
                 )
             }
         }
-        return Built(rows, rowViews)
+        // the family's best row is the one auto-play would start; ambiguous marks none
+        val chosen = (FamilyAutoSelector.select(storedFamily, familyCandidates.values.toList())
+            as? FamilyAutoResult.Chosen)?.exactKey
+        val marked = if (chosen == null) rows
+        else rows.map { if (familyKeyOf[it.ref] == chosen) it.copy(familyChoice = true) else it }
+        return Built(marked, rowViews)
     }
 
     private fun keyOf(extractor: VideoExtractor, video: Video): ViewKey {

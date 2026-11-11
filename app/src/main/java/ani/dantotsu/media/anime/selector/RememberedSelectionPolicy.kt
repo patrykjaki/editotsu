@@ -20,6 +20,14 @@ package ani.dantotsu.media.anime.selector
  */
 object RememberedSelectionPolicy {
 
+    /**
+     * A remembered release and group belong to one source. They are dropped only when
+     * the user moves to a different source; picking the same source again or changing
+     * the extension language keeps them (the exact key carries the provider already).
+     */
+    fun clearsMemoryOnSourceChange(previousSourceIndex: Int, newSourceIndex: Int): Boolean =
+        previousSourceIndex != newSourceIndex
+
     /** Exact-slot transaction for one manual remembered selection. */
     enum class ExactSlotAction {
         /** Leave the persisted slot untouched. */

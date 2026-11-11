@@ -59,7 +59,7 @@ object StableReleaseCanonicalizer {
         // canonicalizers as the family soft values, so DIRECT exact
         // identity agrees with family continuity (4K == 2160p,
         // "Dual   Audio" == "Dual Audio"). Never UI formatting.
-        StableSoftCanonicalizer.canonicalResolution(resolution)?.let {
+        StableSoftCanonicalizer.exactKeyResolution(resolution)?.let {
             parts += "res=$it"
         }
         val afmt = StableSoftCanonicalizer.canonicalText(audioFormat)
