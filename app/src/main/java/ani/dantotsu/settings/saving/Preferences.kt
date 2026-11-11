@@ -274,6 +274,7 @@ enum class PrefName(val data: Pref) {
     NovelLastExtCheck(Pref(Location.Irrelevant, Long::class, 0L)),
     ImageUrl(Pref(Location.Irrelevant, String::class, "")),
     AllowOpeningLinks(Pref(Location.Irrelevant, Boolean::class, false)),
+    OcrTranslateNoticeAccepted(Pref(Location.Irrelevant, Boolean::class, false)),
     SearchStyle(Pref(Location.Irrelevant, Int::class, 0)),
     HasUpdatedPrefs(Pref(Location.Irrelevant, Boolean::class, false)),
     LangSort(Pref(Location.Irrelevant, String::class, "all")),
