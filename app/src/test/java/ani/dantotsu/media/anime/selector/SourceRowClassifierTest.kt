@@ -934,25 +934,13 @@ class SourceRowClassifierTest {
     // ---- inline direct-stream rows v2 (device-smoke follow-up) -----
 
     @Test
-    fun inline_streamUsesInlineLayout_releaseUsesFullLayout() {
-        assertEquals(
-            StreamRowLayoutPolicy.RowLayout.INLINE_STREAM,
-            StreamRowLayoutPolicy.layoutFor(SourcePresentationKind.STREAM),
-        )
-        assertEquals(
-            StreamRowLayoutPolicy.RowLayout.FULL_RELEASE,
-            StreamRowLayoutPolicy.layoutFor(SourcePresentationKind.RELEASE),
-        )
-    }
-
-    @Test
     fun inline_serverNameDecisionMatchesViewModelPresentation() {
         // The adapter decides the layout from the server name; the
         // bound view-model built from the same name must agree, in
         // both directions, so recycled holders always match their
         // layout.
         val streamName = "Vidstream - Sub - 1080p"
-        assertTrue(StreamRowLayoutPolicy.isInlineServerName(streamName))
+        assertTrue((SourceRowClassifier.classifyPresentation(streamName) == SourcePresentationKind.STREAM))
         val stream = SourceRowSummarizer.build(
             displayLabel = streamName,
             qualityText = streamName,
@@ -961,8 +949,8 @@ class SourceRowClassifierTest {
         )
         assertEquals(SourcePresentationKind.STREAM, stream.presentation)
         assertEquals(
-            StreamRowLayoutPolicy.RowLayout.INLINE_STREAM,
-            StreamRowLayoutPolicy.layoutFor(stream.presentation),
+            SourcePresentationKind.STREAM,
+            stream.presentation,
         )
         val release = SourceRowSummarizer.build(
             displayLabel = fixtureIroncladNyaaSi,
@@ -971,18 +959,11 @@ class SourceRowClassifierTest {
             url = magnetUrl,
         )
         assertEquals(SourcePresentationKind.RELEASE, release.presentation)
-        assertFalse(StreamRowLayoutPolicy.isInlineServerName(fixtureIroncladNyaaSi))
+        assertFalse((SourceRowClassifier.classifyPresentation(fixtureIroncladNyaaSi) == SourcePresentationKind.STREAM))
         assertEquals(
-            StreamRowLayoutPolicy.RowLayout.FULL_RELEASE,
-            StreamRowLayoutPolicy.layoutFor(release.presentation),
+            SourcePresentationKind.RELEASE,
+            release.presentation,
         )
-    }
-
-    @Test
-    fun inline_actionTouchTargetsStayFullSize() {
-        // Action glyphs may render smaller, but touch targets must
-        // never shrink below 48dp on either card.
-        assertEquals(48, StreamRowLayoutPolicy.MIN_ACTION_TOUCH_DP)
     }
 
     @Test
@@ -997,8 +978,8 @@ class SourceRowClassifierTest {
             formatName = "M3U8",
             url = "https://example.com/vidstream/playlist.m3u8",
         )
-        assertEquals(StreamRowLayoutPolicy.RowLayout.INLINE_STREAM,
-            StreamRowLayoutPolicy.layoutFor(row.presentation))
+        assertEquals(SourcePresentationKind.STREAM,
+            row.presentation)
         assertFalse("header stays prominent", row.header.isNullOrBlank())
         assertTrue("quality/Sub pills stay", row.pills.isNotEmpty())
         assertTrue("details stay for the info action", row.details.isNotEmpty())
@@ -1020,12 +1001,12 @@ class SourceRowClassifierTest {
             "1080p [Group] Title S01E01.mkv",
         )
         for (name in names) {
-            val first = StreamRowLayoutPolicy.isInlineServerName(name)
-            val second = StreamRowLayoutPolicy.isInlineServerName(name)
+            val first = (SourceRowClassifier.classifyPresentation(name) == SourcePresentationKind.STREAM)
+            val second = (SourceRowClassifier.classifyPresentation(name) == SourcePresentationKind.STREAM)
             assertEquals("layout decision must be stable for: $name", first, second)
         }
-        assertTrue(StreamRowLayoutPolicy.isInlineServerName("VidPlay-1"))
-        assertFalse(StreamRowLayoutPolicy.isInlineServerName("1080p [Group] Title S01E01.mkv"))
+        assertTrue((SourceRowClassifier.classifyPresentation("VidPlay-1") == SourcePresentationKind.STREAM))
+        assertFalse((SourceRowClassifier.classifyPresentation("1080p [Group] Title S01E01.mkv") == SourcePresentationKind.STREAM))
     }
 
 

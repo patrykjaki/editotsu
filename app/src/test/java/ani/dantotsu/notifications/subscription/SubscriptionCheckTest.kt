@@ -128,6 +128,23 @@ class SubscriptionCheckTest {
         assertFalse(SubscriptionHelper.bellOn(true, "Fake Torrents", "AnimeGG"))
     }
 
+    @Test fun uninstalled_subscribed_source_skips_the_check() = runBlocking {
+        val otherId = 900002
+        val otherSub = SubscribeMedia(isAnime = true, isAdult = false, id = otherId, name = "Other", image = null)
+        SubscriptionHelper.saveSource(otherId, "Removed Extension")
+        SubscriptionHelper.saveLatest(otherId, 3f)
+        val source = FakeSource(eps(5))
+        assertNull(SubscriptionHelper.getEpisode(source, otherSub))
+        assertEquals("the fallback source must not be asked", 0, source.latestCalls)
+        assertEquals(3f, SubscriptionHelper.loadLatest(otherId))
+    }
+
+    @Test fun saved_source_check_rule() {
+        assertTrue(SubscriptionHelper.checksSource(null, "AnimeGG"))
+        assertTrue(SubscriptionHelper.checksSource("AnimeGG", "AnimeGG"))
+        assertFalse(SubscriptionHelper.checksSource("Removed Extension", "AnimeGG"))
+    }
+
     // ---- SubscriptionNotificationTask --------------------------------------------------------
 
     private fun runTask(source: FakeSource): Boolean {

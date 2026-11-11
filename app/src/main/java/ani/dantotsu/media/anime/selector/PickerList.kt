@@ -39,6 +39,11 @@ data class PickerRow(
     val rememberedExact: Boolean = false,
     /** Matches the remembered release family (provider + group) for this anime. */
     val rememberedFamily: Boolean = false,
+    /**
+     * The row [FamilyAutoSelector] picks from the remembered family (same quality, same
+     * batch first), i.e. the row auto-play would start. Only meaningful with [rememberedFamily].
+     */
+    val familyChoice: Boolean = false,
     /** What the Filter panel filters and sorts by. */
     val facets: RowFacets = RowFacets(),
     /** Release name without resolution/CRC ([ReleaseQualityKey]); rows sharing it are one release in several qualities. */
@@ -165,7 +170,7 @@ object AudioKindDetector {
 }
 
 object StreamNameCleaner {
-    private val RESOLUTION = Regex("""(?i)(\b\d{3,4}\s?p\b|\b[48]k\b|\b\d{3,4}x\d{3,4}\b)""")
+    private val RESOLUTION = ResolutionParser.TOKEN
     private val SIZE = Regex("""(?i)\(?\b\d+(?:[.,]\d+)?\s?(?:kb|mb|gb)\b\)?""")
     private val TRANSPORT = Regex("""(?i)\b(hls|m3u8|mp4|dash|mkv)\b""")
     private val AUDIO_PAREN =
@@ -212,7 +217,7 @@ object StreamNameCleaner {
  * Null when the name has no resolution (nothing to merge on).
  */
 object ReleaseQualityKey {
-    private val RESOLUTION = Regex("""(?i)(?<![a-z0-9])(?:\d{3,4}[pi]|[48]k|uhd|\d{3,4}x\d{3,4})(?![a-z0-9])""")
+    private val RESOLUTION = ResolutionParser.TOKEN
     private val CRC = Regex("""[\[(][0-9A-Fa-f]{8}[\])]""")
     private val EXT = Regex("""(?i)\.(mkv|mp4|avi|webm|m4v|ts)$""")
     private val NON_WORD = Regex("""[^\p{L}\p{N}]+""")
@@ -228,29 +233,24 @@ object ReleaseQualityKey {
 }
 
 object ResolutionLabel {
-    private val DIGITS = Regex("""(\d{3,4})\s?p""", RegexOption.IGNORE_CASE)
-    private val FOUR_K = Regex("""(?i)\b4k\b""")
-
     fun label(resolution: Int?): String? = when {
         resolution == null || resolution <= 0 -> null
         resolution >= 2000 -> "4K"
         else -> "${resolution}p"
     }
 
-    /** Extension-supplied value wins; otherwise parse "1080p" / "4K" from text. */
+    /** Extension-supplied value wins; otherwise parse the text ([ResolutionParser]). */
     fun resolve(extensionResolution: Int?, text: String?): Int? {
         if (extensionResolution != null && extensionResolution > 0) return extensionResolution
-        if (text.isNullOrBlank()) return null
-        DIGITS.find(text)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
-        if (FOUR_K.containsMatchIn(text)) return 2160
-        return null
+        return ResolutionParser.height(text)
     }
 }
 
 object BestMatch {
     /**
-     * Remembered exact pick first, then a single row from the remembered
-     * family, then a single extension-preferred row. Ties at any level
+     * Remembered exact pick first, then the remembered family's row (the single one,
+     * or the one [FamilyAutoSelector] picks among several, so the picker marks what
+     * auto-play would start), then a single extension-preferred row. Ties at any level
      * mean no Best match: the picker never guesses between equals.
      */
     fun pick(rows: List<PickerRow>): BestPick? {
@@ -258,7 +258,9 @@ object BestMatch {
         if (rows.count { it.rememberedExact } > 1) return null
         val family = rows.filter { it.rememberedFamily }
         if (family.size == 1) return BestPick(family[0].ref, BestReason.SAME_GROUP)
-        if (family.size > 1) return null
+        if (family.size > 1) {
+            return family.singleOrNull { it.familyChoice }?.let { BestPick(it.ref, BestReason.SAME_GROUP) }
+        }
         rows.singleOrNull { it.preferred }?.let { return BestPick(it.ref, BestReason.EXTENSION_PREFERRED) }
         return null
     }

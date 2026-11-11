@@ -627,12 +627,11 @@ class AnimeWatchAdapter(
                 binding.faqbutton.isGone = sourceFound
 
                 if (!sourceFound && PrefManager.getVal(PrefName.SearchSources) && autoSelect) {
-                    if (binding.mediaSource.adapter.count > media.selected!!.sourceIndex + 1) {
-                        val nextIndex = media.selected!!.sourceIndex + 1
-                        binding.mediaSource.setText(
-                            binding.mediaSource.adapter
-                                .getItem(nextIndex).toString(), false
-                        )
+                    // indexes into watchSources.names; the dropdown list leaves out "Local"
+                    val nextIndex = ani.dantotsu.media.anime.selector.SourceSearchOrder
+                        .next(watchSources.names, media.selected!!.sourceIndex)
+                    if (nextIndex != null) {
+                        binding.mediaSource.setText(watchSources.names[nextIndex], false)
                         fragment.onSourceChange(nextIndex).apply {
                             binding.mediaSourceTitle.text = showUserText
                             showUserTextListener =

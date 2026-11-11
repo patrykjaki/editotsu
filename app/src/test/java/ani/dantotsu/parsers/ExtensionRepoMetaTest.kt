@@ -1,6 +1,7 @@
 package ani.dantotsu.parsers
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -180,5 +181,49 @@ class ExtensionRepoMetaTest {
             ExtensionRepoMetaHelper.RepoLinkKind.GENERIC_WEB,
             ExtensionRepoMetaHelper.classifyRepoPageUrl(null)
         )
+    }
+
+    @Test
+    fun `url-derived metadata is not final`() {
+        val repo = "https://example.test/derived-${System.nanoTime()}/index.min.json"
+        val derived = ExtensionRepoMetaHelper.saveMeta(
+            repoUrl = repo,
+            name = ExtensionRepoMetaHelper.cleanShownUrl(repo),
+            shortName = "derived",
+            derived = true,
+        )
+        assertTrue(derived.derived)
+        assertFalse(ExtensionRepoMetaHelper.isFinal(derived, repo))
+    }
+
+    @Test
+    fun `fallback saved before the derived mark is retried`() {
+        val repo = "https://example.test/old-fallback/index.min.json"
+        val old = ExtensionRepoMeta(url = repo, name = ExtensionRepoMetaHelper.cleanShownUrl(repo), shortName = "old-fallback")
+        assertFalse(ExtensionRepoMetaHelper.isFinal(old, repo))
+    }
+
+    @Test
+    fun `fetched metadata replaces the derived mark`() {
+        val repo = "https://example.test/fetched-${System.nanoTime()}/index.min.json"
+        ExtensionRepoMetaHelper.saveMeta(repoUrl = repo, name = ExtensionRepoMetaHelper.cleanShownUrl(repo), derived = true)
+        val fetched = ExtensionRepoMetaHelper.saveMeta(repoUrl = repo, name = "Real Repo", shortName = "Real")
+        assertFalse(fetched.derived)
+        assertTrue(ExtensionRepoMetaHelper.isFinal(fetched, repo))
+    }
+
+    @Test
+    fun `blank fetched name keeps the derived mark`() {
+        val repo = "https://example.test/blank-${System.nanoTime()}/index.min.json"
+        ExtensionRepoMetaHelper.saveMeta(repoUrl = repo, name = ExtensionRepoMetaHelper.cleanShownUrl(repo), derived = true)
+        val again = ExtensionRepoMetaHelper.saveMeta(repoUrl = repo, name = "", website = "https://example.test")
+        assertTrue(again.derived)
+    }
+
+    @Test
+    fun `badge-only metadata from the repo is final`() {
+        val repo = "https://example.test/badge/index.pb"
+        assertTrue(ExtensionRepoMetaHelper.isFinal(ExtensionRepoMeta(url = repo, name = "", shortName = "B"), repo))
+        assertFalse(ExtensionRepoMetaHelper.isFinal(ExtensionRepoMeta(url = repo), repo))
     }
 }

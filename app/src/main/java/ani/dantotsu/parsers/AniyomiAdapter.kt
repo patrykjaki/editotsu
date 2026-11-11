@@ -87,10 +87,6 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
             userSelectDub = value
         }
 
-    // Upstream 61e8248b (F): per-language memoization (the local setDub
-    // intentionally stays a no-op, so no cache-clear hook is needed there).
-    private val isDubAvailableCache = mutableMapOf<Int, Boolean>()
-
     private fun getDub(): Boolean {
         val configurableSource = extension.sources.getOrNull(sourceLanguage) as? ConfigurableAnimeSource
             ?: return false
@@ -119,10 +115,11 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
     }
 
     override fun isDubAvailableSeparately(sourceLang: Int?): Boolean {
-        // Upstream 61e8248b (F): honor the requested language, avoid the
-        // out-of-bounds index, and memoize the prefs scan.
+        // Upstream 61e8248b (F): honor the requested language and avoid the
+        // out-of-bounds index. Not memoized: the user can change the sub/dub
+        // preference in the extension's settings at any time, and the toggle
+        // must follow it without a restart.
         val targetLang = (sourceLang ?: sourceLanguage).coerceAtLeast(0)
-        isDubAvailableCache[targetLang]?.let { return it }
         val configurableSource = extension.sources.getOrNull(targetLang) as? ConfigurableAnimeSource
             ?: return false
         currContext()?.let { context ->
@@ -131,14 +128,12 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
                     configurableSource.getPreferenceKey(),
                     Context.MODE_PRIVATE
                 )
-            val available = sharedPreferences.all.any { (_, value) ->
+            return sharedPreferences.all.any { (_, value) ->
                 MediaNameAdapter.setSubDub(
                     value.toString(),
                     MediaNameAdapter.SubDubType.NULL
                 ) != null
             }
-            isDubAvailableCache[targetLang] = available
-            return available
         }
         return false
     }

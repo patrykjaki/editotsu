@@ -15,16 +15,11 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-//import androidx.compose.ui.test.performClick
-//import androidx.compose.ui.geometry.isEmpty
-//import androidx.compose.ui.semantics.text
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.fragment.app.activityViewModels
-//import androidx.glance.visibility
-//import androidx.glance.visibility
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.withCreated
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -100,6 +95,8 @@ import ani.dantotsu.media.anime.selector.RememberedSelectionPolicy
 import ani.dantotsu.media.anime.selector.SelectedFamilyStore
 import ani.dantotsu.media.anime.selector.SelectedKeyStore
 import ani.dantotsu.media.anime.selector.StableCandidateBuilder
+import ani.dantotsu.media.anime.selector.EpisodeStreamCarryOver
+import ani.dantotsu.media.anime.selector.PickerRebuildPolicy
 import ani.dantotsu.setSafeOnClickListener
 import ani.dantotsu.settings.SettingsGroupActivity
 import ani.dantotsu.settings.saving.PrefManager
@@ -134,6 +131,12 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
     private var scope: CoroutineScope = lifecycleScope
     private var media: Media? = null
     private var episode: Episode? = null
+
+    /** The open filter panel; dismissed with the picker so it never outlives it. */
+    private var filterSheet: BottomSheetDialog? = null
+
+    /** Coalesces list rebuilds while extractors arrive (one per callback before). */
+    private val rebuildHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var prevEpisode: String? = null
     private var makeDefault = false
     private var selected: String? = null
@@ -427,10 +430,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                 val downloadVideo = if (torrentUrl != null && selectedVideo != null) {
                                     val link = try {
                                         withContext(Dispatchers.IO) {
-                                            // The previous torrent goes only when this one is a different
-                                            // torrent: the next episode of a batch is the same torrent, and
-                                            // removing it dropped every peer (ep 2 waited 19 s to reconnect).
-                                            val previousHash = torrentManager.activeTorrentHash
+                                            // The previously active torrent stays: it may be playing (PiP) or
+                                            // downloading, and removing it stalled that stream. Unused
+                                            // torrents are removed by the idle cleanup.
                                             val index = ani.dantotsu.torrent.TorrentLinks.fileIndex(torrentUrl)
                                             Logger.log("Sending: $torrentUrl, ${selectedVideo.quality}, $index")
                                             val currentTorrent = torrentManager.addTorrent(
@@ -440,9 +442,6 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                                 "",
                                                 false
                                             )
-                                            if (previousHash != null && !previousHash.equals(currentTorrent.hash, ignoreCase = true)) {
-                                                torrentManager.removeTorrent(previousHash)
-                                            }
                                             torrentManager.activeTorrentHash = currentTorrent.hash
 
                                             // Pre-buffer the first piece and release temporary check lease
@@ -847,6 +846,15 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         if (!isAdded || _binding == null) return
         prevEpisode = null
 
+        // the episode list can be replaced while the picker is open (cached list, then
+        // the fresh one). play the episode the list holds now, with the streams this
+        // picker loaded.
+        val listed = media.anime?.episodes?.getEpisode(media.anime?.selectedEpisode)
+        episode?.let { loaded ->
+            if (listed != null) EpisodeStreamCarryOver.carry(loaded, listed)
+        }
+        if (listed != null) episode = listed
+
         episode?.let { ep ->
             val video = ep.extractors?.find {
                 it.server.name == ep.selectedExtractor
@@ -1045,13 +1053,25 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
         // ---- list building ------------------------------------------------
 
+        private val rebuildNow = Runnable { rebuildList() }
+
+        /**
+         * Schedules a list rebuild. The first list is built at once; while more extractors
+         * arrive, rebuilds are batched ([PickerRebuildPolicy.DELAY_MS]) so a source with 50+
+         * rows rebinds the list a few times instead of once per row.
+         */
+        fun rebuild() {
+            rebuildHandler.removeCallbacks(rebuildNow)
+            rebuildHandler.postDelayed(rebuildNow, PickerRebuildPolicy.delayMs(shown.isEmpty()))
+        }
+
         /**
          * Rebuild the list from a snapshot of [links]. Rows are parsed on a
          * single background worker with a per-row cache (only new rows are
          * parsed), then applied on the main thread. Only the newest pass is
          * applied; [shown] is the snapshot the applied list indexes into.
          */
-        fun rebuild() {
+        private fun rebuildList() {
             val mediaId = media?.id
             val storedKey = mediaId?.let { SelectedKeyStore.load(it) }
             val storedFamily = mediaId?.let { SelectedFamilyStore.load(it) }
@@ -1147,14 +1167,23 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             bindFilters(showFilter)
         }
 
+        /** What the chip row showed last; the chips are only re-created when it changes. */
+        private var boundFilters: List<Any?>? = null
+
         @SuppressLint("NotifyDataSetChanged")
         private fun bindFilters(show: Boolean) {
             val group = binding.selectorFilters
-            group.setOnCheckedStateChangeListener(null)
-            group.removeAllViews()
             val sourceSettings = configurableSource()
             val showFilterChip = list.entries.isNotEmpty() &&
                 (PickerFilter.showButton(shownRows, effectiveFilter()) || sourceSettings != null)
+            val audioCounts = if (show) (listOf<AudioKind?>(null) + AudioKindFilter.kinds(list.entries))
+                .map { it to AudioKindFilter.count(list.entries, it) } else emptyList()
+            val activeFilters = effectiveFilter().let { f -> FilterDimension.values().sumOf { f.values(it).size } }
+            val state = listOf(show, audioCounts, filter, showFilterChip, activeFilters, sourcePrefsOpened)
+            if (state == boundFilters && group.childCount > 0) return
+            boundFilters = state
+            group.setOnCheckedStateChangeListener(null)
+            group.removeAllViews()
             group.isVisible = show || showFilterChip || sourcePrefsOpened
             if (show) bindAudioChips(group)
             if (showFilterChip) group.addView(filterChip(group))
@@ -1242,6 +1271,8 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         private fun openFilterPanel() {
             val ctx = context ?: return
             val dialog = BottomSheetDialog(ctx)
+            filterSheet?.dismiss()
+            filterSheet = dialog
             val d = ctx.resources.displayMetrics.density
             fun px(dp: Int) = (dp * d).toInt()
             var groupsOpen = false
@@ -1384,6 +1415,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             }
             render()
             dialog.setContentView(root)
+            dialog.setOnDismissListener { if (filterSheet === dialog) filterSheet = null }
             dialog.show()
         }
 
@@ -2084,6 +2116,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
     }
 
     override fun onDestroyView() {
+        rebuildHandler.removeCallbacksAndMessages(null)
+        filterSheet?.dismiss()
+        filterSheet = null
         super.onDestroyView()
         _binding = null
     }

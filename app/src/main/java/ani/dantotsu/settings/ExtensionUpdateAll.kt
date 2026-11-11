@@ -1,16 +1,29 @@
 package ani.dantotsu.settings
 
+import android.app.NotificationManager
+import android.content.Context
 import android.widget.Button
+import androidx.core.app.NotificationCompat
 import androidx.core.view.isVisible
 import ani.dantotsu.R
 import ani.dantotsu.parsers.novel.NovelExtension
+import ani.dantotsu.snackString
+import ani.dantotsu.util.Logger
+import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.extension.InstallStep
+import rx.Observable
+import rx.Subscription
+import rx.android.schedulers.AndroidSchedulers
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * "Update all" on the installed-extension lists (as in Aniyomi/Mihon).
- * Each pending update goes through the same per-row update callback, so
- * the existing installer queue installs them one by one; with the
- * PackageInstaller (Android 12+), Shizuku or private installer that needs
- * no prompt for extensions Editotsu installed itself.
+ * "Update all" on the installed-extension lists (as in Aniyomi/Mihon), and the
+ * single-row update, which is a batch of one.
+ *
+ * Each extension gets its own notification (id from its package) with its name.
+ * When the whole batch has ended, one snackbar sums it up. Updates run to the end
+ * on the application context: unsubscribing cancels an install, so they are not
+ * tied to the screen; each subscription is dropped when its update ends.
  */
 object ExtensionUpdateAll {
     fun <T> pending(items: List<T>, hasUpdate: (T) -> Boolean): List<T> = items.filter(hasUpdate)
@@ -21,13 +34,143 @@ object ExtensionUpdateAll {
         else -> false
     }
 
-    /** Shows the button with the count when [pending] is non-empty; a tap updates each one. */
-    fun <T> bind(button: Button, pending: List<T>, update: (T) -> Unit) {
+    /** One extension to update: its package, shown name, and the install stream. */
+    class Item(val pkg: String, val name: String, val update: () -> Observable<InstallStep>)
+
+    /** Result of one update: null [error] means updated. */
+    data class Outcome(val name: String, val error: String?)
+
+    /** What the summary snackbar says, without Android resources (tested on the JVM). */
+    sealed class Summary {
+        data class OneUpdated(val name: String) : Summary()
+        data class OneFailed(val name: String, val reason: String?) : Summary()
+        data class AllUpdated(val count: Int) : Summary()
+        data class SomeFailed(val updated: Int, val failedNames: List<String>) : Summary()
+    }
+
+    fun summarize(outcomes: List<Outcome>): Summary? {
+        if (outcomes.isEmpty()) return null
+        if (outcomes.size == 1) {
+            val o = outcomes[0]
+            return if (o.error == null) Summary.OneUpdated(o.name) else Summary.OneFailed(o.name, o.error)
+        }
+        val failed = outcomes.filter { it.error != null }.map { it.name }
+        return if (failed.isEmpty()) Summary.AllUpdated(outcomes.size)
+        else Summary.SomeFailed(outcomes.size - failed.size, failed)
+    }
+
+    fun notificationId(pkg: String): Int = "extension-update:$pkg".hashCode()
+
+    private val running = ConcurrentHashMap<String, Subscription>()
+
+    /**
+     * Starts every update not already running. [onFinished] runs on the main thread
+     * once all of them ended, with true when at least one failed.
+     */
+    fun run(context: Context, items: List<Item>, onFinished: (anyFailed: Boolean) -> Unit = {}) {
+        val app = context.applicationContext
+        val toStart = items.filter { !running.containsKey(it.pkg) }
+        if (toStart.isEmpty()) {
+            onFinished(false)
+            return
+        }
+        val outcomes = ArrayList<Outcome>()
+        val endedPkgs = HashSet<String>()
+        fun ended(item: Item, error: Throwable?) {
+            endedPkgs += item.pkg
+            running.remove(item.pkg)
+            outcomes += Outcome(item.name, error?.let { it.message ?: app.getString(R.string.extension_update_unknown_error) })
+            if (error == null) notifyDone(app, item) else notifyFailed(app, item, outcomes.last().error!!)
+            if (outcomes.size == toStart.size) {
+                summarize(outcomes)?.let { snackString(text(app, it)) }
+                onFinished(outcomes.any { it.error != null })
+            }
+        }
+        for (item in toStart) {
+            val subscription = item.update()
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(
+                    { step -> notifyProgress(app, item, step) },
+                    { error ->
+                        Logger.log(error)
+                        ended(item, error)
+                    },
+                    { ended(item, null) },
+                )
+            // a stream that ended synchronously already called ended()
+            if (item.pkg !in endedPkgs) {
+                running[item.pkg] = subscription
+            }
+        }
+    }
+
+    fun text(context: Context, summary: Summary): String = when (summary) {
+        is Summary.OneUpdated -> context.getString(R.string.extension_update_done_title, summary.name)
+        is Summary.OneFailed -> context.getString(
+            R.string.extension_update_one_failed, summary.name,
+            summary.reason ?: context.getString(R.string.extension_update_unknown_error),
+        )
+        is Summary.AllUpdated -> context.resources.getQuantityString(
+            R.plurals.extension_update_summary_done, summary.count, summary.count,
+        )
+        is Summary.SomeFailed -> context.getString(
+            R.string.extension_update_summary_failed, summary.updated, summary.failedNames.size,
+            summary.failedNames.joinToString(", "),
+        )
+    }
+
+    private fun manager(context: Context) =
+        context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+    private fun stepText(context: Context, step: InstallStep): String? = when (step) {
+        InstallStep.Pending -> context.getString(R.string.extension_update_step_pending)
+        InstallStep.Downloading -> context.getString(R.string.extension_update_step_downloading)
+        InstallStep.Installing -> context.getString(R.string.extension_update_step_installing)
+        else -> null
+    }
+
+    private fun notifyProgress(context: Context, item: Item, step: InstallStep) {
+        val text = stepText(context, step) ?: return
+        val n = NotificationCompat.Builder(context, Notifications.CHANNEL_DOWNLOADER_PROGRESS)
+            .setSmallIcon(R.drawable.ic_round_sync_24)
+            .setContentTitle(context.getString(R.string.extension_update_progress_title, item.name))
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        manager(context).notify(notificationId(item.pkg), n)
+    }
+
+    private fun notifyFailed(context: Context, item: Item, reason: String) {
+        val n = NotificationCompat.Builder(context, Notifications.CHANNEL_DOWNLOADER_ERROR)
+            .setSmallIcon(R.drawable.ic_round_info_24)
+            .setContentTitle(context.getString(R.string.extension_update_failed_title, item.name))
+            .setContentText(reason)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        manager(context).notify(notificationId(item.pkg), n)
+    }
+
+    private fun notifyDone(context: Context, item: Item) {
+        val n = NotificationCompat.Builder(context, Notifications.CHANNEL_DOWNLOADER_PROGRESS)
+            .setSmallIcon(R.drawable.ic_circle_check)
+            .setContentTitle(context.getString(R.string.extension_update_done_title, item.name))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        manager(context).notify(notificationId(item.pkg), n)
+    }
+
+    /**
+     * Shows the button with the count when [pending] is non-empty; a tap updates each
+     * one. The button turns back on when an update fails (the list does not change then).
+     */
+    fun <T> bind(button: Button, pending: List<T>, toItem: (T) -> Item) {
         button.isVisible = pending.isNotEmpty()
         button.text = button.context.getString(R.string.extensions_update_all, pending.size)
         button.setOnClickListener {
             button.isEnabled = false
-            pending.forEach(update)
+            run(button.context, pending.map(toItem)) { anyFailed ->
+                if (anyFailed) button.isEnabled = true
+            }
         }
         button.isEnabled = true
     }
