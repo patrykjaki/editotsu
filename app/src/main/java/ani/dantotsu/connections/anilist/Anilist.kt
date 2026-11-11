@@ -266,6 +266,8 @@ object Anilist {
 
     fun loginIntent(context: Context) {
         val clientID = 49149
+        // The callback is accepted only while this login is pending (see AnilistLoginGate).
+        AnilistLoginGate.start()
         try {
             CustomTabsIntent.Builder().build().launchUrl(
                 context,
