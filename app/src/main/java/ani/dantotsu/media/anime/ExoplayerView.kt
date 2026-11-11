@@ -90,7 +90,8 @@ import ani.dantotsu.media.anime.player.PlaybackError
 import ani.dantotsu.media.anime.player.PlaybackListener
 import ani.dantotsu.media.anime.player.PlaybackState
 import ani.dantotsu.media.anime.player.PlayerAniSkipManager
-import ani.dantotsu.media.anime.player.PlayerCastManager
+import ani.dantotsu.media.anime.player.PlayerCastController
+import ani.dantotsu.media.anime.player.PlayerCastFactory
 import ani.dantotsu.media.anime.player.PlayerDiscordManager
 import ani.dantotsu.media.anime.player.PlayerGestureManager
 import ani.dantotsu.media.anime.player.PlayerProgressManager
@@ -165,7 +166,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         private set
     lateinit var discordManager: PlayerDiscordManager
         private set
-    lateinit var castManager: PlayerCastManager
+    lateinit var castManager: PlayerCastController
         private set
     lateinit var progressManager: PlayerProgressManager
         private set
@@ -483,7 +484,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             this, model, { playbackSession.progress(selectedEpisodeKey()) }
         )
 
-        castManager = PlayerCastManager(this, playerView) { isPlaying ->
+        castManager = PlayerCastFactory.create(this, playerView) { isPlaying ->
             isPlayerPlaying = isPlaying
             updatePipActions(isPlaying)
             playerView.keepScreenOn = isPlaying
@@ -618,7 +619,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         exoPlay.setOnClickListener {
             if (this::playerManager.isInitialized && playerManager.isInitialized) {
                 if (this::castManager.isInitialized && castManager.isCasting()) {
-                    if (castManager.castPlayer?.isPlaying == true) {
+                    if (castManager.isRemotePlaying()) {
                         castManager.pause()
                     } else {
                         castManager.play()
