@@ -1,5 +1,6 @@
 package ani.dantotsu.settings.screens
 
+import ani.dantotsu.connections.comments.CommentsOptIn
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
@@ -96,9 +97,9 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                 summary = R.string.comments_button_desc, icon = R.drawable.ic_round_comment_24,
                 visible = loggedIn, keys = listOf(PrefName.CommentsEnabled),
                 kind = Kind.Switch(
-                    get = { PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1 },
+                    get = { CommentsOptIn.isEnabled() },
                     set = { host, on ->
-                        PrefManager.setVal(PrefName.CommentsEnabled, if (on) 1 else 2)
+                        CommentsOptIn.setEnabled(on)
                         snackString(host.activity.getString(R.string.restart_app_extra))
                     },
                 ),

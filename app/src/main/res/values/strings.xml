@@ -1001,7 +1001,9 @@
     <string name="cast_torrent_unsupported">Cast works with HTTP sources only. Torrents play on this phone.</string>
     <string name="try_internal_cast_experimental">Try Internal Cast (Experimental)</string>
     <string name="comments_button">Enable Comments</string>
-    <string name="comments_button_desc">Editotsu\'s very own comments server</string>
+    <string name="comments_button_desc">Sends your AniList login token, username and avatar to api.dantotsu.app, run by the Dantotsu project</string>
+    <string name="comments_off_info">Comments are off. Turning them on sends your AniList login token, username and avatar to api.dantotsu.app, a server run by the Dantotsu project, not by Editotsu.</string>
+    <string name="comments_enable">Turn on comments</string>
 
     <string name="comments">Comments</string>
     <string name="newest">Newest</string>

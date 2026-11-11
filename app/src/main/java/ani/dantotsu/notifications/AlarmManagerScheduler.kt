@@ -1,5 +1,6 @@
 package ani.dantotsu.notifications
 
+import ani.dantotsu.connections.comments.CommentsOptIn
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
@@ -22,7 +23,7 @@ class AlarmManagerScheduler(private val context: Context) : TaskScheduler {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
         val intent = when {
-            taskType == TaskType.COMMENT_NOTIFICATION && PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1 ->
+            taskType == TaskType.COMMENT_NOTIFICATION && CommentsOptIn.isEnabled() ->
                 Intent(context, CommentNotificationReceiver::class.java)
 
             taskType == TaskType.ANILIST_NOTIFICATION ->
@@ -63,7 +64,7 @@ class AlarmManagerScheduler(private val context: Context) : TaskScheduler {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
         val intent = when {
-            taskType == TaskType.COMMENT_NOTIFICATION && PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1 ->
+            taskType == TaskType.COMMENT_NOTIFICATION && CommentsOptIn.isEnabled() ->
                 Intent(context, CommentNotificationReceiver::class.java)
 
             taskType == TaskType.ANILIST_NOTIFICATION ->
