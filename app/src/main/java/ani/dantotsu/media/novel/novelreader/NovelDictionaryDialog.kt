@@ -12,12 +12,17 @@ import androidx.lifecycle.lifecycleScope
 import ani.dantotsu.BottomSheetDialogFragment
 import ani.dantotsu.R
 import ani.dantotsu.databinding.DialogDictionarySheetBinding
+import ani.dantotsu.okHttpClient
+import eu.kanade.tachiyomi.network.await
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
-import java.net.URL
+import okhttp3.Request
+import java.io.IOException
 import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 
 class NovelDictionaryDialog : BottomSheetDialogFragment() {
 
@@ -58,7 +63,12 @@ class NovelDictionaryDialog : BottomSheetDialogFragment() {
             try {
                 val encoded = URLEncoder.encode(word.lowercase(), "UTF-8")
                 val url = "https://api.dictionaryapi.dev/api/v2/entries/en/$encoded"
-                val response = URL(url).readText()
+                // App client (connect/read timeouts) plus a call limit, and a
+                // cancellable call so closing the sheet stops the request.
+                val response = dictionaryClient.newCall(Request.Builder().url(url).build()).await().use {
+                    if (!it.isSuccessful) throw IOException("HTTP ${it.code}")
+                    it.body.string()
+                }
                 val json = JSONArray(response)
                 if (json.length() == 0) throw Exception("Empty result")
 
@@ -138,6 +148,8 @@ class NovelDictionaryDialog : BottomSheetDialogFragment() {
                         }
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     if (!isAdded || _binding == null) return@withContext
@@ -162,6 +174,10 @@ class NovelDictionaryDialog : BottomSheetDialogFragment() {
     companion object {
         const val TAG = "NovelDictionaryDialog"
         private const val ARG_WORD = "arg_word"
+
+        private val dictionaryClient by lazy {
+            okHttpClient.newBuilder().callTimeout(20, TimeUnit.SECONDS).build()
+        }
 
         fun newInstance(word: String) = NovelDictionaryDialog().apply {
             arguments = Bundle().apply {
