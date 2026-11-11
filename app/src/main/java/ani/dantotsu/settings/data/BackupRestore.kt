@@ -6,6 +6,7 @@ import android.view.inputmethod.EditorInfo
 import androidx.appcompat.app.AlertDialog
 import ani.dantotsu.BuildConfig
 import ani.dantotsu.R
+import ani.dantotsu.animethemes.ThemeFavourites
 import ani.dantotsu.databinding.DialogUserAgentBinding
 import ani.dantotsu.restartApp
 import ani.dantotsu.settings.saving.internal.BackupSection
@@ -113,6 +114,7 @@ object BackupRestore {
             toast(activity.getString(R.string.backup_invalid_file))
             return
         }
+        ThemeFavourites.reload()
         val missing = PreferencePackager.lastMissingExtensions
         if (missing.isEmpty()) {
             activity.restartApp()
