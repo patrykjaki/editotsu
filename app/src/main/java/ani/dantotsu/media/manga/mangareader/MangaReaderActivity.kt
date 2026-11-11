@@ -45,6 +45,9 @@ import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
+import ani.dantotsu.media.manga.mangareader.ocr.canShowOcrSheet
+import ani.dantotsu.media.manga.mangareader.ocr.OcrTranslationBottomSheet
+import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.OrientationHelper
 import androidx.recyclerview.widget.PagerSnapHelper
@@ -445,15 +448,20 @@ class MangaReaderActivity : AppCompatActivity() {
                 snackString(getString(R.string.translating_page))
                 scope.launch(Dispatchers.IO) {
                     val loadedBitmap = loadBitmap(currentImage.url, emptyList<BitmapTransformation>())
-                    if (loadedBitmap != null) {
-                        val softwareBitmap = if (loadedBitmap.config == Bitmap.Config.HARDWARE) {
-                            loadedBitmap.copy(Bitmap.Config.ARGB_8888, false)
-                        } else {
-                            loadedBitmap
-                        }
+                    val pageFile = loadedBitmap?.let { OcrTranslationBottomSheet.writePageImage(this@MangaReaderActivity, it) }
+                    if (pageFile != null) {
                         withContext(Dispatchers.Main) {
-                            ani.dantotsu.media.manga.mangareader.ocr.OcrTranslationBottomSheet.newInstance(softwareBitmap)
-                                .show(supportFragmentManager, "ocr_translate")
+                            // The page loads in the background; if the user left the
+                            // reader meanwhile, a show() would crash after onSaveInstanceState.
+                            if (canShowOcrSheet(
+                                    lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
+                                    supportFragmentManager.isStateSaved,
+                                    isFinishing || isDestroyed,
+                                )
+                            ) {
+                                OcrTranslationBottomSheet.newInstance(pageFile)
+                                    .show(supportFragmentManager, "ocr_translate")
+                            }
                         }
                     } else {
                         withContext(Dispatchers.Main) {

@@ -74,3 +74,11 @@ object OcrPolicy {
         }
     }
 }
+
+/**
+ * The OCR sheet opens after the page loads in the background. Showing a
+ * fragment once the activity saved its state throws, so the sheet only opens
+ * while the reader is started and not finishing.
+ */
+fun canShowOcrSheet(isStarted: Boolean, isStateSaved: Boolean, isFinishing: Boolean): Boolean =
+    isStarted && !isStateSaved && !isFinishing
