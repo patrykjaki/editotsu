@@ -1053,12 +1053,6 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
         // ---- list building ------------------------------------------------
 
-        /**
-         * Rebuild the list from a snapshot of [links]. Rows are parsed on a
-         * single background worker with a per-row cache (only new rows are
-         * parsed), then applied on the main thread. Only the newest pass is
-         * applied; [shown] is the snapshot the applied list indexes into.
-         */
         private val rebuildNow = Runnable { rebuildList() }
 
         /**
@@ -1071,6 +1065,12 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             rebuildHandler.postDelayed(rebuildNow, PickerRebuildPolicy.delayMs(shown.isEmpty()))
         }
 
+        /**
+         * Rebuild the list from a snapshot of [links]. Rows are parsed on a
+         * single background worker with a per-row cache (only new rows are
+         * parsed), then applied on the main thread. Only the newest pass is
+         * applied; [shown] is the snapshot the applied list indexes into.
+         */
         private fun rebuildList() {
             val mediaId = media?.id
             val storedKey = mediaId?.let { SelectedKeyStore.load(it) }
