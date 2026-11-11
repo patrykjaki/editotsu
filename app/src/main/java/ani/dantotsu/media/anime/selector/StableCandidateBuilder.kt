@@ -79,7 +79,8 @@ object StableCandidateBuilder {
         val groupKey = StableGroupCanonicalizer.canonicalKey(group) ?: return null
         val soft = LinkedHashMap<String, String>()
         TrackerCanonicalizer.canonicalKey(meta.tracker)?.let { soft["trackerKey"] = it }
-        StableSoftCanonicalizer.canonicalResolution(meta.resolution)?.let { soft["resolution"] = it }
+        (StableSoftCanonicalizer.canonicalResolution(meta.resolution)
+            ?: ResolutionParser.label(ResolutionParser.height(server.name)))?.let { soft["resolution"] = it }
         packKey(server)?.let { soft["pack"] = it }
         StableSoftCanonicalizer.canonicalText(meta.softAudioMode)?.let { soft["audioMode"] = it }
         StableSoftCanonicalizer.canonicalText(meta.softAudioFormat)?.let { soft["audioFormat"] = it }

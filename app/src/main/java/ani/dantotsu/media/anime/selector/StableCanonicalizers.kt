@@ -104,10 +104,23 @@ object StableSoftCanonicalizer {
             .lowercase(Locale.ROOT)
     }
 
+    /**
+     * Resolution as a height label for family comparison: "4K"/"4k" -> "2160p",
+     * "1920x1080" -> "1080p", "2K" -> "1440p". Values stored by older builds ("4k",
+     * "1920x1080") read the same way, so they still match. Text without a
+     * resolution falls back to [canonicalText].
+     */
     fun canonicalResolution(raw: String?): String? {
         val t = canonicalText(raw) ?: return null
-        // 4K is a display alias only; the stable internal value is
-        // 2160p. 1440p stays 1440p (it is NOT renamed 2K).
+        return ResolutionParser.label(ResolutionParser.height(t)) ?: t
+    }
+
+    /**
+     * The resolution part of a stored exact key, as older builds wrote it
+     * (only "4k" became "2160p"). Frozen so saved exact keys stay valid.
+     */
+    fun exactKeyResolution(raw: String?): String? {
+        val t = canonicalText(raw) ?: return null
         return if (t == "4k") "2160p" else t
     }
 }
