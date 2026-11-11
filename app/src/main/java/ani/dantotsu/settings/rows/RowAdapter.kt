@@ -15,7 +15,6 @@ import ani.dantotsu.R
 import ani.dantotsu.databinding.ItemSettingMoreBinding
 import ani.dantotsu.databinding.ItemSettingHeaderBinding
 import ani.dantotsu.databinding.ItemSettingRowBinding
-import ani.dantotsu.util.customAlertDialog
 import com.google.android.material.button.MaterialButton
 import kotlin.math.roundToInt
 
@@ -185,13 +184,14 @@ class RowAdapter(
 
             is Kind.Choice -> b.root.setOnClickListener {
                 val labels = kind.labels(context)
-                context.customAlertDialog().apply {
-                    setTitle(context.getString(row.title))
-                    singleChoiceItems(labels.toTypedArray(), kind.get()) { which ->
-                        kind.set(host, which)
-                        setSummary(b, context, row)
-                    }
-                    show()
+                val details = kind.details?.invoke(context)
+                ChoiceSheet.single(
+                    context, context.getString(row.title),
+                    labels.mapIndexed { i, label -> ChoiceOption(label, details?.getOrNull(i)) },
+                    kind.get(),
+                ) { which ->
+                    kind.set(host, which)
+                    setSummary(b, context, row)
                 }
             }
 

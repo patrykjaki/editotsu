@@ -1,5 +1,7 @@
 package ani.dantotsu.settings.data
 
+import ani.dantotsu.settings.rows.ChoiceSheet
+import ani.dantotsu.settings.rows.ChoiceOption
 import android.app.Activity
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -46,12 +48,9 @@ object BackupRestore {
             activity.getString(R.string.backup_section_logins),
         )
         val checked = booleanArrayOf(true, true, false)
-        activity.customAlertDialog().apply {
-            setTitle(R.string.backup_choose_title)
-            multiChoiceItems(labels, checked) { updated ->
-                updated.forEachIndexed { i, v -> checked[i] = v }
-            }
-            setPosButton(R.string.button_backup) {
+        ChoiceSheet.multi(
+            activity, activity.getString(R.string.backup_choose_title), labels.map { ChoiceOption(it) }, checked,
+            confirm = ChoiceSheet.Confirm(R.string.button_backup, R.drawable.backup_restore) {
                 val sections = options.filterIndexed { i, _ -> checked[i] }.toSet() + BackupSection.Settings
                 if (BackupSection.Logins in sections) {
                     passwordDialog(activity, exporting = true) { password ->
@@ -69,10 +68,8 @@ object BackupRestore {
                 } else {
                     onChosen(sections, null)
                 }
-            }
-            setNegButton(R.string.cancel)
-            show()
-        }
+            },
+        )
     }
 
     /** Restores [bytes] read from a file called [name]; restarts the app process when done. */

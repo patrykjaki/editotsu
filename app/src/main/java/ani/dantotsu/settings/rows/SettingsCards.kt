@@ -23,8 +23,8 @@ internal object SettingsCards {
 
     fun fill(view: View) = MaterialColors.getColor(view, com.google.android.material.R.attr.colorSurfaceVariant)
 
-    /** Card background and ripple for one row at its place in the section. */
-    fun apply(view: View, first: Boolean, last: Boolean, topMarginDp: Int = 0) {
+    /** Card background and ripple for one row at its place in the section; [fillColor] replaces the card fill (selected option). */
+    fun apply(view: View, first: Boolean, last: Boolean, topMarginDp: Int = 0, fillColor: Int? = null) {
         val d = view.resources.displayMetrics.density
         val big = OUTER_DP * d
         val small = INNER_DP * d
@@ -34,8 +34,9 @@ internal object SettingsCards {
             .setBottomLeftCornerSize(if (last) big else small)
             .setBottomRightCornerSize(if (last) big else small)
             .build()
-        val content = MaterialShapeDrawable(shape).apply { fillColor = ColorStateList.valueOf(fill(view)) }
-        val mask = MaterialShapeDrawable(shape).apply { fillColor = ColorStateList.valueOf(0xFFFFFFFF.toInt()) }
+        val color = fillColor ?: fill(view)
+        val content = MaterialShapeDrawable(shape).apply { setFillColor(ColorStateList.valueOf(color)) }
+        val mask = MaterialShapeDrawable(shape).apply { setFillColor(ColorStateList.valueOf(0xFFFFFFFF.toInt())) }
         val ripple = MaterialColors.getColor(view, androidx.appcompat.R.attr.colorControlHighlight)
         view.background = RippleDrawable(ColorStateList.valueOf(ripple), content, mask)
         margins(view, top = if (first) topMarginDp else GAP_DP)

@@ -1,5 +1,7 @@
 package ani.dantotsu.settings.screens
 
+import ani.dantotsu.settings.rows.ChoiceSheet
+import ani.dantotsu.settings.rows.ChoiceOption
 import android.content.Intent
 import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
@@ -172,16 +174,23 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
 
     private fun pickInstaller(host: SettingsHost) = with(host.activity) {
         val installer = Injekt.get<BasePreferences>().extensionInstaller()
-        customAlertDialog().apply {
-            setTitle(getString(R.string.extension_installer))
-            val entries = installer.entries
-            val options = entries.map { it.titleResId }.toTypedArray()
-            singleChoiceItems(options, entries.indexOf(installer.get())) { which ->
-                installer.set(entries[which])
-                restartApp()
-            }
-            show()
+        val entries = installer.entries
+        // Changing it restarts the app.
+        ChoiceSheet.single(
+            this, getString(R.string.extension_installer),
+            entries.map { ChoiceOption(it.titleResId, getString(installerDetail(it))) },
+            entries.indexOf(installer.get()),
+        ) { which ->
+            installer.set(entries[which])
+            restartApp()
         }
+    }
+
+    private fun installerDetail(installer: BasePreferences.ExtensionInstaller) = when (installer) {
+        BasePreferences.ExtensionInstaller.LEGACY -> R.string.installer_legacy_desc
+        BasePreferences.ExtensionInstaller.PACKAGEINSTALLER -> R.string.installer_package_desc
+        BasePreferences.ExtensionInstaller.SHIZUKU -> R.string.installer_shizuku_desc
+        BasePreferences.ExtensionInstaller.PRIVATE -> R.string.installer_private_desc
     }
 
     private fun editUserAgent(host: SettingsHost) = with(host.activity) {

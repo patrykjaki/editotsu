@@ -1,5 +1,7 @@
 package ani.dantotsu.settings
 
+import ani.dantotsu.settings.rows.ChoiceSheet
+import ani.dantotsu.settings.rows.ChoiceOption
 import android.content.Intent
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -235,16 +237,14 @@ object AnilistScreen : SettingsScreen("anilist", R.string.anilist_settings, R.dr
             ) { host, _ ->
                 val c = host.activity
                 val now = Anilist.timezone?.let { tz -> Anilist.timeZone.indexOfFirst { Anilist.getApiTimezone(it) == tz } } ?: -1
-                c.customAlertDialog().apply {
-                    setTitle(c.getString(R.string.selected_time_zone))
-                    singleChoiceItems(Anilist.timeZone.toTypedArray(), now) { i ->
-                        val tz = Anilist.getApiTimezone(Anilist.timeZone[i])
-                        if (tz != Anilist.timezone) saveAndRestart(host) {
-                            it.updateSettings(timezone = tz)
-                            Anilist.timezone = tz
-                        }
+                ChoiceSheet.single(
+                    c, c.getString(R.string.selected_time_zone), Anilist.timeZone.map { ChoiceOption(it) }, now,
+                ) { i ->
+                    val tz = Anilist.getApiTimezone(Anilist.timeZone[i])
+                    if (tz != Anilist.timezone) saveAndRestart(host) {
+                        it.updateSettings(timezone = tz)
+                        Anilist.timezone = tz
                     }
-                    show()
                 }
             },
             actionRow("anilist_edit_bio", R.string.edit_bio, R.string.edit_bio_desc, R.drawable.ic_round_edit_note_24) { host, _ ->

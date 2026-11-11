@@ -1,5 +1,7 @@
 package ani.dantotsu.settings.screens
 
+import ani.dantotsu.settings.rows.ChoiceSheet
+import ani.dantotsu.settings.rows.ChoiceOption
 import ani.dantotsu.connections.comments.CommentsOptIn
 import android.app.AlarmManager
 import android.content.Context
@@ -327,22 +329,19 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
         val types = NotificationType.entries.map { it.name }
         val filteredTypes = PrefManager.getVal<Set<String>>(PrefName.AnilistFilteredTypes).toMutableSet()
         val selected = types.map { filteredTypes.contains(it) }.toBooleanArray()
-        customAlertDialog().apply {
-            setTitle(R.string.anilist_notification_filters)
-            multiChoiceItems(
-                types.map { name ->
-                    name.replace("_", " ").lowercase().replaceFirstChar {
-                        if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString()
-                    }
-                }.toTypedArray(),
-                selected
-            ) { updatedSelected ->
-                types.forEachIndexed { index, type ->
-                    if (updatedSelected[index]) filteredTypes.add(type) else filteredTypes.remove(type)
-                }
-                PrefManager.setVal(PrefName.AnilistFilteredTypes, filteredTypes)
+        ChoiceSheet.multi(
+            this, getString(R.string.anilist_notification_filters),
+            types.map { name ->
+                ChoiceOption(name.replace("_", " ").lowercase().replaceFirstChar {
+                    if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString()
+                })
+            },
+            selected,
+        ) { updatedSelected ->
+            types.forEachIndexed { index, type ->
+                if (updatedSelected[index]) filteredTypes.add(type) else filteredTypes.remove(type)
             }
-            show()
+            PrefManager.setVal(PrefName.AnilistFilteredTypes, filteredTypes)
         }
     }
 
@@ -384,10 +383,11 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                 val titles = selectableLists.keys.toTypedArray()
                 val selected = BooleanArray(titles.size) { false }
                 withContext(Dispatchers.Main) {
-                    customAlertDialog().apply {
-                        setTitle(R.string.select_lists_to_import)
-                        multiChoiceItems(titles, selected) {}
-                        setPosButton(R.string.import_action) {
+                    ChoiceSheet.multi(
+                        this@with, getString(R.string.select_lists_to_import), titles.map { ChoiceOption(it) }, selected,
+                        // Back, a swipe or a tap outside closes it without importing.
+                        onCancel = { isImportingLists = false },
+                        confirm = ChoiceSheet.Confirm(R.string.import_action, R.drawable.ic_download_24) {
                             lifecycleScope.launch(Dispatchers.IO) {
                                 val existingIds = SubscriptionHelper.getSubscriptions().keys.toMutableSet()
                                 var importedCount = 0
@@ -406,12 +406,8 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                                     isImportingLists = false
                                 }
                             }
-                        }
-                        setNegButton(R.string.cancel) { isImportingLists = false }
-                        // Back or a tap outside closes it without the cancel button.
-                        setOnCancelListener { isImportingLists = false }
-                        show()
-                    }
+                        },
+                    )
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { isImportingLists = false }
@@ -458,10 +454,10 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                 }
                 val selected = BooleanArray(titles.size) { false }
                 withContext(Dispatchers.Main) {
-                    customAlertDialog().apply {
-                        setTitle(R.string.select_statuses_to_import)
-                        multiChoiceItems(titles.toTypedArray(), selected) {}
-                        setPosButton(R.string.import_action) {
+                    ChoiceSheet.multi(
+                        this@with, getString(R.string.select_statuses_to_import), titles.map { ChoiceOption(it) }, selected,
+                        onCancel = { isImportingStatuses = false },
+                        confirm = ChoiceSheet.Confirm(R.string.import_action, R.drawable.ic_download_24) {
                             lifecycleScope.launch(Dispatchers.IO) {
                                 val animeSelected = mutableSetOf<String>()
                                 val mangaSelected = mutableSetOf<String>()
@@ -489,12 +485,8 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                                     isImportingStatuses = false
                                 }
                             }
-                        }
-                        setNegButton(R.string.cancel) { isImportingStatuses = false }
-                        // Back or a tap outside closes it without the cancel button.
-                        setOnCancelListener { isImportingStatuses = false }
-                        show()
-                    }
+                        },
+                    )
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { isImportingStatuses = false }

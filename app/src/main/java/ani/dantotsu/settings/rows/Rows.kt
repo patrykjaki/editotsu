@@ -52,11 +52,15 @@ sealed interface Kind {
         val set: (SettingsHost, Boolean) -> Unit,
     ) : Kind
 
-    /** Pick one of [labels]; the stored value is the index. */
+    /**
+     * Pick one of [labels] in a [ChoiceSheet]; the stored value is the index. [details] gives
+     * each option an optional second line (same order as [labels]).
+     */
     class Choice(
         val labels: (Context) -> List<String>,
         val get: () -> Int,
         val set: (SettingsHost, Int) -> Unit,
+        val details: ((Context) -> List<String?>)? = null,
     ) : Kind {
         override fun value(context: Context) = labels(context).let { it.getOrNull(get()) ?: it.firstOrNull() }
     }
@@ -157,6 +161,7 @@ fun choiceRow(
     @StringRes title: Int,
     @DrawableRes icon: Int? = null,
     labels: (Context) -> List<String>,
+    details: ((Context) -> List<String?>)? = null,
     advanced: Boolean = false,
     visible: () -> Boolean = { true },
     enabled: () -> Boolean = { true },
@@ -168,6 +173,7 @@ fun choiceRow(
     enabled = enabled, keywords = keywords, keys = listOf(key),
     kind = Kind.Choice(
         labels = labels,
+        details = details,
         get = { PrefManager.getVal(key) },
         set = { host, value ->
             PrefManager.setVal(key, value)
