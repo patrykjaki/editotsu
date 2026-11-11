@@ -45,7 +45,11 @@ import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
+import ani.dantotsu.media.manga.mangareader.ocr.canShowOcrSheet
+import ani.dantotsu.media.manga.mangareader.ocr.OcrTranslationBottomSheet
+import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.OrientationHelper
 import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
@@ -151,8 +155,7 @@ class MangaReaderActivity : AppCompatActivity() {
     var isAnimating = false
 
     private val directionRLBT
-        get() = defaultSettings.direction == RIGHT_TO_LEFT
-                || defaultSettings.direction == BOTTOM_TO_TOP
+        get() = isReversedReadingDirection(defaultSettings.direction)
     private val directionPagedBT
         get() = defaultSettings.layout == CurrentReaderSettings.Layouts.PAGED
                 && defaultSettings.direction == CurrentReaderSettings.Directions.BOTTOM_TO_TOP
@@ -416,7 +419,7 @@ class MangaReaderActivity : AppCompatActivity() {
                                 return
                             }
                         }
-                        val isForward = if (directionRLBT) position < currentChapterIndex else position > currentChapterIndex
+                        val isForward = isForwardChapterTransition(currentChapterIndex, position)
                         progress(isForward) { change(position) }
                     }
                 }
@@ -445,15 +448,20 @@ class MangaReaderActivity : AppCompatActivity() {
                 snackString(getString(R.string.translating_page))
                 scope.launch(Dispatchers.IO) {
                     val loadedBitmap = loadBitmap(currentImage.url, emptyList<BitmapTransformation>())
-                    if (loadedBitmap != null) {
-                        val softwareBitmap = if (loadedBitmap.config == Bitmap.Config.HARDWARE) {
-                            loadedBitmap.copy(Bitmap.Config.ARGB_8888, false)
-                        } else {
-                            loadedBitmap
-                        }
+                    val pageFile = loadedBitmap?.let { OcrTranslationBottomSheet.writePageImage(this@MangaReaderActivity, it) }
+                    if (pageFile != null) {
                         withContext(Dispatchers.Main) {
-                            ani.dantotsu.media.manga.mangareader.ocr.OcrTranslationBottomSheet.newInstance(softwareBitmap)
-                                .show(supportFragmentManager, "ocr_translate")
+                            // The page loads in the background; if the user left the
+                            // reader meanwhile, a show() would crash after onSaveInstanceState.
+                            if (canShowOcrSheet(
+                                    lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
+                                    supportFragmentManager.isStateSaved,
+                                    isFinishing || isDestroyed,
+                                )
+                            ) {
+                                OcrTranslationBottomSheet.newInstance(pageFile)
+                                    .show(supportFragmentManager, "ocr_translate")
+                            }
                         }
                     } else {
                         withContext(Dispatchers.Main) {
@@ -685,15 +693,10 @@ class MangaReaderActivity : AppCompatActivity() {
             }
             cleanChapNum?.let { PrefManager.setCustomVal("${media.id}_${it}_max", maxChapterPage) }
 
-            val nextIndex = if (directionRLBT) currentChapterIndex - 1 else currentChapterIndex + 1
-            val nextChapter = if (defaultSettings.layout != PAGED) {
-                chaptersArr.getOrNull(nextIndex)?.let { chapters[it] }
-            } else null
-
-            val prevIndex = if (directionRLBT) currentChapterIndex + 1 else currentChapterIndex - 1
-            val prevChapter = if (defaultSettings.layout != PAGED) {
-                chaptersArr.getOrNull(prevIndex)?.let { chapters[it] }
-            } else null
+            // Same logical neighbours in every direction; the layout manager
+            // puts them on the matching side of the screen.
+            val nextChapter = if (defaultSettings.layout != PAGED) nextChapterOf(currentChapterIndex) else null
+            val prevChapter = if (defaultSettings.layout != PAGED) previousChapterOf(currentChapterIndex) else null
 
             imageAdapter =
                 dualPage { DualPageAdapter(this, chapter, nextChapter, prevChapter) } ?: ImageAdapter(this, chapter, nextChapter, prevChapter)
@@ -919,11 +922,11 @@ class MangaReaderActivity : AppCompatActivity() {
                             } else if (!isContVisible) handleController(false)
                         }
 
-                        val visiblePos = if (directionRLBT) {
-                            manager.findFirstVisibleItemPosition()
-                        } else {
-                            manager.findLastVisibleItemPosition()
-                        }.takeIf { it != RecyclerView.NO_POSITION } ?: manager.findFirstVisibleItemPosition()
+                        // Adapter positions grow in reading order in every
+                        // direction (reverse layout handles RTL/BTT), so the
+                        // last visible position is the furthest-read page.
+                        val visiblePos = manager.findLastVisibleItemPosition()
+                            .takeIf { it != RecyclerView.NO_POSITION } ?: manager.findFirstVisibleItemPosition()
 
                         if (visiblePos != RecyclerView.NO_POSITION) {
                             val item = imageAdapter?.getItem(visiblePos)
@@ -931,35 +934,19 @@ class MangaReaderActivity : AppCompatActivity() {
                                 is ReaderItem.Page -> {
                                     onChapterScrolledTo(item.chapter, item.pageNumber, item.totalPages)
                                     if (item.totalPages - item.pageNumber <= 5) {
-                                        val nextIdx = if (directionRLBT) currentChapterIndex - 1 else currentChapterIndex + 1
-                                        val nextChap = chaptersArr.getOrNull(nextIdx)?.let { chapters[it] }
-                                        if (nextChap != null) {
-                                            preloadChapterAndAppend(nextChap)
-                                        }
+                                        nextChapterOf(currentChapterIndex)?.let { preloadChapterAndAppend(it) }
                                     }
                                     if (item.pageNumber <= 5) {
-                                        val prevIdx = if (directionRLBT) currentChapterIndex + 1 else currentChapterIndex - 1
-                                        val prevChap = chaptersArr.getOrNull(prevIdx)?.let { chapters[it] }
-                                        if (prevChap != null) {
-                                            preloadChapterAndPrepend(prevChap)
-                                        }
+                                        previousChapterOf(currentChapterIndex)?.let { preloadChapterAndPrepend(it) }
                                     }
                                 }
                                 is ReaderItem.DualPage -> {
                                     onChapterScrolledTo(item.chapter, item.pageNumber, item.totalPages)
                                     if (item.totalPages - item.pageNumber <= 3) {
-                                        val nextIdx = if (directionRLBT) currentChapterIndex - 1 else currentChapterIndex + 1
-                                        val nextChap = chaptersArr.getOrNull(nextIdx)?.let { chapters[it] }
-                                        if (nextChap != null) {
-                                            preloadChapterAndAppend(nextChap)
-                                        }
+                                        nextChapterOf(currentChapterIndex)?.let { preloadChapterAndAppend(it) }
                                     }
                                     if (item.pageNumber <= 3) {
-                                        val prevIdx = if (directionRLBT) currentChapterIndex + 1 else currentChapterIndex - 1
-                                        val prevChap = chaptersArr.getOrNull(prevIdx)?.let { chapters[it] }
-                                        if (prevChap != null) {
-                                            preloadChapterAndPrepend(prevChap)
-                                        }
+                                        previousChapterOf(currentChapterIndex)?.let { preloadChapterAndPrepend(it) }
                                     }
                                 }
                                 is ReaderItem.Transition -> {
@@ -1363,18 +1350,38 @@ class MangaReaderActivity : AppCompatActivity() {
 
     private fun progress(forceComplete: Boolean, runnable: Runnable) {
         val chapterCompleted = forceComplete || (maxChapterPage > 0 && maxChapterPage - currentChapterPage <= 1)
-        if (chapterCompleted) {
-            maybeHandleSubscriptionAfterChapterCompletion()
+        if (!chapterCompleted) {
+            runnable.run()
+            return
         }
-        if (chapterCompleted && Anilist.userid != null) {
-            showProgressDialog =
-                if (PrefManager.getVal(PrefName.AskIndividualReader)) PrefManager.getCustomVal(
-                    "${media.id}_progressDialog",
-                    true
-                ) else false
-            val incognito: Boolean = PrefManager.getVal(PrefName.Incognito)
-            if (showProgressDialog && !incognito) {
+        maybeHandleSubscriptionAfterChapterCompletion()
+        val selectedChap = media.manga?.selectedChapter?.number ?: if (this@MangaReaderActivity::chapter.isInitialized) chapter.number else null
+        val chapNumStr = selectedChap?.let { MediaNameAdapter.findChapterNumber(it)?.toString() } ?: selectedChap ?: ""
+        syncChapterProgress(chapNumStr, runnable)
+    }
 
+    /**
+     * Sends tracker progress for a finished chapter through the shared gate
+     * (login, "ask individually", incognito, per-title and adult settings),
+     * then runs [then]. Used by the chapter buttons and by the continuous-mode
+     * chapter boundary.
+     */
+    private fun syncChapterProgress(chapNumStr: String, then: Runnable) {
+        showProgressDialog =
+            if (PrefManager.getVal(PrefName.AskIndividualReader)) PrefManager.getCustomVal(
+                "${media.id}_progressDialog",
+                true
+            ) else false
+        val action = chapterProgressSync(
+            loggedIn = Anilist.userid != null,
+            askIndividually = showProgressDialog,
+            incognito = PrefManager.getVal(PrefName.Incognito),
+            saveProgress = PrefManager.getCustomVal("${media.id}_save_progress", true),
+            isAdult = media.isAdult,
+            updateForAdult = PrefManager.getVal(PrefName.UpdateForHReader),
+        )
+        when (action) {
+            ChapterProgressSync.ASK -> {
                 val dialogView = layoutInflater.inflate(R.layout.item_custom_dialog, null)
                 val checkbox = dialogView.findViewById<CheckBox>(R.id.dialog_checkbox)
                 checkbox.text = getString(R.string.dont_ask_again, media.userPreferredName)
@@ -1388,37 +1395,28 @@ class MangaReaderActivity : AppCompatActivity() {
                     setCancelable(false)
                     setPosButton(R.string.yes) {
                         PrefManager.setCustomVal("${media.id}_save_progress", true)
-                        val selectedChap = media.manga?.selectedChapter?.number ?: if (this@MangaReaderActivity::chapter.isInitialized) chapter.number else null
-                        val chapNumStr = selectedChap?.let { MediaNameAdapter.findChapterNumber(it)?.toString() } ?: selectedChap ?: ""
                         if (chapNumStr.isNotEmpty()) {
                             updateProgress(media, chapNumStr)
                         }
-                        runnable.run()
+                        then.run()
                     }
                     setNegButton(R.string.no) {
                         PrefManager.setCustomVal("${media.id}_save_progress", false)
-                        runnable.run()
+                        then.run()
                     }
                     setOnCancelListener { hideSystemBars() }
                     show()
-
                 }
-            } else {
-                if (!incognito && PrefManager.getCustomVal(
-                        "${media.id}_save_progress",
-                        true
-                    ) && if (media.isAdult) PrefManager.getVal(PrefName.UpdateForHReader) else true
-                ) {
-                    val selectedChap = media.manga?.selectedChapter?.number ?: if (this@MangaReaderActivity::chapter.isInitialized) chapter.number else null
-                    val chapNumStr = selectedChap?.let { MediaNameAdapter.findChapterNumber(it)?.toString() } ?: selectedChap ?: ""
-                    if (chapNumStr.isNotEmpty()) {
-                        updateProgress(media, chapNumStr)
-                    }
-                }
-                runnable.run()
             }
-        } else {
-            runnable.run()
+
+            ChapterProgressSync.UPDATE -> {
+                if (chapNumStr.isNotEmpty()) {
+                    updateProgress(media, chapNumStr)
+                }
+                then.run()
+            }
+
+            ChapterProgressSync.NONE -> then.run()
         }
     }
 
@@ -1660,10 +1658,14 @@ class MangaReaderActivity : AppCompatActivity() {
         return getChapterDisplayTitle(if (::chapter.isInitialized) chapter else null)
     }
 
-    fun getNextChapterTitle(): String? {
-        val nextIndex = if (directionRLBT) currentChapterIndex - 1 else currentChapterIndex + 1
-        return chaptersArr.getOrNull(nextIndex)?.let { chapters[it] }?.let { getChapterDisplayTitle(it) }
-    }
+    fun getNextChapterTitle(): String? =
+        nextChapterOf(currentChapterIndex)?.let { getChapterDisplayTitle(it) }
+
+    private fun nextChapterOf(index: Int): MangaChapter? =
+        nextChapterIndex(index, chaptersArr.size)?.let { chapters[chaptersArr[it]] }
+
+    private fun previousChapterOf(index: Int): MangaChapter? =
+        previousChapterIndex(index, chaptersArr.size)?.let { chapters[chaptersArr[it]] }
 
     private val loadingChapters = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
@@ -1671,9 +1673,7 @@ class MangaReaderActivity : AppCompatActivity() {
         val chapterKey = targetChapter.uniqueNumber()
         if (loadingChapters.contains(chapterKey)) return
 
-        val targetIndex = chaptersArr.indexOf(chapterKey)
-        val afterNextIndex = if (directionRLBT) targetIndex - 1 else targetIndex + 1
-        val afterNextChapter = chaptersArr.getOrNull(afterNextIndex)?.let { chapters[it] }
+        val afterNextChapter = nextChapterOf(chaptersArr.indexOf(chapterKey))
 
         if (targetChapter.images().isNotEmpty()) {
             imageAdapter?.appendChapter(targetChapter, afterNextChapter)
@@ -1701,19 +1701,23 @@ class MangaReaderActivity : AppCompatActivity() {
         val chapterKey = targetChapter.uniqueNumber()
         if (loadingChapters.contains(chapterKey)) return
 
-        val targetIndex = chaptersArr.indexOf(chapterKey)
-        val beforePrevIndex = if (directionRLBT) targetIndex + 1 else targetIndex - 1
-        val beforePrevChapter = chaptersArr.getOrNull(beforePrevIndex)?.let { chapters[it] }
+        val beforePrevChapter = previousChapterOf(chaptersArr.indexOf(chapterKey))
 
         val applyPrepend = {
             val layoutManager = binding.mangaReaderRecycler.layoutManager as? LinearLayoutManager
             val firstVisiblePos = layoutManager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
             val firstView = if (firstVisiblePos != RecyclerView.NO_POSITION) layoutManager?.findViewByPosition(firstVisiblePos) else null
-            val offset = if (defaultSettings.direction == LEFT_TO_RIGHT || defaultSettings.direction == RIGHT_TO_LEFT) {
-                firstView?.left ?: 0
-            } else {
-                firstView?.top ?: 0
-            }
+            // scrollToPositionWithOffset measures from the start edge, or from
+            // the end edge when the layout is reversed (RTL / bottom-to-top).
+            val offset = if (layoutManager != null && firstView != null) {
+                val helper = OrientationHelper.createOrientationHelper(layoutManager, layoutManager.orientation)
+                // Horizontal lists also flip under an RTL layout direction.
+                val reversed = layoutManager.reverseLayout xor
+                    (layoutManager.orientation == RecyclerView.HORIZONTAL &&
+                        layoutManager.layoutDirection == View.LAYOUT_DIRECTION_RTL)
+                if (reversed) helper.endAfterPadding - helper.getDecoratedEnd(firstView)
+                else helper.getDecoratedStart(firstView) - helper.startAfterPadding
+            } else 0
 
             val insertedCount = imageAdapter?.prependChapter(targetChapter, beforePrevChapter) ?: 0
             if (insertedCount > 0 && firstVisiblePos != RecyclerView.NO_POSITION && layoutManager != null) {
@@ -1747,26 +1751,22 @@ class MangaReaderActivity : AppCompatActivity() {
         if (newChapter.uniqueNumber() != chapter.uniqueNumber()) {
             val oldChapter = chapter
             val newIndex = chaptersArr.indexOf(newChapter.uniqueNumber())
-            // HOLD2 C1: only a genuine forward transition (per chapter
-            // ordering + directionRLBT) completes/publishes the outgoing
-            // chapter. Backward scrolls switch identity/resume/UI below
-            // without marking anything complete.
-            val incognito: Boolean = PrefManager.getVal(PrefName.Incognito)
-            val progressAllowed = !incognito && PrefManager.getCustomVal("${media.id}_save_progress", true)
-                && if (media.isAdult) PrefManager.getVal(PrefName.UpdateForHReader) else true
-            if (shouldCompleteOutgoingChapter(currentChapterIndex, newIndex, directionRLBT, progressAllowed)) {
-                // Mark previous chapter as read (100% completed)
+            // Only a move to a later chapter completes the outgoing one, in
+            // every reading direction. Backward scrolls switch identity,
+            // resume position and UI below without marking anything read.
+            if (isForwardChapterTransition(currentChapterIndex, newIndex)) {
+                // Mark the outgoing chapter as fully read on this device.
                 PrefManager.setCustomVal("${media.id}_${oldChapter.number}", maxChapterPage)
                 val cleanOldChapNum = MediaNameAdapter.findChapterNumber(oldChapter.number)?.let {
                     if (it % 1 == 0f) it.toInt().toString() else it.toString()
                 }
                 cleanOldChapNum?.let { PrefManager.setCustomVal("${media.id}_$it", maxChapterPage) }
 
-                // Sync progress if allowed (gate already evaluated above)
-                val oldChapNumStr = cleanOldChapNum ?: oldChapter.number
-                if (oldChapNumStr.isNotEmpty()) {
-                    updateProgress(media, oldChapNumStr)
-                }
+                // Same gate as the chapter buttons: subscription prompt, then
+                // tracker progress only for logged-in users, asking first when
+                // the user chose to be asked.
+                maybeHandleSubscriptionAfterChapterCompletion()
+                syncChapterProgress(cleanOldChapNum ?: oldChapter.number) {}
             }
 
             chapter = newChapter
@@ -1809,12 +1809,16 @@ class MangaReaderActivity : AppCompatActivity() {
         updatePageNumber(pageNum.toLong())
     }
 
+    // The on-screen chapter buttons swap sides for RTL/BTT; these always
+    // mean the logical next and previous chapter.
     fun loadNextChapter() {
-        binding.mangaReaderNextChapter.performClick()
+        if (directionRLBT) binding.mangaReaderPreviousChapter.performClick()
+        else binding.mangaReaderNextChapter.performClick()
     }
 
     fun loadPreviousChapter() {
-        binding.mangaReaderPreviousChapter.performClick()
+        if (directionRLBT) binding.mangaReaderNextChapter.performClick()
+        else binding.mangaReaderPreviousChapter.performClick()
     }
 
     fun triggerEInkFlash() {

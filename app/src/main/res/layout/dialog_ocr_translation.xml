@@ -21,6 +21,15 @@
         android:fontFamily="@font/poppins_bold"
         android:textSize="18sp"
         android:textColor="?attr/colorOnSurface"
+        android:layout_marginBottom="4dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/ocr_online_notice"
+        android:fontFamily="@font/poppins"
+        android:textSize="12sp"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:layout_marginBottom="16dp"/>
 
     <ProgressBar

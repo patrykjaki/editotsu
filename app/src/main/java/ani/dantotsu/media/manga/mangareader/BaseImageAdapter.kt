@@ -23,10 +23,12 @@ import ani.dantotsu.media.manga.MangaChapter
 import ani.dantotsu.px
 import ani.dantotsu.settings.CurrentReaderSettings
 import ani.dantotsu.tryWithSuspend
+import ani.dantotsu.util.Logger
 import com.alexvasilkov.gestures.views.GestureFrameLayout
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.model.GlideUrl
+import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.load.resource.bitmap.BitmapTransformation
 import ani.dantotsu.parsers.MangaImage
 import kotlinx.coroutines.Dispatchers
@@ -369,12 +371,17 @@ abstract class BaseImageAdapter(
                                     .load(localFile.absoluteFile)
                                     .skipMemoryCache(true)
                                     .diskCacheStrategy(DiskCacheStrategy.NONE)
-                                    .submit()
+                                    .downsample(DownsampleStrategy.CENTER_INSIDE)
+                                    .submit(MAX_PAGE_DIMENSION, MAX_PAGE_DIMENSION)
                                     .get()
-                            } catch (_: Exception) { null }
+                            } catch (e: Exception) {
+                                logDecodeFailure("local page", e)
+                            }
                             glideBitmap ?: try {
                                 localFile.inputStream().use { decodeWithLibvips(it) }
-                            } catch (_: Exception) { null }
+                            } catch (e: Exception) {
+                                logDecodeFailure("local page (libvips)", e)
+                            }
                         }
                         link.url.startsWith("content://") -> {
                             val glideBitmap = try {
@@ -383,45 +390,26 @@ abstract class BaseImageAdapter(
                                     .load(Uri.parse(link.url))
                                     .skipMemoryCache(true)
                                     .diskCacheStrategy(DiskCacheStrategy.NONE)
-                                    .submit()
+                                    .downsample(DownsampleStrategy.CENTER_INSIDE)
+                                    .submit(MAX_PAGE_DIMENSION, MAX_PAGE_DIMENSION)
                                     .get()
-                            } catch (_: Exception) { null }
+                            } catch (e: Exception) {
+                                logDecodeFailure("content page", e)
+                            }
                             glideBitmap ?: try {
                                 contentResolver.openInputStream(Uri.parse(link.url))?.use { decodeWithLibvips(it) }
-                            } catch (_: Exception) { null }
+                            } catch (e: Exception) {
+                                logDecodeFailure("content page (libvips)", e)
+                            }
                         }
                         else -> {
                             val imageData = mangaCache.get(link.url)
-                            val cachedBitmap = imageData?.fetchAndProcessImage(
-                                imageData.page,
-                                imageData.source
-                            )
-                            cachedBitmap ?: run {
-                                val glideBitmap = try {
-                                    Glide.with(this@loadBitmap)
-                                        .asBitmap()
-                                        .load(GlideUrl(link.url) { link.headers })
-                                        .skipMemoryCache(true)
-                                        .diskCacheStrategy(DiskCacheStrategy.NONE)
-                                        .submit()
-                                        .get()
-                                } catch (_: Exception) {
-                                    null
-                                }
-                                glideBitmap ?: run {
-                                    // Fallback to native libvips over network for unsupported/exotic formats (e.g. JXL / AVIF / HEIF)
-                                    try {
-                                        val okHttpClient = uy.kohesive.injekt.Injekt.get<OkHttpClient>()
-                                        val requestBuilder = Request.Builder().url(link.url)
-                                        link.headers.forEach { (k, v) -> requestBuilder.addHeader(k, v) }
-                                        val response = okHttpClient.newCall(requestBuilder.build()).execute()
-                                        if (response.isSuccessful) {
-                                            response.body?.byteStream()?.use { decodeWithLibvips(it) }
-                                        } else null
-                                    } catch (_: Exception) {
-                                        null
-                                    }
-                                }
+                            if (imageData != null) {
+                                // Extension page: one download through the source's own
+                                // client; libvips decodes the same bytes when needed.
+                                imageData.fetchAndProcessImage(imageData.page, imageData.source)
+                            } else {
+                                loadNetworkPage(link)
                             }
                         }
                     } ?: return@withContext null
@@ -444,6 +432,56 @@ abstract class BaseImageAdapter(
                     }
                 }
             }
+        }
+
+        /** Pages without an extension source: Glide with the link headers, then libvips. */
+        private fun Context.loadNetworkPage(link: FileUrl): Bitmap? {
+            val glideBitmap = try {
+                Glide.with(this)
+                    .asBitmap()
+                    .load(GlideUrl(link.url) { link.headers })
+                    // Disk cache lets a re-bind or OCR reuse the download;
+                    // decoded bitmaps stay out of the memory cache because the
+                    // reader recycles them.
+                    .skipMemoryCache(true)
+                    .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                    .downsample(DownsampleStrategy.CENTER_INSIDE)
+                    .submit(MAX_PAGE_DIMENSION, MAX_PAGE_DIMENSION)
+                    .get()
+            } catch (e: Exception) {
+                logDecodeFailure("network page", e)
+            }
+            if (glideBitmap != null) return glideBitmap
+            // Formats Glide cannot decode (JXL, AVIF before Android 12, HEIF).
+            return try {
+                val okHttpClient = uy.kohesive.injekt.Injekt.get<OkHttpClient>()
+                val requestBuilder = Request.Builder().url(link.url)
+                link.headers.forEach { (k, v) -> requestBuilder.addHeader(k, v) }
+                okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
+                    if (response.isSuccessful) decodeWithLibvips(response.body.byteStream()) else null
+                }
+            } catch (e: Exception) {
+                logDecodeFailure("network page (libvips)", e)
+            }
+        }
+
+        /**
+         * Logs a failed decode and returns null. Out-of-memory (also when Glide
+         * wraps it) is rethrown so the caller logs it and shows the page
+         * error state instead of silently trying the next decoder.
+         */
+        private fun logDecodeFailure(what: String, e: Throwable): Nothing? {
+            findOutOfMemory(e)?.let { throw it }
+            Logger.log("Reader: $what decode failed: ${e.javaClass.simpleName}")
+            return null
+        }
+
+        /** Scales a decoded page down to [MAX_PAGE_DIMENSION] when it is larger; smaller pages are returned as is. */
+        fun capPageBitmap(bitmap: Bitmap): Bitmap {
+            val (w, h) = cappedPageSize(bitmap.width, bitmap.height) ?: return bitmap
+            val scaled = Bitmap.createScaledBitmap(bitmap, w, h, true)
+            if (scaled !== bitmap) bitmap.recycle()
+            return scaled
         }
 
         fun mergeBitmap(bitmap1: Bitmap, bitmap2: Bitmap, scale: Boolean = false): Bitmap {
@@ -477,7 +515,7 @@ abstract class BaseImageAdapter(
                             val bitmap = Bitmap.createBitmap(frame.width, frame.height, Bitmap.Config.ARGB_8888)
                             frame.image.rewind()
                             bitmap.copyPixelsFromBuffer(frame.image)
-                            bitmap
+                            capPageBitmap(bitmap)
                         } finally {
                             frame.close()
                         }
@@ -485,8 +523,8 @@ abstract class BaseImageAdapter(
                         null
                     }
                 }
-            } catch (_: Throwable) {
-                null
+            } catch (e: Throwable) {
+                logDecodeFailure("libvips", e)
             }
         }
 

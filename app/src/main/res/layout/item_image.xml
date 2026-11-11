@@ -37,6 +37,36 @@
             android:id="@+id/imgProgCover"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
+
+        <!-- Shown instead of the spinner when the page cannot be loaded.
+             Above the cover so the retry button receives taps. -->
+        <LinearLayout
+            android:id="@+id/imgProgError"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/poppins"
+                android:text="@string/reader_page_failed"
+                android:textColor="#B3FFFFFF"
+                android:textSize="14sp" />
+
+            <ImageButton
+                android:id="@+id/imgProgRetry"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginTop="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/reader_page_retry"
+                android:src="@drawable/ic_round_refresh_24"
+                app:tint="#FFFFFFFF" />
+        </LinearLayout>
     </FrameLayout>
 
 

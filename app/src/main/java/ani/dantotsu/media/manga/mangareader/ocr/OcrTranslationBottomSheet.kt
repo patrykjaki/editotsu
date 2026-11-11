@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -12,6 +13,7 @@ import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import ani.dantotsu.R
 import ani.dantotsu.databinding.DialogOcrTranslationBinding
+import ani.dantotsu.util.Logger
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -25,6 +27,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -56,17 +59,26 @@ class OcrTranslationBottomSheet : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val bitmap = currentBitmap
-        if (bitmap == null || bitmap.isRecycled) {
-            if (isAdded) Toast.makeText(context, "No page image available for translation", Toast.LENGTH_SHORT).show()
-            dismiss()
-            return
-        }
+        // The page image is a cache file named in the arguments, so the
+        // sheet survives rotation and process recreation.
+        val path = arguments?.getString(ARG_PAGE_IMAGE)
 
         lifecycleScope.launch {
+            val bitmap = path?.let { withContext(Dispatchers.IO) { BitmapFactory.decodeFile(it) } }
+            if (bitmap == null) {
+                if (isAdded) {
+                    Toast.makeText(context, "No page image available for translation", Toast.LENGTH_SHORT).show()
+                    dismissAllowingStateLoss()
+                }
+                return@launch
+            }
             var detectedText = ""
             try {
-                detectedText = recognizeText(bitmap)
+                detectedText = try {
+                    recognizeText(bitmap)
+                } finally {
+                    bitmap.recycle()
+                }
 
                 if (!isAdded) return@launch
 
@@ -161,8 +173,9 @@ class OcrTranslationBottomSheet : BottomSheetDialogFragment() {
             val image = InputImage.fromBitmap(safeBitmap, 0)
 
             var text = try {
-                val jpRecognizer = TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())
-                processWithRecognizer(jpRecognizer, image)
+                TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build()).use {
+                    processWithRecognizer(it, image)
+                }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 e.printStackTrace()
@@ -171,8 +184,9 @@ class OcrTranslationBottomSheet : BottomSheetDialogFragment() {
 
             if (text.isBlank()) {
                 text = try {
-                    val latinRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-                    processWithRecognizer(latinRecognizer, image)
+                    TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).use {
+                        processWithRecognizer(it, image)
+                    }
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     e.printStackTrace()
@@ -252,15 +266,38 @@ class OcrTranslationBottomSheet : BottomSheetDialogFragment() {
 
     override fun onDestroy() {
         super.onDestroy()
-        currentBitmap = null
+        // Keep the page file across rotation; drop it once the sheet is gone.
+        if (activity?.isChangingConfigurations != true) {
+            arguments?.getString(ARG_PAGE_IMAGE)?.let { File(it).delete() }
+        }
     }
 
     companion object {
-        private var currentBitmap: Bitmap? = null
+        private const val ARG_PAGE_IMAGE = "page_image"
 
-        fun newInstance(bitmap: Bitmap): OcrTranslationBottomSheet {
-            currentBitmap = bitmap
-            return OcrTranslationBottomSheet()
+        /** Writes [bitmap] to the cache for the sheet. Call off the main thread. */
+        fun writePageImage(context: Context, bitmap: Bitmap): File? = try {
+            val dir = File(context.cacheDir, "ocr").apply { mkdirs() }
+            val file = File(dir, "page.jpg")
+            val source = if (bitmap.config == Bitmap.Config.HARDWARE) {
+                bitmap.copy(Bitmap.Config.ARGB_8888, false)
+            } else {
+                bitmap
+            }
+            try {
+                file.outputStream().use { source.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+            } finally {
+                if (source !== bitmap) source.recycle()
+            }
+            file
+        } catch (e: Exception) {
+            Logger.log("OCR: could not write page image: ${e.javaClass.simpleName}")
+            null
         }
+
+        fun newInstance(pageImage: File): OcrTranslationBottomSheet =
+            OcrTranslationBottomSheet().apply {
+                arguments = Bundle().apply { putString(ARG_PAGE_IMAGE, pageImage.absolutePath) }
+            }
     }
 }
