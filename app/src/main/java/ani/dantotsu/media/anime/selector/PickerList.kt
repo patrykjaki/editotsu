@@ -39,6 +39,11 @@ data class PickerRow(
     val rememberedExact: Boolean = false,
     /** Matches the remembered release family (provider + group) for this anime. */
     val rememberedFamily: Boolean = false,
+    /**
+     * The row [FamilyAutoSelector] picks from the remembered family (same quality, same
+     * batch first), i.e. the row auto-play would start. Only meaningful with [rememberedFamily].
+     */
+    val familyChoice: Boolean = false,
     /** What the Filter panel filters and sorts by. */
     val facets: RowFacets = RowFacets(),
     /** Release name without resolution/CRC ([ReleaseQualityKey]); rows sharing it are one release in several qualities. */
@@ -249,8 +254,9 @@ object ResolutionLabel {
 
 object BestMatch {
     /**
-     * Remembered exact pick first, then a single row from the remembered
-     * family, then a single extension-preferred row. Ties at any level
+     * Remembered exact pick first, then the remembered family's row (the single one,
+     * or the one [FamilyAutoSelector] picks among several, so the picker marks what
+     * auto-play would start), then a single extension-preferred row. Ties at any level
      * mean no Best match: the picker never guesses between equals.
      */
     fun pick(rows: List<PickerRow>): BestPick? {
@@ -258,7 +264,9 @@ object BestMatch {
         if (rows.count { it.rememberedExact } > 1) return null
         val family = rows.filter { it.rememberedFamily }
         if (family.size == 1) return BestPick(family[0].ref, BestReason.SAME_GROUP)
-        if (family.size > 1) return null
+        if (family.size > 1) {
+            return family.singleOrNull { it.familyChoice }?.let { BestPick(it.ref, BestReason.SAME_GROUP) }
+        }
         rows.singleOrNull { it.preferred }?.let { return BestPick(it.ref, BestReason.EXTENSION_PREFERRED) }
         return null
     }
