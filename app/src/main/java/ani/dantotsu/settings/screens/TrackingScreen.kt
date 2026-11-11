@@ -191,8 +191,11 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                         !(getSystemService(Context.ALARM_SERVICE) as AlarmManager).canScheduleExactAlarms()
                     ) {
+                        // Alarms need the permission; the permission change receiver switches over once granted.
                         startActivity(Intent("android.settings.REQUEST_SCHEDULE_EXACT_ALARM",
                             android.net.Uri.parse("package:$packageName")))
+                    } else {
+                        TaskScheduler.switchTo(this, useAlarmManager = true)
                     }
                     host.refresh()
                 }
@@ -204,8 +207,7 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
             }
         } else {
             PrefManager.setVal(PrefName.UseAlarmManager, false)
-            TaskScheduler.create(this, true).cancelAllTasks()
-            TaskScheduler.create(this, false).scheduleAllTasks(this)
+            TaskScheduler.switchTo(this, useAlarmManager = false)
         }
     }
 
