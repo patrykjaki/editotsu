@@ -194,7 +194,7 @@ class AnilistMutations {
         completedAt: FuzzyDate? = null,
         customList: List<String>? = null,
         advancedScores: List<Double>? = null
-    ) {
+    ): Boolean {
         val headerParams = mutableListOf(
             "${"$"}mediaID: Int",
             "${"$"}progress: Int",
@@ -271,10 +271,12 @@ class AnilistMutations {
             ${if (advancedScores != null) ""","advancedScores":[${advancedScores.joinToString(",")}]""" else ""}
             }""".replace("\n", "").replace("""    """, "")
         println(variables)
-        executeQuery<JsonObject>(query, variables, show = true)
+        val result = executeQuery<JsonObject>(query, variables, show = true)
         // Upstream 5ffa682b: list edits must drop stale home/stories caches.
         Anilist.query.invalidateUserStatusCache()
         Anilist.query.invalidateHomePageCache()
+        // null = network error, timeout, 429 window or HTTP error.
+        return result != null && result["errors"] == null
     }
 
     suspend fun deleteList(listId: Int) {

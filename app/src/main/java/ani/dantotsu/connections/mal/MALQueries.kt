@@ -194,8 +194,9 @@ class MALQueries {
         rewatch: Int? = null,
         start: FuzzyDate? = null,
         end: FuzzyDate? = null
-    ) {
-        if (idMAL == null || authHeader == null) return
+    ): Boolean {
+        // Nothing to send (no MAL login or no MAL id) is not a failure.
+        if (idMAL == null || authHeader == null) return true
         val data = mutableMapOf("status" to convertStatus(isAnime, status))
         if (progress != null)
             data[if (isAnime) "num_watched_episodes" else "num_chapters_read"] = progress.toString()
@@ -208,7 +209,7 @@ class MALQueries {
             data["start_date"] = start.toMALString()
         if (end != null && !end.isEmpty())
             data["finish_date"] = end.toMALString()
-        tryWithSuspend {
+        val response = tryWithSuspend {
             executeRequest {
                 httpPut(
                     "$apiUrl/${if (isAnime) "anime" else "manga"}/$idMAL/my_list_status",
@@ -217,6 +218,7 @@ class MALQueries {
                 )
             }
         }
+        return response?.isSuccessful == true
     }
 
     suspend fun deleteList(isAnime: Boolean, idMAL: Int?) {
