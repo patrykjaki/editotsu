@@ -35,6 +35,7 @@ import java.util.concurrent.Executors
 import androidx.mediarouter.media.MediaRouter
 import androidx.mediarouter.media.MediaRouterParams
 import ani.dantotsu.media.anime.cast.CastProxyServerService
+import ani.dantotsu.media.anime.cast.CastSubtitleConverter
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 
 @UnstableApi
@@ -61,6 +62,11 @@ class PlayerCastManager(
     private var playbackCoordinator: PlaybackCoordinator? = null
 
     var castScreenView: CastScreenView? = null
+
+    private companion object {
+        /** One thread for Cast init across player sessions (was one leaked thread per open). */
+        val castInitExecutor = Executors.newSingleThreadExecutor()
+    }
 
     var activeDeviceName: String? = null
         private set
@@ -152,13 +158,13 @@ class PlayerCastManager(
                 .setOutputSwitcherEnabled(true)
                 .build()
 
-            CastContext.getSharedInstance(activity, Executors.newSingleThreadExecutor())
+            CastContext.getSharedInstance(activity, castInitExecutor)
                 .addOnCompleteListener { task ->
                     if (task.isSuccessful && task.result != null) {
                         castContext = task.result
                         try {
                             castContext?.sessionManager?.addSessionManagerListener(sessionManagerListener, CastSession::class.java)
-                            castPlayer = castContext?.let { CastPlayer(it) }
+                            castPlayer = castContext?.let { CastPlayer(it, CastSubtitleConverter()) }
                             castPlayer?.setSessionAvailabilityListener(this)
                             setupCastPlayerListener()
                             activity.runOnUiThread {
@@ -268,16 +274,27 @@ class PlayerCastManager(
         }
     }
 
+    /**
+     * The player loaded [mediaItem] in [engine]. While the TV plays an earlier item (next or
+     * previous episode, autoplay, another server), the new item goes to the TV from
+     * [startPositionMs] and the phone stays paused.
+     *
+     * @return true when the item was sent to the TV; the caller must not start local playback.
+     */
     fun updateCurrentMedia(
         mediaItem: MediaItem?,
         engine: PlaybackEngine?,
         video: Video? = null,
-        coordinator: PlaybackCoordinator? = null
-    ) {
+        coordinator: PlaybackCoordinator? = null,
+        startPositionMs: Long = 0L,
+    ): Boolean {
+        val wasCasting = isCasting()
         this.currentMediaItem = mediaItem
         this.playbackEngine = engine
         this.currentVideo = video
         this.playbackCoordinator = coordinator
+        if (!wasCasting || mediaItem == null || engine == null || engine === remotePlaybackEngine) return false
+        return sendToReceiver(mediaItem, startPositionMs)
     }
 
     fun isCasting(): Boolean = castPlayer?.isCastSessionAvailable == true && castPlayer?.currentMediaItem != null
@@ -379,30 +396,35 @@ class PlayerCastManager(
     }
 
     override fun onCastSessionAvailable() {
-        val item = currentMediaItem
-        if (isTorrent(item?.localConfiguration?.uri?.toString()) || isTorrent(currentVideo?.file?.url)) {
+        val item = currentMediaItem ?: return
+        sendToReceiver(item, playbackEngine?.positionMs ?: 0L)
+    }
+
+    /** Hands [item] to the receiver from [positionMs] and parks the local engine. */
+    private fun sendToReceiver(item: MediaItem, positionMs: Long): Boolean {
+        if (isTorrent(item.localConfiguration?.uri?.toString()) || isTorrent(currentVideo?.file?.url)) {
             snackString(activity.getString(R.string.cast_torrent_unsupported), activity)
             castContext?.sessionManager?.endCurrentSession(true)
-            return
+            return false
         }
-        if (isCastApiAvailable && !activity.isDestroyed && item != null) {
-            playbackCoordinator?.setPlaybackTarget(PlaybackTarget.REMOTE_CAST)
-            val handoverPosition = playbackEngine?.positionMs ?: 0L
-            playbackEngine?.pause()
+        if (!isCastApiAvailable || activity.isDestroyed) return false
+        val cast = castPlayer ?: return false
+        playbackCoordinator?.setPlaybackTarget(PlaybackTarget.REMOTE_CAST)
+        playbackEngine?.pause()
 
-            activeDeviceName = castContext?.sessionManager?.currentCastSession?.castDevice?.friendlyName
-            castScreenView?.updateDeviceName(activeDeviceName)
+        activeDeviceName = castContext?.sessionManager?.currentCastSession?.castDevice?.friendlyName
+        castScreenView?.updateDeviceName(activeDeviceName)
 
-            val proxiedItem = getProxiedMediaItem(item, currentVideo)
+        val proxiedItem = getProxiedMediaItem(item, currentVideo)
 
-            remotePlaybackEngine = playbackEngine
-            castPlayer?.setMediaItem(proxiedItem, handoverPosition)
-            castPlayer?.prepare()
-            castPlayer?.play()
+        remotePlaybackEngine = playbackEngine
+        cast.setMediaItem(proxiedItem, positionMs)
+        cast.prepare()
+        cast.play()
 
-            startProgressTracking()
-            onSessionStartedListener?.invoke(activeDeviceName, remotePlaybackEngine)
-        }
+        startProgressTracking()
+        onSessionStartedListener?.invoke(activeDeviceName, remotePlaybackEngine)
+        return true
     }
 
     private fun getProxiedMediaItem(item: MediaItem, video: Video?): MediaItem {
