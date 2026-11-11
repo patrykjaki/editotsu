@@ -237,6 +237,11 @@ class DownloadsManager(private val context: Context) {
             Logger.log("cleanDownload: refused for MANGA; use the CP5 service scope path")
             return
         }
+        // A folder move rewrites the base; nothing may be pruned meanwhile.
+        if (moveInProgress) {
+            Logger.log("cleanDownload($type): skipped, download folder move in progress")
+            return
+        }
         // remove all folders that are not in the downloads list
         val directory = getBaseDirectory(context, type)
         val downloadsSubLists = when (type) {
@@ -308,6 +313,11 @@ class DownloadsManager(private val context: Context) {
             finished(true, "Old Uri is empty")
             return
         }
+        if (isAnyDownloadActive()) {
+            finished(false, "Downloads are running")
+            return
+        }
+        moveInProgress = true
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val oldBase =
@@ -328,8 +338,17 @@ class DownloadsManager(private val context: Context) {
                             TransferErrorCode.CANCELED -> finished(false, "Move canceled")
                             TransferErrorCode.CANNOT_CREATE_FILE_IN_TARGET ->
                                 finished(false, "Cannot create file in target")
-                            // Reported by storage 1.x after a move that had worked.
-                            TransferErrorCode.INVALID_TARGET -> finished(true, "Invalid target folder")
+                            // Some providers report this after a move that worked:
+                            // accept it only when the folder is at the target and
+                            // gone from the source.
+                            TransferErrorCode.INVALID_TARGET -> {
+                                val moved = isMoveVerified(
+                                    targetHasBase = newBase.findFile(BASE_LOCATION)?.isDirectory == true,
+                                    sourceHasBase = oldBase.findFile(BASE_LOCATION)?.exists() == true,
+                                )
+                                if (moved) finished(true, "Successfully moved downloads")
+                                else finished(false, "Invalid target folder")
+                            }
                             TransferErrorCode.NO_SPACE_LEFT_ON_TARGET ->
                                 finished(false, "No space left on target path")
                             TransferErrorCode.UNKNOWN_IO_ERROR -> finished(false, "Unknown IO error")
@@ -351,6 +370,8 @@ class DownloadsManager(private val context: Context) {
                 Logger.log("oldUri: $oldUri, newUri: $newUri")
                 finished(false, "Failed to move downloads: ${e.message}")
                 return@launch
+            } finally {
+                moveInProgress = false
             }
         }
     }
@@ -732,6 +753,23 @@ class DownloadsManager(private val context: Context) {
     }
 
     companion object {
+        /** True while [moveDownloadsDir] runs; index pruning is skipped meanwhile. */
+        @Volatile
+        var moveInProgress = false
+            private set
+
+        /** Any anime, manga or novel download service running, queued or downloading. */
+        fun isAnyDownloadActive(): Boolean {
+            val anime = ani.dantotsu.download.anime.AnimeServiceDataSingleton
+            val manga = ani.dantotsu.download.manga.MangaServiceDataSingleton
+            val novel = ani.dantotsu.download.novel.NovelServiceDataSingleton
+            return downloadsBusy(
+                anime.isServiceRunning || anime.downloadQueue.isNotEmpty() || anime.currentTasks.isNotEmpty(),
+                manga.isServiceRunning || manga.downloadQueue.isNotEmpty() || manga.currentTasks.isNotEmpty(),
+                novel.isServiceRunning || novel.downloadQueue.isNotEmpty() || novel.currentTasks.isNotEmpty(),
+            )
+        }
+
         private const val BASE_LOCATION = "Dantotsu"
         private const val MANGA_SUB_LOCATION = "Manga"
         private const val ANIME_SUB_LOCATION = "Anime"
@@ -1025,6 +1063,16 @@ fun planIndexRecovery(
             indexed.any { sameTypedDownload(it, title, chapter, type) }
         }
         .map { (type, title, chapter) -> DownloadedType(title, chapter, type) }
+
+/** True when any of the download types is busy; the folder move is refused then. */
+fun downloadsBusy(vararg busy: Boolean): Boolean = busy.any { it }
+
+/**
+ * An INVALID_TARGET result counts as a finished move only when the downloads
+ * folder exists at the target and is gone from the source.
+ */
+fun isMoveVerified(targetHasBase: Boolean, sourceHasBase: Boolean): Boolean =
+    targetHasBase && !sourceHasBase
 
 /** Exact-name rule for destructive folder selection (no suffix or fuzzy tiers). */
 fun isExactFolderName(folderName: String?, wanted: String): Boolean =

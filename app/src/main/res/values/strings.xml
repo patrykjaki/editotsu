@@ -1732,6 +1732,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="change_download_directory">Change Download Directory</string>
     <string name="change_download_directory_desc">Choose a directory to store downloads</string>
     <string name="change_download_directory_confirm">Are you sure you want to change the download directory? Existing downloads will remain in the old directory.</string>
+    <string name="download_dir_busy">Downloads are running. Change the folder after they finish</string>
+    <string name="download_dir_not_changed">Download folder not changed: %1$s</string>
     <string name="purge_downloads">Delete all downloads</string>
     <string name="purge_incomplete">Purge did not fully settle — some items may remain; retry once downloads are idle</string>
     <string name="purge_downloads_desc">Delete all downloaded anime, manga, and novel files to free up storage</string>
