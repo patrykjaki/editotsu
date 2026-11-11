@@ -187,7 +187,8 @@ class DownloadsManager(private val context: Context) {
         }
         removeMediaCompat(context, title, type)
         val baseDirectory = getBaseDirectory(context, type)
-        val directory = baseDirectory?.findFolder(title)
+        // Destructive target: exact name only, never a fuzzy neighbour.
+        val directory = baseDirectory?.findFolderExact(title)
         if (directory?.exists() == true) {
             val deleted = directory.deleteRecursively(context, false)
             if (deleted) {
@@ -255,18 +256,12 @@ class DownloadsManager(private val context: Context) {
                         "-- skipping delete, run rebuildIndexFromDisk()"
                 )
             } else {
+                // A title whose first episode/chapter is queued or downloading is
+                // not in the index yet; its partial folder must survive the sweep.
+                val liveTitles = liveTaskTitles(type)
                 for (file in files) {
                     if (!downloadsSubLists.any { it.titleName == file.name }) {
-                        // Fence: never wipe a manga title folder with a live owner. An
-                        // actively-downloading title is absent from the metadata list until
-                        // COMPLETE; deleting its partial files here would corrupt it.
-                        if (type == MediaType.MANGA &&
-                            ani.dantotsu.download.manga.MangaServiceDataSingleton.downloadOwnership.hasLiveMangaOwner(
-                                file.name ?: ""
-                            )
-                        ) {
-                            continue
-                        }
+                        if (isFolderOfLiveTask(file.name, liveTitles)) continue
                         file.deleteRecursively(context, false)
                     }
                 }
@@ -284,6 +279,17 @@ class DownloadsManager(private val context: Context) {
             val doomedSet = doomed.toSet()
             metadataStore.transact { it.removeAll(doomedSet) }
         }
+    }
+
+    /** Titles with a queued or running anime/novel download task. */
+    private fun liveTaskTitles(type: MediaType): List<String> = when (type) {
+        MediaType.ANIME -> ani.dantotsu.download.anime.AnimeServiceDataSingleton.let { d ->
+            d.downloadQueue.map { it.title } + synchronized(d.currentTasks) { d.currentTasks.map { it.title } }
+        }
+        MediaType.NOVEL -> ani.dantotsu.download.novel.NovelServiceDataSingleton.let { d ->
+            d.downloadQueue.map { it.title } + synchronized(d.currentTasks) { d.currentTasks.map { it.title } }
+        }
+        MediaType.MANGA -> emptyList()
     }
 
     fun moveDownloadsDir(
@@ -685,9 +691,10 @@ class DownloadsManager(private val context: Context) {
 
     private fun removeDirectory(downloadedType: DownloadedType, toast: Boolean) {
         val baseDirectory = getBaseDirectory(context, downloadedType.type)
+        // Destructive target: exact names only, never a fuzzy neighbour.
         val directory =
-            baseDirectory?.findFolder(downloadedType.titleName)
-                ?.findFolder(downloadedType.chapterName)
+            baseDirectory?.findFolderExact(downloadedType.titleName)
+                ?.findFolderExact(downloadedType.chapterName)
         metadataStore.transact { it.removeAll { sameTypedDownload(it, downloadedType.titleName, downloadedType.chapterName, downloadedType.type) } }
         // Check if the directory exists and delete it recursively
         if (directory?.exists() == true) {
@@ -852,7 +859,8 @@ class DownloadsManager(private val context: Context) {
             val validName = name.findValidName()
             synchronized(lock) {
                 return if (overwrite) {
-                    findFolder(validName)?.delete()
+                    // Destructive: exact name only, never a fuzzy neighbour.
+                    findFolderExact(validName)?.delete()
                     createDirectory(validName)
                 } else {
                     val folder = findFolder(validName)
@@ -864,8 +872,8 @@ class DownloadsManager(private val context: Context) {
         /**
          * Read-only legacy directory resolution (includes the compareName fuzzy
          * fallback). Used ONLY by read/write/maintenance paths — never to select
-         * a destructive target (destructive selection is exact-family-only via
-         * [ani.dantotsu.download.manga.MangaSafProbe.matchChild]).
+         * a destructive target (anime/novel deletes use [findFolderExact], manga
+         * uses [ani.dantotsu.download.manga.MangaSafProbe.matchChild]).
          */
         private fun DocumentFile.findFolder(name: String): DocumentFile? {
             // MAX MERGE M3 (upstream 5ffa682b): sanitize the query first,
@@ -886,6 +894,18 @@ class DownloadsManager(private val context: Context) {
             }
             if (withoutSuffixMatch != null) return withoutSuffixMatch
             return list.find { it.isDirectory && it.name != null && validName.compareName(it.name!!) }
+        }
+
+        /**
+         * Exact folder lookup for delete paths: the sanitized name, compared
+         * case-insensitively (SAF storage is usually case-insensitive). No
+         * " (N)" suffix stripping, no fuzzy match.
+         */
+        private fun DocumentFile.findFolderExact(name: String): DocumentFile? {
+            val validName = name.findValidName()
+            val direct = findFile(validName)
+            if (direct != null && direct.isDirectory) return direct
+            return listFiles().find { it.isDirectory && isExactFolderName(it.name, name) }
         }
 
         private const val RATIO_THRESHOLD = 95
@@ -1005,6 +1025,14 @@ fun planIndexRecovery(
             indexed.any { sameTypedDownload(it, title, chapter, type) }
         }
         .map { (type, title, chapter) -> DownloadedType(title, chapter, type) }
+
+/** Exact-name rule for destructive folder selection (no suffix or fuzzy tiers). */
+fun isExactFolderName(folderName: String?, wanted: String): Boolean =
+    folderName != null && folderName.findValidName().equals(wanted.findValidName(), ignoreCase = true)
+
+/** True when [folderName] is the title folder of a queued or running download task. */
+fun isFolderOfLiveTask(folderName: String?, liveTitles: Collection<String>): Boolean =
+    folderName != null && liveTitles.any { isExactFolderName(folderName, it) }
 
 /**
  * Generic-cleanup doomed decision (pure, unit-tested).
