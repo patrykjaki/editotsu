@@ -395,7 +395,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
             switchRow(PrefName.Cast, R.string.show_cast_button, icon = R.drawable.ic_round_cast_24,
                 visible = { FlavorFeatures.googleServices }),
             switchRow(PrefName.RotationPlayer, R.string.show_rotate_button, icon = R.drawable.ic_round_screen_rotation_alt_24),
-            switchRow(PrefName.UseInternalCast, R.string.try_internal_cast_experimental, icon = R.drawable.cast_warning,
+            switchRow(PrefName.UseInternalCast, R.string.internal_cast_experimental, icon = R.drawable.cast_warning,
                 advanced = true, visible = { FlavorFeatures.googleServices }),
         )),
         Section(R.string.anime, listOf(
