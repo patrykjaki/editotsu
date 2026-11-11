@@ -109,9 +109,6 @@ object SourceRowClassifier {
     private val REGEX_RELEASE_FILENAME =
         Regex("""\[.+?]\s*.+?\.(mkv|mp4|avi|webm|ts|m4v|m2ts|mov|flv|rmvb)$""", RegexOption.IGNORE_CASE)
 
-    private val REGEX_RESOLUTION = Regex("""\b(\d{3,4})p\b""")
-    private val REGEX_RESOLUTION_WXH =
-        Regex("""\b(\d{3,4})\s*[x×]\s*(\d{3,4})\b""")
 
     private val REGEX_INDEXER = Regex("""📂\s*([^|\n]+)""")
 
@@ -564,23 +561,9 @@ object SourceRowClassifier {
 
     // ---- Resolution parsing (UI only) -----------------------------------
 
-    // Match an unambiguous "4k" / "4K" token that means 2160p. Only
-    // matched when the surrounding context is a quality prefix (i.e. the
-    // token is at the very start of the line, or surrounded by
-    // whitespace, or follows a [brackets] before the title).
-    private val REGEX_RESOLUTION_4K =
-        Regex("""(?i)(?:^|\s|\])4k(?:\s|$)""")
-
-    fun parseResolution(qualityText: String): String? {
-        // Explicit 4k (2160p) is a recognised resolution marker in the
-        // current Torrentio naming convention. Prefer it over later
-        // bracketed technical-resolution metadata.
-        if (REGEX_RESOLUTION_4K.containsMatchIn(qualityText)) return "2160p"
-        REGEX_RESOLUTION.find(qualityText)?.value?.let { return it }
-        val wxh = REGEX_RESOLUTION_WXH.find(qualityText) ?: return null
-        val height = wxh.groupValues[2].toIntOrNull() ?: return null
-        return "${height}p"
-    }
+    /** "1080p", "2160p" for 4K; see [ResolutionParser]. */
+    fun parseResolution(qualityText: String): String? =
+        ResolutionParser.label(ResolutionParser.height(qualityText))
 
     /**
      * Display alias for the collapsed card. 2160p -> "4K" per the v3.3

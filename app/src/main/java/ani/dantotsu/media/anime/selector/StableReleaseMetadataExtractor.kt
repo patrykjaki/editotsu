@@ -72,9 +72,6 @@ object StableReleaseMetadataExtractor {
     private val TRACKER_FOLD = Regex("""📂\s*([A-Za-z0-9 .+\-]+)""")
     /** Torrentio's "👤 … 💾 … ⚙ <tracker>" marker (used when no 📂 marker exists). */
     private val TRACKER_COG = Regex("""⚙\uFE0F?\s*([A-Za-z0-9 .+\-]+)""")
-    private val RES_PX = Regex("""\b(\d{3,4}p)\b""")
-    private val RES_WXH = Regex("""\b(\d{3,4}x\d{3,4})\b""")
-    private val RES_4K = Regex("""\b(4k|2k)\b""", RegexOption.IGNORE_CASE)
     // Exact-key spellings (unchanged, so stored direct-release keys stay valid).
     private val AFMT_KEY = Regex(
         """\b(AAC|AC3|DTS(?:-?HD)?|EAC3|DDP|FLAC|OPUS|MP3|TRUEHD|ATMOS)\b""",
@@ -395,10 +392,7 @@ object StableReleaseMetadataExtractor {
         return true
     }
 
-    private fun pickResolution(raw: String): String? {
-        RES_PX.find(raw)?.groupValues?.get(1)?.let { return it }
-        RES_WXH.find(raw)?.groupValues?.get(1)?.let { return it }
-        RES_4K.find(raw)?.groupValues?.get(1)?.lowercase(Locale.ROOT)?.let { return it }
-        return null
-    }
+    // keeps the spelling (and the release-shape gate) of stored exact keys and groups;
+    // family comparison reads the value through ResolutionParser
+    private fun pickResolution(raw: String): String? = ResolutionParser.legacyToken(raw)
 }
