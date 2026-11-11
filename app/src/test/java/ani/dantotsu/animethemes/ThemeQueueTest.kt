@@ -107,11 +107,13 @@ class ThemeQueueTest {
     @Test
     fun failuresRetrySameVideoThenFallbacks() {
         val t = ThemeTrack(1, "OP 1", "song", "", "1-12", "https://v/a.webm", listOf("https://v/b.webm", "https://v/c.webm"), ThemeWarningType.NONE)
-        assertEquals(ThemeQueue.Attempt("https://v/a.webm", 1_000L), ThemeQueue.nextAttempt(t, 1))
-        assertEquals(ThemeQueue.Attempt("https://v/a.webm", 3_000L), ThemeQueue.nextAttempt(t, 2))
-        assertEquals(ThemeQueue.Attempt("https://v/b.webm", 500L), ThemeQueue.nextAttempt(t, 3))
-        assertEquals(ThemeQueue.Attempt("https://v/c.webm", 500L), ThemeQueue.nextAttempt(t, 4))
-        assertNull(ThemeQueue.nextAttempt(t, 5))
+        // The plan the player walks through: attempt n after the n-th failure.
+        val plan = ThemeQueue.attempts(ThemeQueue.sources(t))
+        assertEquals(ThemeQueue.Attempt("https://v/a.webm", 1_000L), plan.getOrNull(1))
+        assertEquals(ThemeQueue.Attempt("https://v/a.webm", 3_000L), plan.getOrNull(2))
+        assertEquals(ThemeQueue.Attempt("https://v/b.webm", 500L), plan.getOrNull(3))
+        assertEquals(ThemeQueue.Attempt("https://v/c.webm", 500L), plan.getOrNull(4))
+        assertNull(plan.getOrNull(5))
     }
 
     @Test

@@ -74,22 +74,40 @@ object ThemeRadioSession {
 
     /**
      * The next playable theme, looking up at most [maxLookups] shows; null when the
-     * list is used up or nothing was found. [lookup] returns a show's themes or null.
+     * list is used up or nothing was found. [lookup] returns a show's themes, null when the
+     * show has none, and throws when the lookup failed. A show is passed over only after its
+     * lookup answered: a failed or cancelled one is tried again on the next call.
      */
     suspend fun next(
         maxLookups: Int = 8,
-        lookup: suspend (RadioShow) -> AnimeThemesData? = { show -> AnimeThemes.repository.getThemesForIds(show.mediaId, show.idMal) },
+        lookup: suspend (RadioShow) -> AnimeThemesData? = ::lookupShow,
     ): ThemeTrack? {
         if (!active) return null
         var tries = 0
-        while (cursor < order.size && tries < maxLookups) {
-            val show = order[cursor++]
+        while (active && cursor < order.size && tries < maxLookups) {
+            val show = order[cursor]
             tries++
-            val data = lookup(show) ?: continue
+            val data = try {
+                lookup(show)
+            } catch (e: LookupFailed) {
+                return null
+            }
+            cursor++
+            if (data == null) continue
             val choices = ThemeQueue.choices(data, prefs).map { ThemeQueue.withShow(it, show.mediaId, show.title) }
             ThemeRadio.pick(choices, kinds, random)?.let { return it }
         }
         if (cursor >= order.size) active = false
         return null
     }
+
+    /** AnimeThemes did not answer for a show. */
+    class LookupFailed : Exception()
+
+    private suspend fun lookupShow(show: RadioShow): AnimeThemesData? =
+        when (val result = AnimeThemes.repository.lookupShared(show.mediaId, show.idMal).await()) {
+            is ThemesLookup.Found -> result.data
+            ThemesLookup.NoMatch -> null
+            ThemesLookup.Failed -> throw LookupFailed()
+        }
 }

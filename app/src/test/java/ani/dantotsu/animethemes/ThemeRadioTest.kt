@@ -66,4 +66,21 @@ class ThemeRadioTest {
         assertEquals("Two", found[0].showTitle)
         assertFalse(ThemeRadioSession.active)
     }
+
+    @Test
+    fun failedLookupDoesNotSkipTheShow() = runBlocking {
+        val shows = listOf(RadioShow(1, null, "One"))
+        ThemeRadioSession.start(shows, ThemeKinds.BOTH, ThemePlaybackPreferences(), seed = 1)
+        assertNull(ThemeRadioSession.next { throw ThemeRadioSession.LookupFailed() })
+        assertTrue(ThemeRadioSession.active)
+        val track = ThemeRadioSession.next { AnimeThemesData(1, "one", listOf(theme(5, "OP")), emptyList()) }
+        assertEquals(1, track?.mediaId)
+    }
+
+    @Test
+    fun stoppedSessionFindsNothing() = runBlocking {
+        ThemeRadioSession.start(listOf(RadioShow(1, null, "One")), ThemeKinds.BOTH, ThemePlaybackPreferences(), seed = 1)
+        ThemeRadioSession.stop()
+        assertNull(ThemeRadioSession.next { AnimeThemesData(1, "one", listOf(theme(5, "OP")), emptyList()) })
+    }
 }

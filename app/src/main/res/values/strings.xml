@@ -308,6 +308,7 @@
     <string name="themes_download_audio">Download audio</string>
     <string name="themes_download_video">Download video</string>
     <string name="themes_download_all">Download all</string>
+    <string name="themes_download_all_no_audio">No audio file: %1$d of %2$d</string>
     <string name="themes_delete_download">Delete saved file</string>
     <string name="themes_downloading">%1$d%%</string>
     <string name="themes_download_failed">Download failed</string>
@@ -1448,6 +1449,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="textview_sub">Textview Subtitles (Experimental)</string>
     <string name="textview_sub_stroke">Subtitle Stroke</string>
     <string name="textview_sub_bottom_margin">Bottom Margin</string>
+    <string name="number_out_of_range">Enter a number from %1$d to %2$d</string>
     <string name="textview_sub_source_size">Source Subtitle Size (%d%%)</string>
     <string name="add_repository">Add Extension Store</string>
     <string name="add_repository_desc">An extension store link should look like this: https://raw.githubusercontent.com/username/repo/branch/index.min.json\nOr: username/repo/branch</string>

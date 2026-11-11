@@ -16,16 +16,19 @@ import ani.dantotsu.restartApp
 import ani.dantotsu.settings.AddRepositoryBottomSheet
 import ani.dantotsu.settings.ProxyDialogFragment
 import ani.dantotsu.settings.SettingsGroupActivity
+import ani.dantotsu.settings.data.ProcessRestart
 import ani.dantotsu.settings.rows.Row
 import ani.dantotsu.settings.rows.RowView
 import ani.dantotsu.settings.rows.Section
 import ani.dantotsu.settings.rows.SettingsHost
 import ani.dantotsu.settings.rows.SettingsScreen
+import ani.dantotsu.settings.rows.SettingsScreenActivity
 import ani.dantotsu.settings.rows.actionRow
 import ani.dantotsu.settings.rows.choiceRow
 import ani.dantotsu.settings.rows.switchRow
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
+import ani.dantotsu.toast
 import ani.dantotsu.util.customAlertDialog
 import eu.kanade.domain.base.BasePreferences
 import tachiyomi.core.util.lang.launchIO
@@ -54,7 +57,7 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
                 R.string.skip_loading_extension_icons_desc, R.drawable.ic_round_no_icon_24),
             choiceRow(PrefName.DohProvider, R.string.selected_dns, R.drawable.lan_24,
                 labels = { DNS_PROVIDERS }, advanced = true,
-                onChange = { host, _ -> host.activity.restartApp() }),
+                onChange = { host, _ -> restartProcess(host) }),
             actionRow("extension_installer", R.string.extension_installer, icon = R.drawable.ic_round_new_releases_24,
                 advanced = true,
                 current = { Injekt.get<BasePreferences>().extensionInstaller().get().titleResId },
@@ -69,7 +72,7 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
                 onClick = { host, _ -> editUserAgent(host) }),
             switchRow(PrefName.EnableSocks5Proxy, R.string.proxy, R.string.proxy_desc,
                 R.drawable.swap_horizontal_circle_24, advanced = true,
-                onChange = { host, _ -> host.activity.restartApp() }),
+                onChange = { host, _ -> restartProcess(host) }),
             actionRow("proxy_setup", R.string.proxy_setup, R.string.proxy_setup_desc, R.drawable.lan_24,
                 advanced = true,
                 onClick = { host, _ -> ProxyDialogFragment().show(host.activity.supportFragmentManager, "dialog") }),
@@ -104,7 +107,8 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
             numberRow(PrefName.TorrentMaxConnections, R.string.torrent_max_connections, R.drawable.ic_round_dns_24) { _, v ->
                 v.toString()
             },
-            numberRow(PrefName.TorrentPort, R.string.torrent_port, R.drawable.network_node_24) { c, v ->
+            // 0 lets libtorrent pick a port.
+            numberRow(PrefName.TorrentPort, R.string.torrent_port, R.drawable.network_node_24, range = PORT_RANGE) { c, v ->
                 if (v > 0) v.toString() else c.getString(R.string.disabled)
             },
             switchRow(PrefName.TorrentDisableUtp, R.string.torrent_disable_utp, R.string.torrent_disable_utp_desc,
@@ -115,6 +119,16 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
                 R.drawable.ic_round_search_sources_24),
         )),
     )
+
+    /** DNS and proxy are read once when the HTTP client is built, so the process restarts. */
+    private fun restartProcess(host: SettingsHost) =
+        ProcessRestart.restart(host.activity, (host.activity as? SettingsScreenActivity)?.reopenIntent())
+
+    private val PORT_RANGE = 0..65535
+
+    /** The typed number when it is in [range]; null for anything else, which is not saved. */
+    internal fun parseNumber(text: String, range: IntRange): Int? =
+        text.trim().toIntOrNull()?.takeIf { it in range }
 
     private fun repoPref(type: MediaType) = when (type) {
         MediaType.ANIME -> PrefName.AnimeExtensionRepos
@@ -193,12 +207,13 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
         key: PrefName,
         title: Int,
         icon: Int,
+        range: IntRange = 0..Int.MAX_VALUE,
         label: (android.content.Context, Int) -> String,
     ): Row = actionRow(
         id = key.name, title = title, icon = icon, advanced = true, visible = torrentsOn,
         keys = listOf(key),
         current = { label(it, PrefManager.getVal(key)) },
-        onClick = { host, row -> editNumber(host, row, key, title, label) },
+        onClick = { host, row -> editNumber(host, row, key, title, range, label) },
     )
 
     private fun editNumber(
@@ -206,6 +221,7 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
         row: RowView,
         key: PrefName,
         title: Int,
+        range: IntRange,
         label: (android.content.Context, Int) -> String,
     ) = with(host.activity) {
         val input = android.widget.EditText(this).apply {
@@ -223,9 +239,13 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
             setTitle(getString(title))
             setCustomView(container)
             setPosButton(R.string.yes, onClick = {
-                val value = input.text.toString().toIntOrNull() ?: 0
-                PrefManager.setVal(key, value)
-                row.setValue(label(this@with, value))
+                val value = parseNumber(input.text.toString(), range)
+                if (value == null) {
+                    toast(getString(R.string.number_out_of_range, range.first, range.last))
+                } else {
+                    PrefManager.setVal(key, value)
+                    row.setValue(label(this@with, value))
+                }
             })
             setNegButton(R.string.no)
             show()
