@@ -36,3 +36,26 @@ fun isForwardChapterTransition(fromIndex: Int, toIndex: Int): Boolean {
     if (fromIndex < 0 || toIndex < 0) return false
     return toIndex > fromIndex
 }
+
+/** What to do with tracker progress after a chapter is finished. */
+enum class ChapterProgressSync { NONE, ASK, UPDATE }
+
+/**
+ * The tracker progress gate shared by the chapter buttons and the
+ * continuous-mode chapter boundary. Logged-out users get nothing (no request,
+ * no toast); users who chose to be asked get the dialog; otherwise progress
+ * is sent when saving is allowed for this title.
+ */
+fun chapterProgressSync(
+    loggedIn: Boolean,
+    askIndividually: Boolean,
+    incognito: Boolean,
+    saveProgress: Boolean,
+    isAdult: Boolean,
+    updateForAdult: Boolean,
+): ChapterProgressSync = when {
+    !loggedIn -> ChapterProgressSync.NONE
+    askIndividually && !incognito -> ChapterProgressSync.ASK
+    !incognito && saveProgress && (!isAdult || updateForAdult) -> ChapterProgressSync.UPDATE
+    else -> ChapterProgressSync.NONE
+}

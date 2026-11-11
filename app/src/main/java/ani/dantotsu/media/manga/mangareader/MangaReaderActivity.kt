@@ -1342,18 +1342,38 @@ class MangaReaderActivity : AppCompatActivity() {
 
     private fun progress(forceComplete: Boolean, runnable: Runnable) {
         val chapterCompleted = forceComplete || (maxChapterPage > 0 && maxChapterPage - currentChapterPage <= 1)
-        if (chapterCompleted) {
-            maybeHandleSubscriptionAfterChapterCompletion()
+        if (!chapterCompleted) {
+            runnable.run()
+            return
         }
-        if (chapterCompleted && Anilist.userid != null) {
-            showProgressDialog =
-                if (PrefManager.getVal(PrefName.AskIndividualReader)) PrefManager.getCustomVal(
-                    "${media.id}_progressDialog",
-                    true
-                ) else false
-            val incognito: Boolean = PrefManager.getVal(PrefName.Incognito)
-            if (showProgressDialog && !incognito) {
+        maybeHandleSubscriptionAfterChapterCompletion()
+        val selectedChap = media.manga?.selectedChapter?.number ?: if (this@MangaReaderActivity::chapter.isInitialized) chapter.number else null
+        val chapNumStr = selectedChap?.let { MediaNameAdapter.findChapterNumber(it)?.toString() } ?: selectedChap ?: ""
+        syncChapterProgress(chapNumStr, runnable)
+    }
 
+    /**
+     * Sends tracker progress for a finished chapter through the shared gate
+     * (login, "ask individually", incognito, per-title and adult settings),
+     * then runs [then]. Used by the chapter buttons and by the continuous-mode
+     * chapter boundary.
+     */
+    private fun syncChapterProgress(chapNumStr: String, then: Runnable) {
+        showProgressDialog =
+            if (PrefManager.getVal(PrefName.AskIndividualReader)) PrefManager.getCustomVal(
+                "${media.id}_progressDialog",
+                true
+            ) else false
+        val action = chapterProgressSync(
+            loggedIn = Anilist.userid != null,
+            askIndividually = showProgressDialog,
+            incognito = PrefManager.getVal(PrefName.Incognito),
+            saveProgress = PrefManager.getCustomVal("${media.id}_save_progress", true),
+            isAdult = media.isAdult,
+            updateForAdult = PrefManager.getVal(PrefName.UpdateForHReader),
+        )
+        when (action) {
+            ChapterProgressSync.ASK -> {
                 val dialogView = layoutInflater.inflate(R.layout.item_custom_dialog, null)
                 val checkbox = dialogView.findViewById<CheckBox>(R.id.dialog_checkbox)
                 checkbox.text = getString(R.string.dont_ask_again, media.userPreferredName)
@@ -1367,37 +1387,28 @@ class MangaReaderActivity : AppCompatActivity() {
                     setCancelable(false)
                     setPosButton(R.string.yes) {
                         PrefManager.setCustomVal("${media.id}_save_progress", true)
-                        val selectedChap = media.manga?.selectedChapter?.number ?: if (this@MangaReaderActivity::chapter.isInitialized) chapter.number else null
-                        val chapNumStr = selectedChap?.let { MediaNameAdapter.findChapterNumber(it)?.toString() } ?: selectedChap ?: ""
                         if (chapNumStr.isNotEmpty()) {
                             updateProgress(media, chapNumStr)
                         }
-                        runnable.run()
+                        then.run()
                     }
                     setNegButton(R.string.no) {
                         PrefManager.setCustomVal("${media.id}_save_progress", false)
-                        runnable.run()
+                        then.run()
                     }
                     setOnCancelListener { hideSystemBars() }
                     show()
-
                 }
-            } else {
-                if (!incognito && PrefManager.getCustomVal(
-                        "${media.id}_save_progress",
-                        true
-                    ) && if (media.isAdult) PrefManager.getVal(PrefName.UpdateForHReader) else true
-                ) {
-                    val selectedChap = media.manga?.selectedChapter?.number ?: if (this@MangaReaderActivity::chapter.isInitialized) chapter.number else null
-                    val chapNumStr = selectedChap?.let { MediaNameAdapter.findChapterNumber(it)?.toString() } ?: selectedChap ?: ""
-                    if (chapNumStr.isNotEmpty()) {
-                        updateProgress(media, chapNumStr)
-                    }
-                }
-                runnable.run()
             }
-        } else {
-            runnable.run()
+
+            ChapterProgressSync.UPDATE -> {
+                if (chapNumStr.isNotEmpty()) {
+                    updateProgress(media, chapNumStr)
+                }
+                then.run()
+            }
+
+            ChapterProgressSync.NONE -> then.run()
         }
     }
 
@@ -1735,22 +1746,19 @@ class MangaReaderActivity : AppCompatActivity() {
             // Only a move to a later chapter completes the outgoing one, in
             // every reading direction. Backward scrolls switch identity,
             // resume position and UI below without marking anything read.
-            val incognito: Boolean = PrefManager.getVal(PrefName.Incognito)
-            val progressAllowed = !incognito && PrefManager.getCustomVal("${media.id}_save_progress", true)
-                && if (media.isAdult) PrefManager.getVal(PrefName.UpdateForHReader) else true
-            if (progressAllowed && isForwardChapterTransition(currentChapterIndex, newIndex)) {
-                // Mark previous chapter as read (100% completed)
+            if (isForwardChapterTransition(currentChapterIndex, newIndex)) {
+                // Mark the outgoing chapter as fully read on this device.
                 PrefManager.setCustomVal("${media.id}_${oldChapter.number}", maxChapterPage)
                 val cleanOldChapNum = MediaNameAdapter.findChapterNumber(oldChapter.number)?.let {
                     if (it % 1 == 0f) it.toInt().toString() else it.toString()
                 }
                 cleanOldChapNum?.let { PrefManager.setCustomVal("${media.id}_$it", maxChapterPage) }
 
-                // Sync progress if allowed (gate already evaluated above)
-                val oldChapNumStr = cleanOldChapNum ?: oldChapter.number
-                if (oldChapNumStr.isNotEmpty()) {
-                    updateProgress(media, oldChapNumStr)
-                }
+                // Same gate as the chapter buttons: subscription prompt, then
+                // tracker progress only for logged-in users, asking first when
+                // the user chose to be asked.
+                maybeHandleSubscriptionAfterChapterCompletion()
+                syncChapterProgress(cleanOldChapNum ?: oldChapter.number) {}
             }
 
             chapter = newChapter
