@@ -13,6 +13,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
+import eu.kanade.tachiyomi.network.await
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -135,8 +136,9 @@ query GetAnimeThemesByExternalId(${'$'}site: ResourceSite!, ${'$'}id: [Int!]) {
                     .header("User-Agent", "Editotsu/1.0")
                     .post(requestBody)
                     .build()
-                // Not cached by OkHttp; the repository keeps its own cache.
-                val responseText = httpClient.newCall(request).execute().use { response ->
+                // Not cached by OkHttp; the repository keeps its own cache. await() cancels the
+                // call when the coroutine is cancelled, so no thread waits out the call timeout.
+                val responseText = httpClient.newCall(request).await().use { response ->
                     if (!response.isSuccessful) {
                         Logger.log("AnimeThemesApi: HTTP ${response.code} for site=$site id=$externalId")
                         return@withContext AnimeThemesApiResult.Failure(
