@@ -72,60 +72,55 @@ fun updateProgress(media: Media, number: String) {
         ?: return
 
     if (!incognito) {
-        if (rescueMode) {
-            // In rescue mode: cache the update for later AL sync and mirror to MAL
+        if (rescueMode || Anilist.userid != null) {
             val a = progressInt
-            if (a > (media.userProgress ?: -1)) {
-                val status = if (media.userStatus == "REPEATING") media.userStatus!! else "CURRENT"
-                val pending = PendingProgressUpdate(
-                    mediaId = media.id,
-                    idMAL = media.idMAL,
-                    isAnime = media.anime != null,
-                    progress = a,
-                    status = status,
-                )
-                val existing: List<PendingProgressUpdate> =
-                    PrefManager.getVal(PrefName.PendingProgressUpdates, listOf())
-                val updated = existing.filterNot { it.mediaId == media.id } + pending
-                PrefManager.setVal(PrefName.PendingProgressUpdates, updated)
-                CoroutineScope(Dispatchers.IO).launch {
-                    MAL.query.editList(
-                        media.idMAL,
-                        media.anime != null,
-                        a, null, status
-                    )
-                    toast(currContext()?.getString(R.string.setting_progress, a))
-                    media.userProgress = a
-                }
-            }
-            // Upstream aa98472a anti-regression: userProgress advances only on a
-            // successful forward update, never on a skipped/stale one.
-            // Upstream 5ffa682b: progress updates must drop stale home/stories
-            // caches (covers the rescue-mode path; the AniList branch also
-            // invalidates inside editList itself).
-            Anilist.query.invalidateHomePageCache()
-            Anilist.query.invalidateUserStatusCache()
-            Refresh.all()
-        } else if (Anilist.userid != null) {
+            val status = if (media.userStatus == "REPEATING") media.userStatus!! else "CURRENT"
             CoroutineScope(Dispatchers.IO).launch {
-                val a = progressInt
-                if (a > (media.userProgress ?: -1)) {
-                    Anilist.mutation.editList(
+                if (PendingProgressRules.shouldSend(a, media.userProgress)) {
+                    // Rescue mode does not call AniList; the update is queued for it.
+                    val anilistOk = !rescueMode && Anilist.mutation.editList(
                         media.id,
                         a,
-                        status = if (media.userStatus == "REPEATING") media.userStatus else "CURRENT"
+                        status = status
                     )
-                    MAL.query.editList(
+                    val malOk = MAL.query.editList(
                         media.idMAL,
                         media.anime != null,
                         a, null,
-                        if (media.userStatus == "REPEATING") media.userStatus!! else "CURRENT"
+                        status
                     )
-                    toast(currContext()?.getString(R.string.setting_progress, a))
-                    // Upstream aa98472a anti-regression: see rescue branch above.
-                    media.userProgress = a
+                    val decision = PendingProgressRules.decide(
+                        PendingProgressUpdate(
+                            mediaId = media.id,
+                            idMAL = media.idMAL,
+                            isAnime = media.anime != null,
+                            progress = a,
+                            status = status,
+                        ),
+                        rescueMode = rescueMode,
+                        anilistOk = anilistOk,
+                        malOk = malOk,
+                    )
+                    PendingProgressStore.update { list ->
+                        val raised = if (decision.advanceLocal) {
+                            PendingProgressRules.raiseQueuedProgress(list, media.id, a)
+                        } else list
+                        decision.queue?.let { PendingProgressRules.enqueue(raised, it) } ?: raised
+                    }
+                    if (decision.advanceLocal) {
+                        // Upstream aa98472a anti-regression: userProgress advances
+                        // only after the primary tracker accepted the update.
+                        media.userProgress = a
+                        toast(currContext()?.getString(R.string.setting_progress, a))
+                    } else {
+                        toast(currContext()?.getString(R.string.progress_sync_later, a))
+                    }
+                    if (decision.queue != null && !(rescueMode && malOk)) {
+                        PendingProgressRetry.arm()
+                    }
                 }
-                // Upstream 5ffa682b (see above).
+                // Upstream 5ffa682b: progress updates must drop stale home/stories
+                // caches (editList also invalidates them itself).
                 Anilist.query.invalidateHomePageCache()
                 Anilist.query.invalidateUserStatusCache()
                 Refresh.all()
@@ -162,61 +157,147 @@ fun shouldSyncProgress(
     return true
 }
 
-/** Sync all pending progress updates (cached during rescue mode) to AniList. */
-fun syncPendingProgressUpdates() {
+/** Reads and writes the pending progress queue; all changes go through [update]. */
+object PendingProgressStore {
+    private val lock = Any()
 
-    if (PrefManager.getVal<Boolean>(PrefName.RescueMode)) return
-    if (Anilist.userid == null) return
-    val pending: List<PendingProgressUpdate> = try {
-        PrefManager.getVal(PrefName.PendingProgressUpdates, listOf())
-    } catch (e: Exception) {
-        PrefManager.setVal(PrefName.PendingProgressUpdates, listOf<PendingProgressUpdate>())
-        return
-    }
-    if (pending.isEmpty()) return
-    toast(currContext()?.getString(R.string.syncing_progress, pending.size))
-    CoroutineScope(Dispatchers.IO).launch {
-        val remaining = pending.toMutableList()
-        for (update in pending) {
-            try {
-                
-                val anilistId: Int = if (update.idMAL != null && update.mediaId == update.idMAL) {
-                    val type = if (update.isAnime) "ANIME" else "MANGA"
-                    val resolved = Anilist.query.getMedia(update.idMAL, mal = true, type = type)?.id
-                    if (resolved == null) {
-                        if (Anilist.anilistDisabledSignal) break
-                        remaining.remove(update)
-                        continue
-                    }
-                    resolved
-                } else {
-                    update.mediaId
-                }
-                Anilist.mutation.editList(
-                    mediaID = anilistId,
-                    progress = update.progress,
-                    score = update.score,
-                    repeat = update.rewatch,
-                    notes = update.notes,
-                    status = update.status,
-                    private = update.isPrivate,
-                    startedAt = update.startDate,
-                    completedAt = update.endDate,
-                    customList = update.customLists,
-                )
-                if (!Anilist.anilistDisabledSignal) {
-                    remaining.remove(update)
-                } else {
-                    break
-                }
-            } catch (_: Exception) {
-            }
+    fun read(): List<PendingProgressUpdate> = synchronized(lock) {
+        try {
+            PrefManager.getVal(PrefName.PendingProgressUpdates, listOf())
+        } catch (e: Exception) {
+            PrefManager.setVal(PrefName.PendingProgressUpdates, listOf<PendingProgressUpdate>())
+            listOf()
         }
-        PrefManager.setVal(PrefName.PendingProgressUpdates, remaining)
-        if (remaining.isEmpty()) {
+    }
+
+    fun update(change: (List<PendingProgressUpdate>) -> List<PendingProgressUpdate>) {
+        synchronized(lock) {
+            PrefManager.setVal(PrefName.PendingProgressUpdates, change(read()))
+        }
+    }
+}
+
+/**
+ * Retries the pending queue when a network becomes available. Armed once per
+ * process, the first time an update is queued; app start syncs on its own.
+ */
+object PendingProgressRetry {
+    private const val RETRY_DELAY_MS = 5_000L
+    private val armed = java.util.concurrent.atomic.AtomicBoolean(false)
+    private var job: kotlinx.coroutines.Job? = null
+
+    fun arm() {
+        if (!armed.compareAndSet(false, true)) return
+        val context = currContext()?.applicationContext
+        val cm = context?.getSystemService(android.net.ConnectivityManager::class.java)
+        if (cm == null) {
+            armed.set(false)
+            return
+        }
+        try {
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    schedule()
+                }
+            })
+        } catch (e: RuntimeException) {
+            armed.set(false)
+        }
+    }
+
+    @Synchronized
+    private fun schedule() {
+        job?.cancel()
+        job = CoroutineScope(Dispatchers.IO).launch {
+            kotlinx.coroutines.delay(RETRY_DELAY_MS)
+            syncPendingProgressUpdates()
+        }
+    }
+}
+
+private val pendingSyncRunning = java.util.concurrent.atomic.AtomicBoolean(false)
+
+/**
+ * Send queued list edits: the AniList part (not in rescue mode) and the MAL
+ * part. Entries queued while a run is going are kept for the next run.
+ */
+fun syncPendingProgressUpdates() {
+    val rescueMode = PrefManager.getVal<Boolean>(PrefName.RescueMode)
+    val canAnilist = !rescueMode && Anilist.userid != null
+    val canMal = MAL.token != null
+    if (!canAnilist && !canMal) return
+    val work = PendingProgressStore.read().filter {
+        (canAnilist && !it.anilistDone) || (canMal && it.malPending)
+    }
+    if (work.isEmpty()) return
+    if (!pendingSyncRunning.compareAndSet(false, true)) return
+    toast(currContext()?.getString(R.string.syncing_progress, work.size))
+    CoroutineScope(Dispatchers.IO).launch {
+        val results = mutableMapOf<PendingProgressUpdate, PendingProgressUpdate?>()
+        try {
+            for (update in work) {
+                var anilistOk: Boolean? = null
+                var malOk: Boolean? = null
+                if (canAnilist && !update.anilistDone && !Anilist.anilistDisabledSignal) {
+                    anilistOk = try {
+                        val anilistId: Int? = if (update.idMAL != null && update.mediaId == update.idMAL) {
+                            val type = if (update.isAnime) "ANIME" else "MANGA"
+                            Anilist.query.getMedia(update.idMAL, mal = true, type = type)?.id
+                        } else {
+                            update.mediaId
+                        }
+                        when {
+                            anilistId != null -> Anilist.mutation.editList(
+                                mediaID = anilistId,
+                                progress = update.progress,
+                                score = update.score,
+                                repeat = update.rewatch,
+                                notes = update.notes,
+                                status = update.status,
+                                private = update.isPrivate,
+                                startedAt = update.startDate,
+                                completedAt = update.endDate,
+                                customList = update.customLists,
+                            )
+                            Anilist.anilistDisabledSignal -> false
+                            // Not on AniList: nothing to send there.
+                            else -> true
+                        }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+                if (canMal && update.malPending) {
+                    malOk = try {
+                        MAL.query.editList(
+                            update.idMAL,
+                            update.isAnime,
+                            update.progress,
+                            update.score,
+                            update.status,
+                            update.rewatch,
+                            update.startDate,
+                            update.endDate,
+                        )
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+                results[update] = PendingProgressRules.afterSyncRun(update, anilistOk, malOk)
+            }
+        } finally {
+            PendingProgressStore.update { PendingProgressRules.applySyncResults(it, results) }
+            pendingSyncRunning.set(false)
+        }
+        val left = results.values.count { it != null }
+        if (left == 0) {
             toast(currContext()?.getString(R.string.sync_complete))
         } else {
-            toast(currContext()?.getString(R.string.sync_partial, remaining.size))
+            toast(currContext()?.getString(R.string.sync_partial, left))
         }
         Refresh.all()
     }

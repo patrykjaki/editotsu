@@ -686,6 +686,7 @@
     <string name="saved_to_path">Saved to:\n%s</string>
     <string name="error_saving_settings">Failed to save settings</string>
     <string name="setting_progress">Setting progress to %1$d</string>
+    <string name="progress_sync_later">Progress %1$d not saved to the tracker. It will sync when online</string>
     <string name="login_anilist_account">Please Login into AniList account!</string>
     <string name="congrats_vro">Congrats Vro</string>
     <string name="please_reload">Please Reload.</string>
