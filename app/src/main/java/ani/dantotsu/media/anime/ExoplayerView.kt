@@ -1509,6 +1509,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 ?: epString.trim().toIntOrNull()
                 ?: 1
             val epObj = if (this::episode.isInitialized) episode else null
+            // One lookup per episode, and one more once the duration is known.
+            val requestKey = "$epString:${dur > 0L}"
+            if (aniSkipManager.timeStampsRequestKey == requestKey) return
+            aniSkipManager.timeStampsRequestKey = requestKey
             lifecycleScope.launch(Dispatchers.IO) {
                 model.loadTimeStamps(
                     media.idMAL,

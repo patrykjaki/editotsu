@@ -37,6 +37,11 @@ class PlayerAniSkipManager(
     private var disappeared = false
     private var functionStarted = false
     var isTimeStampsLoaded = false
+    /**
+     * The lookup already started for this episode ("<episode>:<duration known>"), so a seek or
+     * rebuffer does not run the provider chain again. Cleared on episode change.
+     */
+    var timeStampsRequestKey: String? = null
 
     private val updateRunnable = object : Runnable {
         override fun run() {
@@ -126,6 +131,10 @@ class PlayerAniSkipManager(
         disappeared = false
         functionStarted = false
         isTimeStampsLoaded = false
+        timeStampsRequestKey = null
+        // The previous episode's ranges must not skip anything in the next one.
+        if (Looper.myLooper() == Looper.getMainLooper()) model.timeStamps.value = null
+        else model.timeStamps.postValue(null)
         skippedTimeStamps.clear()
         cancelTimer()
     }
