@@ -34,7 +34,6 @@ import java.util.concurrent.Executors
 
 import androidx.mediarouter.media.MediaRouter
 import androidx.mediarouter.media.MediaRouterParams
-import ani.dantotsu.media.anime.cast.CastProxyServer
 import ani.dantotsu.media.anime.cast.CastProxyServerService
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 
@@ -131,7 +130,7 @@ class PlayerCastManager(
             CastProxyServerService.stop(activity)
         }
         override fun onSessionStarting(session: CastSession) {
-            CastProxyServerService.start(activity)
+            CastProxyServerService.start(activity, newSession = true)
         }
         override fun onSessionEnding(session: CastSession) {}
         override fun onSessionResuming(session: CastSession, sessionId: String) {}
@@ -413,28 +412,36 @@ class PlayerCastManager(
         headers.putAll(defaultHeaders)
         video?.file?.headers?.let { headers.putAll(it) }
 
-        val proxyServer = CastProxyServerService.currentProxyServer
-            ?: CastProxyServer(contentResolver = activity.contentResolver, ipAddress = CastProxyServer.getLocalIpAddress())
-
-        val proxiedUri = if (uriStr.startsWith("content://")) {
-            proxyServer.getLocalUrl(uriStr).toUri()
-        } else if (uriStr.startsWith("http://") || uriStr.startsWith("https://")) {
-            proxyServer.getProxyUrl(uriStr, headers).toUri()
-        } else {
-            originalUri
+        // Make sure the proxy runs and a session token exists (a resumed session may
+        // reach here without onSessionStarting).
+        val access = CastProxyServerService.access
+        if (!access.isOpen || !CastProxyServerService.isRunning.value) {
+            CastProxyServerService.start(activity)
         }
 
-        val proxiedSubs = item.localConfiguration?.subtitleConfigurations?.map { sub ->
-            val subUriStr = sub.uri.toString()
-            val proxiedSubUri = if (subUriStr.startsWith("http://") || subUriStr.startsWith("https://")) {
-                proxyServer.getProxyUrl(subUriStr, headers).toUri()
-            } else if (subUriStr.startsWith("content://") || subUriStr.startsWith("file://")) {
-                proxyServer.getLocalUrl(subUriStr).toUri()
-            } else {
-                sub.uri
+        // Exactly what this item may fetch through the proxy: its media and subtitles.
+        val allowedProxy = mutableMapOf<String, Map<String, String>>()
+        val allowedLocal = mutableListOf<String>()
+        fun route(uri: android.net.Uri, isMedia: Boolean): android.net.Uri {
+            val str = uri.toString()
+            return when {
+                str.startsWith("http://") || str.startsWith("https://") -> {
+                    allowedProxy[str] = headers.toMap()
+                    access.proxyUrl(str)?.toUri() ?: uri
+                }
+                str.startsWith("content://") || (!isMedia && str.startsWith("file://")) -> {
+                    allowedLocal += str
+                    access.localUrl(str)?.toUri() ?: uri
+                }
+                else -> uri
             }
-            sub.buildUpon().setUri(proxiedSubUri).build()
+        }
+
+        val proxiedUri = route(originalUri, isMedia = true)
+        val proxiedSubs = item.localConfiguration?.subtitleConfigurations?.map { sub ->
+            sub.buildUpon().setUri(route(sub.uri, isMedia = false)).build()
         } ?: emptyList()
+        access.setItem(allowedProxy, allowedLocal)
 
         return item.buildUpon()
             .setUri(proxiedUri)
