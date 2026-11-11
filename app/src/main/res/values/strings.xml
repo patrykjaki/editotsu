@@ -1369,6 +1369,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="translating_page">Recognizing &amp; translating page text…</string>
     <string name="no_text_detected">No text detected on page</string>
     <string name="translation_failed_fallback">Translation failed. Showing detected text.</string>
+    <string name="reader_page_failed">Page failed to load</string>
+    <string name="reader_page_retry">Retry page</string>
     <string name="transition_finished">Finished:</string>
     <string name="transition_next">Next:</string>
     <string name="transition_read_next">Read Next Chapter</string>

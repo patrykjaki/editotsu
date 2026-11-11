@@ -101,9 +101,12 @@ open class ImageAdapter(
             ?: return false
         val progress = parent.findViewById<View>(R.id.imgProgProgress) ?: return false
 
+        val error = parent.findViewById<View>(R.id.imgProgError)
+
         parent.setTag(R.id.imgProgImageNoGestures, null)
         imageView.recycle()
         imageView.visibility = View.GONE
+        error?.visibility = View.GONE
         progress.visibility = View.VISIBLE
 
         var bitmap = loadBitmap(position, parent)
@@ -112,6 +115,19 @@ open class ImageAdapter(
             bitmap = loadBitmap(position, parent)
         }
         if (bitmap == null) {
+            // Network error, unreadable format or out of memory: stop the
+            // spinner and offer a retry instead of spinning forever.
+            if (currentCoroutineContext().isActive && error != null) {
+                progress.visibility = View.GONE
+                error.visibility = View.VISIBLE
+                // Rebinding goes through onBindViewHolder, which owns the load
+                // job. Look the item up again: prepends shift positions.
+                val failedItem = items.getOrNull(position)
+                parent.findViewById<View>(R.id.imgProgRetry)?.setOnClickListener {
+                    val current = items.indexOf(failedItem)
+                    if (current >= 0) notifyItemChanged(current)
+                }
+            }
             return false
         }
 
