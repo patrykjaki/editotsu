@@ -100,6 +100,7 @@ import ani.dantotsu.media.anime.selector.RememberedSelectionPolicy
 import ani.dantotsu.media.anime.selector.SelectedFamilyStore
 import ani.dantotsu.media.anime.selector.SelectedKeyStore
 import ani.dantotsu.media.anime.selector.StableCandidateBuilder
+import ani.dantotsu.media.anime.selector.EpisodeStreamCarryOver
 import ani.dantotsu.setSafeOnClickListener
 import ani.dantotsu.settings.SettingsGroupActivity
 import ani.dantotsu.settings.saving.PrefManager
@@ -846,6 +847,15 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
     fun startExoplayer(media: Media) {
         if (!isAdded || _binding == null) return
         prevEpisode = null
+
+        // the episode list can be replaced while the picker is open (cached list, then
+        // the fresh one). play the episode the list holds now, with the streams this
+        // picker loaded.
+        val listed = media.anime?.episodes?.getEpisode(media.anime?.selectedEpisode)
+        episode?.let { loaded ->
+            if (listed != null) EpisodeStreamCarryOver.carry(loaded, listed)
+        }
+        if (listed != null) episode = listed
 
         episode?.let { ep ->
             val video = ep.extractors?.find {
