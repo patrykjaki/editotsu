@@ -14,6 +14,31 @@ class MALQueries {
     private val apiUrl = "https://api.myanimelist.net/v2"
 
     companion object {
+        /** MAL list endpoints return at most 1000 entries per page. */
+        internal const val LIST_PAGE_SIZE = 1000
+        private const val MAX_LIST_PAGES = 100
+
+        /**
+         * Sum [value] over every page of a MAL list, following `paging.next`.
+         * Null when the first page failed; a later failed page ends the sum
+         * with what was read so far.
+         */
+        internal suspend fun sumAllListPages(
+            fetch: suspend (offset: Int) -> MalListResponse?,
+            value: (MalListEntry) -> Int,
+        ): Int? {
+            var total = 0
+            var offset = 0
+            for (page in 0 until MAX_LIST_PAGES) {
+                kotlin.coroutines.coroutineContext.ensureActive()
+                val res = fetch(offset) ?: return if (page == 0) null else total
+                total += res.data.sumOf(value)
+                if (res.paging?.next == null || res.data.isEmpty()) break
+                offset += res.data.size
+            }
+            return total
+        }
+
         internal var testHttpHandler: (suspend (url: String, headers: Map<String, String>, method: String, data: Map<String, String>?) -> com.lagradost.nicehttp.NiceResponse)? = null
     }
 
@@ -162,10 +187,12 @@ class MALQueries {
         var total = 0
         var loaded = false
         for (status in statuses) {
-            kotlin.coroutines.coroutineContext.ensureActive()
-            getUserAnimeList(status = status, limit = 100)?.data?.let { entries ->
+            sumAllListPages(
+                fetch = { offset -> getUserAnimeList(status = status, limit = LIST_PAGE_SIZE, offset = offset) },
+                value = { it.listStatus?.numEpisodesWatched ?: 0 },
+            )?.let {
                 loaded = true
-                total += entries.sumOf { it.listStatus?.numEpisodesWatched ?: 0 }
+                total += it
             }
         }
         return if (loaded) total else null
@@ -176,10 +203,12 @@ class MALQueries {
         var total = 0
         var loaded = false
         for (status in statuses) {
-            kotlin.coroutines.coroutineContext.ensureActive()
-            getUserMangaList(status = status, limit = 100)?.data?.let { entries ->
+            sumAllListPages(
+                fetch = { offset -> getUserMangaList(status = status, limit = LIST_PAGE_SIZE, offset = offset) },
+                value = { it.listStatus?.numChaptersRead ?: 0 },
+            )?.let {
                 loaded = true
-                total += entries.sumOf { it.listStatus?.numChaptersRead ?: 0 }
+                total += it
             }
         }
         return if (loaded) total else null
@@ -194,8 +223,9 @@ class MALQueries {
         rewatch: Int? = null,
         start: FuzzyDate? = null,
         end: FuzzyDate? = null
-    ) {
-        if (idMAL == null || authHeader == null) return
+    ): Boolean {
+        // Nothing to send (no MAL login or no MAL id) is not a failure.
+        if (idMAL == null || authHeader == null) return true
         val data = mutableMapOf("status" to convertStatus(isAnime, status))
         if (progress != null)
             data[if (isAnime) "num_watched_episodes" else "num_chapters_read"] = progress.toString()
@@ -208,7 +238,7 @@ class MALQueries {
             data["start_date"] = start.toMALString()
         if (end != null && !end.isEmpty())
             data["finish_date"] = end.toMALString()
-        tryWithSuspend {
+        val response = tryWithSuspend {
             executeRequest {
                 httpPut(
                     "$apiUrl/${if (isAnime) "anime" else "manga"}/$idMAL/my_list_status",
@@ -217,6 +247,7 @@ class MALQueries {
                 )
             }
         }
+        return response?.isSuccessful == true
     }
 
     suspend fun deleteList(isAnime: Boolean, idMAL: Int?) {

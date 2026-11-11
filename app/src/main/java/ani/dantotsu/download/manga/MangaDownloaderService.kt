@@ -188,6 +188,36 @@ class MangaDownloaderService : Service() {
         )
     }
 
+    /**
+     * Android stops a dataSync service after its daily time limit. Cancel everything in
+     * the queue with the same transaction as "cancel all", tell the user, and stop.
+     * Nothing resumes on its own after the limit.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Logger.log("Manga download service timed out (fgs type $fgsType)")
+        val ownership = MangaServiceDataSingleton.downloadOwnership
+        val cutoff = ownership.reserveMangaScope(null)
+        val sweep = CoroutineScope(Dispatchers.Default).launch {
+            try {
+                MangaDownloadCancellation.cancelAllMangaTransaction(
+                    ownership = ownership,
+                    queue = MangaServiceDataSingleton.downloadQueue,
+                    cutoff = cutoff,
+                    removeJobRecords = { c -> removeScopedJobRecords(null, c) },
+                )
+            } finally {
+                ownership.finishMangaScope(null)
+            }
+        }
+        // Short bounded wait on the main thread: the service is destroyed right after
+        // this. A sweep that needs longer finishes on its own scope.
+        kotlinx.coroutines.runBlocking {
+            kotlinx.coroutines.withTimeoutOrNull(2_000) { sweep.join() }
+        }
+        ani.dantotsu.download.notifyTimeoutPause(this)
+        stopSelf()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         releaseWifiMonitor()

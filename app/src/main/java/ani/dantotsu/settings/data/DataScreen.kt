@@ -260,8 +260,12 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
         }
     }
 
-    private fun changeDownloadDir(host: SettingsHost) = with(host.data) {
+    private fun changeDownloadDir(host: SettingsHost): Unit = with(host.data) {
         val oldUri = PrefManager.getVal<String>(PrefName.DownloadsDir)
+        if (DownloadsManager.isAnyDownloadActive()) {
+            toast(getString(R.string.download_dir_busy))
+            return@with
+        }
         customAlertDialog().apply {
             setTitle(R.string.change_download_directory)
             setMessage(R.string.change_download_directory_confirm)
@@ -278,7 +282,13 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
                                     toast(getString(R.string.success))
                                     runOnUiThread { refresh() }
                                 } else {
-                                    toast(message)
+                                    // The picker already saved the new folder; the
+                                    // downloads are still in the old one.
+                                    if (newUri != oldUri) {
+                                        PrefManager.setVal(PrefName.DownloadsDir, oldUri)
+                                    }
+                                    toast(getString(R.string.download_dir_not_changed, message))
+                                    runOnUiThread { refresh() }
                                 }
                             }
                         }

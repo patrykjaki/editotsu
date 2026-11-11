@@ -686,6 +686,7 @@
     <string name="saved_to_path">Saved to:\n%s</string>
     <string name="error_saving_settings">Failed to save settings</string>
     <string name="setting_progress">Setting progress to %1$d</string>
+    <string name="progress_sync_later">Progress %1$d not saved to the tracker. It will sync when online</string>
     <string name="login_anilist_account">Please Login into AniList account!</string>
     <string name="congrats_vro">Congrats Vro</string>
     <string name="please_reload">Please Reload.</string>
@@ -1734,6 +1735,9 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="change_download_directory">Change Download Directory</string>
     <string name="change_download_directory_desc">Choose a directory to store downloads</string>
     <string name="change_download_directory_confirm">Are you sure you want to change the download directory? Existing downloads will remain in the old directory.</string>
+    <string name="download_paused_fgs_limit">Downloads paused: Android\'s daily background limit</string>
+    <string name="download_dir_busy">Downloads are running. Change the folder after they finish</string>
+    <string name="download_dir_not_changed">Download folder not changed: %1$s</string>
     <string name="purge_downloads">Delete all downloads</string>
     <string name="purge_incomplete">Purge did not fully settle — some items may remain; retry once downloads are idle</string>
     <string name="purge_downloads_desc">Delete all downloaded anime, manga, and novel files to free up storage</string>
