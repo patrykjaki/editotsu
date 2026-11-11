@@ -52,6 +52,17 @@ class EditotsuInternalDataTest {
     }
 
     @Test
+    fun trackerLabelIsTheSourceIdCapitalised() {
+        fun label(id: String?) = EditotsuInternalData(tracker = id).trackerLabel()
+        assertEquals("Example", label("example"))
+        assertEquals("ExampleTracker", label("exampleTracker"))
+        assertEquals("Other", label("unknown"))
+        assertEquals("Other", label("Unknown"))
+        assertNull(label("  "))
+        assertNull(label(null))
+    }
+
+    @Test
     fun wrongTypesFallBackPerField() {
         val d = EditotsuInternalData.parse("""{"editotsu":1,"seeders":"12","sizeBytes":-5,"tracker":3,"sizeApprox":true,"torrentName":"T"}""")!!
         assertNull(d.seeders)
