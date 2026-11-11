@@ -201,21 +201,6 @@ data class DrmInfo(
     val scheme: String,
     val licenseUrl: String,
     val licenseHeaders: Map<String, String> = mapOf(),
-    /** Present when the source can also mint a persistent license for offline use. */
-    val offline: OfflineDrmInfo? = null,
-) : Serializable
-
-/**
- * The download counterpart of [DrmInfo]. Sources often serve downloads from a
- * different manifest and a different license endpoint than playback, so both
- * are carried separately rather than reusing the streaming ones.
- * **/
-data class OfflineDrmInfo(
-    val manifestUrl: String,
-    val licenseUrl: String,
-    val licenseHeaders: Map<String, String> = mapOf(),
-    /** Sent with manifest and segment requests; these are usually auth headers. */
-    val headers: Map<String, String> = mapOf(),
 ) : Serializable
 
 /**
