@@ -347,6 +347,13 @@ android {
         }
     }
 
+    // Alpha versions are built with the beta build type (see above), so they would
+    // take src/beta/res: the amber splash, which is also the home and settings logo.
+    // Give them the alpha resources (red splash, "Editotsu α" app_name) instead.
+    if (editotsuVersion.contains("-alpha")) {
+        sourceSets.getByName("beta").res.setSrcDirs(listOf("src/alpha/res"))
+    }
+
     buildFeatures {
         viewBinding = true
         buildConfig = true
