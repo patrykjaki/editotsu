@@ -292,6 +292,14 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     val model: MediaDetailsViewModel by viewModels()
     private val client = OkHttpClient()
 
+    /**
+     * Set while the player opens one of its own screens (player settings, the subtitle file
+     * picker), so onUserLeaveHint does not shrink the player into PiP. Cleared on resume.
+     */
+    private var launchingChildScreen = false
+    /** Whether playback was running when player settings opened; only then it resumes. */
+    private var playingBeforeSettings = false
+
     private val getContent = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let { applyLocalSubtitle(it) }
     }
@@ -302,9 +310,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (this::subtitleManager.isInitialized) {
             subtitleManager.applySubtitlePreferences()
         }
-        if (this::playerManager.isInitialized && playerManager.isInitialized) {
+        if (playingBeforeSettings && this::playerManager.isInitialized && playerManager.isInitialized) {
             playerManager.playbackEngine?.play()
         }
+        playingBeforeSettings = false
     }
 
     class ExtendedTimeBar @JvmOverloads constructor(
@@ -840,6 +849,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
         // Settings Button
         exoSettings.setOnClickListener {
+            playingBeforeSettings = playerManager.playbackEngine?.isPlaying == true
             playerManager.playbackEngine?.let { engine ->
                 saveActivePosition()
                 engine.pause()
@@ -847,6 +857,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             val intent = Intent(this, PlayerSettingsActivity::class.java).apply {
                 putExtra("subtitle", subtitle)
             }
+            beginChildScreen()
             onChangeSettings.launch(intent)
         }
         // Long-press on the gear: the "secret menu" listing gestures that have no button.
@@ -1292,6 +1303,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     // Public contract methods
     fun requestLocalSubtitle() {
+        beginChildScreen()
         getContent.launch(arrayOf("*/*"))
     }
 
@@ -1697,6 +1709,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
     }
 
+    /** Before opening one of the player's own screens: no PiP for this leave. */
+    private fun beginChildScreen() {
+        launchingChildScreen = true
+        updatePipParams()
+    }
+
     private fun updatePipParams() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
@@ -1717,7 +1735,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     val liveIsPlaying = if (this::playerManager.isInitialized && playerManager.isInitialized) {
                         playerManager.playbackEngine?.isPlaying == true
                     } else false
-                    builder.setAutoEnterEnabled(liveIsPlaying && pipEnabled && PrefManager.getVal(PrefName.Pip))
+                    builder.setAutoEnterEnabled(
+                        liveIsPlaying && pipEnabled && !launchingChildScreen && PrefManager.getVal(PrefName.Pip)
+                    )
                 }
 
                 setPictureInPictureParams(builder.build())
@@ -1809,7 +1829,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
-        if (PrefManager.getVal(PrefName.FocusPause) && !epChanging && !inPip) {
+        // Theme mode keeps playing in the background (as in onStop), so focus loss
+        // (screen off, notification shade) must not pause it either.
+        if (!themeMode && PrefManager.getVal(PrefName.FocusPause) && !epChanging && !inPip) {
             if (this::playerManager.isInitialized && playerManager.isInitialized) {
                 playerManager.playbackCoordinator?.setLifecycleSuppressed(!hasFocus)
             }
@@ -1938,6 +1960,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        if (launchingChildScreen) return
         if (pipEnabled && PrefManager.getVal(PrefName.Pip)) {
             enterPipMode()
         }
@@ -2018,6 +2041,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     override fun onResume() {
         super.onResume()
+        launchingChildScreen = false
         hideSystemBars()
         if (this::playerManager.isInitialized && playerManager.isInitialized) {
             playerManager.playbackCoordinator?.setLifecycleSuppressed(false)
