@@ -341,7 +341,7 @@ class DownloadQueueActivity : AppCompatActivity() {
                 val intent = Intent(AnimeDownloaderService.ACTION_CANCEL_DOWNLOAD).apply {
                     putExtra(AnimeDownloaderService.EXTRA_TASK_NAME, item.uniqueId)
                 }
-                sendBroadcast(intent)
+                sendBroadcast(intent.setPackage(packageName))
             }
             is QueueItem.Manga -> {
                 // Exact physical-key contract: the service receiver requires BOTH
@@ -352,13 +352,13 @@ class DownloadQueueActivity : AppCompatActivity() {
                     putExtra(MangaDownloaderService.EXTRA_CHAPTER, command.chapter)
                     putExtra(MangaDownloaderService.EXTRA_TITLE, command.title)
                 }
-                sendBroadcast(intent)
+                sendBroadcast(intent.setPackage(packageName))
             }
             is QueueItem.Novel -> {
                 val intent = Intent(NovelDownloaderService.ACTION_CANCEL_DOWNLOAD).apply {
                     putExtra(NovelDownloaderService.EXTRA_TASK_KEY, item.uniqueId)
                 }
-                sendBroadcast(intent)
+                sendBroadcast(intent.setPackage(packageName))
             }
         }
         startUpdating()
@@ -416,7 +416,7 @@ class DownloadQueueActivity : AppCompatActivity() {
             val intent = Intent(AnimeDownloaderService.ACTION_CANCEL_DOWNLOAD).apply {
                 putExtra(AnimeDownloaderService.EXTRA_TASK_NAME, task.getTaskName())
             }
-            sendBroadcast(intent)
+            sendBroadcast(intent.setPackage(packageName))
         }
 
         val novelActive = NovelServiceDataSingleton.currentTasks.toList()
@@ -427,7 +427,7 @@ class DownloadQueueActivity : AppCompatActivity() {
                     ani.dantotsu.download.novel.novelTaskKey(task.title, task.chapter)
                 )
             }
-            sendBroadcast(intent)
+            sendBroadcast(intent.setPackage(packageName))
         }
 
         // Fresh manga survivors are drained by the service itself (the clear runner

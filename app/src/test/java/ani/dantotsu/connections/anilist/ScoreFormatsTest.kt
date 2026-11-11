@@ -113,6 +113,13 @@ class ScoreFormatsTest {
     }
 
     @Test
+    fun `POINT_3 value below half a step is no score`() {
+        assertEquals(0, ScoreFormats.toRaw(0.3, POINT_3))
+        assertEquals(0, ScoreFormats.toRaw(0.49, POINT_3))
+        assertEquals(35, ScoreFormats.toRaw(0.5, POINT_3))
+    }
+
+    @Test
     fun `every format round trips through raw`() {
         ScoreFormat.entries.forEach { f ->
             for (raw in 0..100) {

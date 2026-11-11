@@ -18,7 +18,10 @@ import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import ani.dantotsu.R
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
+import ani.dantotsu.download.DownloadProcessorLoop
 import ani.dantotsu.download.DownloadedType
+import ani.dantotsu.download.SingleProcessor
+import ani.dantotsu.download.notifyTimeoutPause
 import ani.dantotsu.download.PurgeCoordinator
 import ani.dantotsu.download.PurgeOutcome
 import ani.dantotsu.download.PurgeSnapshot
@@ -41,7 +44,6 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SChapterImpl
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.CoroutineScope
@@ -92,7 +94,36 @@ class NovelDownloaderService : Service() {
      * Guarded by [mutex]. Drained as old scope at the settle check.
      */
     private val purgeGatedKeys = mutableSetOf<String>()
-    private var isCurrentlyProcessing = false
+    /** Download jobs and the queue loop; cancelled when the service is destroyed. */
+    private val processorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** Parallel-download limit of the current loop pass. */
+    @Volatile private var semaphore = Semaphore(1)
+    private val processorLoop = DownloadProcessorLoop(
+        poll = {
+            // MAX MERGE M3 HOLD (Blocker 2): never launch fresh work into a
+            // live purge barrier; queued work survives and drains after it.
+            if (purgeCoordinator.barrierActive) null
+            else NovelServiceDataSingleton.downloadQueue.poll()
+        },
+        launchTask = { task -> launchTask(task) },
+        hasQueued = { NovelServiceDataSingleton.downloadQueue.isNotEmpty() },
+        // MAX MERGE M3 HOLD (correction-2 Blocker 2): a live purge owns the
+        // final stop decision (or restarts the loop for fresh work).
+        mayStop = { !purgeActive && !purgeCoordinator.barrierActive },
+        stopIfIdle = { startId ->
+            // Main thread: a task offered before a start command that already
+            // ran is visible here; a start not yet delivered vetoes the stop.
+            withContext(Dispatchers.Main) {
+                NovelServiceDataSingleton.downloadQueue.isEmpty() && stopSelfResult(startId)
+            }
+        },
+        currentStartId = { lastStartId },
+    )
+    private val processor = SingleProcessor(processorScope) {
+        val maxParallel = PrefManager.getVal<Int>(PrefName.MaxParallelDownloads).coerceIn(0, 10)
+        semaphore = Semaphore(if (maxParallel > 0) maxParallel else 1)
+        processorLoop.run()
+    }
 
     private val networkHelper = Injekt.get<NetworkHelper>()
 
@@ -113,7 +144,8 @@ class NovelDownloaderService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, builder.build())
         }
-        ContextCompat.registerReceiver(this, cancelReceiver, IntentFilter(ACTION_CANCEL_DOWNLOAD), ContextCompat.RECEIVER_EXPORTED)
+        // Only this app may cancel downloads.
+        ContextCompat.registerReceiver(this, cancelReceiver, IntentFilter(ACTION_CANCEL_DOWNLOAD), ContextCompat.RECEIVER_NOT_EXPORTED)
         ensureWifiMonitor()
     }
 
@@ -145,7 +177,10 @@ class NovelDownloaderService : Service() {
         releaseWifiMonitor()
         purgeScope.cancel()
         purgeCoordinator.shutdown()
-        NovelServiceDataSingleton.downloadQueue.clear()
+        processorScope.cancel()
+        // The queue is not cleared: every path that stops on purpose empties
+        // it first, and a task queued after an idle stop belongs to the next
+        // service instance its start command creates.
         NovelServiceDataSingleton.currentTasks.clear()
         NovelServiceDataSingleton.progress.clear()
         downloadJobs.clear()
@@ -174,124 +209,79 @@ class NovelDownloaderService : Service() {
         return START_NOT_STICKY
     }
 
-    /** Ordinary download-processor kick (existing semantics, extracted). */
+    /** Start the queue loop unless it is running; a running loop picks up new work. */
     private fun ensureProcessor() {
-        val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        serviceScope.launch {
-            mutex.withLock {
-                if (!isCurrentlyProcessing) {
-                    isCurrentlyProcessing = true
-                    processQueue()
-                    isCurrentlyProcessing = false
-                }
-            }
-        }
+        processor.ensure()
     }
 
-    private fun processQueue() {
-        CoroutineScope(Dispatchers.Default).launch {
-            val maxParallel = PrefManager.getVal<Int>(PrefName.MaxParallelDownloads).coerceIn(0, 10)
-            val concurrency = if (maxParallel > 0) maxParallel else 1
-            val semaphore = Semaphore(concurrency)
-            val activeJobs = mutableListOf<Job>()
-
-            while (NovelServiceDataSingleton.downloadQueue.isNotEmpty()) {
-                // MAX MERGE M3 HOLD (Blocker 2): never launch fresh work
-                // into a live purge barrier; queued work survives and
-                // drains after the barrier clears.
-                if (purgeCoordinator.barrierActive) {
-                    delay(500)
-                    continue
-                }
-                val task = NovelServiceDataSingleton.downloadQueue.poll() ?: continue
-                // MAX MERGE M3 (upstream 3dbce385): fail-closed Wi-Fi gate.
-                if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(this@NovelDownloaderService)) {
-                    broadcastDownloadFailed(task.originalLink)
-                    withContext(Dispatchers.Main) {
-                        snackString(getString(R.string.download_wifi_only_warning))
-                    }
-                    continue
-                }
-                val taskKey = "${task.title}_${task.chapter}"
-                // The record holder breaks the LAZY self-reference: the
-                // outer finally must retire by Job identity (see below).
-                var jobRef: Job? = null
-                val job = launch(start = CoroutineStart.LAZY) {
-                    val self = jobRef
+    /** Start one polled task under the current parallel limit; null when not started. */
+    private suspend fun launchTask(task: DownloadTask): Job? {
+        // MAX MERGE M3 (upstream 3dbce385): fail-closed Wi-Fi gate.
+        if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(this@NovelDownloaderService)) {
+            broadcastDownloadFailed(task.originalLink)
+            withContext(Dispatchers.Main) {
+                snackString(getString(R.string.download_wifi_only_warning))
+            }
+            return null
+        }
+        val taskKey = "${task.title}_${task.chapter}"
+        val permits = semaphore
+        // The record holder breaks the LAZY self-reference: the
+        // outer finally must retire by Job identity (see below).
+        var jobRef: Job? = null
+        val job = processorScope.launch(start = CoroutineStart.LAZY) {
+            val self = jobRef
+            try {
+                permits.withPermit {
+                    NovelServiceDataSingleton.currentTasks.add(task)
                     try {
-                        semaphore.withPermit {
-                            NovelServiceDataSingleton.currentTasks.add(task)
-                            try {
-                                download(task)
-                            } finally {
-                                withContext(NonCancellable) {
-                                    mutex.withLock {
-                                        NovelServiceDataSingleton.currentTasks.remove(task)
-                                        NovelServiceDataSingleton.progress.remove(taskKey)
-                                    }
-                                }
-                            }
-                        }
+                        download(task)
                     } finally {
-                        // MAX MERGE M3 HOLD (correction-2 Blocker 1): retire
-                        // the record even when cancellation lands BEFORE
-                        // permit entry (a waiter never runs the inner
-                        // finally). Identity-safe: never removes a fresher
-                        // replacement recorded under the same key.
-                        // The purge cancels this job while holding the mutex; a
-                        // cancellable lock here would throw at once and skip the
-                        // retirement, so the purge would wait for it and time out.
                         withContext(NonCancellable) {
                             mutex.withLock {
-                                if (self != null && downloadJobs[taskKey] === self) {
-                                    downloadJobs.remove(taskKey)
-                                }
+                                NovelServiceDataSingleton.currentTasks.remove(task)
+                                NovelServiceDataSingleton.progress.remove(taskKey)
                             }
                         }
-                        updateNotification()
                     }
                 }
-                jobRef = job
-                // MAX MERGE M3 HOLD (correction Blocker 1): close the
-                // poll→record gap. The job record is published under the
-                // same mutex the purge snapshot uses; a task that loses
-                // the race to a live barrier is requeued (tagged as old
-                // scope) instead of launching into the purge window. The
-                // LAZY job never executes unless admitted here.
-                var admitted = false
-                mutex.withLock {
-                    if (!purgeCoordinator.barrierActive) {
-                        downloadJobs[taskKey] = job
-                        admitted = true
-                    } else {
-                        purgeGatedKeys.add(taskKey)
-                        NovelServiceDataSingleton.downloadQueue.offer(task)
+            } finally {
+                // MAX MERGE M3 HOLD (correction-2 Blocker 1): retire the
+                // record even when cancellation lands before permit entry.
+                // Identity-safe: never removes a fresher replacement. The
+                // purge cancels this job while holding the mutex, so the
+                // lock is taken non-cancellably.
+                withContext(NonCancellable) {
+                    mutex.withLock {
+                        if (self != null && downloadJobs[taskKey] === self) {
+                            downloadJobs.remove(taskKey)
+                        }
                     }
                 }
-                if (!admitted) {
-                    // Correction-4 Blocker 2: the never-admitted LAZY job
-                    // must be explicitly terminated — otherwise an
-                    // unstarted, uncancelled child lingers on the processor
-                    // after its task was requeued. Cancelling before start
-                    // never executes the body.
-                    job.cancel()
-                    delay(500)
-                    continue
-                }
-                job.start()
-                activeJobs.add(job)
-            }
-            activeJobs.joinAll()
-            // MAX MERGE M3 HOLD (correction-2 Blocker 2): the legacy
-            // processor must not stop the service while a purge
-            // transaction owns the lifecycle. The purge path owns the
-            // final stop decision (or keeps draining fresh work).
-            if (NovelServiceDataSingleton.downloadQueue.isEmpty() &&
-                !purgeActive && !purgeCoordinator.barrierActive
-            ) {
-                withContext(Dispatchers.Main) { stopSelf() }
+                updateNotification()
             }
         }
+        jobRef = job
+        // MAX MERGE M3 HOLD (correction Blocker 1): publish the job record
+        // under the purge snapshot mutex; a task that loses the race to a
+        // live barrier is requeued (tagged as old scope) and never runs.
+        var admitted = false
+        mutex.withLock {
+            if (!purgeCoordinator.barrierActive) {
+                downloadJobs[taskKey] = job
+                admitted = true
+            } else {
+                purgeGatedKeys.add(taskKey)
+                NovelServiceDataSingleton.downloadQueue.offer(task)
+            }
+        }
+        if (!admitted) {
+            // Correction-4 Blocker 2: cancel the never-admitted LAZY job.
+            job.cancel()
+            return null
+        }
+        job.start()
+        return job
     }
 
     /**
@@ -387,26 +377,49 @@ class NovelDownloaderService : Service() {
      * (semaphore waiters included). Used by delete-all purge and the
      * Wi-Fi-loss transition.
      */
+    /** Cancel every queued and running task (the cancel-all body). */
+    private suspend fun cancelAllUnderLock() {
+        mutex.withLock {
+            val queued = NovelServiceDataSingleton.downloadQueue.toList()
+            val live = NovelServiceDataSingleton.currentTasks.toList()
+            val ids = (queued.map { NovelTaskId(it.title, it.chapter) } +
+                live.map { NovelTaskId(it.title, it.chapter) })
+            val scopeKeys = novelAllCancelKeys(ids).toSet()
+            val match: (NovelDownloaderService.DownloadTask) -> Boolean =
+                { novelTaskKey(it.title, it.chapter) in scopeKeys }
+            (queued + live).filter(match).forEach { task ->
+                broadcastDownloadFailed(task.originalLink)
+            }
+            NovelServiceDataSingleton.downloadQueue.removeAll(match)
+            NovelServiceDataSingleton.currentTasks.removeAll(match)
+            NovelServiceDataSingleton.progress.keys.removeAll(scopeKeys)
+            // Cancel EVERY live job, including waiters absent from
+            // queue/current. Records retire in each job's finally.
+            downloadJobs.values.forEach { it.cancel() }
+        }
+    }
+
+    /**
+     * Android 15+: a dataSync foreground service gets 6 hours per 24 hours.
+     * When that runs out the service must stop within seconds or the app
+     * crashes, so cancel everything through the cancel-all path and stop.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Logger.log("Novel download service timed out (fgs type $fgsType)")
+        // Short bounded wait on the main thread: the job records are guarded
+        // by the mutex, and the service is destroyed right after this.
+        kotlinx.coroutines.runBlocking {
+            withTimeoutOrNull(2_000) { cancelAllUnderLock() }
+        }
+        // Nothing resumes on its own after the limit.
+        NovelServiceDataSingleton.downloadQueue.clear()
+        notifyTimeoutPause(this)
+        stopSelf()
+    }
+
     fun cancelAllDownloads() {
         purgeScope.launch {
-            mutex.withLock {
-                val queued = NovelServiceDataSingleton.downloadQueue.toList()
-                val live = NovelServiceDataSingleton.currentTasks.toList()
-                val ids = (queued.map { NovelTaskId(it.title, it.chapter) } +
-                    live.map { NovelTaskId(it.title, it.chapter) })
-                val scopeKeys = novelAllCancelKeys(ids).toSet()
-                val match: (NovelDownloaderService.DownloadTask) -> Boolean =
-                    { novelTaskKey(it.title, it.chapter) in scopeKeys }
-                (queued + live).filter(match).forEach { task ->
-                    broadcastDownloadFailed(task.originalLink)
-                }
-                NovelServiceDataSingleton.downloadQueue.removeAll(match)
-                NovelServiceDataSingleton.currentTasks.removeAll(match)
-                NovelServiceDataSingleton.progress.keys.removeAll(scopeKeys)
-                // Cancel EVERY live job, including waiters absent from
-                // queue/current. Records retire in each job's finally.
-                downloadJobs.values.forEach { it.cancel() }
-            }
+            cancelAllUnderLock()
             updateNotification()
             // Correction-2 Blocker 2: never steal the stop from a live
             // purge transaction (it owns the final stop decision).
@@ -508,7 +521,9 @@ class NovelDownloaderService : Service() {
     private suspend fun downloadHtmlChapter(task: DownloadTask) {
         val parser = task.lnReaderParser ?: return
         try {
-            withContext(Dispatchers.Main) {
+            // SAF calls (find/create/delete) and the file writes run off the
+            // main thread; only the snackbars go to it.
+            withContext(Dispatchers.IO) {
                 val notifi = hasNotificationPermission()
                 broadcastDownloadStarted(task.originalLink)
                 if (notifi) {
@@ -554,7 +569,7 @@ class NovelDownloaderService : Service() {
                 if (notifi) notificationManager.notify(NOTIFICATION_ID, builder.build())
 
                 broadcastDownloadFinished(task.originalLink)
-                snackString("${task.title} - ${task.chapter} Download finished")
+                snackOnMain("${task.title} - ${task.chapter} Download finished")
             }
         } catch (e: Exception) {
             Logger.log("HTML chapter download failed: ${e.message}")
@@ -566,7 +581,9 @@ class NovelDownloaderService : Service() {
 
     private suspend fun downloadEpub(task: DownloadTask) {
         try {
-            withContext(Dispatchers.Main) {
+            // SAF calls (find/create/delete) and the file writes run off the
+            // main thread; only the snackbars go to it.
+            withContext(Dispatchers.IO) {
                 val notifi = hasNotificationPermission()
                 broadcastDownloadStarted(task.originalLink)
                 if (notifi) {
@@ -578,12 +595,12 @@ class NovelDownloaderService : Service() {
                     if (isAlreadyDownloaded(task.originalLink)) {
                         Logger.log("Already downloaded")
                         broadcastDownloadFinished(task.originalLink)
-                        snackString("Already downloaded")
+                        snackOnMain("Already downloaded")
                         return@withContext
                     }
                     Logger.log("Download link is not an .epub file")
                     broadcastDownloadFailed(task.originalLink)
-                    snackString("Download link is not an .epub file")
+                    snackOnMain("Download link is not an .epub file")
                     return@withContext
                 }
 
@@ -664,7 +681,7 @@ class NovelDownloaderService : Service() {
                 saveMediaInfo(task, baseDirectory)
                 downloadsManager.addDownload(DownloadedType(task.title, task.chapter, MediaType.NOVEL))
                 broadcastDownloadFinished(task.originalLink)
-                snackString("${task.title} - ${task.chapter} Download finished")
+                snackOnMain("${task.title} - ${task.chapter} Download finished")
             }
         } catch (e: Exception) {
             Logger.log("Exception while downloading .epub: ${e.message}")
@@ -672,6 +689,10 @@ class NovelDownloaderService : Service() {
             Injekt.get<CrashlyticsInterface>().logException(e)
             broadcastDownloadFailed(task.originalLink)
         }
+    }
+
+    private suspend fun snackOnMain(message: String) {
+        withContext(Dispatchers.Main) { snackString(message) }
     }
 
     private fun hasNotificationPermission(): Boolean =
@@ -695,14 +716,14 @@ class NovelDownloaderService : Service() {
                 media.cover  = media.cover?.let  { downloadImage(it, directory, "cover.jpg") }
                 media.banner = media.banner?.let { downloadImage(it, directory, "banner.jpg") }
                 val jsonString = gson.toJson(media)
-                withContext(Dispatchers.Main) {
-                    try {
-                        file.openOutputStream(this@NovelDownloaderService, false).use { output ->
-                            if (output == null) throw Exception("Output stream is null")
-                            output.write(jsonString.toByteArray())
-                        }
-                    } catch (e: android.system.ErrnoException) {
-                        e.printStackTrace()
+                try {
+                    file.openOutputStream(this@NovelDownloaderService, false).use { output ->
+                        if (output == null) throw Exception("Output stream is null")
+                        output.write(jsonString.toByteArray())
+                    }
+                } catch (e: android.system.ErrnoException) {
+                    e.printStackTrace()
+                    withContext(Dispatchers.Main) {
                         Toast.makeText(this@NovelDownloaderService, "Error while saving: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                     }
                 }

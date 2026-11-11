@@ -72,6 +72,8 @@ object ScoreFormats {
             ScoreFormat.POINT_10 -> roundHalfUp(v) * 10
             ScoreFormat.POINT_5 -> roundHalfUp(v) * 20
             ScoreFormat.POINT_3 -> when (roundHalfUp(v)) {
+                // Below 0.5 rounds to no score, not to the best smiley.
+                0 -> 0
                 1 -> 35
                 2 -> 60
                 else -> 85

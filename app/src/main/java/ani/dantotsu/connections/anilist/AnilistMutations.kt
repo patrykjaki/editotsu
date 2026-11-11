@@ -11,6 +11,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 
 class AnilistMutations {
 
@@ -194,7 +198,7 @@ class AnilistMutations {
         completedAt: FuzzyDate? = null,
         customList: List<String>? = null,
         advancedScores: List<Double>? = null
-    ) {
+    ): Boolean {
         val headerParams = mutableListOf(
             "${"$"}mediaID: Int",
             "${"$"}progress: Int",
@@ -257,24 +261,26 @@ class AnilistMutations {
             }
         """.trimIndent()
 
-        val variables = """{"mediaID":$mediaID
-            ${if (private != null) ""","private":$private""" else ""}
-            ${if (priority != null) ""","priority":$priority""" else ""}
-            ${if (hiddenFromStatusLists != null) ""","hiddenFromStatusLists":$hiddenFromStatusLists""" else ""}
-            ${if (progress != null) ""","progress":$progress""" else ""}
-            ${if (progressVolumes != null) ""","progressVolumes":$progressVolumes""" else ""}
-            ${if (score != null) ""","scoreRaw":$score""" else ""}
-            ${if (repeat != null) ""","repeat":$repeat""" else ""}
-            ${if (notes != null) ""","notes":"${notes.replace("\n", "\\n")}"""" else ""}
-            ${if (status != null) ""","status":"$status"""" else ""}
-            ${if (customList != null) ""","customLists":[${customList.joinToString { "\"$it\"" }}]""" else ""}
-            ${if (advancedScores != null) ""","advancedScores":[${advancedScores.joinToString(",")}]""" else ""}
-            }""".replace("\n", "").replace("""    """, "")
-        println(variables)
-        executeQuery<JsonObject>(query, variables, show = true)
+        val variables = editListVariables(
+            mediaID = mediaID,
+            private = private,
+            priority = priority,
+            hiddenFromStatusLists = hiddenFromStatusLists,
+            progress = progress,
+            progressVolumes = progressVolumes,
+            score = score,
+            repeat = repeat,
+            notes = notes,
+            status = status,
+            customList = customList,
+            advancedScores = advancedScores,
+        ).toString()
+        val result = executeQuery<JsonObject>(query, variables, show = true)
         // Upstream 5ffa682b: list edits must drop stale home/stories caches.
         Anilist.query.invalidateUserStatusCache()
         Anilist.query.invalidateHomePageCache()
+        // null = network error, timeout, 429 window or HTTP error.
+        return result != null && result["errors"] == null
     }
 
     suspend fun deleteList(listId: Int) {
@@ -720,4 +726,36 @@ class AnilistMutations {
         }
         return Gson().toJson(sb.toString())
     }
+}
+
+/**
+ * GraphQL variables for SaveMediaListEntry. Built as a JSON object so notes
+ * and custom list names with quotes, backslashes or newlines stay valid.
+ */
+internal fun editListVariables(
+    mediaID: Int,
+    private: Boolean? = null,
+    priority: Int? = null,
+    hiddenFromStatusLists: Boolean? = null,
+    progress: Int? = null,
+    progressVolumes: Int? = null,
+    score: Int? = null,
+    repeat: Int? = null,
+    notes: String? = null,
+    status: String? = null,
+    customList: List<String>? = null,
+    advancedScores: List<Double>? = null,
+): JsonObject = buildJsonObject {
+    put("mediaID", mediaID)
+    private?.let { put("private", it) }
+    priority?.let { put("priority", it) }
+    hiddenFromStatusLists?.let { put("hiddenFromStatusLists", it) }
+    progress?.let { put("progress", it) }
+    progressVolumes?.let { put("progressVolumes", it) }
+    score?.let { put("scoreRaw", it) }
+    repeat?.let { put("repeat", it) }
+    notes?.let { put("notes", it) }
+    status?.let { put("status", it) }
+    customList?.let { list -> putJsonArray("customLists") { list.forEach { add(it) } } }
+    advancedScores?.let { list -> putJsonArray("advancedScores") { list.forEach { add(it) } } }
 }
