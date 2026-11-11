@@ -478,7 +478,8 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
             )
             anime = false
         }
-        val commentsOn = PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1 && !rescueMode
+        // The Comments tab is shown while comments are off too: it explains what turning them on sends.
+        val commentsOn = !rescueMode
         tabWindows = MediaTabs.windows(anime, commentsOn)
         selected = media.selected!!.window.takeIf { it in tabWindows } ?: MediaTabs.MAIN
         binding.mediaTitle.translationX = -screenWidth
@@ -602,7 +603,7 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
 
         private val windows = MediaTabs.windows(
             anime = mediaType == SupportedMedia.ANIME,
-            comments = PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1 && !PrefManager.getVal<Boolean>(PrefName.RescueMode),
+            comments = !PrefManager.getVal<Boolean>(PrefName.RescueMode),
         )
 
         override fun getItemCount(): Int = windows.size

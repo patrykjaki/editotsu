@@ -1,5 +1,6 @@
 package ani.dantotsu.connections.subtitles
 
+import ani.dantotsu.BuildConfig
 import ani.dantotsu.Mapper
 import ani.dantotsu.okHttpClient
 import ani.dantotsu.util.Logger
@@ -14,7 +15,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 object OpenSubtitlesRestApi {
     private const val API_KEY = "uyBLgFD17MgrYmA0gSXoKllMJBelOYj2"
     private const val HOST = "https://api.opensubtitles.com/api/v1"
-    private const val USER_AGENT = "Cloudstream3 v0.2"
+    private val USER_AGENT = userAgent(BuildConfig.VERSION_NAME)
+
+    /** `Editotsu/<version>`; the build id after `+` stays out of requests. */
+    internal fun userAgent(versionName: String): String = "Editotsu/${versionName.substringBefore('+').trim()}"
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
     suspend fun search(imdbId: String, episode: Int, season: Int? = null, queryText: String? = null): List<OpenSubRestItem> {

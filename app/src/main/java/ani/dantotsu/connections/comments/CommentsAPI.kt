@@ -30,7 +30,8 @@ object CommentsAPI {
     private const val API_ADDRESS: String = "https://api.dantotsu.app"
     private const val LOCAL_HOST: String = "https://127.0.0.1"
     private var isOnline: Boolean = true
-    private var commentsEnabled = PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1
+    // Read on every use: the user can turn comments on from the Comments tab without a restart.
+    private val commentsEnabled: Boolean get() = CommentsOptIn.isEnabled()
     private val ADDRESS: String get() = if (commentsEnabled) API_ADDRESS else LOCAL_HOST
     var authToken: String? = null
     var userId: String? = null
@@ -314,6 +315,8 @@ object CommentsAPI {
     }
 
     suspend fun fetchAuthToken(context: Context, client: OkHttpClient? = null) {
+        // The AniList token goes to the comments server only after the user turned comments on.
+        if (!commentsEnabled) return
         isOnline = isOnline(context)
         if (authToken != null) return
         val MAX_RETRIES = 5

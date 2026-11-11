@@ -2,6 +2,7 @@ package ani.dantotsu.others.webview
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.Bundle
 import android.webkit.CookieManager
@@ -43,7 +44,10 @@ class CookieCatcher : AppCompatActivity() {
             settings.databaseEnabled = true
             settings.domStorageEnabled = true
         }
-        WebView.setWebContentsDebuggingEnabled(true)
+        // This WebView carries source cookies; remote inspection only on debuggable builds.
+        WebView.setWebContentsDebuggingEnabled(
+            applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        )
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, finishedUrl: String?) {
                 super.onPageFinished(view, finishedUrl)
