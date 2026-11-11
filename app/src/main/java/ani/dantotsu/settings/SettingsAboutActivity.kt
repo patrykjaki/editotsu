@@ -113,8 +113,8 @@ object AboutScreen : SettingsScreen("about", R.string.about, R.drawable.ic_round
 
     private fun showPrivacyPolicy(host: SettingsHost): Unit = with(host.activity) {
         val text = TextView(this)
+        // Editotsu's own policy only: never fall back to another project's text.
         val pPLink = "https://raw.githubusercontent.com/patrykjaki/editotsu/main/privacy_policy.md"
-        val backup = "https://raw.githubusercontent.com/rebelonion/Dantotsu/main/privacy_policy.md"
         text.text = getString(R.string.loading)
         val markWon = try {
             buildMarkwon(this, false)
@@ -124,7 +124,7 @@ object AboutScreen : SettingsScreen("about", R.string.about, R.drawable.ic_round
         CoroutineScope(Dispatchers.IO).launch {
             val res = try {
                 val out = client.get(pPLink)
-                (if (out.code != 200) client.get(backup) else out).text
+                if (out.code == 200) out.text else getString(R.string.failed_to_load)
             } catch (e: Exception) {
                 getString(R.string.failed_to_load)
             }
