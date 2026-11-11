@@ -10,6 +10,8 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.Logger
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.ToNumberPolicy
 import com.google.gson.reflect.TypeToken
 import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
@@ -117,32 +119,45 @@ class PreferencePackager {
             return unpackagePreferences(decodePayload(payloadJson))
         }
 
-        /** Payload json to location -> key -> typed value; null for types restore cannot write. */
+        /**
+         * Payload json to location -> key -> typed value. Entries with a type or value restore
+         * cannot write are left out (and logged), so one odd entry does not fail the restore.
+         * Numbers are read from their exact text: going through Double lost Long precision.
+         */
         internal fun decodePayload(payloadJson: String): Map<String, Map<String, Any?>> {
             val type = object :
                 TypeToken<Map<String, Map<String, Map<String, Any>>>>() {}.type
-            val rawPrefsMap: Map<String, Map<String, Map<String, Any>>> =
-                Gson().fromJson(payloadJson, type)
+            val gson = GsonBuilder().setObjectToNumberStrategy(ToNumberPolicy.LAZILY_PARSED_NUMBER).create()
+            val rawPrefsMap: Map<String, Map<String, Map<String, Any>>> = gson.fromJson(payloadJson, type)
 
             val deserializedMap = mutableMapOf<String, Map<String, Any?>>()
             rawPrefsMap.forEach { (prefName, prefValueMap) ->
                 val innerMap = mutableMapOf<String, Any?>()
                 prefValueMap.forEach { (key, typeValueMap) ->
-                    val value = typeValueMap["value"]
-                    innerMap[key] = when (typeValueMap["type"] as? String) {
-                        "kotlin.Int" -> (value as? Double)?.toInt()
-                        "kotlin.String" -> value.toString()
-                        "kotlin.Boolean" -> value as? Boolean
-                        "kotlin.Float" -> value.toString().toFloatOrNull()
-                        "kotlin.Long" -> (value as? Double)?.toLong()
-                        "java.util.HashSet" -> value as? ArrayList<*>
-                        else -> null
+                    val typeName = typeValueMap["type"] as? String
+                    val value = decodeValue(typeName, typeValueMap["value"])
+                    if (value != null) {
+                        innerMap[key] = value
+                    } else {
+                        Logger.log("Backup restore: skipped $prefName/$key ($typeName)")
                     }
                 }
                 deserializedMap[prefName] = innerMap
             }
             return deserializedMap
         }
+
+        private fun decodeValue(typeName: String?, value: Any?): Any? = when (typeName) {
+            "kotlin.Int" -> value.numberText()?.let { it.toIntOrNull() ?: it.toDoubleOrNull()?.toInt() }
+            "kotlin.Long" -> value.numberText()?.let { it.toLongOrNull() ?: it.toDoubleOrNull()?.toLong() }
+            "kotlin.Float" -> value.numberText()?.toFloatOrNull()
+            "kotlin.String" -> value?.toString()
+            "kotlin.Boolean" -> value as? Boolean
+            "java.util.HashSet" -> (value as? List<*>)?.let { ArrayList(it.map { item -> item.toString() }) }
+            else -> null
+        }
+
+        private fun Any?.numberText(): String? = (this as? Number)?.toString()
 
         private fun typed(value: Any): Map<String, Any> = mapOf(
             "type" to value.javaClass.kotlin.qualifiedName.orEmpty(),
