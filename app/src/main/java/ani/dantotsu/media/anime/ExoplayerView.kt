@@ -98,6 +98,7 @@ import ani.dantotsu.media.anime.player.PlayerSubtitleManager
 import ani.dantotsu.media.anime.player.PlayerTrack
 import ani.dantotsu.media.anime.player.ResizeMode
 import ani.dantotsu.media.anime.player.SubtitleLanguageMatch
+import ani.dantotsu.media.anime.player.AudioTrackChoice
 import ani.dantotsu.media.anime.player.TrackType
 import ani.dantotsu.others.IdMappers
 import ani.dantotsu.others.getSerialized
@@ -679,7 +680,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 dialog.setCanceledOnTouchOutside(true)
                 dialog.window?.setLayout(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 val slider = dialog.findViewById<Slider>(R.id.seekbar)
-                slider.value = snapSkipSliderValue(skipTime)
+                // Same range and step as Settings > Player > Skip time.
+                slider.valueFrom = 0f
+                slider.valueTo = SKIP_TIME_MAX
+                slider.stepSize = SKIP_TIME_STEP
+                slider.value = snapSkipSliderValue(skipTime, step = SKIP_TIME_STEP, max = SKIP_TIME_MAX)
                 slider.addOnChangeListener { _, value, _ ->
                     skipTime = value.toInt()
                     PrefManager.setVal(PrefName.SkipTime, skipTime)
@@ -845,7 +850,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 2 -> R.string.player_scale_stretch
                 else -> R.string.player_scale_original
             })
-            snackString(if (supported) label else "$label: ${getString(R.string.player_not_available_drm)}", this)
+            snackString(if (supported) label else getString(R.string.player_mode_not_available_drm, label), this)
             PrefManager.setCustomVal("${media.id}_fullscreenInt", isFullscreen)
         }
 
@@ -1000,6 +1005,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     private fun initPlayer() {
+        audioChoiceRestored = false
         gestureManager.checkNotch()
         aniSkipManager.resetForNewEpisode()
         val selEp = media.anime?.selectedEpisode ?: episodeArr.firstOrNull() ?: return
@@ -1364,6 +1370,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         when (type) {
             TrackType.AUDIO -> {
                 engine.selectAudioTrack(track?.id)
+                // Remembered per show; restored on the next episode, server or reopen.
+                if (!themeMode && this::media.isInitialized && track != null) {
+                    PrefManager.setCustomVal(audioChoiceKey(), AudioTrackChoice.encode(track))
+                    audioChoiceRestored = true
+                }
                 snackString("Audio: ${track?.name ?: "Off"}", this)
             }
             TrackType.SUBTITLE -> {
@@ -1440,8 +1451,20 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     var currentTracks: List<PlayerTrack> = emptyList()
         private set
 
+    private fun audioChoiceKey() = "${media.id}_audio_track"
+
+    /** The saved audio pick was applied (or the user picked) for the current engine. */
+    private var audioChoiceRestored = false
+
     override fun onTracksChanged(tracks: List<PlayerTrack>) {
         currentTracks = tracks
+        if (!themeMode && !audioChoiceRestored && this::media.isInitialized) {
+            val saved = PrefManager.getNullableCustomVal(audioChoiceKey(), null, String::class.java)
+            AudioTrackChoice.restore(tracks, saved)?.let { track ->
+                playerManager.playbackEngine?.selectAudioTrack(track.id)
+                audioChoiceRestored = true
+            }
+        }
         val audioTracks = tracks.filter { it.type == TrackType.AUDIO }
         val subTracks = tracks.filter { it.type == TrackType.SUBTITLE }
 
@@ -2153,6 +2176,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     private fun showSleepTimerDialog() {
+        val now = java.lang.System.currentTimeMillis()
         val choices = SleepTimer.CHOICES_MINUTES
         val labels = choices.map {
             when {
@@ -2161,13 +2185,14 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 else -> getString(R.string.sleep_timer_minutes, it)
             }
         }.toTypedArray()
-        val current = when (sleepTimer.mode) {
-            SleepTimer.Mode.Off -> 0
-            SleepTimer.Mode.EndOfEpisode -> choices.indexOf(-1)
-            is SleepTimer.Mode.At -> -1
+        val current = sleepTimer.checkedChoice()
+        val title = when (sleepTimer.mode) {
+            SleepTimer.Mode.Off -> getString(R.string.sleep_timer)
+            SleepTimer.Mode.EndOfEpisode -> getString(R.string.sleep_timer_title_episode)
+            is SleepTimer.Mode.At -> getString(R.string.sleep_timer_title_remaining, sleepTimer.remainingMinutes(now) ?: 0)
         }
         customAlertDialog().apply {
-            setTitle(getString(R.string.sleep_timer))
+            setTitle(title)
             singleChoiceItems(labels, current) { i ->
                 val minutes = choices[i]
                 sleepTimerHandler.removeCallbacks(sleepTimerFire)
@@ -2572,6 +2597,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 }
 
+/** Skip time range shared with the settings stepper (0..300 s in 5 s steps). */
+const val SKIP_TIME_MAX = 300f
+const val SKIP_TIME_STEP = 5f
+
 /**
  * Clamps a user-typed skip time into the dialog
  * range and snaps it to the slider step grid, so assigning
@@ -2580,6 +2609,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
  * behavior otherwise unchanged (long-press still writes the snapped value back to prefs).
  */
 fun snapSkipSliderValue(skipTime: Int, step: Float = 1f, max: Float = 120f): Float {
+    // The player dialog passes SKIP_TIME_STEP / SKIP_TIME_MAX (the settings stepper's grid).
     val clamped = skipTime.toFloat().coerceIn(0f, max)
     return kotlin.math.round(clamped / step) * step
 }

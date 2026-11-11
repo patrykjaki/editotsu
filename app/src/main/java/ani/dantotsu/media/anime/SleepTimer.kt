@@ -8,7 +8,8 @@ package ani.dantotsu.media.anime
 class SleepTimer {
     sealed interface Mode {
         data object Off : Mode
-        data class At(val deadlineMs: Long) : Mode
+        /** [minutes] is the choice that started it, for the dialog. */
+        data class At(val deadlineMs: Long, val minutes: Int = 0) : Mode
         data object EndOfEpisode : Mode
     }
 
@@ -16,7 +17,7 @@ class SleepTimer {
         private set
 
     fun setMinutes(minutes: Int, nowMs: Long) {
-        mode = if (minutes <= 0) Mode.Off else Mode.At(nowMs + minutes * 60_000L)
+        mode = if (minutes <= 0) Mode.Off else Mode.At(nowMs + minutes * 60_000L, minutes)
     }
 
     fun setEndOfEpisode() {
@@ -30,6 +31,17 @@ class SleepTimer {
     /** Milliseconds until a timed pause, or null when not timed. */
     fun remainingMs(nowMs: Long): Long? =
         (mode as? Mode.At)?.let { (it.deadlineMs - nowMs).coerceAtLeast(0L) }
+
+    /** Whole minutes left of a timed pause, rounded up (59 s left shows 1), or null. */
+    fun remainingMinutes(nowMs: Long): Int? =
+        remainingMs(nowMs)?.let { ((it + 59_999L) / 60_000L).toInt() }
+
+    /** Index in [CHOICES_MINUTES] of the running mode, so the dialog checks it. */
+    fun checkedChoice(): Int = when (val m = mode) {
+        Mode.Off -> CHOICES_MINUTES.indexOf(0)
+        Mode.EndOfEpisode -> CHOICES_MINUTES.indexOf(-1)
+        is Mode.At -> CHOICES_MINUTES.indexOf(m.minutes)
+    }
 
     /** Called when the timed deadline fires: true means pause now (and the timer ends). */
     fun onDeadline(nowMs: Long): Boolean {
