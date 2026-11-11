@@ -1369,6 +1369,9 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="translated_text">Translated Text</string>
     <string name="copy_translation">Copy Translation</string>
     <string name="translating_page">Recognizing &amp; translating page text…</string>
+    <string name="ocr_notice_title">Translate page text</string>
+    <string name="ocr_notice_message">Text is recognised on this device. Text that needs translating is sent to translate.googleapis.com (unofficial endpoint), or to api.mymemory.translated.net if that fails. It leaves the device.</string>
+    <string name="ocr_notice_confirm">Send text</string>
     <string name="no_text_detected">No text detected on page</string>
     <string name="translation_failed_fallback">Translation failed. Showing detected text.</string>
     <string name="ocr_online_notice">Text is recognized on this device, then sent to Google Translate (MyMemory as fallback).</string>
