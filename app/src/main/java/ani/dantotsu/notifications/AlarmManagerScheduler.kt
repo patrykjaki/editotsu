@@ -12,6 +12,12 @@ import ani.dantotsu.notifications.comment.CommentNotificationReceiver
 import ani.dantotsu.notifications.subscription.SubscriptionNotificationReceiver
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.ListenableWorker
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequest
+import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 class AlarmManagerScheduler(private val context: Context) : TaskScheduler {
@@ -20,27 +26,12 @@ class AlarmManagerScheduler(private val context: Context) : TaskScheduler {
             cancelTask(taskType)
             return
         }
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-        val intent = when {
-            taskType == TaskType.COMMENT_NOTIFICATION && CommentsOptIn.isEnabled() ->
-                Intent(context, CommentNotificationReceiver::class.java)
-
-            taskType == TaskType.ANILIST_NOTIFICATION ->
-                Intent(context, AnilistNotificationReceiver::class.java)
-
-            taskType == TaskType.SUBSCRIPTION_NOTIFICATION ->
-                Intent(context, SubscriptionNotificationReceiver::class.java)
-
-            else -> return
+        if (taskType == TaskType.COMMENT_NOTIFICATION && !CommentsOptIn.isEnabled()) {
+            cancelTask(taskType)
+            return
         }
-
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            taskType.ordinal,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val pendingIntent = pendingIntent(taskType)
 
         val triggerAtMillis = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(interval)
         try {
@@ -60,28 +51,40 @@ class AlarmManagerScheduler(private val context: Context) : TaskScheduler {
         }
     }
 
+    /** Also cancels a task whose notifications were turned off after its alarm was set. */
     override fun cancelTask(taskType: TaskType) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarmManager.cancel(pendingIntent(taskType))
+    }
 
-        val intent = when {
-            taskType == TaskType.COMMENT_NOTIFICATION && CommentsOptIn.isEnabled() ->
-                Intent(context, CommentNotificationReceiver::class.java)
-
-            taskType == TaskType.ANILIST_NOTIFICATION ->
-                Intent(context, AnilistNotificationReceiver::class.java)
-
-            taskType == TaskType.SUBSCRIPTION_NOTIFICATION ->
-                Intent(context, SubscriptionNotificationReceiver::class.java)
-
-            else -> return
+    private fun pendingIntent(taskType: TaskType): PendingIntent {
+        val receiver = when (taskType) {
+            TaskType.COMMENT_NOTIFICATION -> CommentNotificationReceiver::class.java
+            TaskType.ANILIST_NOTIFICATION -> AnilistNotificationReceiver::class.java
+            TaskType.SUBSCRIPTION_NOTIFICATION -> SubscriptionNotificationReceiver::class.java
         }
-
-        val pendingIntent = PendingIntent.getBroadcast(
+        return PendingIntent.getBroadcast(
             context,
             taskType.ordinal,
-            intent,
+            Intent(context, receiver),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        alarmManager.cancel(pendingIntent)
+    }
+
+    companion object {
+        /**
+         * Runs when a task's alarm fires. The next alarm is set first, so the chain survives
+         * the process being killed; the check itself runs as a one-time job, since it can take
+         * minutes and a broadcast receiver gets about ten seconds. KEEP: an alarm that fires
+         * while the previous check still runs does not start a second one.
+         */
+        fun onAlarm(context: Context, taskType: TaskType, worker: Class<out ListenableWorker>, workName: String) {
+            PrefManager.init(context)
+            AlarmManagerScheduler(context).scheduleRepeatingTask(taskType, TaskScheduler.interval(taskType))
+            val work = OneTimeWorkRequest.Builder(worker)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(workName + "_alarm", ExistingWorkPolicy.KEEP, work)
+        }
     }
 }

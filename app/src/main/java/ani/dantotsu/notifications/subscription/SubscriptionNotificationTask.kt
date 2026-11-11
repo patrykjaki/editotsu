@@ -31,10 +31,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 class SubscriptionNotificationTask : Task {
-    private var currentlyPerforming = false
 
     @SuppressLint("MissingPermission")
     override suspend fun execute(context: Context): Boolean {
@@ -43,9 +43,8 @@ class SubscriptionNotificationTask : Task {
             Logger.log("SubscriptionNotificationTask: skipped (calculator lock enabled)")
             return true
         }
-        if (!currentlyPerforming) {
+        if (running.compareAndSet(false, true)) {
             try {
-                currentlyPerforming = true
                 return withContext(Dispatchers.IO) {
                     App.context = context
                     Logger.log("SubscriptionNotificationTask: execute")
@@ -111,11 +110,11 @@ class SubscriptionNotificationTask : Task {
                                     media,
                                     aired[media.id],
                                 )
-                            if (ep != null) context.getString(R.string.episode) + "${ep.number}${
+                            if (ep != null) Triple(context.getString(R.string.episode) + "${ep.number}${
                                 SubscriptionHelper.episodeTitle(ep.number, ep.title)?.let { ": $it" } ?: ""
                             }${
                                 if (ep.isFiller) " [Filler]" else ""
-                            } " + context.getString(R.string.just_released) to ep.thumbnail
+                            } " + context.getString(R.string.just_released), ep.thumbnail, ep.number)
                             else null
                         } else {
                             val parser =
@@ -126,7 +125,7 @@ class SubscriptionNotificationTask : Task {
                                     parser,
                                     media
                                 )
-                            if (ep != null) ep.number + " " + context.getString(R.string.just_released) to null
+                            if (ep != null) Triple(ep.number + " " + context.getString(R.string.just_released), null, ep.number)
                             else null
                         } ?: return@map
                         addSubscriptionToStore(
@@ -149,7 +148,7 @@ class SubscriptionNotificationTask : Task {
                             NotificationManagerCompat.from(context)
                                 .notify(
                                     CHANNEL_SUBSCRIPTION_CHECK,
-                                    System.currentTimeMillis().toInt(),
+                                    notificationId(media.id, text.third),
                                     notification
                                 )
                         }
@@ -173,11 +172,21 @@ class SubscriptionNotificationTask : Task {
                 Logger.log(e)
                 return false
             } finally {
-                currentlyPerforming = false
+                running.set(false)
             }
         } else {
-            return false
+            // Another check (worker or alarm job) is running and covers this one.
+            Logger.log("SubscriptionNotificationTask: skipped, a check is already running")
+            return true
         }
+    }
+
+    companion object {
+        /** One check at a time per process; every run creates a new task instance. */
+        private val running = AtomicBoolean(false)
+
+        /** Stable per media and episode, so one release replaces itself and two never collide. */
+        internal fun notificationId(mediaId: Int, number: String): Int = (mediaId * 1_000_003) xor number.trim().hashCode()
     }
 
     @SuppressLint("MissingPermission")
