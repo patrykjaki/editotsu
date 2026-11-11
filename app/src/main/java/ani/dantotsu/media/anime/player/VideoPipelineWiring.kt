@@ -29,8 +29,9 @@ object VideoPipelinePrefsMapper {
         gamma = PrefManager.getVal<Int>(PrefName.VideoGamma),
         hue = PrefManager.getVal<Int>(PrefName.VideoHue),
         sharpen = PrefManager.getVal<Float>(PrefName.VideoSharpen),
-        audioDelayMs = PrefManager.getVal<Int>(PrefName.AudioDelayMs),
-        subtitleDelayMs = PrefManager.getVal<Int>(PrefName.SubtitleDelayMs),
+        // In-player Sync values win over the preference while the player is open.
+        audioDelayMs = PlayerSyncSession.audio.effective(PrefManager.getVal<Int>(PrefName.AudioDelayMs).toLong()).toInt(),
+        subtitleDelayMs = PlayerSyncSession.subtitle.effective(PrefManager.getVal<Int>(PrefName.SubtitleDelayMs).toLong()).toInt(),
         subtitleSpeed = PrefManager.getVal<Float>(PrefName.SubtitleSpeed),
         volumeBoostCap = PrefManager.getVal<Int>(PrefName.VolumeBoostCap),
         upscalerProviderId = PrefManager.getVal<String>(PrefName.UpscalerProviderId),
