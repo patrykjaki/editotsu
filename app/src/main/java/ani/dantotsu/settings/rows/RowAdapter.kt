@@ -278,7 +278,7 @@ class RowAdapter(
 
             is Kind.Action -> {
                 b.rowChevron.isVisible = kind.opensScreen
-                b.root.setOnClickListener { kind.onClick(host, rowView) }
+                kind.onClick?.let { click -> b.root.setOnClickListener { click(host, rowView) } }
             }
 
             is Kind.Custom -> Unit

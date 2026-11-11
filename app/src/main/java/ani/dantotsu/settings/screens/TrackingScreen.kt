@@ -408,6 +408,8 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                             }
                         }
                         setNegButton(R.string.cancel) { isImportingLists = false }
+                        // Back or a tap outside closes it without the cancel button.
+                        setOnCancelListener { isImportingLists = false }
                         show()
                     }
                 }
@@ -489,6 +491,8 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                             }
                         }
                         setNegButton(R.string.cancel) { isImportingStatuses = false }
+                        // Back or a tap outside closes it without the cancel button.
+                        setOnCancelListener { isImportingStatuses = false }
                         show()
                     }
                 }

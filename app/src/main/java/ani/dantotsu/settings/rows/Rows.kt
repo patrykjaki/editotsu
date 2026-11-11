@@ -93,7 +93,8 @@ sealed interface Kind {
         val current: ((Context) -> String?)? = null,
         /** Shows a chevron: the row opens another screen. */
         val opensScreen: Boolean = false,
-        val onClick: (SettingsHost, RowView) -> Unit,
+        /** Null for a row that only shows a value. */
+        val onClick: ((SettingsHost, RowView) -> Unit)?,
     ) : Kind {
         override fun value(context: Context) = current?.invoke(context)
     }
@@ -259,7 +260,7 @@ fun actionRow(
     keys: List<PrefName> = emptyList(),
     extra: ((SettingsHost, ViewGroup) -> Unit)? = null,
     onLongClick: ((SettingsHost) -> Unit)? = null,
-    onClick: (SettingsHost, RowView) -> Unit,
+    onClick: ((SettingsHost, RowView) -> Unit)?,
 ) = Row(
     id = id, title = title, summary = summary, icon = icon, advanced = advanced,
     visible = visible, enabled = enabled, keywords = keywords, keys = keys, extra = extra,

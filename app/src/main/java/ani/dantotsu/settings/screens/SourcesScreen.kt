@@ -28,6 +28,7 @@ import ani.dantotsu.settings.rows.choiceRow
 import ani.dantotsu.settings.rows.switchRow
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
+import ani.dantotsu.toast
 import ani.dantotsu.util.customAlertDialog
 import eu.kanade.domain.base.BasePreferences
 import tachiyomi.core.util.lang.launchIO
@@ -106,7 +107,8 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
             numberRow(PrefName.TorrentMaxConnections, R.string.torrent_max_connections, R.drawable.ic_round_dns_24) { _, v ->
                 v.toString()
             },
-            numberRow(PrefName.TorrentPort, R.string.torrent_port, R.drawable.network_node_24) { c, v ->
+            // 0 lets libtorrent pick a port.
+            numberRow(PrefName.TorrentPort, R.string.torrent_port, R.drawable.network_node_24, range = PORT_RANGE) { c, v ->
                 if (v > 0) v.toString() else c.getString(R.string.disabled)
             },
             switchRow(PrefName.TorrentDisableUtp, R.string.torrent_disable_utp, R.string.torrent_disable_utp_desc,
@@ -121,6 +123,12 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
     /** DNS and proxy are read once when the HTTP client is built, so the process restarts. */
     private fun restartProcess(host: SettingsHost) =
         ProcessRestart.restart(host.activity, (host.activity as? SettingsScreenActivity)?.reopenIntent())
+
+    private val PORT_RANGE = 0..65535
+
+    /** The typed number when it is in [range]; null for anything else, which is not saved. */
+    internal fun parseNumber(text: String, range: IntRange): Int? =
+        text.trim().toIntOrNull()?.takeIf { it in range }
 
     private fun repoPref(type: MediaType) = when (type) {
         MediaType.ANIME -> PrefName.AnimeExtensionRepos
@@ -199,12 +207,13 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
         key: PrefName,
         title: Int,
         icon: Int,
+        range: IntRange = 0..Int.MAX_VALUE,
         label: (android.content.Context, Int) -> String,
     ): Row = actionRow(
         id = key.name, title = title, icon = icon, advanced = true, visible = torrentsOn,
         keys = listOf(key),
         current = { label(it, PrefManager.getVal(key)) },
-        onClick = { host, row -> editNumber(host, row, key, title, label) },
+        onClick = { host, row -> editNumber(host, row, key, title, range, label) },
     )
 
     private fun editNumber(
@@ -212,6 +221,7 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
         row: RowView,
         key: PrefName,
         title: Int,
+        range: IntRange,
         label: (android.content.Context, Int) -> String,
     ) = with(host.activity) {
         val input = android.widget.EditText(this).apply {
@@ -229,9 +239,13 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
             setTitle(getString(title))
             setCustomView(container)
             setPosButton(R.string.yes, onClick = {
-                val value = input.text.toString().toIntOrNull() ?: 0
-                PrefManager.setVal(key, value)
-                row.setValue(label(this@with, value))
+                val value = parseNumber(input.text.toString(), range)
+                if (value == null) {
+                    toast(getString(R.string.number_out_of_range, range.first, range.last))
+                } else {
+                    PrefManager.setVal(key, value)
+                    row.setValue(label(this@with, value))
+                }
             })
             setNegButton(R.string.no)
             show()
