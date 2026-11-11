@@ -7,6 +7,7 @@ import androidx.preference.PreferenceManager
 import ani.dantotsu.connections.mal.MALKeystore
 import ani.dantotsu.parsers.novel.NovelExtensionManager
 import ani.dantotsu.settings.saving.PrefManager
+import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.Logger
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -243,6 +244,27 @@ class PreferencePackager {
                 }
             }
             return success
+        }
+
+        /**
+         * User data that lives in a settings file. A restore replaces the file, but a backup
+         * that does not carry one of these keys (older versions did not have them) leaves
+         * the current value in place.
+         */
+        internal val KEPT_UNLESS_IN_BACKUP: Map<Location, Set<String>> = mapOf(
+            Location.General to setOf(PrefName.AnimeThemesFavourites.name),
+        )
+
+        /** What [location] holds after a restore: the backup's values plus kept user data. */
+        internal fun restoredContents(
+            location: Location,
+            current: Map<String, *>,
+            incoming: Map<String, *>,
+        ): Map<String, *> {
+            val kept = KEPT_UNLESS_IN_BACKUP[location].orEmpty()
+                .filter { it !in incoming && current[it] != null }
+                .associateWith { current[it] }
+            return kept + incoming
         }
 
         /**

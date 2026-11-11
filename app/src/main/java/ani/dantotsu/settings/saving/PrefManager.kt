@@ -487,9 +487,10 @@ object PrefManager {
     fun importAllPrefs(prefs: Map<String, *>, prefLocation: Location): Boolean {
         val pref = getPrefLocation(prefLocation)
         var hadError = false
-        pref.edit().clear().apply()
+        val contents = PreferencePackager.restoredContents(prefLocation, pref.all, prefs)
         with(pref.edit()) {
-            prefs.forEach { (key, value) ->
+            clear()
+            contents.forEach { (key, value) ->
                 when (value) {
                     is Boolean -> putBoolean(key, value)
                     is Int -> putInt(key, value)
