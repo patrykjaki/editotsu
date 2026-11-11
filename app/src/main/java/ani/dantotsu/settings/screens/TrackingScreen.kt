@@ -195,7 +195,7 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                         startActivity(Intent("android.settings.REQUEST_SCHEDULE_EXACT_ALARM",
                             android.net.Uri.parse("package:$packageName")))
                     } else {
-                        TaskScheduler.switchTo(this, useAlarmManager = true)
+                        TaskScheduler.switchTo(this@with, useAlarmManager = true)
                     }
                     host.refresh()
                 }
