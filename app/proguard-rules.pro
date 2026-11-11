@@ -80,6 +80,10 @@
 -keep class org.nanohttpd.** { *; }
 -dontwarn org.nanohttpd.**
 
+# Not Firebase itself (no Firebase library is a dependency): ML Kit pulls in
+# firebase-components and registers through it by reflection
+# (com.google.mlkit.common.internal.CommonComponentRegistrar implements
+# com.google.firebase.components.ComponentRegistrar). Keep it whole.
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
 
@@ -152,6 +156,11 @@
 
 # Keep all rx internal operators (safe side)
 -keep class rx.internal.** { *; }
+
+# Extensions are separate APKs that call RxJava 1 (rx.Observable and its
+# operators) from the host at runtime; R8 cannot see those calls.
+-keep class rx.** { *; }
+-keep interface rx.** { *; }
 
 # Prevent stripping Unsafe usage
 -dontwarn sun.misc.Unsafe
