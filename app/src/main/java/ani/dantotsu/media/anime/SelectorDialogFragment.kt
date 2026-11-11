@@ -15,16 +15,11 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-//import androidx.compose.ui.test.performClick
-//import androidx.compose.ui.geometry.isEmpty
-//import androidx.compose.ui.semantics.text
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.fragment.app.activityViewModels
-//import androidx.glance.visibility
-//import androidx.glance.visibility
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.withCreated
 import androidx.recyclerview.widget.LinearLayoutManager
