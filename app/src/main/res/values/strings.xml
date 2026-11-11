@@ -1004,6 +1004,9 @@
     <string name="comments_button_desc">Sends your AniList login token, username and avatar to api.dantotsu.app, run by the Dantotsu project</string>
     <string name="comments_off_info">Comments are off. Turning them on sends your AniList login token, username and avatar to api.dantotsu.app, a server run by the Dantotsu project, not by Editotsu.</string>
     <string name="comments_enable">Turn on comments</string>
+    <string name="stable_release_title">Stable release %1$s</string>
+    <string name="stable_release_info">Editotsu %1$s is a stable release. It installs as a separate app (ani.editotsu) and does not update this beta app in place.</string>
+    <string name="open_release_page">Release page</string>
     <string name="anilist_login_not_started">AniList login link ignored: no login was started from Editotsu in the last 10 minutes</string>
 
     <string name="comments">Comments</string>
