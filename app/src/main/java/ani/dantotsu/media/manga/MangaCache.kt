@@ -10,6 +10,8 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.LruCache
 import ani.dantotsu.media.manga.mangareader.BaseImageAdapter
+import ani.dantotsu.media.manga.mangareader.MAX_PAGE_DIMENSION
+import ani.dantotsu.media.manga.mangareader.pageInSampleSize
 import ani.dantotsu.snackString
 import ani.dantotsu.util.Logger
 import ani.dantotsu.util.createDataSaver
@@ -78,15 +80,28 @@ data class ImageData(
         }
 }
 
-private val pageDecodeOptions
-    get() = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.RGB_565 }
-
-/** BitmapFactory first; libvips on the same bytes when BitmapFactory cannot read the format. */
+/**
+ * BitmapFactory first; libvips on the same bytes when BitmapFactory cannot
+ * read the format. Long strips are sampled down while decoding and then
+ * scaled to [MAX_PAGE_DIMENSION]; ordinary pages decode at full size.
+ */
 fun decodePageBytes(bytes: ByteArray): Bitmap? = decodeWithFallback(
     bytes,
-    primary = { BitmapFactory.decodeByteArray(it, 0, it.size, pageDecodeOptions) },
+    primary = { decodeWithBitmapFactory(it) },
     fallback = { BaseImageAdapter.decodeWithLibvips(ByteArrayInputStream(it)) },
 )
+
+private fun decodeWithBitmapFactory(bytes: ByteArray): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    val options = BitmapFactory.Options().apply {
+        inPreferredConfig = Bitmap.Config.RGB_565
+        inSampleSize = pageInSampleSize(bounds.outWidth, bounds.outHeight)
+    }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        ?.let { BaseImageAdapter.capPageBitmap(it) }
+}
 
 /** Tries [primary], then [fallback] on the same bytes; nothing is downloaded twice. */
 inline fun <T : Any> decodeWithFallback(

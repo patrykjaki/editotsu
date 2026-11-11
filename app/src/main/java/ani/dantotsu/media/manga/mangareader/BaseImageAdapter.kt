@@ -28,6 +28,7 @@ import com.alexvasilkov.gestures.views.GestureFrameLayout
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.model.GlideUrl
+import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.load.resource.bitmap.BitmapTransformation
 import ani.dantotsu.parsers.MangaImage
 import kotlinx.coroutines.Dispatchers
@@ -370,7 +371,8 @@ abstract class BaseImageAdapter(
                                     .load(localFile.absoluteFile)
                                     .skipMemoryCache(true)
                                     .diskCacheStrategy(DiskCacheStrategy.NONE)
-                                    .submit()
+                                    .downsample(DownsampleStrategy.CENTER_INSIDE)
+                                    .submit(MAX_PAGE_DIMENSION, MAX_PAGE_DIMENSION)
                                     .get()
                             } catch (e: Exception) {
                                 logDecodeFailure("local page", e)
@@ -388,7 +390,8 @@ abstract class BaseImageAdapter(
                                     .load(Uri.parse(link.url))
                                     .skipMemoryCache(true)
                                     .diskCacheStrategy(DiskCacheStrategy.NONE)
-                                    .submit()
+                                    .downsample(DownsampleStrategy.CENTER_INSIDE)
+                                    .submit(MAX_PAGE_DIMENSION, MAX_PAGE_DIMENSION)
                                     .get()
                             } catch (e: Exception) {
                                 logDecodeFailure("content page", e)
@@ -437,9 +440,13 @@ abstract class BaseImageAdapter(
                 Glide.with(this)
                     .asBitmap()
                     .load(GlideUrl(link.url) { link.headers })
+                    // Disk cache lets a re-bind or OCR reuse the download;
+                    // decoded bitmaps stay out of the memory cache because the
+                    // reader recycles them.
                     .skipMemoryCache(true)
-                    .diskCacheStrategy(DiskCacheStrategy.NONE)
-                    .submit()
+                    .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                    .downsample(DownsampleStrategy.CENTER_INSIDE)
+                    .submit(MAX_PAGE_DIMENSION, MAX_PAGE_DIMENSION)
                     .get()
             } catch (e: Exception) {
                 logDecodeFailure("network page", e)
@@ -467,6 +474,14 @@ abstract class BaseImageAdapter(
             findOutOfMemory(e)?.let { throw it }
             Logger.log("Reader: $what decode failed: ${e.javaClass.simpleName}")
             return null
+        }
+
+        /** Scales a decoded page down to [MAX_PAGE_DIMENSION] when it is larger; smaller pages are returned as is. */
+        fun capPageBitmap(bitmap: Bitmap): Bitmap {
+            val (w, h) = cappedPageSize(bitmap.width, bitmap.height) ?: return bitmap
+            val scaled = Bitmap.createScaledBitmap(bitmap, w, h, true)
+            if (scaled !== bitmap) bitmap.recycle()
+            return scaled
         }
 
         fun mergeBitmap(bitmap1: Bitmap, bitmap2: Bitmap, scale: Boolean = false): Bitmap {
@@ -500,7 +515,7 @@ abstract class BaseImageAdapter(
                             val bitmap = Bitmap.createBitmap(frame.width, frame.height, Bitmap.Config.ARGB_8888)
                             frame.image.rewind()
                             bitmap.copyPixelsFromBuffer(frame.image)
-                            bitmap
+                            capPageBitmap(bitmap)
                         } finally {
                             frame.close()
                         }
