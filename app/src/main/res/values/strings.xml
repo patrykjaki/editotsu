@@ -308,6 +308,7 @@
     <string name="themes_download_audio">Download audio</string>
     <string name="themes_download_video">Download video</string>
     <string name="themes_download_all">Download all</string>
+    <string name="themes_download_all_no_audio">No audio file: %1$d of %2$d</string>
     <string name="themes_delete_download">Delete saved file</string>
     <string name="themes_downloading">%1$d%%</string>
     <string name="themes_download_failed">Download failed</string>

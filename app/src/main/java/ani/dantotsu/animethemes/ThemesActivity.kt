@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.R
+import ani.dantotsu.toast
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.databinding.ActivityThemesBinding
 import ani.dantotsu.databinding.ItemThemeFavouriteBinding
@@ -110,7 +111,13 @@ class ThemesActivity : AppCompatActivity() {
 
     private fun downloadAll() {
         if (favourites.isEmpty()) return setStatus(getString(R.string.themes_no_favourites))
-        controls.chooseKind { kind -> favourites.forEach { controls.download(it.track, kind, quiet = true) }; refreshStates() }
+        controls.chooseKind { kind ->
+            val tracks = favourites.map { it.track }
+            tracks.forEach { controls.download(it, kind, quiet = true) }
+            refreshStates()
+            val missing = ThemeDownloadNames.missingFiles(tracks, kind)
+            if (missing > 0) toast(getString(R.string.themes_download_all_no_audio, missing, tracks.size))
+        }
     }
 
     // ---- list ----
