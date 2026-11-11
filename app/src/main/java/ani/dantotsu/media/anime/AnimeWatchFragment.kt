@@ -486,6 +486,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         reload()
         val selected = model.loadSelected(media)
         model.watchSources?.get(selected.sourceIndex)?.showUserTextListener = null
+        val previousSourceIndex = selected.sourceIndex
         selected.sourceIndex = i
         selected.server = null
         model.saveSelected(media.id, selected)
@@ -493,9 +494,14 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         subscribed = SubscriptionHelper.isSubscribedOn(media.id, model.watchSources?.names?.getOrNull(i))
         if (this::headerAdapter.isInitialized) headerAdapter.subscribe?.setState(subscribed)
         // A remembered release or group belongs to the old source; keeping it made the
-        // new source auto-play its first row under the old name.
-        ani.dantotsu.media.anime.selector.SelectedKeyStore.save(media.id, null)
-        ani.dantotsu.media.anime.selector.SelectedFamilyStore.save(media.id, null)
+        // new source auto-play its first row under the old name. Re-selecting the same
+        // source or changing its language keeps it.
+        if (ani.dantotsu.media.anime.selector.RememberedSelectionPolicy
+                .clearsMemoryOnSourceChange(previousSourceIndex, i)
+        ) {
+            ani.dantotsu.media.anime.selector.SelectedKeyStore.save(media.id, null)
+            ani.dantotsu.media.anime.selector.SelectedFamilyStore.save(media.id, null)
+        }
         media.selected = selected
         return model.watchSources?.get(i)!!
     }
