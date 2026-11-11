@@ -60,6 +60,21 @@ class PickerRowsBuilderTest {
     }
 
     @Test
+    fun unchanged_row_reuses_its_summary_and_changed_content_parses_again() {
+        val b = PickerRowsBuilder()
+        val e = ext(0)
+        val video = e.videos[0]
+        val first = b.viewOf(e, video)
+        repeat(20) { org.junit.Assert.assertSame(first, b.viewOf(e, video)) }
+        assertEquals(1, b.summarizeCalls)
+        b.viewOf(ext(1), ext(1).videos[0])
+        assertEquals(2, b.summarizeCalls)
+        b.clear()
+        b.viewOf(e, video)
+        assertEquals(3, b.summarizeCalls)
+    }
+
+    @Test
     fun each_callback_parses_only_new_rows() {
         val counting = PickerRowsBuilder()
         val links = mutableListOf<VideoExtractor>()
