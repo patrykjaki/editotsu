@@ -71,7 +71,10 @@ class PickerRowsBuilder(
         links.forEachIndexed { ei, extractor ->
             val server = extractor.server
             val provider = StableCandidateBuilder.providerOf(server)
-            val facts = servers.getOrPut(ServerKey(server.name, server.embed.url, provider)) {
+            // lib-16 extensions leave the embed url empty; the video url then tells
+            // two releases with the same name apart (reposts)
+            val serverUrl = server.embed.url.ifBlank { server.video?.videoUrl.orEmpty() }
+            val facts = servers.getOrPut(ServerKey(server.name, serverUrl, provider)) {
                 runCatching {
                     val data = EditotsuInternalData.of(server.video)
                     ServerFacts(
