@@ -428,10 +428,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                 val downloadVideo = if (torrentUrl != null && selectedVideo != null) {
                                     val link = try {
                                         withContext(Dispatchers.IO) {
-                                            // The previous torrent goes only when this one is a different
-                                            // torrent: the next episode of a batch is the same torrent, and
-                                            // removing it dropped every peer (ep 2 waited 19 s to reconnect).
-                                            val previousHash = torrentManager.activeTorrentHash
+                                            // The previously active torrent stays: it may be playing (PiP) or
+                                            // downloading, and removing it stalled that stream. Unused
+                                            // torrents are removed by the idle cleanup.
                                             val index = ani.dantotsu.torrent.TorrentLinks.fileIndex(torrentUrl)
                                             Logger.log("Sending: $torrentUrl, ${selectedVideo.quality}, $index")
                                             val currentTorrent = torrentManager.addTorrent(
@@ -441,9 +440,6 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                                 "",
                                                 false
                                             )
-                                            if (previousHash != null && !previousHash.equals(currentTorrent.hash, ignoreCase = true)) {
-                                                torrentManager.removeTorrent(previousHash)
-                                            }
                                             torrentManager.activeTorrentHash = currentTorrent.hash
 
                                             // Pre-buffer the first piece and release temporary check lease
