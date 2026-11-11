@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+: cloud backup and device-to-device transfer. Account tokens stay on the
+     device: ani.dantotsu.protected holds the AniList and MAL logins and the app password,
+     ani.dantotsu.irrelevant holds the comments sign-in, app_webview holds site cookies.
+     The app's own backup (Settings > Data) covers settings. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="ani.dantotsu.protected.xml" />
+        <exclude domain="sharedpref" path="ani.dantotsu.irrelevant.xml" />
+        <exclude domain="root" path="app_webview/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="ani.dantotsu.protected.xml" />
+        <exclude domain="sharedpref" path="ani.dantotsu.irrelevant.xml" />
+        <exclude domain="root" path="app_webview/" />
+    </device-transfer>
+</data-extraction-rules>
