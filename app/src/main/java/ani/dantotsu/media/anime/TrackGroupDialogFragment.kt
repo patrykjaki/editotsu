@@ -15,11 +15,25 @@ import ani.dantotsu.media.anime.player.PlayerTrack
 import ani.dantotsu.media.anime.player.TrackType
 import java.util.Locale
 
-class TrackGroupDialogFragment(
-    private var instance: ExoplayerView,
-    private var tracks: List<PlayerTrack>,
-    private var type: TrackType
-) : BottomSheetDialogFragment() {
+/**
+ * Track list sheet. No constructor arguments: Android recreates fragments after a
+ * configuration change (dark mode, locale, font size) or process death, and reads the
+ * tracks from the player again.
+ */
+class TrackGroupDialogFragment : BottomSheetDialogFragment() {
+
+    private val instance: ExoplayerView? get() = activity as? ExoplayerView
+    private val type: TrackType
+        get() = TrackType.valueOf(requireArguments().getString(ARG_TYPE, TrackType.AUDIO.name))
+    private var tracks: List<PlayerTrack> = emptyList()
+
+    companion object {
+        private const val ARG_TYPE = "type"
+
+        fun newInstance(type: TrackType) = TrackGroupDialogFragment().apply {
+            arguments = Bundle().apply { putString(ARG_TYPE, type.name) }
+        }
+    }
 
     private var _binding: BottomSheetTrackGroupsBinding? = null
     private val binding get() = _binding!!
@@ -35,6 +49,17 @@ class TrackGroupDialogFragment(
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        val player = instance
+        if (player == null) {
+            dismissAllowingStateLoss()
+            return
+        }
+        tracks = player.currentTracks.filter { it.type == type }
+        // Restored before the recreated player has tracks again: nothing to pick from yet.
+        if (tracks.isEmpty()) {
+            dismissAllowingStateLoss()
+            return
+        }
 
         if (type == TrackType.AUDIO) {
             binding.selectionTitle.text = getString(R.string.audio_tracks)
@@ -72,7 +97,7 @@ class TrackGroupDialogFragment(
                 itemBinding.subtitleTitle.text = if (!isAnySelected) "✔ $title" else title
                 itemBinding.root.setOnClickListener {
                     dismiss()
-                    instance.onSelectTrack(null, type)
+                    instance?.onSelectTrack(null, type)
                 }
                 return
             }
@@ -96,7 +121,7 @@ class TrackGroupDialogFragment(
             itemBinding.subtitleTitle.text = if (track.selected) "✔ $formattedTitle" else formattedTitle
             itemBinding.root.setOnClickListener {
                 dismiss()
-                instance.onSelectTrack(track, type)
+                instance?.onSelectTrack(track, type)
             }
         }
     }

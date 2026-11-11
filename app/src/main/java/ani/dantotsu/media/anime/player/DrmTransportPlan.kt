@@ -241,6 +241,15 @@ object DrmTransportPlan {
         val audioSides: Map<String, Map<String, String>>,
     )
 
+    /**
+     * Whether moving from [old] to [new] needs a new ExoPlayer. Only the primary and audio
+     * header sets are baked into the player's media source factory; subtitle sources get
+     * their own scoped factory at source build, so a subtitle change rebuilds the source on
+     * the same player (no new DRM session or license request).
+     */
+    fun needsPlayerRebuild(old: SourceHeaderPlan?, new: SourceHeaderPlan): Boolean =
+        old == null || old.primary != new.primary || old.audioSides != new.audioSides
+
     fun planSourceHeaders(
         primaryUri: String,
         requestHeaders: Map<String, String>,

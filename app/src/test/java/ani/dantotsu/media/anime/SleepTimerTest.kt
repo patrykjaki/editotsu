@@ -40,4 +40,18 @@ class SleepTimerTest {
         assertEquals(0, SleepTimer.CHOICES_MINUTES.first())
         assertEquals(-1, SleepTimer.CHOICES_MINUTES.last())
     }
+
+    @Test
+    fun `dialog shows the running choice and whole minutes left`() {
+        val t = SleepTimer()
+        assertEquals(SleepTimer.CHOICES_MINUTES.indexOf(0), t.checkedChoice())
+        t.setMinutes(30, nowMs = 0L)
+        assertEquals(SleepTimer.CHOICES_MINUTES.indexOf(30), t.checkedChoice())
+        assertEquals(30, t.remainingMinutes(0L))
+        assertEquals(23, t.remainingMinutes(7 * 60_000L))
+        assertEquals("59 s left shows 1", 1, t.remainingMinutes(30 * 60_000L - 59_000L))
+        t.setEndOfEpisode()
+        assertEquals(SleepTimer.CHOICES_MINUTES.indexOf(-1), t.checkedChoice())
+        assertNull(t.remainingMinutes(0L))
+    }
 }

@@ -55,18 +55,26 @@ interface PlaybackEngine {
     val supportsAudioDelay: Boolean get() = true
     fun applySubtitleStyle(style: SubtitleStyle)
     fun applyVideoPipeline(config: VideoPipelineConfig) {}
+    /** Whether [applyVideoPipeline] does anything (night mode, colour, deband, upscaler). */
+    val supportsVideoPipeline: Boolean get() = true
     fun setResizeMode(mode: ResizeMode)
+    /** Whether [setResizeMode] can show [mode]; unsupported modes fall back to fit. */
+    fun supportsResizeMode(mode: ResizeMode): Boolean = true
 
     fun loadMedia(request: PlaybackRequest)
     fun stop()
     fun release()
 
+    /** Whether [captureScreenshot] can work on this engine at all. */
+    val supportsScreenshot: Boolean get() = false
+
     /**
-     * MAX MERGE M6: capture the current frame to [file] via the native
-     * screenshot path. Returns false when unsupported or not ready.
+     * MAX MERGE M6: capture the current frame to [file] via the native screenshot path.
+     * Runs on the engine's own thread; [onResult] is called on the main thread with true
+     * when the file was written, false when unsupported or not ready.
      */
-    fun captureScreenshot(file: java.io.File): Boolean {
-        return false
+    fun captureScreenshot(file: java.io.File, onResult: (Boolean) -> Unit) {
+        onResult(false)
     }
 
     fun addListener(listener: PlaybackListener)

@@ -45,6 +45,9 @@ data class PlaybackRequest(
     val externalSubtitles: List<ExternalSubtitle> = emptyList(),
     val externalAudioTracks: List<ExternalAudioTrack> = emptyList(),
     val preferredSubLang: String? = null,
+    // Settings > Subtitle language, used for the automatic pick when the episode has no
+    // saved choice. Kept apart from preferredSubLang, which counts as an explicit choice.
+    val fallbackSubLang: String? = null,
     val metadata: Map<String, String> = emptyMap(),
     val sourceClass: PlaybackSourceClass = PlaybackSourceClass.LOCAL_FILE,
     // Beta03: validated extension mpv per-file options (e.g. demuxer-lavf-o),

@@ -406,32 +406,25 @@ fun computeTracksAuthoritative(
 fun resolveDrmAutoSubtitleId(
     tracks: List<DrmSubtitleIntentMachine.TrackRef>,
     preferredSubLang: String?,
+    fallbackSubLang: String? = null,
 ): Int? {
     if (tracks.isEmpty()) return null
-    if (preferredSubLang != null && preferredSubLang.startsWith("Embedded:", ignoreCase = true)) {
-        val target = preferredSubLang.removePrefix("Embedded:").trim()
-        target.toIntOrNull()?.let { id ->
-            tracks.firstOrNull { it.id == id }?.let { return it.id }
-        }
-        tracks.firstOrNull {
-            it.language?.equals(target, ignoreCase = true) == true ||
-                it.name?.contains(target, ignoreCase = true) == true
-        }?.let { return it.id }
-        return null
+    val embeddedKey = SubtitleLanguageMatch.parseEmbeddedKey(preferredSubLang)
+    if (embeddedKey != null) {
+        return SubtitleLanguageMatch.restoreEmbedded(
+            tracks.map { SubtitleLanguageMatch.EmbeddedRef(it.id, it.language, it.name) },
+            embeddedKey,
+        )
     }
     val lang = preferredSubLang?.takeIf { it.isNotBlank() }
     if (lang != null) {
-        tracks.firstOrNull {
-            it.language?.equals(lang, ignoreCase = true) == true ||
-                it.name?.contains(lang, ignoreCase = true) == true
-        }?.let { return it.id }
+        tracks.firstOrNull { SubtitleLanguageMatch.matches(it.language, it.name, lang) }?.let { return it.id }
         return null
     }
-    tracks.firstOrNull {
-        it.language?.equals("en", ignoreCase = true) == true ||
-            it.language?.equals("eng", ignoreCase = true) == true ||
-            it.name?.contains("english", ignoreCase = true) == true
-    }?.let { return it.id }
+    fallbackSubLang?.takeIf { it.isNotBlank() }?.let { fallback ->
+        tracks.firstOrNull { SubtitleLanguageMatch.matches(it.language, it.name, fallback) }?.let { return it.id }
+    }
+    tracks.firstOrNull { SubtitleLanguageMatch.matches(it.language, it.name, "English") }?.let { return it.id }
     tracks.firstOrNull { it.default && !it.forced }?.let { return it.id }
     return tracks.firstOrNull()?.id
 }

@@ -53,7 +53,9 @@ class Media3DrmPlaybackEngine(
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArraySet<PlaybackListener>()
-    private val trackSelector = DefaultTrackSelector(context)
+    // A DefaultTrackSelector serves one player; each new player gets a new one with the
+    // same parameters (see ensurePlayer).
+    private var trackSelector = DefaultTrackSelector(context)
     private var player: ExoPlayer? = null
     private var activeRequest: PlaybackRequest? = null
     private var state: PlaybackState = PlaybackState.Idle
@@ -225,7 +227,7 @@ class Media3DrmPlaybackEngine(
                 indexInGroup = trackIndex
             )
         }
-        val autoId = resolveDrmAutoSubtitleId(refs, req.preferredSubLang)
+        val autoId = resolveDrmAutoSubtitleId(refs, req.preferredSubLang, req.fallbackSubLang)
         val currentSelectedId = subtitleTracks.firstOrNull { it.selected }?.id
         // HOLD9: authority is computed, never assumed. Only a settled
         // (READY), text-bearing enumeration with every attached external
@@ -347,7 +349,13 @@ class Media3DrmPlaybackEngine(
         boundSurface = surface
         if (surface == null) pendingOutput.clearSurface()
         else pendingOutput.hasSurface = true
-        mainHandler.post { player?.setVideoSurface(surface) }
+        // surfaceDestroyed calls this on the main thread and the Surface is gone once it
+        // returns, so detach before returning instead of after a post.
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            player?.setVideoSurface(surface)
+        } else {
+            mainHandler.post { player?.setVideoSurface(surface) }
+        }
     }
 
     override fun setVideoSurfaceSize(width: Int, height: Int) {
@@ -520,6 +528,8 @@ class Media3DrmPlaybackEngine(
         Logger.log("Media3DrmPlaybackEngine: audio delay unsupported, ignoring ${delayMs}ms")
     }
 
+    override val supportsVideoPipeline: Boolean get() = false
+    override fun supportsResizeMode(mode: ResizeMode): Boolean = mode == ResizeMode.FIT || mode == ResizeMode.ZOOM
     override val supportsSubtitleDelay: Boolean get() = false
     override val supportsAudioDelay: Boolean get() = false
 
@@ -593,10 +603,17 @@ class Media3DrmPlaybackEngine(
             DrmTransportPlan.planAudioMerge(request.uri, request.externalAudioTracks).sides,
             defaultDrmUa()
         )
-        if (player != null && activeHeaderPlan == headerPlan) {
+        if (player != null && !DrmTransportPlan.needsPlayerRebuild(activeHeaderPlan, headerPlan)) {
+            // Same player: subtitle sources read their headers from the plan at source build.
+            activeHeaderPlan = headerPlan
             return
         }
+        val hadPlayer = player != null
         releasePlayerInternal()
+        if (hadPlayer) {
+            val carried = trackSelector.parameters
+            trackSelector = DefaultTrackSelector(context).apply { parameters = carried }
+        }
         activeHeaderPlan = headerPlan
         val licenseFactory = OkHttpDataSource.Factory(httpClient)
         mediaSourceFactory = DefaultMediaSourceFactory(context)

@@ -840,7 +840,9 @@ class MediaDetailsViewModel : ViewModel() {
     }
 
     val timeStamps = MutableLiveData<List<AniSkip.Stamp>?>()
-    private val timeStampsMap: MutableMap<Int, List<AniSkip.Stamp>?> = mutableMapOf()
+    private val timeStampsCache = ani.dantotsu.others.AniskipCache<AniSkip.Stamp>()
+    // Episode the player last asked about; a slower answer for an earlier episode is dropped.
+    @Volatile private var timeStampsEpisode: Int? = null
     suspend fun loadTimeStamps(
         malId: Int?,
         episodeNum: Int?,
@@ -850,17 +852,20 @@ class MediaDetailsViewModel : ViewModel() {
         episode: Episode? = null
     ) {
         episodeNum ?: return
-        if (timeStampsMap.containsKey(episodeNum) && !timeStampsMap[episodeNum].isNullOrEmpty()) {
-            return timeStamps.postValue(timeStampsMap[episodeNum])
+        timeStampsEpisode = episodeNum
+        fun post(value: List<AniSkip.Stamp>?) {
+            if (timeStampsEpisode == episodeNum) timeStamps.postValue(value)
+        }
+        val cached = timeStampsCache.lookup(episodeNum)
+        if (cached is ani.dantotsu.others.AniskipCache.Lookup.Hit) {
+            return post(cached.stamps)
         }
 
         // Extension timestamps take priority.
         if (extensionTimestamps.isNotEmpty()) {
             val result = extensionTimestamps.map { it.toAniSkipStamp() }
-            if (result.isNotEmpty() || duration > 0) {
-                timeStampsMap[episodeNum] = result
-            }
-            return timeStamps.postValue(result)
+            timeStampsCache.store(episodeNum, result, durationKnown = duration > 0)
+            return post(result)
         }
 
         // Provider fallback chain (upstream 36d57c56): live AniSkip API →
@@ -922,10 +927,8 @@ class MediaDetailsViewModel : ViewModel() {
                 )
             }
         )?.sanitizedStamps()
-        if (result != null || duration > 0) {
-            timeStampsMap[episodeNum] = result
-        }
-        timeStamps.postValue(result)
+        timeStampsCache.store(episodeNum, result, durationKnown = duration > 0)
+        post(result)
     }
 
     private fun eu.kanade.tachiyomi.animesource.model.TimeStamp.toAniSkipStamp(): AniSkip.Stamp {
