@@ -225,7 +225,7 @@ class Media3DrmPlaybackEngine(
                 indexInGroup = trackIndex
             )
         }
-        val autoId = resolveDrmAutoSubtitleId(refs, req.preferredSubLang)
+        val autoId = resolveDrmAutoSubtitleId(refs, req.preferredSubLang, req.fallbackSubLang)
         val currentSelectedId = subtitleTracks.firstOrNull { it.selected }?.id
         // HOLD9: authority is computed, never assumed. Only a settled
         // (READY), text-bearing enumeration with every attached external
