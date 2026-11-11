@@ -98,8 +98,11 @@ class MangaServiceIdleTest {
             code.split("isServiceSettled()").size - 1,
         )
         // No plain stopSelf bypass of the veto-safe stop ("stopSelfResult("
-        // does not contain the substring "stopSelf(").
-        assertFalse("no bare stopSelf may remain", code.contains("stopSelf("))
+        // does not contain the substring "stopSelf("). The one exception is
+        // onTimeout: Android requires the service to stop there, queued work or not.
+        assertEquals("one bare stopSelf, in onTimeout", 1, code.split("stopSelf(").size - 1)
+        val timeout = code.substringAfter("override fun onTimeout(").substringBefore("override fun onDestroy(")
+        assertTrue("the bare stopSelf is the timeout stop", timeout.contains("stopSelf("))
         // Map discipline: concurrent reads/writes are safe by construction…
         assertTrue(code.contains("ConcurrentHashMap<MangaDownloadKey, MangaJobEntry>"))
         // …and emptiness is consulted only inside the single settled definition
