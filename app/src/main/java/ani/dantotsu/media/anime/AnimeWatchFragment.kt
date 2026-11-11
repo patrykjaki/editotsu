@@ -322,6 +322,8 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
                         val jikanTitle = cleanTitle((media.anime?.fillerEpisodes?.get(epNum) ?: media.anime?.fillerEpisodes?.getEpisode(epNum))?.title)
                         episode.title = anifyTitle ?: kitsuTitle ?: jikanTitle ?: buildFallbackEpisodeTitle(i, episode)
                     }
+                    // the picker may have loaded streams into the cached episodes
+                    ani.dantotsu.media.anime.selector.EpisodeStreamCarryOver.carryAll(media.anime?.episodes, episodes)
                     media.anime?.episodes = episodes
                     headerAdapter.options = getScanlators(episodes)
                     if (headerAdapter.options.size > 1) {
