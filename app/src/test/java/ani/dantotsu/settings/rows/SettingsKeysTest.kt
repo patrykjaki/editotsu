@@ -19,7 +19,6 @@ class SettingsKeysTest {
 
     private val GOLDEN = listOf(
         g(PrefName.AdultOnly, Location.General, Boolean::class, false),
-        g(PrefName.AlwaysContinue, Location.Player, Boolean::class, true),
         g(PrefName.AnilistFilteredTypes, Location.General, Set::class, setOf<String>()),
         g(PrefName.AnilistNotificationInterval, Location.General, Int::class, 3),
         g(PrefName.AnilistUserId, Location.Protected, String::class, ""),
@@ -114,7 +113,6 @@ class SettingsKeysTest {
         g(PrefName.OnlineSubtitleLanguages, Location.Player, Set::class, setOf("English")),
         g(PrefName.OnlineSubtitleProviders, Location.Player, Set::class, setOf("Wyzie", "Stremio", "SubSource", "OpenSubtitles")),
         g(PrefName.OnlineSubtitlesEnabled, Location.Player, Boolean::class, true),
-        g(PrefName.Outline, Location.Player, Int::class, 0),
         g(PrefName.OverScrollMode, Location.Reader, Boolean::class, true),
         g(PrefName.OverridePassword, Location.Protected, Boolean::class, false),
         g(PrefName.Padding, Location.Reader, Boolean::class, true),
@@ -140,20 +138,16 @@ class SettingsKeysTest {
         g(PrefName.SmartDownloadAnime, Location.General, Boolean::class, false),
         g(PrefName.SmartDownloadManga, Location.General, Boolean::class, false),
         g(PrefName.SourceSubScale, Location.Player, Float::class, 1f),
-        g(PrefName.SubAlpha, Location.Player, Float::class, 1f),
         g(PrefName.SubBackground, Location.Player, Int::class, Color.TRANSPARENT),
         g(PrefName.SubBottomMargin, Location.Player, Float::class, 1f),
         g(PrefName.SubLanguage, Location.Player, Int::class, 9),
         g(PrefName.SubStroke, Location.Player, Float::class, 8f),
-        g(PrefName.SubWindow, Location.Player, Int::class, Color.TRANSPARENT),
         g(PrefName.SubscriptionCheckingNotifications, Location.General, Boolean::class, true),
         g(PrefName.SubscriptionNotificationInterval, Location.General, Int::class, 2),
         g(PrefName.SubscriptionPromptAtEnd, Location.General, Boolean::class, true),
         g(PrefName.SubtitleDelayMs, Location.Player, Int::class, 0),
         g(PrefName.SubtitleSpeed, Location.Player, Float::class, 1.0f),
         g(PrefName.SubtitleStylingMode, Location.Player, Int::class, 0),
-        g(PrefName.Subtitles, Location.Player, Boolean::class, true),
-        g(PrefName.TextviewSubtitles, Location.Player, Boolean::class, false),
         g(PrefName.Theme, Location.UI, String::class, "OCEAN"),
         g(PrefName.TimeStampsEnabled, Location.Player, Boolean::class, true),
         g(PrefName.TorrentBatterySaving, Location.Player, Boolean::class, false),
@@ -172,7 +166,6 @@ class SettingsKeysTest {
         g(PrefName.UpdateForHReader, Location.Reader, Boolean::class, false),
         g(PrefName.UpscalerProfileId, Location.Player, String::class, ""),
         g(PrefName.UpscalerProviderId, Location.Player, String::class, "off"),
-        g(PrefName.UseAdditionalCodec, Location.Player, Boolean::class, false),
         g(PrefName.UseAlarmManager, Location.General, Boolean::class, false),
         g(PrefName.UseCustomTheme, Location.UI, Boolean::class, false),
         g(PrefName.UseDarkThemeNovel, Location.NovelReader, Boolean::class, false),
@@ -352,8 +345,9 @@ class SettingsKeysTest {
     private val NOT_ON_A_ROW = setOf("OC")
 
     /**
-     * Rows taken off the screens because nothing reads their key. The keys stay in
-     * Preferences.kt (and in [GOLDEN]) so older backups still restore.
+     * Rows taken off the screens because nothing reads their key. Their keys were then
+     * deleted from Preferences.kt; restore writes backup keys as they are, so older
+     * backups still restore (the old values are just never read).
      */
     private val REMOVED_ROWS = setOf(
         "Subtitles", "TextviewSubtitles", "Outline", "SubWindow", "SubAlpha",
