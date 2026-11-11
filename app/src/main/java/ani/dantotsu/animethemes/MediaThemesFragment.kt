@@ -77,10 +77,11 @@ class MediaThemesFragment : Fragment() {
             val result = AnimeThemes.repository.lookupShared(media.id, media.idMAL, forceRefresh = force).await()
             if (_binding == null) return@launch
             binding.themesLoading.isVisible = false
-            shownPrefs = themePrefs()
+            val prefs = themePrefs()
+            shownPrefs = prefs
             when (result) {
                 is ThemesLookup.Found -> {
-                    val choices = ThemeQueue.choices(result.data, shownPrefs)
+                    val choices = ThemeQueue.choices(result.data, prefs)
                         .map { ThemeQueue.withShow(it, media.id, media.userPreferredName) }
                     if (choices.isEmpty()) showAniListText(media) else showList(media, choices)
                 }
