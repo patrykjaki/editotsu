@@ -169,14 +169,6 @@ object ThemeQueue {
     data class Attempt(val url: String, val delayMs: Long)
 
     /**
-     * What to load after the [failures]-th failure of [track]: the same video twice
-     * more (the CDN answers 503 under load), then each of the theme's other videos.
-     * Null when everything was tried.
-     */
-    fun nextAttempt(track: ThemeTrack, failures: Int): Attempt? =
-        attempts(sources(track)).getOrNull(failures.coerceAtLeast(0))
-
-    /**
      * Where [track] can be played from, in order. Audio only: saved audio, the .ogg,
      * then saved video and the videos. Otherwise: saved video, the videos, then saved
      * audio. A saved copy of the other kind never goes before the kind asked for,

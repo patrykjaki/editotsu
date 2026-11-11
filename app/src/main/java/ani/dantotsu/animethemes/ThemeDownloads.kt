@@ -1,11 +1,15 @@
 package ani.dantotsu.animethemes
 
 import android.app.DownloadManager
+import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import ani.dantotsu.Mapper
 import ani.dantotsu.defaultHeaders
+import ani.dantotsu.util.Logger
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -23,8 +27,24 @@ data class ThemeDownloadState(
     enum class Status { NONE, RUNNING, SAVED, FAILED }
 }
 
+/**
+ * One saved theme file: a DownloadManager download, or (when [downloadId] is -1) a file
+ * found in the folder after the index was lost, e.g. after a reinstall.
+ */
 @Serializable
-private data class ThemeDownloadRecord(val downloadId: Long, val fileName: String)
+internal data class ThemeDownloadRecord(val downloadId: Long = -1L, val fileName: String, val uri: String? = null)
+
+/** Index lookups, kept pure for tests. */
+internal object ThemeDownloadIndex {
+    /** Index key of a file found in the folder, by file name. */
+    fun fileKey(name: String) = "file:$name"
+
+    /** Records for files found in the folder; only theme files count. */
+    fun fromFolder(found: Map<String, String>): Map<String, ThemeDownloadRecord> =
+        found.filterKeys { it.endsWith(".webm") || it.endsWith(".ogg") }
+            .map { (name, uri) -> fileKey(name) to ThemeDownloadRecord(fileName = name, uri = uri) }
+            .toMap()
+}
 
 /** Pure naming rules, kept apart so they can be tested without Android. */
 object ThemeDownloadNames {
@@ -45,6 +65,9 @@ object ThemeDownloadNames {
     fun url(track: ThemeTrack, kind: ThemeFileKind): String? =
         if (kind == ThemeFileKind.AUDIO) track.audioUrl else track.url
 
+    /** How many of [tracks] have no file of [kind]; "download all" skips them. */
+    fun missingFiles(tracks: List<ThemeTrack>, kind: ThemeFileKind): Int = tracks.count { url(it, kind) == null }
+
     private fun clean(s: String) = s.replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), " ")
         .replace(Regex("\\s+"), " ").trim().trimEnd('.')
 }
@@ -52,7 +75,8 @@ object ThemeDownloadNames {
 /**
  * Saved copies of favourite themes in Downloads/Editotsu/AnimeThemes, through the
  * system DownloadManager: the files show in the file manager and can be shared,
- * and they stay after Editotsu is uninstalled. Only the id index lives in app storage.
+ * and they stay after Editotsu is uninstalled. Only the id index lives in app storage;
+ * when it is missing, it is rebuilt from the files in the folder.
  */
 class ThemeDownloads(context: Context) {
     private val app = context.applicationContext
@@ -61,8 +85,62 @@ class ThemeDownloads(context: Context) {
     private val serializer = MapSerializer(String.serializer(), ThemeDownloadRecord.serializer())
 
     private fun read(): Map<String, ThemeDownloadRecord> = synchronized(LOCK) {
-        if (!indexFile.exists()) return emptyMap()
+        if (!indexFile.exists()) {
+            // The files outlive the app; without the index a new download would make "name (1).webm".
+            val rebuilt = ThemeDownloadIndex.fromFolder(scanFolder())
+            write(rebuilt)
+            return rebuilt
+        }
         runCatching { Mapper.json.decodeFromString(serializer, indexFile.readText()) }.getOrDefault(emptyMap())
+    }
+
+    /**
+     * File name to uri of what is in the themes folder and visible to this app. On Android 10+
+     * files saved by an earlier install are only visible while storage access allows it.
+     */
+    private fun scanFolder(): Map<String, String> {
+        val found = mutableMapOf<String, String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            runCatching {
+                app.contentResolver.query(
+                    collection,
+                    arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME),
+                    "${MediaStore.MediaColumns.RELATIVE_PATH} = ?",
+                    arrayOf("${Environment.DIRECTORY_DOWNLOADS}/${ThemeDownloadNames.FOLDER}/"),
+                    null,
+                )?.use { c ->
+                    val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                    val name = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                    while (c.moveToNext()) {
+                        found[c.getString(name)] = ContentUris.withAppendedId(collection, c.getLong(id)).toString()
+                    }
+                }
+            }.onFailure { Logger.log("ThemeDownloads: folder query failed: ${it.message}") }
+        }
+        @Suppress("DEPRECATION")
+        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), ThemeDownloadNames.FOLDER)
+        runCatching { dir.listFiles() }.getOrNull()?.forEach { f ->
+            if (f.isFile && f.name !in found) found[f.name] = Uri.fromFile(f).toString()
+        }
+        return found
+    }
+
+    private fun record(track: ThemeTrack, kind: ThemeFileKind): Pair<String, ThemeDownloadRecord>? {
+        val index = read()
+        val key = ThemeDownloadNames.key(track, kind)
+        index[key]?.let { return key to it }
+        val fileKey = ThemeDownloadIndex.fileKey(ThemeDownloadNames.fileName(track, kind))
+        return index[fileKey]?.let { fileKey to it }
+    }
+
+    private fun stateOf(record: ThemeDownloadRecord): ThemeDownloadState? {
+        if (record.downloadId >= 0) return query(record.downloadId)
+        val uri = record.uri?.let(Uri::parse) ?: return null
+        val size = runCatching {
+            app.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize }
+        }.getOrNull() ?: return null
+        return ThemeDownloadState(ThemeDownloadState.Status.SAVED, 100, uri, size.coerceAtLeast(0L))
     }
 
     private fun write(map: Map<String, ThemeDownloadRecord>) = synchronized(LOCK) {
@@ -72,8 +150,8 @@ class ThemeDownloads(context: Context) {
     }
 
     fun state(track: ThemeTrack, kind: ThemeFileKind): ThemeDownloadState {
-        val record = read()[ThemeDownloadNames.key(track, kind)] ?: return ThemeDownloadState(ThemeDownloadState.Status.NONE)
-        return query(record.downloadId) ?: ThemeDownloadState(ThemeDownloadState.Status.NONE)
+        val (_, record) = record(track, kind) ?: return ThemeDownloadState(ThemeDownloadState.Status.NONE)
+        return stateOf(record) ?: ThemeDownloadState(ThemeDownloadState.Status.NONE)
     }
 
     private fun query(id: Long): ThemeDownloadState? {
@@ -106,9 +184,10 @@ class ThemeDownloads(context: Context) {
     fun enqueue(track: ThemeTrack, kind: ThemeFileKind): Boolean {
         val url = ThemeDownloadNames.url(track, kind) ?: return false
         val key = ThemeDownloadNames.key(track, kind)
-        read()[key]?.let { old ->
-            if (query(old.downloadId)?.status in listOf(ThemeDownloadState.Status.RUNNING, ThemeDownloadState.Status.SAVED)) return true
-            dm.remove(old.downloadId)
+        record(track, kind)?.let { (oldKey, old) ->
+            if (stateOf(old)?.status in listOf(ThemeDownloadState.Status.RUNNING, ThemeDownloadState.Status.SAVED)) return true
+            if (old.downloadId >= 0) dm.remove(old.downloadId)
+            write(read() - oldKey)
         }
         val name = ThemeDownloadNames.fileName(track, kind)
         val request = DownloadManager.Request(Uri.parse(url))
@@ -124,9 +203,18 @@ class ThemeDownloads(context: Context) {
 
     /** Deletes the saved file (or stops the download) of that kind. */
     fun remove(track: ThemeTrack, kind: ThemeFileKind) {
-        val key = ThemeDownloadNames.key(track, kind)
-        val record = read()[key] ?: return
-        dm.remove(record.downloadId)
+        val (key, record) = record(track, kind) ?: return
+        if (record.downloadId >= 0) {
+            dm.remove(record.downloadId)
+        } else {
+            record.uri?.let { uri ->
+                runCatching {
+                    val parsed = Uri.parse(uri)
+                    if (parsed.scheme == "file") File(parsed.path.orEmpty()).delete()
+                    else app.contentResolver.delete(parsed, null, null)
+                }.onFailure { Logger.log("ThemeDownloads: could not delete ${record.fileName}: ${it.message}") }
+            }
+        }
         write(read() - key)
     }
 
@@ -136,7 +224,7 @@ class ThemeDownloads(context: Context) {
 
     /** Bytes of every saved theme file. */
     fun totalBytes(): Long = read().values.sumOf { r ->
-        query(r.downloadId)?.takeIf { it.status == ThemeDownloadState.Status.SAVED }?.bytes ?: 0L
+        stateOf(r)?.takeIf { it.status == ThemeDownloadState.Status.SAVED }?.bytes ?: 0L
     }
 
     private companion object {

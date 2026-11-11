@@ -85,11 +85,29 @@ class AnimeThemesRepository(
 ) {
 
     companion object {
-        const val MAX_CACHE_ENTRIES = 200
-        const val MAX_CACHE_BYTES = 500 * 1024L // 500 KB limit
+        // A miss costs a 16-38 s lookup, and shuffle reads many shows: keep a few MB.
+        const val MAX_CACHE_ENTRIES = 2000
+        const val MAX_CACHE_BYTES = 4 * 1024 * 1024L
         const val POSITIVE_TTL_MS = 7 * 24 * 60 * 60 * 1000L // 7 Days
         const val NEGATIVE_TTL_MS = 24 * 60 * 60 * 1000L // 24 Hours
         const val CACHE_FILE_NAME = "animethemes_metadata_cache.json"
+
+        /** Keys to drop, oldest [timestamps] first, until [total] minus their [sizes] fits [limit]. */
+        internal fun oldestOverLimit(
+            timestamps: Map<String, Long>,
+            sizes: Map<String, Int>,
+            total: Long,
+            limit: Long,
+        ): List<String> {
+            var remaining = total
+            val drop = mutableListOf<String>()
+            for (key in timestamps.entries.sortedBy { it.value }.map { it.key }) {
+                if (remaining <= limit) break
+                remaining -= sizes[key] ?: 0
+                drop += key
+            }
+            return drop
+        }
 
         fun getCacheKey(media: Media): String? = getCacheKey(media.id, media.idMAL)
 
@@ -467,9 +485,15 @@ class AnimeThemesRepository(
                     var jsonString = Mapper.json.encodeToString(AnimeThemesDiskCache.serializer(), cache)
                     var jsonBytes = jsonString.toByteArray(Charsets.UTF_8)
 
-                    while (jsonBytes.size > MAX_CACHE_BYTES && cache.entries.isNotEmpty()) {
-                        val oldestKey = cache.entries.minByOrNull { it.value.timestamp }?.key ?: break
-                        cache.entries.remove(oldestKey)
+                    if (jsonBytes.size > MAX_CACHE_BYTES) {
+                        // Oldest first; each entry is measured once instead of re-encoding the
+                        // whole cache after every removal.
+                        val sizes = cache.entries.mapValues { (key, value) ->
+                            key.length + 4 + Mapper.json.encodeToString(CachedAnimeThemesEntryDto.serializer(), value)
+                                .toByteArray(Charsets.UTF_8).size
+                        }
+                        oldestOverLimit(cache.entries.mapValues { it.value.timestamp }, sizes, jsonBytes.size.toLong(), MAX_CACHE_BYTES)
+                            .forEach { cache.entries.remove(it) }
                         jsonString = Mapper.json.encodeToString(AnimeThemesDiskCache.serializer(), cache)
                         jsonBytes = jsonString.toByteArray(Charsets.UTF_8)
                     }
