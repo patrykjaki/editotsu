@@ -461,6 +461,7 @@
     <string name="sub_font_select">Subtitle Font</string>
     <string name="subtitle_font_size">Subtitle Size</string>
     <string name="subtitle_styling">Subtitle styling</string>
+    <string name="download_manager_external_desc">Hands the link to %1$s; the app must be installed.</string>
     <string name="subtitle_styling_automatic">Automatic by source</string>
     <string name="subtitle_styling_automatic_desc">Uses Editotsu\'s subtitle appearance for online streams and preserves original ASS styling for torrents, downloads and local media.</string>
     <string name="subtitle_styling_editotsu">Editotsu style</string>
@@ -1698,6 +1699,10 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     </plurals>
     <string name="settings_fewer">Show fewer</string>
     <string name="extension_installer">Extension installer</string>
+    <string name="installer_legacy_desc">System install screen for every extension. For older Android versions.</string>
+    <string name="installer_package_desc">Android package installer; asks once per install.</string>
+    <string name="installer_shizuku_desc">Installs without prompts. Needs Shizuku running.</string>
+    <string name="installer_private_desc">Kept inside Editotsu, not installed on the system.</string>
     <string name="expanded">Expanded</string>
     <string name="collapsed">Collapsed</string>
     <string name="storage_usage">Storage Usage</string>

@@ -1,5 +1,7 @@
 package ani.dantotsu.settings
 
+import ani.dantotsu.settings.rows.ChoiceSheet
+import ani.dantotsu.settings.rows.ChoiceOption
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Bundle
@@ -32,7 +34,6 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
 import ani.dantotsu.util.Logger
-import ani.dantotsu.util.customAlertDialog
 
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.textfield.TextInputLayout
@@ -70,7 +71,6 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
             val changeUIVisibility: (Boolean) -> Unit = { show ->
                 (activity as? ExtensionsActivity)?.showSourcePreferences(!show, name)
             }
-            var itemSelected = false
             val allSettings = pkg.sources.filterIsInstance<ConfigurableAnimeSource>()
             if (allSettings.isNotEmpty()) {
                 val openPrefFragment: (ConfigurableAnimeSource) -> Unit = { source ->
@@ -86,21 +86,12 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
                 }
 
                 if (allSettings.size > 1) {
-                    val names = allSettings.map { getLanguageName(it.lang) }.toTypedArray()
-                    var selectedIndex = 0
-                    requireContext().customAlertDialog().apply {
-                        setTitle(getString(R.string.extensions_select_source))
-                        singleChoiceItems(names, selectedIndex) { which ->
-                            itemSelected = true
-                            openPrefFragment(allSettings[which])
-                        }
-                        onDismiss {
-                            if (!itemSelected) {
-                                changeUIVisibility(true)
-                            }
-                        }
-                        show()
-                    }
+                    // One extension, several sources (languages): pick whose settings to open.
+                    ChoiceSheet.single(
+                        requireContext(), getString(R.string.extensions_select_source),
+                        allSettings.map { ChoiceOption(getLanguageName(it.lang)) }, -1,
+                        onCancel = { changeUIVisibility(true) },
+                    ) { which -> openPrefFragment(allSettings[which]) }
                 } else {
                     openPrefFragment(allSettings[0])
                 }

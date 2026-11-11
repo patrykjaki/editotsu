@@ -3,7 +3,8 @@ package ani.dantotsu.settings
 import android.content.Context
 import ani.dantotsu.R
 import ani.dantotsu.settings.saving.PrefManager
-import ani.dantotsu.util.customAlertDialog
+import ani.dantotsu.settings.rows.ChoiceOption
+import ani.dantotsu.settings.rows.ChoiceSheet
 
 /**
  * MAX MERGE M3 (upstream e954d9f1): preferred-resolution priority editor.
@@ -18,31 +19,24 @@ object ResolutionPriorityDialog {
         extensionName: String? = null,
         onUpdated: ((List<String>) -> Unit)? = null,
     ) {
-        val currentResolutions = PrefManager.getPreferredDownloadResolutions(extensionName).toMutableList()
+        val currentResolutions = PrefManager.getPreferredDownloadResolutions(extensionName)
         val fullList = currentResolutions + ALL_RESOLUTIONS.filter { it !in currentResolutions }
         val checkedItems = fullList.map { it in currentResolutions }.toBooleanArray()
 
-        context.customAlertDialog().apply {
-            setTitle(R.string.preferred_download_resolutions)
-            multiChoiceItems(fullList.toTypedArray(), checkedItems) { updatedSelection ->
-                currentResolutions.clear()
-                fullList.forEachIndexed { index, res ->
-                    if (updatedSelection[index]) {
-                        currentResolutions.add(res)
-                    }
-                }
-            }
-            setPosButton(R.string.ok) {
-                val toSave = if (currentResolutions.isEmpty()) ALL_RESOLUTIONS else currentResolutions
+        // Ticked resolutions are tried in list order; none ticked means all of them.
+        ChoiceSheet.multi(
+            context, context.getString(R.string.preferred_download_resolutions),
+            fullList.map { ChoiceOption(it) }, checkedItems,
+            confirm = ChoiceSheet.Confirm(R.string.ok) { selection ->
+                val chosen = fullList.filterIndexed { i, _ -> selection[i] }
+                val toSave = chosen.ifEmpty { ALL_RESOLUTIONS }
                 PrefManager.setPreferredDownloadResolutions(extensionName, toSave)
                 onUpdated?.invoke(toSave)
-            }
-            setNeutralButton(R.string.reset) {
+            },
+            onReset = {
                 PrefManager.setPreferredDownloadResolutions(extensionName, ALL_RESOLUTIONS)
                 onUpdated?.invoke(ALL_RESOLUTIONS)
-            }
-            setNegButton(R.string.cancel)
-            show()
-        }
+            },
+        )
     }
 }

@@ -1,5 +1,7 @@
 package ani.dantotsu.settings
 
+import ani.dantotsu.settings.rows.ChoiceSheet
+import ani.dantotsu.settings.rows.ChoiceOption
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
@@ -27,7 +29,6 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
-import ani.dantotsu.util.customAlertDialog
 import androidx.appcompat.widget.PopupMenu
 import java.util.Locale
 
@@ -182,16 +183,14 @@ class ExtensionsActivity : AppCompatActivity() {
         val listOrder: String = PrefManager.getVal(PrefName.LangSort)
         val index = LanguageMapper.Companion.Language.entries.toTypedArray()
             .indexOfFirst { it.code == listOrder }
-        customAlertDialog().apply {
-            setTitle(getString(R.string.extensions_menu_language))
-            singleChoiceItems(languageOptions, index) { selected ->
-                PrefManager.setVal(
-                    PrefName.LangSort,
-                    LanguageMapper.Companion.Language.entries[selected].code
-                )
-                (currentPageFragment() as? SearchQueryHandler)?.notifyDataChanged()
-            }
-            show()
+        ChoiceSheet.single(
+            this, getString(R.string.extensions_menu_language), languageOptions.map { ChoiceOption(it) }, index,
+        ) { selected ->
+            PrefManager.setVal(
+                PrefName.LangSort,
+                LanguageMapper.Companion.Language.entries[selected].code
+            )
+            (currentPageFragment() as? SearchQueryHandler)?.notifyDataChanged()
         }
     }
 

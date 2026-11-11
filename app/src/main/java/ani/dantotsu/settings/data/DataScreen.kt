@@ -1,5 +1,7 @@
 package ani.dantotsu.settings.data
 
+import ani.dantotsu.settings.rows.ChoiceSheet
+import ani.dantotsu.settings.rows.ChoiceOption
 import android.content.Intent
 import android.net.Uri
 import androidx.biometric.BiometricManager
@@ -95,16 +97,15 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
                 current = { quotaLabels(it)[quotaIndex()] },
                 onClick = { host, row ->
                     val labels = quotaLabels(host.activity)
-                    host.activity.customAlertDialog().apply {
-                        setTitle(host.activity.getString(R.string.torrent_cache_quota))
-                        singleChoiceItems(labels.toTypedArray(), quotaIndex()) { index ->
-                            val chosen = QUOTAS[index]
-                            PrefManager.setVal(PrefName.TorrentRetainedCacheQuota, chosen)
-                            row.setValue(labels[index])
-                            val cacheMgr = TorrentCacheManager.getInstance(host.activity)
-                            host.activity.lifecycleScope.launch(Dispatchers.IO) { cacheMgr.evictIfNeeded(chosen) }
-                        }
-                        show()
+                    ChoiceSheet.single(
+                        host.activity, host.activity.getString(R.string.torrent_cache_quota),
+                        labels.map { ChoiceOption(it) }, quotaIndex(),
+                    ) { index ->
+                        val chosen = QUOTAS[index]
+                        PrefManager.setVal(PrefName.TorrentRetainedCacheQuota, chosen)
+                        row.setValue(labels[index])
+                        val cacheMgr = TorrentCacheManager.getInstance(host.activity)
+                        host.activity.lifecycleScope.launch(Dispatchers.IO) { cacheMgr.evictIfNeeded(chosen) }
                     }
                 }),
             actionRow("clear_torrent_cache", R.string.clear_torrent_cache, icon = R.drawable.ic_round_delete_24,
@@ -121,7 +122,9 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
                 current = { (it as SettingsDataActivity).downloadsPath() },
                 onClick = { host, _ -> changeDownloadDir(host) }),
             choiceRow(PrefName.DownloadManager, R.string.download_manager_select, R.drawable.ic_download_24,
-                labels = { listOf("Default", "1DM", "ADM") }),
+                labels = { listOf("Default", "1DM", "ADM") },
+                details = { c -> listOf(null, c.getString(R.string.download_manager_external_desc, "1DM"),
+                    c.getString(R.string.download_manager_external_desc, "ADM")) }),
             switchRow(PrefName.DownloadWifiOnly, R.string.download_wifi_only, icon = R.drawable.lan_24),
             choiceRow(PrefName.MaxParallelDownloads, R.string.max_parallel_downloads, R.drawable.ic_download_24,
                 labels = { c -> listOf(c.getString(R.string.max_parallel_downloads_off)) + (1..10).map { it.toString() } }),
@@ -163,15 +166,13 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
                 current = { it.getString(R.string.backups_to_retain_count, PrefManager.getVal<Int>(PrefName.AutoBackupMaxCopies)) },
                 onClick = { host, row ->
                     val current = PrefManager.getVal<Int>(PrefName.AutoBackupMaxCopies)
-                    host.activity.customAlertDialog().apply {
-                        setTitle(R.string.auto_backup_max_copies)
-                        singleChoiceItems(COPY_COUNTS.map { it.toString() }.toTypedArray(),
-                            COPY_COUNTS.indexOf(current).coerceAtLeast(0)) { which ->
-                            PrefManager.setVal(PrefName.AutoBackupMaxCopies, COPY_COUNTS[which])
-                            row.setValue(host.activity.getString(R.string.backups_to_retain_count, COPY_COUNTS[which]))
-                        }
-                        setPosButton(R.string.ok)
-                        show()
+                    ChoiceSheet.single(
+                        host.activity, host.activity.getString(R.string.auto_backup_max_copies),
+                        COPY_COUNTS.map { ChoiceOption(it.toString()) },
+                        COPY_COUNTS.indexOf(current).coerceAtLeast(0),
+                    ) { which ->
+                        PrefManager.setVal(PrefName.AutoBackupMaxCopies, COPY_COUNTS[which])
+                        row.setValue(host.activity.getString(R.string.backups_to_retain_count, COPY_COUNTS[which]))
                     }
                 }),
             actionRow("auto_backup", R.string.auto_backup, icon = R.drawable.backup_restore,

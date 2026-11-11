@@ -22,6 +22,8 @@ import ani.dantotsu.media.anime.player.upscaler.UpscalerChoices
 import ani.dantotsu.restartApp
 import ani.dantotsu.settings.PlayerSettingsActivity
 import ani.dantotsu.settings.ResolutionPriorityDialog
+import ani.dantotsu.settings.rows.ChoiceOption
+import ani.dantotsu.settings.rows.ChoiceSheet
 import ani.dantotsu.settings.rows.Row
 import ani.dantotsu.settings.rows.Section
 import ani.dantotsu.settings.rows.SettingsHost
@@ -102,6 +104,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
         advanced: Boolean = false,
         visible: () -> Boolean = { true },
         enabled: () -> Boolean = { true },
+        details: ((Context) -> List<String?>)? = null,
         onOpen: (SettingsHost) -> Unit = {},
         onPick: (SettingsHost, Int) -> Unit,
     ) = actionRow(
@@ -110,13 +113,14 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
     ) { host, _ ->
         val c = host.activity
         onOpen(host)
-        c.customAlertDialog().apply {
-            setTitle(c.getString(title))
-            singleChoiceItems(labels(c).toTypedArray(), current(c)) { index ->
-                onPick(host, index)
-                host.refresh()
-            }
-            show()
+        val d = details?.invoke(c)
+        ChoiceSheet.single(
+            c, c.getString(title),
+            labels(c).mapIndexed { i, label -> ChoiceOption(label, d?.getOrNull(i)) },
+            current(c),
+        ) { index ->
+            onPick(host, index)
+            host.refresh()
         }
     }
 
@@ -139,14 +143,12 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
     ) { host, _ ->
         val c = host.activity
         val set = read(PrefManager.getVal(key))
-        c.customAlertDialog().apply {
-            setTitle(c.getString(title))
-            multiChoiceItems(labels.toTypedArray(), BooleanArray(values.size) { values[it] in set }) { checked ->
-                PrefManager.setVal(key, values.filterIndexed { i, _ -> checked[i] }.toSet())
-                host.refresh()
-            }
-            setPosButton(R.string.ok)
-            show()
+        ChoiceSheet.multi(
+            c, c.getString(title), labels.map { ChoiceOption(it) },
+            BooleanArray(values.size) { values[it] in set },
+        ) { checked ->
+            PrefManager.setVal(key, values.filterIndexed { i, _ -> checked[i] }.toSet())
+            host.refresh()
         }
     }
 
@@ -325,6 +327,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
                 PrefName.SubtitleStylingMode.name, R.string.subtitle_styling, R.drawable.ic_round_subtitles_24,
                 listOf(PrefName.SubtitleStylingMode),
                 labels = { c -> SubtitleStylingMode.entries.map { c.getString(stylingLabel(it)) } },
+                details = { c -> SubtitleStylingMode.entries.map { stylingDetail(it)?.let(c::getString) } },
                 current = { SubtitleStylingMode.entries.indexOf(SubtitleStylingStore.currentMode()) },
             ) { _, i -> SubtitleStylingStore.setMode(SubtitleStylingMode.entries[i]) },
             switchRow(PrefName.CustomStreamSourceStyling, R.string.custom_stream_source_styling,
@@ -449,6 +452,13 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
             PrefManager.getVal<Int>(PrefName.VideoGamma) == theme.gamma &&
             PrefManager.getVal<Int>(PrefName.VideoHue) == theme.hue &&
             PrefManager.getVal<Float>(PrefName.VideoSharpen) == theme.sharpen
+
+    private fun stylingDetail(mode: SubtitleStylingMode): Int? = when (mode) {
+        SubtitleStylingMode.AUTO_BY_SOURCE -> R.string.subtitle_styling_automatic_desc
+        SubtitleStylingMode.EDITOTSU_ALWAYS -> R.string.subtitle_styling_editotsu_desc
+        SubtitleStylingMode.SOURCE_ALWAYS -> R.string.subtitle_styling_source_desc
+        SubtitleStylingMode.CUSTOM -> null
+    }
 
     private fun stylingLabel(mode: SubtitleStylingMode) = when (mode) {
         SubtitleStylingMode.AUTO_BY_SOURCE -> R.string.subtitle_styling_automatic
