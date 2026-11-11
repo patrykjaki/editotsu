@@ -8,6 +8,8 @@ import ani.dantotsu.media.Selected
 import ani.dantotsu.parsers.AnimeParser
 import ani.dantotsu.parsers.AnimeSources
 import ani.dantotsu.parsers.BaseParser
+import ani.dantotsu.parsers.DynamicAnimeParser
+import ani.dantotsu.parsers.DynamicMangaParser
 import ani.dantotsu.parsers.Episode
 import ani.dantotsu.parsers.MangaChapter
 import ani.dantotsu.parsers.MangaParser
@@ -55,6 +57,30 @@ class SubscriptionHelper {
 
         internal fun sourceIndexFor(name: String?, names: List<String>): Int? =
             name?.let { names.indexOf(it) }?.takeIf { it >= 0 }
+
+        /**
+         * A subscription saved with a source name checks only that source. When it is no
+         * longer installed the parser lookup falls back to another one; that check is skipped.
+         */
+        internal fun checksSource(savedSource: String?, parserName: String): Boolean =
+            savedSource == null || savedSource == parserName
+
+        /** Runs [block] with the extension language the subscription was made on, then restores it. */
+        private suspend fun <T> withSourceLanguage(parser: BaseParser, lang: Int, block: suspend () -> T): T {
+            val anime = parser as? DynamicAnimeParser
+            val manga = parser as? DynamicMangaParser
+            val previous = anime?.sourceLanguage ?: manga?.sourceLanguage
+            anime?.sourceLanguage = lang
+            manga?.sourceLanguage = lang
+            try {
+                return block()
+            } finally {
+                if (previous != null) {
+                    anime?.sourceLanguage = previous
+                    manga?.sourceLanguage = previous
+                }
+            }
+        }
 
         fun subscribedSource(mediaId: Int): String? =
             PrefManager.getNullableCustomVal("$SOURCE_NAME$mediaId", null, String::class.java)
@@ -163,8 +189,13 @@ class SubscriptionHelper {
         ): Episode? {
 
             val selected = loadSelected(subscribeMedia.id)
+            val savedSource = subscribedSource(subscribeMedia.id)
+            if (!checksSource(savedSource, parser.name)) {
+                Logger.log("subscription ${subscribeMedia.id}: source $savedSource not installed, check skipped")
+                return null
+            }
             val baseline = loadLatest(subscribeMedia.id)
-            val ep = withTimeoutOrNull(10 * 1000) {
+            val ep = withSourceLanguage(parser, selected.langIndex) { withTimeoutOrNull(10 * 1000) {
                 tryWithSuspend {
                     val show = parser.loadSavedShowResponse(subscribeMedia.id)
                         ?: forceLoadShowResponse(subscribeMedia, selected, parser)
@@ -181,7 +212,7 @@ class SubscriptionHelper {
                         )
                     }
                 }
-            }
+            } }
 
             if (ep != null && !withinAired(ep.number.toFloatOrNull(), airedLimit)) {
                 Logger.log("subscription ${subscribeMedia.id}: episode ${ep.number} not aired yet (AniList: $airedLimit)")
@@ -210,8 +241,13 @@ class SubscriptionHelper {
             subscribeMedia: SubscribeMedia
         ): MangaChapter? {
             val selected = loadSelected(subscribeMedia.id)
+            val savedSource = subscribedSource(subscribeMedia.id)
+            if (!checksSource(savedSource, parser.name)) {
+                Logger.log("subscription ${subscribeMedia.id}: source $savedSource not installed, check skipped")
+                return null
+            }
             val baseline = loadLatest(subscribeMedia.id)
-            val chp = withTimeoutOrNull(10 * 1000) {
+            val chp = withSourceLanguage(parser, selected.langIndex) { withTimeoutOrNull(10 * 1000) {
                 tryWithSuspend {
                     val show = parser.loadSavedShowResponse(subscribeMedia.id)
                         ?: forceLoadShowResponse(subscribeMedia, selected, parser)
@@ -228,7 +264,7 @@ class SubscriptionHelper {
                         )
                     }
                 }
-            }
+            } }
 
             chp?.let { saveLatest(subscribeMedia.id, MediaNameAdapter.findChapterNumber(it.number) ?: 0f) }
             return chp?.takeIf { announce(baseline) }
