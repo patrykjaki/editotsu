@@ -97,6 +97,8 @@ import ani.dantotsu.media.anime.player.PlayerProgressManager
 import ani.dantotsu.media.anime.player.PlayerSubtitleManager
 import ani.dantotsu.media.anime.player.PlayerTrack
 import ani.dantotsu.media.anime.player.ResizeMode
+import ani.dantotsu.media.anime.player.SubtitleLanguageMatch
+import ani.dantotsu.media.anime.player.AudioTrackChoice
 import ani.dantotsu.media.anime.player.TrackType
 import ani.dantotsu.others.IdMappers
 import ani.dantotsu.others.getSerialized
@@ -222,6 +224,14 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private var orientationListener: OrientationEventListener? = null
     private var hasExtSubtitles = false
 
+    /**
+     * The media this player instance was opened for. The picker replaces the companion
+     * [Companion.media] before it starts the next player, and this instance still saves its
+     * position and clears its caches on the way out, so it must never read the companion
+     * after onCreate.
+     */
+    private lateinit var media: Media
+
     private lateinit var episode: Episode
     private lateinit var episodes: MutableMap<String, Episode>
     private lateinit var episodeArr: List<String>
@@ -283,6 +293,14 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     val model: MediaDetailsViewModel by viewModels()
     private val client = OkHttpClient()
 
+    /**
+     * Set while the player opens one of its own screens (player settings, the subtitle file
+     * picker), so onUserLeaveHint does not shrink the player into PiP. Cleared on resume.
+     */
+    private var launchingChildScreen = false
+    /** Whether playback was running when player settings opened; only then it resumes. */
+    private var playingBeforeSettings = false
+
     private val getContent = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let { applyLocalSubtitle(it) }
     }
@@ -293,9 +311,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (this::subtitleManager.isInitialized) {
             subtitleManager.applySubtitlePreferences()
         }
-        if (this::playerManager.isInitialized && playerManager.isInitialized) {
+        if (playingBeforeSettings && this::playerManager.isInitialized && playerManager.isInitialized) {
             playerManager.playbackEngine?.play()
         }
+        playingBeforeSettings = false
     }
 
     class ExtendedTimeBar @JvmOverloads constructor(
@@ -473,7 +492,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     .load(if (isPlaying) R.drawable.anim_play_to_pause else R.drawable.anim_pause_to_play)
                     .into(exoPlay)
             }
-            if (initialized && this::episode.isInitialized) {
+            if (this::media.isInitialized && this::episode.isInitialized) {
                 discordManager.updatePresence(
                     media, episode,
                     playerManager.playbackEngine?.positionMs ?: 0L,
@@ -532,7 +551,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         castManager.onSessionStartedListener = started@{ deviceName, owner ->
             if (!playbackSession.acceptsEngine(owner, selectedEpisodeKey())) return@started
             owner?.pause()
-            if (initialized) {
+            if (this::media.isInitialized) {
                 castScreenView.updateMediaInfo(media, if (this::episode.isInitialized) episode else null)
             }
             castScreenView.updateDeviceName(deviceName)
@@ -661,7 +680,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 dialog.setCanceledOnTouchOutside(true)
                 dialog.window?.setLayout(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 val slider = dialog.findViewById<Slider>(R.id.seekbar)
-                slider.value = snapSkipSliderValue(skipTime)
+                // Same range and step as Settings > Player > Skip time.
+                slider.valueFrom = 0f
+                slider.valueTo = SKIP_TIME_MAX
+                slider.stepSize = SKIP_TIME_STEP
+                slider.value = snapSkipSliderValue(skipTime, step = SKIP_TIME_STEP, max = SKIP_TIME_MAX)
                 slider.addOnChangeListener { _, value, _ ->
                     skipTime = value.toInt()
                     PrefManager.setVal(PrefName.SkipTime, skipTime)
@@ -692,6 +715,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
         // Handle Media
         if (!initialized) return startMainActivity(this)
+        media = Companion.media
         model.setMedia(media)
         setupNowPlaying()
         title = media.userPreferredName
@@ -820,16 +844,19 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         exoScreen.setOnClickListener {
             isFullscreen = if (isFullscreen < 2) isFullscreen + 1 else 0
             applyResizeMode(isFullscreen)
-            snackString(getString(when (isFullscreen) {
+            val supported = playerManager.playbackEngine?.supportsResizeMode(resizeModeFor(isFullscreen)) != false
+            val label = getString(when (isFullscreen) {
                 1 -> R.string.player_scale_zoom
                 2 -> R.string.player_scale_stretch
                 else -> R.string.player_scale_original
-            }), this)
+            })
+            snackString(if (supported) label else getString(R.string.player_mode_not_available_drm, label), this)
             PrefManager.setCustomVal("${media.id}_fullscreenInt", isFullscreen)
         }
 
         // Settings Button
         exoSettings.setOnClickListener {
+            playingBeforeSettings = playerManager.playbackEngine?.isPlaying == true
             playerManager.playbackEngine?.let { engine ->
                 saveActivePosition()
                 engine.pause()
@@ -837,6 +864,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             val intent = Intent(this, PlayerSettingsActivity::class.java).apply {
                 putExtra("subtitle", subtitle)
             }
+            if (playerManager.playbackEngine?.supportsVideoPipeline == false) {
+                toast(getString(R.string.player_filters_not_available_drm))
+            }
+            beginChildScreen()
             onChangeSettings.launch(intent)
         }
         // Long-press on the gear: the "secret menu" listing gestures that have no button.
@@ -914,15 +945,20 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
     }
 
-    private fun applyResizeMode(mode: Int) {
-        val resizeMode = when (mode) {
-            0 -> ResizeMode.FIT
-            1 -> ResizeMode.ZOOM
-            2 -> ResizeMode.STRETCH
-            else -> ResizeMode.FIT
-        }
-        playerManager.playbackEngine?.setResizeMode(resizeMode)
+    private fun resizeModeFor(mode: Int): ResizeMode = when (mode) {
+        0 -> ResizeMode.FIT
+        1 -> ResizeMode.ZOOM
+        2 -> ResizeMode.STRETCH
+        else -> ResizeMode.FIT
     }
+
+    private fun applyResizeMode(mode: Int) {
+        playerManager.playbackEngine?.setResizeMode(resizeModeFor(mode))
+    }
+
+    /** Settings > Subtitle language as a name ("Polish"). */
+    private fun settingsSubtitleLanguage(): String =
+        SubtitleLanguageMatch.settingsLanguage(PrefManager.getVal<Int>(PrefName.SubLanguage))
 
     private fun selectedEpisodeKey(): String? =
         if (this::episodes.isInitialized) episodes.getEpisodeKey(media.anime?.selectedEpisode) else null
@@ -969,6 +1005,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     private fun initPlayer() {
+        audioChoiceRestored = false
         gestureManager.checkNotch()
         aniSkipManager.resetForNewEpisode()
         val selEp = media.anime?.selectedEpisode ?: episodeArr.firstOrNull() ?: return
@@ -996,14 +1033,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         extractor = ext
         video = ext.videos.getOrNull(episode.selectedVideo) ?: ext.videos.firstOrNull() ?: return
 
-        val subLanguages = arrayOf(
-            "Albanian", "Arabic", "Bosnian", "Bulgarian", "Chinese", "Croatian", "Czech", "Danish", "Dutch", "English",
-            "Estonian", "Finnish", "French", "Georgian", "German", "Greek", "Hebrew", "Hindi", "Indonesian", "Irish",
-            "Italian", "Japanese", "Korean", "Lithuanian", "Luxembourgish", "Macedonian", "Mongolian", "Norwegian",
-            "Polish", "Portuguese", "Punjabi", "Romanian", "Russian", "Serbian", "Slovak", "Slovenian", "Spanish",
-            "Turkish", "Ukrainian", "Urdu", "Vietnamese"
-        )
-        val lang = subLanguages.getOrNull(PrefManager.getVal<Int>(PrefName.SubLanguage)) ?: "English"
+        val lang = settingsSubtitleLanguage()
         var savedSubLang: String? = PrefManager.getNullableCustomVal(legacySubLangKey(media.id, episode.number), null, String::class.java)
         if (savedSubLang?.startsWith("Online:") == true) {
             // The per-episode store is now the source of
@@ -1029,11 +1059,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 null
             } else when {
                 savedSubLang == null -> when (episode.selectedSubtitle) {
-                    null, -1 -> ext.subtitles.find {
-                        it.language.contains(lang, true) ||
-                        it.language.contains("English", true) ||
-                        it.language.contains("en", true)
-                    } ?: ext.subtitles.firstOrNull()
+                    null, -1 -> SubtitleLanguageMatch.pick(ext.subtitles, lang) { it.language }
                     else -> ext.subtitles.getOrNull(episode.selectedSubtitle!!)
                 }
                 savedSubLang == "None" -> null
@@ -1049,11 +1075,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             savedSubLang?.startsWith("[Local]") != true &&
             savedSubLang?.startsWith("Embedded:") != true
         ) {
-            subtitle = ext.subtitles.find {
-                it.language.contains(lang, true) ||
-                it.language.contains("English", true) ||
-                it.language.contains("en", true)
-            } ?: ext.subtitles.firstOrNull()
+            subtitle = SubtitleLanguageMatch.pick(ext.subtitles, lang) { it.language }
         }
         subtitleManager.initialSubtitleLabel = subtitle?.language ?: lang
         if (subtitle != null) {
@@ -1214,6 +1236,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             episodeNumber = episode.number,
             coverUrl = media.cover,
             preferredSubLang = savedSubLang,
+            fallbackSubLang = settingsSubtitleLanguage(),
             embedUrl = extractor?.server?.embed?.url,
             audioTracks = extractor?.audioTracks ?: emptyList(),
             // Beta03: validated extension mpv per-file options (AniKoto etc.).
@@ -1230,23 +1253,45 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         subtitleManager.applySubtitlePreferences(playbackOrigin)
         engine.loadMedia(request)
 
+        // While casting, the new episode goes to the TV and the phone stays paused.
+        val sentToCast = castManager.updateCurrentMedia(
+            buildCastItem(episodeDisplayName), engine, video, playerManager.playbackCoordinator,
+            startPositionMs = savedPosition,
+        )
+
         // Request audio focus and start playback through the coordinator.
         // Without this, MPV auto-plays (pause=no default) but the coordinator
         // never requests audio focus, leaving the session unprotected and
         // potentially killed by Android's audio system.
-        playerManager.playbackCoordinator?.play() ?: engine.play()
+        if (!sentToCast) playerManager.playbackCoordinator?.play() ?: engine.play()
 
         applyResizeMode(isFullscreen)
-        val castItem = androidx.media3.common.MediaItem.Builder()
+        progressManager.updateWidgetState(isExiting = false)
+    }
+
+    /**
+     * The item internal cast sends to the receiver: the stream and, when the receiver can
+     * show its format (WebVTT, TTML), the active server subtitle.
+     */
+    private fun buildCastItem(episodeDisplayName: String): androidx.media3.common.MediaItem {
+        val sub = subtitle
+        val subConfig = sub?.file?.url?.takeIf { it.isNotBlank() }?.let { url ->
+            val mime = ani.dantotsu.media.anime.cast.CastSubtitles.mimeFor(sub.type.name, url) ?: return@let null
+            androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(Uri.parse(url))
+                .setMimeType(mime)
+                .setLabel(sub.language)
+                .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
+                .build()
+        }
+        return androidx.media3.common.MediaItem.Builder()
             .setUri(video!!.file.url)
             .setMediaMetadata(
                 androidx.media3.common.MediaMetadata.Builder()
                     .setTitle("${media.userPreferredName} : $episodeDisplayName")
                     .build()
             )
+            .setSubtitleConfigurations(listOfNotNull(subConfig))
             .build()
-        castManager.updateCurrentMedia(castItem, engine, video, playerManager.playbackCoordinator)
-        progressManager.updateWidgetState(isExiting = false)
     }
 
     private fun releasePlayer() {
@@ -1292,6 +1337,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     // Public contract methods
     fun requestLocalSubtitle() {
+        beginChildScreen()
         getContent.launch(arrayOf("*/*"))
     }
 
@@ -1324,6 +1370,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         when (type) {
             TrackType.AUDIO -> {
                 engine.selectAudioTrack(track?.id)
+                // Remembered per show; restored on the next episode, server or reopen.
+                if (!themeMode && this::media.isInitialized && track != null) {
+                    PrefManager.setCustomVal(audioChoiceKey(), AudioTrackChoice.encode(track))
+                    audioChoiceRestored = true
+                }
                 snackString("Audio: ${track?.name ?: "Off"}", this)
             }
             TrackType.SUBTITLE -> {
@@ -1396,13 +1447,30 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         view.visibility = View.VISIBLE
     }
 
+    /** The engine's current tracks, for sheets that are recreated without arguments. */
+    var currentTracks: List<PlayerTrack> = emptyList()
+        private set
+
+    private fun audioChoiceKey() = "${media.id}_audio_track"
+
+    /** The saved audio pick was applied (or the user picked) for the current engine. */
+    private var audioChoiceRestored = false
+
     override fun onTracksChanged(tracks: List<PlayerTrack>) {
+        currentTracks = tracks
+        if (!themeMode && !audioChoiceRestored && this::media.isInitialized) {
+            val saved = PrefManager.getNullableCustomVal(audioChoiceKey(), null, String::class.java)
+            AudioTrackChoice.restore(tracks, saved)?.let { track ->
+                playerManager.playbackEngine?.selectAudioTrack(track.id)
+                audioChoiceRestored = true
+            }
+        }
         val audioTracks = tracks.filter { it.type == TrackType.AUDIO }
         val subTracks = tracks.filter { it.type == TrackType.SUBTITLE }
 
         exoAudioTrack.isVisible = audioTracks.size > 1
         exoAudioTrack.setOnClickListener {
-            TrackGroupDialogFragment(this, audioTracks, TrackType.AUDIO)
+            TrackGroupDialogFragment.newInstance(TrackType.AUDIO)
                 .show(supportFragmentManager, "dialog")
         }
 
@@ -1497,6 +1565,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 ?: epString.trim().toIntOrNull()
                 ?: 1
             val epObj = if (this::episode.isInitialized) episode else null
+            // One lookup per episode, and one more once the duration is known.
+            val requestKey = "$epString:${dur > 0L}"
+            if (aniSkipManager.timeStampsRequestKey == requestKey) return
+            aniSkipManager.timeStampsRequestKey = requestKey
             lifecycleScope.launch(Dispatchers.IO) {
                 model.loadTimeStamps(
                     media.idMAL,
@@ -1697,6 +1769,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
     }
 
+    /** Before opening one of the player's own screens: no PiP for this leave. */
+    private fun beginChildScreen() {
+        launchingChildScreen = true
+        updatePipParams()
+    }
+
     private fun updatePipParams() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
@@ -1717,7 +1795,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     val liveIsPlaying = if (this::playerManager.isInitialized && playerManager.isInitialized) {
                         playerManager.playbackEngine?.isPlaying == true
                     } else false
-                    builder.setAutoEnterEnabled(liveIsPlaying && pipEnabled && PrefManager.getVal(PrefName.Pip))
+                    builder.setAutoEnterEnabled(
+                        liveIsPlaying && pipEnabled && !launchingChildScreen && PrefManager.getVal(PrefName.Pip)
+                    )
                 }
 
                 setPictureInPictureParams(builder.build())
@@ -1803,13 +1883,24 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         } else {
             playerErrorRetryCount = 0
             toast("Playback Error: ${error.message}")
-            sourceClick()
+            // The picker is a dialog fragment; after onSaveInstanceState (player in the
+            // background) showing it throws. Open it when the player is back instead.
+            if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                sourceClick()
+            } else {
+                sourcePickerPending = true
+            }
         }
     }
 
+    /** A playback error asked for the source picker while the player was not resumed. */
+    private var sourcePickerPending = false
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
-        if (PrefManager.getVal(PrefName.FocusPause) && !epChanging && !inPip) {
+        // Theme mode keeps playing in the background (as in onStop), so focus loss
+        // (screen off, notification shade) must not pause it either.
+        if (!themeMode && PrefManager.getVal(PrefName.FocusPause) && !epChanging && !inPip) {
             if (this::playerManager.isInitialized && playerManager.isInitialized) {
                 playerManager.playbackCoordinator?.setLifecycleSuppressed(!hasFocus)
             }
@@ -1830,6 +1921,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             toast(getString(R.string.screenshot_not_ready))
             return
         }
+        if (!engine.supportsScreenshot) {
+            toast(getString(R.string.player_not_available_drm))
+            return
+        }
         val position = engine.positionMs
         val name = if (themeMode) {
             themeTracks.getOrNull(themeIndex).let { track ->
@@ -1842,7 +1937,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             }
         } else {
             ani.dantotsu.media.anime.player.ScreenshotName.episode(
-                if (initialized) media.userPreferredName else null,
+                if (this::media.isInitialized) media.userPreferredName else null,
                 if (this::episodeArr.isInitialized) episodeArr.getOrNull(currentEpisodeIndex) else null,
                 position,
             )
@@ -1855,20 +1950,22 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             return
         }
         val file = java.io.File(dir, name)
-        // mpv's screenshot-to-file command returns after the file is written.
-        if (!engine.captureScreenshot(file) || !file.exists()) {
-            toast(getString(R.string.screenshot_failed))
-            return
-        }
-        if (!toGallery) {
-            toast(getString(R.string.screenshot_saved_app, file.absolutePath))
-            return
-        }
-        lifecycleScope.launch(Dispatchers.IO) {
-            val saved = copyScreenshotToGallery(file, name)
-            file.delete()
-            withContext(Dispatchers.Main) {
-                toast(getString(if (saved) R.string.screenshot_saved else R.string.screenshot_failed))
+        engine.captureScreenshot(file) { written ->
+            if (isDestroyed) return@captureScreenshot
+            if (!written) {
+                toast(getString(R.string.screenshot_failed))
+                return@captureScreenshot
+            }
+            if (!toGallery) {
+                toast(getString(R.string.screenshot_saved_app, file.absolutePath))
+                return@captureScreenshot
+            }
+            lifecycleScope.launch(Dispatchers.IO) {
+                val saved = copyScreenshotToGallery(file, name)
+                file.delete()
+                withContext(Dispatchers.Main) {
+                    toast(getString(if (saved) R.string.screenshot_saved else R.string.screenshot_failed))
+                }
             }
         }
     }
@@ -1938,6 +2035,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        if (launchingChildScreen) return
         if (pipEnabled && PrefManager.getVal(PrefName.Pip)) {
             enterPipMode()
         }
@@ -1982,14 +2080,14 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             playerView.hideController()
             registerPipReceiver()
             updatePipActions(isPlayerPlaying)
+            // Auto-skip and progress tracking keep running in PiP; only the skip button
+            // is kept off the small window.
             if (this::aniSkipManager.isInitialized) {
                 aniSkipManager.hideSkipButtons()
-                aniSkipManager.stopTracking()
-            }
-            if (this::progressManager.isInitialized) {
-                progressManager.stopTracking()
+                aniSkipManager.buttonsSuppressed = true
             }
         } else {
+            if (this::aniSkipManager.isInitialized) aniSkipManager.buttonsSuppressed = false
             unregisterPipReceiver()
             hideSystemBars()
             if (!themeMode && this::aniSkipManager.isInitialized && PrefManager.getVal(PrefName.TimeStampsEnabled)) {
@@ -2018,6 +2116,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     override fun onResume() {
         super.onResume()
+        launchingChildScreen = false
+        if (sourcePickerPending) {
+            sourcePickerPending = false
+            if (!themeMode) sourceClick()
+        }
         hideSystemBars()
         if (this::playerManager.isInitialized && playerManager.isInitialized) {
             playerManager.playbackCoordinator?.setLifecycleSuppressed(false)
@@ -2027,6 +2130,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     override fun onPause() {
         super.onPause()
+        // Entering PiP pauses the activity, but playback goes on in the small window.
+        val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
+        if (inPip) return
         if (this::aniSkipManager.isInitialized) {
             aniSkipManager.stopTracking()
         }
@@ -2038,6 +2144,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     override fun onStop() {
         super.onStop()
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
+        // Closing the PiP window skips onPause; the trackers stop here (onStart restarts them).
+        if (!inPip) {
+            if (this::aniSkipManager.isInitialized) aniSkipManager.stopTracking()
+            if (this::progressManager.isInitialized) progressManager.stopTracking()
+        }
         // Theme mode keeps playing in the background (AnimePlayerService); episodes pause.
         if (!themeMode && this::playerManager.isInitialized && playerManager.isInitialized && !inPip) {
             playerManager.playbackCoordinator?.setLifecycleSuppressed(true)
@@ -2065,6 +2176,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     private fun showSleepTimerDialog() {
+        val now = java.lang.System.currentTimeMillis()
         val choices = SleepTimer.CHOICES_MINUTES
         val labels = choices.map {
             when {
@@ -2073,13 +2185,14 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 else -> getString(R.string.sleep_timer_minutes, it)
             }
         }.toTypedArray()
-        val current = when (sleepTimer.mode) {
-            SleepTimer.Mode.Off -> 0
-            SleepTimer.Mode.EndOfEpisode -> choices.indexOf(-1)
-            is SleepTimer.Mode.At -> -1
+        val current = sleepTimer.checkedChoice()
+        val title = when (sleepTimer.mode) {
+            SleepTimer.Mode.Off -> getString(R.string.sleep_timer)
+            SleepTimer.Mode.EndOfEpisode -> getString(R.string.sleep_timer_title_episode)
+            is SleepTimer.Mode.At -> getString(R.string.sleep_timer_title_remaining, sleepTimer.remainingMinutes(now) ?: 0)
         }
         customAlertDialog().apply {
-            setTitle(getString(R.string.sleep_timer))
+            setTitle(title)
             singleChoiceItems(labels, current) { i ->
                 val minutes = choices[i]
                 sleepTimerHandler.removeCallbacks(sleepTimerFire)
@@ -2138,7 +2251,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             if (this::progressManager.isInitialized) {
                 progressManager.updateAniProgress()
             }
-            val episodeId = "${if (initialized) media.id else ""}-${if (initialized) media.anime?.selectedEpisode ?: "" else ""}"
+            val episodeId = "${if (this::media.isInitialized) media.id else ""}-${if (this::media.isInitialized) media.anime?.selectedEpisode ?: "" else ""}"
             if (this::subtitleManager.isInitialized) {
                 subtitleManager.clearTransientSubtitleCache(episodeId)
             }
@@ -2484,6 +2597,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 }
 
+/** Skip time range shared with the settings stepper (0..300 s in 5 s steps). */
+const val SKIP_TIME_MAX = 300f
+const val SKIP_TIME_STEP = 5f
+
 /**
  * Clamps a user-typed skip time into the dialog
  * range and snaps it to the slider step grid, so assigning
@@ -2492,6 +2609,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
  * behavior otherwise unchanged (long-press still writes the snapped value back to prefs).
  */
 fun snapSkipSliderValue(skipTime: Int, step: Float = 1f, max: Float = 120f): Float {
+    // The player dialog passes SKIP_TIME_STEP / SKIP_TIME_MAX (the settings stepper's grid).
     val clamped = skipTime.toFloat().coerceIn(0f, max)
     return kotlin.math.round(clamped / step) * step
 }

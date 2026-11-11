@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import ani.dantotsu.BottomSheetDialogFragment
 import ani.dantotsu.R
+import ani.dantotsu.media.anime.player.SubtitleLanguageMatch
 import ani.dantotsu.connections.subtitles.OpenSubRestItem
 import ani.dantotsu.connections.subtitles.OpenSubtitlesRestApi
 import ani.dantotsu.connections.subtitles.StremioSub
@@ -425,7 +426,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                 getString(R.string.active_sub_prefix, "Local: $clean")
             }
             savedLang.startsWith("Embedded:") -> {
-                val trackName = savedLang.removePrefix("Embedded:").trim()
+                val trackName = SubtitleLanguageMatch.embeddedLabel(savedLang)
                 getString(R.string.active_sub_prefix, "Stream: $trackName")
             }
             savedLang.startsWith("Online:") -> {
@@ -1036,12 +1037,15 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                     itemBinding.subtitleTitle.text = langName
                     itemBinding.subtitleDetails.text = "${getString(R.string.embedded_stream_subs)} • $label"
 
-                    val uniqueKey = "Embedded:${item.language ?: item.track.id}"
+                    // Saved by id, language and title: mkv releases often carry two tracks
+                    // with the same language (Signs & Songs, Full).
+                    val uniqueKey = SubtitleLanguageMatch.embeddedKey(item.track.id, item.track.language, item.track.name)
+                    val ref = SubtitleLanguageMatch.EmbeddedRef(item.track.id, item.track.language, item.track.name)
                     // LANE-B: online-suppression guard added; live track
                     // selection display (item.track.selected) preserved —
                     // upstream base lacked it, local keeps it.
                     val isSelected = activeOnlineId == null && savedEpSub == null &&
-                        (savedLang == uniqueKey || item.track.selected)
+                        (SubtitleLanguageMatch.isSavedEmbedded(savedLang, ref) || item.track.selected)
                     if (isSelected) {
                         itemBinding.subtitleCardRoot.setCardBackgroundColor(highlightColor)
                         itemBinding.subtitleCardRoot.strokeColor = borderSelectedColor

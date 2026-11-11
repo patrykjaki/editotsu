@@ -343,6 +343,8 @@ class PlayerGestureManager(
             }
 
             fun fastForward(event: MotionEvent) {
+                // The lock blocks changing things in the player, speed included.
+                if (isLocked) return
                 val engine = getEngine() ?: return
                 isFastForwarding = true
                 fastForwardStartX = event.rawX

@@ -40,10 +40,23 @@ class PlayerSubtitleManager(
     private val getEngine: () -> PlaybackEngine?
 ) {
 
-    var subtitleDelayMs: Long = 0L
-        private set
-    var audioDelayMs: Long = 0L
-        private set
+    init {
+        // A new player starts from the global delays (Settings > Player).
+        PlayerSyncSession.reset()
+    }
+
+    private fun prefSubtitleDelay(): Long = PrefManager.getVal<Int>(PrefName.SubtitleDelayMs).toLong()
+    private fun prefAudioDelay(): Long = PrefManager.getVal<Int>(PrefName.AudioDelayMs).toLong()
+
+    /** The subtitle delay mpv has: the global preference unless Sync changed it. 0 when the engine has none. */
+    val subtitleDelayMs: Long
+        get() = if (getEngine()?.supportsSubtitleDelay == false) 0L
+        else PlayerSyncSession.subtitle.effective(prefSubtitleDelay())
+
+    /** The audio delay mpv has: the global preference unless Sync changed it. 0 when the engine has none. */
+    val audioDelayMs: Long
+        get() = if (getEngine()?.supportsAudioDelay == false) 0L
+        else PlayerSyncSession.audio.effective(prefAudioDelay())
 
     var activeSubtitleDisplayName: String? = null
         private set
@@ -241,7 +254,7 @@ class PlayerSubtitleManager(
             snackString("Sync delay is not available for DRM playback yet", activity)
             return false
         }
-        subtitleDelayMs = delayMs
+        PlayerSyncSession.subtitle.set(delayMs, prefSubtitleDelay())
         Logger.log("PlayerSubtitleManager: Subtitle delay set to ${delayMs}ms")
         getEngine()?.setSubtitleDelay(delayMs)
         return true
@@ -252,7 +265,7 @@ class PlayerSubtitleManager(
             snackString("Sync delay is not available for DRM playback yet", activity)
             return false
         }
-        audioDelayMs = delayMs
+        PlayerSyncSession.audio.set(delayMs, prefAudioDelay())
         Logger.log("PlayerSubtitleManager: Audio delay set to ${delayMs}ms")
         getEngine()?.setAudioDelay(delayMs)
         return true
