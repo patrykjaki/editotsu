@@ -79,6 +79,7 @@ enum class PrefName(val data: Pref) {
     IncludeMangaList(Pref(Location.General, Boolean::class, true)),
     AdultOnly(Pref(Location.General, Boolean::class, false)),
     CommentsEnabled(Pref(Location.General, Int::class, 0)),
+    CommentsOptInReset(Pref(Location.General, Boolean::class, false)),
     EnableSocks5Proxy(Pref(Location.General, Boolean::class, false)),
     ProxyAuthEnabled(Pref(Location.General, Boolean::class, false)),
     AniMangaSearchDirect(Pref(Location.General, Boolean::class, true)),

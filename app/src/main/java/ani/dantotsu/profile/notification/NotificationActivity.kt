@@ -1,5 +1,6 @@
 package ani.dantotsu.profile.notification
 
+import ani.dantotsu.connections.comments.CommentsOptIn
 import android.os.Bundle
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
@@ -31,7 +32,7 @@ class NotificationActivity : AppCompatActivity() {
     lateinit var binding: ActivityNotificationBinding
     private var selected: Int = 0
     lateinit var navBar: AnimatedBottomBar
-    private val CommentsEnabled = PrefManager.getVal<Int>(PrefName.CommentsEnabled) == 1
+    private val CommentsEnabled = CommentsOptIn.isEnabled()
     private var userCount: Int = 0
     private var mediaCount: Int = 0
     private var subsCount: Int = 0

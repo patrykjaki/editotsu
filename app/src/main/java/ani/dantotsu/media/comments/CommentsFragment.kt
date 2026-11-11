@@ -24,6 +24,7 @@ import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.comments.Comment
 import ani.dantotsu.connections.comments.CommentResponse
 import ani.dantotsu.connections.comments.CommentsAPI
+import ani.dantotsu.connections.comments.CommentsOptIn
 import ani.dantotsu.databinding.DialogEdittextBinding
 import ani.dantotsu.databinding.FragmentCommentsBinding
 import ani.dantotsu.loadImage
@@ -117,9 +118,11 @@ class CommentsFragment : Fragment() {
 
         val isOfflineOrLocal = !ani.dantotsu.isOnline(activity)
 
+        binding.commentsEnable.setOnClickListener { enableComments() }
+
         binding.commentsRefresh.setOnRefreshListener {
             val refreshOffline = !ani.dantotsu.isOnline(activity)
-            if (refreshOffline) {
+            if (refreshOffline || !CommentsOptIn.isEnabled()) {
                 binding.commentsRefresh.isRefreshing = false
                 return@setOnRefreshListener
             }
@@ -157,7 +160,9 @@ class CommentsFragment : Fragment() {
                     this.mediaId = newMedia.id
                     commentsLoaded = true
 
-                    if (isOfflineOrLocal) {
+                    if (!CommentsOptIn.isEnabled()) {
+                        showCommentsOff(true)
+                    } else if (isOfflineOrLocal) {
                         binding.commentsOfflineText.visibility = View.VISIBLE
                         binding.commentsListContainer.visibility = View.GONE
                         binding.openRules.visibility = View.GONE
@@ -638,6 +643,43 @@ class CommentsFragment : Fragment() {
         filterTag != null -> filterTag
         isAutoFilterOn && userProgress != null && userProgress!! > 0 -> userProgress
         else -> null
+    }
+
+    /** Comments are off: hide the list and its tools, show what turning them on sends. */
+    private fun showCommentsOff(off: Boolean) {
+        binding.commentsDisabledPanel.visibility = if (off) View.VISIBLE else View.GONE
+        val tools = if (off) View.GONE else View.VISIBLE
+        binding.commentsListContainer.visibility = tools
+        binding.openRules.visibility = tools
+        binding.commentFilter.visibility = tools
+        binding.commentSort.visibility = tools
+        if (off) {
+            binding.commentCurrentProgress.visibility = View.GONE
+            binding.commentsProgressBar.visibility = View.GONE
+            activity.binding.commentMessageContainer.visibility = View.GONE
+        }
+    }
+
+    private fun enableComments() {
+        CommentsOptIn.setEnabled(true)
+        showCommentsOff(false)
+        if (!ani.dantotsu.isOnline(activity)) {
+            binding.commentsOfflineText.visibility = View.VISIBLE
+            binding.commentsListContainer.visibility = View.GONE
+            return
+        }
+        binding.commentsProgressBar.visibility = View.VISIBLE
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) { CommentsAPI.fetchAuthToken(activity) }
+            if (!isAdded) return@launch
+            updateCurrentProgressButton()
+            if (CommentsAPI.authToken != null) {
+                activity.binding.commentMessageContainer.visibility = View.VISIBLE
+                loadAndDisplayComments()
+            } else {
+                binding.commentsProgressBar.visibility = View.GONE
+            }
+        }
     }
 
     private fun updateCurrentProgressButton() {
