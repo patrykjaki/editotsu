@@ -222,6 +222,14 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private var orientationListener: OrientationEventListener? = null
     private var hasExtSubtitles = false
 
+    /**
+     * The media this player instance was opened for. The picker replaces the companion
+     * [Companion.media] before it starts the next player, and this instance still saves its
+     * position and clears its caches on the way out, so it must never read the companion
+     * after onCreate.
+     */
+    private lateinit var media: Media
+
     private lateinit var episode: Episode
     private lateinit var episodes: MutableMap<String, Episode>
     private lateinit var episodeArr: List<String>
@@ -473,7 +481,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                     .load(if (isPlaying) R.drawable.anim_play_to_pause else R.drawable.anim_pause_to_play)
                     .into(exoPlay)
             }
-            if (initialized && this::episode.isInitialized) {
+            if (this::media.isInitialized && this::episode.isInitialized) {
                 discordManager.updatePresence(
                     media, episode,
                     playerManager.playbackEngine?.positionMs ?: 0L,
@@ -532,7 +540,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         castManager.onSessionStartedListener = started@{ deviceName, owner ->
             if (!playbackSession.acceptsEngine(owner, selectedEpisodeKey())) return@started
             owner?.pause()
-            if (initialized) {
+            if (this::media.isInitialized) {
                 castScreenView.updateMediaInfo(media, if (this::episode.isInitialized) episode else null)
             }
             castScreenView.updateDeviceName(deviceName)
@@ -692,6 +700,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
         // Handle Media
         if (!initialized) return startMainActivity(this)
+        media = Companion.media
         model.setMedia(media)
         setupNowPlaying()
         title = media.userPreferredName
@@ -1842,7 +1851,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             }
         } else {
             ani.dantotsu.media.anime.player.ScreenshotName.episode(
-                if (initialized) media.userPreferredName else null,
+                if (this::media.isInitialized) media.userPreferredName else null,
                 if (this::episodeArr.isInitialized) episodeArr.getOrNull(currentEpisodeIndex) else null,
                 position,
             )
@@ -2138,7 +2147,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             if (this::progressManager.isInitialized) {
                 progressManager.updateAniProgress()
             }
-            val episodeId = "${if (initialized) media.id else ""}-${if (initialized) media.anime?.selectedEpisode ?: "" else ""}"
+            val episodeId = "${if (this::media.isInitialized) media.id else ""}-${if (this::media.isInitialized) media.anime?.selectedEpisode ?: "" else ""}"
             if (this::subtitleManager.isInitialized) {
                 subtitleManager.clearTransientSubtitleCache(episodeId)
             }
