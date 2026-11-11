@@ -77,8 +77,6 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
     private val SUB_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
     private val BOOST_CAPS = listOf(0, 15, 30, 50)
 
-    private val subsOn = { PrefManager.getVal<Boolean>(PrefName.Subtitles) }
-    private val textviewSubsOn = { subsOn() && PrefManager.getVal<Boolean>(PrefName.TextviewSubtitles) }
     private val onlineSubsOn = { PrefManager.getVal<Boolean>(PrefName.OnlineSubtitlesEnabled) }
     private val timestampsOn = { PrefManager.getVal<Boolean>(PrefName.TimeStampsEnabled) }
 
@@ -185,7 +183,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
 
     private fun colorRow(key: PrefName, @StringRes title: Int, @StringRes summary: Int? = null, advanced: Boolean = false) =
         actionRow(
-            key.name, title, summary, R.drawable.ic_round_color_24, advanced = advanced, enabled = subsOn,
+            key.name, title, summary, R.drawable.ic_round_color_24, advanced = advanced,
             keys = listOf(key),
             current = { String.format(Locale.US, "#%08X", PrefManager.getVal<Int>(key)) },
         ) { host, _ -> (host.activity as? PlayerSettingsActivity)?.pickColor(key, title) }
@@ -197,12 +195,9 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
         ) { _, i -> PrefManager.setVal(key, i) }
 
     private val subtitlePreview = customRow(
-        "sub_preview", R.string.sub_preview, R.layout.item_setting_sub_preview, visible = subsOn, inSection = true,
+        "sub_preview", R.string.sub_preview, R.layout.item_setting_sub_preview, inSection = true,
     ) { _, view ->
-        view.findViewById<FrameLayout>(R.id.subPreviewWindow).apply {
-            alpha = PrefManager.getVal(PrefName.SubAlpha)
-            setBackgroundColor(PrefManager.getVal(PrefName.SubWindow))
-        }
+        // Only what the player's subtitle style applies: font, size, text colour, background.
         view.findViewById<TextView>(R.id.subPreviewText).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, PrefManager.getVal<Int>(PrefName.FontSize).toFloat())
             val font = FONT_RES.getOrElse(PrefManager.getVal(PrefName.Font)) { FONT_RES[0] }
@@ -323,56 +318,41 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
                 read = OnlineSubtitleLanguages::codes),
         )),
         Section(R.string.subtitles, listOf(
-            // Live sample of the colour, font, size and window settings below.
+            // Live sample of the colour, font and size settings below.
             subtitlePreview,
-            // Master switch: off hides subtitles in the player.
-            switchRow(PrefName.Subtitles, R.string.subtitle_toggle, R.string.sub_color_info,
-                R.drawable.ic_round_subtitles_24, refresh = true),
             // Whose styling soft subs use: the source's (ASS), Editotsu's, by source type, or custom per origin.
             pickRow(
                 PrefName.SubtitleStylingMode.name, R.string.subtitle_styling, R.drawable.ic_round_subtitles_24,
-                listOf(PrefName.SubtitleStylingMode), enabled = subsOn,
+                listOf(PrefName.SubtitleStylingMode),
                 labels = { c -> SubtitleStylingMode.entries.map { c.getString(stylingLabel(it)) } },
                 current = { SubtitleStylingMode.entries.indexOf(SubtitleStylingStore.currentMode()) },
             ) { _, i -> SubtitleStylingStore.setMode(SubtitleStylingMode.entries[i]) },
             switchRow(PrefName.CustomStreamSourceStyling, R.string.custom_stream_source_styling,
-                icon = R.drawable.ic_round_subtitles_24, enabled = subsOn,
+                icon = R.drawable.ic_round_subtitles_24,
                 visible = { SubtitleStylingStore.currentMode() == SubtitleStylingMode.CUSTOM }),
             switchRow(PrefName.CustomLocalSourceStyling, R.string.custom_local_source_styling,
-                icon = R.drawable.ic_round_subtitles_24, enabled = subsOn,
+                icon = R.drawable.ic_round_subtitles_24,
                 visible = { SubtitleStylingStore.currentMode() == SubtitleStylingMode.CUSTOM }),
             // Colours, outline, font, size and language for subtitles drawn by Editotsu.
             colorRow(PrefName.PrimaryColor, R.string.primary_sub_color_select),
             colorRow(PrefName.SecondaryColor, R.string.secondary_sub_color_select),
-            choiceRow(PrefName.Outline, R.string.secondary_sub_outline_type_select, R.drawable.ic_round_color_24,
-                enabled = subsOn, onChange = refreshPreview, labels = {
-                    listOf(it.getString(R.string.outline_outline), it.getString(R.string.outline_shine),
-                        it.getString(R.string.outline_drop_shadow), it.getString(R.string.none))
-                }),
             choiceRow(PrefName.Font, R.string.sub_font_select, R.drawable.ic_round_format_text_24,
-                enabled = subsOn, onChange = refreshPreview, labels = { FONTS }),
+                onChange = refreshPreview, labels = { FONTS }),
             stepperRow(PrefName.FontSize, R.string.subtitle_font_size, icon = R.drawable.ic_round_format_text_24,
                 from = 8f, to = 72f, step = 1f, format = { _, v -> v.toInt().toString() },
-                enabled = subsOn, onChange = refreshPreview),
+                onChange = refreshPreview),
             choiceRow(PrefName.SubLanguage, R.string.subtitle_langauge, R.drawable.ic_round_subtitles_24,
-                enabled = subsOn, labels = { SUB_LANGUAGES }),
-            // Box behind each line, and the strip around it (window).
+                labels = { SUB_LANGUAGES }),
+            // Box behind each line.
             colorRow(PrefName.SubBackground, R.string.sub_background_color_select),
-            colorRow(PrefName.SubWindow, R.string.sub_window_color_select, R.string.sub_window_color_info),
-            sliderRow(PrefName.SubAlpha, R.string.sub_alpha, icon = R.drawable.ic_round_color_24, from = 0f, to = 1f,
-                step = 0.1f, format = ::percent, enabled = subsOn, onChange = refreshPreview),
             // Scales subtitles that keep the source's styling.
             sliderRow(PrefName.SourceSubScale, R.string.source_sub_size, icon = R.drawable.ic_round_color_24,
-                from = 0.5f, to = 2f, step = 0.05f, format = ::percent, enabled = subsOn),
-            // Draws subs with an Android TextView instead of the renderer; stroke and margin apply only here.
-            switchRow(PrefName.TextviewSubtitles, R.string.textview_sub, icon = R.drawable.ic_round_subtitles_24,
-                advanced = true, enabled = subsOn, refresh = true),
+                from = 0.5f, to = 2f, step = 0.05f, format = ::percent),
+            // Outline width and distance from the bottom edge.
             sliderRow(PrefName.SubStroke, R.string.textview_sub_stroke, icon = R.drawable.ic_round_color_24,
-                from = 0f, to = 30f, step = 1f, format = { _, v -> v.toInt().toString() }, advanced = true,
-                enabled = textviewSubsOn),
+                from = 0f, to = 30f, step = 1f, format = { _, v -> v.toInt().toString() }, advanced = true),
             sliderRow(PrefName.SubBottomMargin, R.string.textview_sub_bottom_margin, icon = R.drawable.ic_round_color_24,
-                from = 0f, to = 50f, step = 1f, format = { _, v -> v.toInt().toString() }, advanced = true,
-                enabled = textviewSubsOn),
+                from = 0f, to = 50f, step = 1f, format = { _, v -> v.toInt().toString() }, advanced = true),
         )),
         Section(R.string.timestamps, listOf(
             // Loads opening/ending/recap segments (AniSkip) for skip buttons and auto skip.
@@ -398,7 +378,6 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
             // Watched share after which tracker progress updates and the next episode preloads.
             sliderRow(PrefName.WatchPercentage, R.string.watch_complete_percentage, R.string.watch_complete_percentage_info,
                 R.drawable.ic_round_art_track_24, from = 0f, to = 1f, step = 0.01f, format = ::percent),
-            switchRow(PrefName.AlwaysContinue, R.string.always_continue, icon = R.drawable.ic_round_play_circle_24),
             switchRow(PrefName.FocusPause, R.string.pause_video_focus, icon = R.drawable.ic_round_pause_24),
             // Swipe gestures, double tap to seek, and the seek / skip button lengths.
             switchRow(PrefName.Gestures, R.string.gestures, icon = R.drawable.ic_round_swipe_vertical_24),
@@ -410,13 +389,11 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
                 from = 0f, to = 300f, step = 5f, format = { c, v -> c.getString(R.string.seconds_value, v.toInt()) }),
         )),
         Section(R.string.other, listOf(
-            // Player buttons and playback paths: picture in picture, cast, rotate, internal cast, extra codecs.
+            // Player buttons and playback paths: picture in picture, cast, rotate, internal cast.
             switchRow(PrefName.Pip, R.string.picture_in_picture, icon = R.drawable.ic_round_picture_in_picture_alt_24),
             switchRow(PrefName.Cast, R.string.show_cast_button, icon = R.drawable.ic_round_cast_24),
             switchRow(PrefName.RotationPlayer, R.string.show_rotate_button, icon = R.drawable.ic_round_screen_rotation_alt_24),
             switchRow(PrefName.UseInternalCast, R.string.try_internal_cast_experimental, icon = R.drawable.cast_warning,
-                advanced = true),
-            switchRow(PrefName.UseAdditionalCodec, R.string.use_additional_codec, icon = R.drawable.ic_round_high_quality_24,
                 advanced = true),
         )),
         Section(R.string.anime, listOf(
