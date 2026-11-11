@@ -88,11 +88,11 @@ object Helper {
 
         if (!downloadCheck && !AnimeDownloader.isDownloading(sourceMedia?.id ?: -1, episode)) {
             AnimeServiceDataSingleton.downloadQueue.offer(animeDownloadTask)
-            if (!AnimeServiceDataSingleton.isServiceRunning) {
-                val intent = Intent(context, AnimeDownloaderService::class.java)
-                ContextCompat.startForegroundService(context, intent)
-                AnimeServiceDataSingleton.isServiceRunning = true
-            }
+            // Always send a start command: a running service may be finishing
+            // its loop, and the start id lets it refuse a stale idle stop.
+            val intent = Intent(context, AnimeDownloaderService::class.java)
+            ContextCompat.startForegroundService(context, intent)
+            AnimeServiceDataSingleton.isServiceRunning = true
         }
     }
 

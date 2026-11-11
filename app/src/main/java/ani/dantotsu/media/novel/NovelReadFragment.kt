@@ -116,16 +116,14 @@ class NovelReadFragment : Fragment(),
                     lnReaderParser = parser
                 )
                 NovelServiceDataSingleton.downloadQueue.offer(downloadTask)
-                CoroutineScope(Dispatchers.IO).launch {
-
-                    if (!NovelServiceDataSingleton.isServiceRunning) {
-                        val intent = Intent(context, NovelDownloaderService::class.java)
-                        withContext(Dispatchers.Main) {
-                            ContextCompat.startForegroundService(requireContext(), intent)
-                        }
-                        NovelServiceDataSingleton.isServiceRunning = true
-                    }
-                }
+                // Always send a start command: a running service may be
+                // finishing its loop, and the start id lets it refuse a stale
+                // idle stop.
+                ContextCompat.startForegroundService(
+                    it,
+                    Intent(it, NovelDownloaderService::class.java)
+                )
+                NovelServiceDataSingleton.isServiceRunning = true
             }
             if (!StoragePermissions.hasDirAccess(it)) {
                 (it as MediaDetailsActivity).accessAlertDialog(it.launcher) { success ->

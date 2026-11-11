@@ -23,7 +23,9 @@ import ani.dantotsu.R
 import ani.dantotsu.addons.download.DownloadAddonManager
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.defaultHeaders
+import ani.dantotsu.download.DownloadProcessorLoop
 import ani.dantotsu.download.DownloadedType
+import ani.dantotsu.download.SingleProcessor
 import ani.dantotsu.download.WifiLossMonitor
 import ani.dantotsu.download.DownloadsManager
 import ani.dantotsu.download.DownloadsManager.Companion.getSubDirectory
@@ -39,7 +41,6 @@ import ani.dantotsu.media.anime.getEpisode
 import ani.dantotsu.parsers.Video
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import ani.dantotsu.snackString
@@ -90,8 +91,37 @@ class AnimeDownloaderService : Service() {
     private val mutex = Mutex()
     private val purgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val purgeCoordinator = PurgeCoordinator()
-    private var isCurrentlyProcessing = false
     @Volatile private var lastStartId = 0
+    /** Download jobs and the queue loop; cancelled when the service is destroyed. */
+    private val processorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** Parallel-download limit of the current loop pass. */
+    @Volatile private var semaphore = Semaphore(1)
+    private val processorLoop = DownloadProcessorLoop(
+        poll = {
+            // MAX MERGE M3 HOLD (Blocker 2): never launch fresh work into a
+            // live purge barrier; queued work survives and drains after it.
+            if (purgeCoordinator.barrierActive) null
+            else AnimeServiceDataSingleton.downloadQueue.poll()
+        },
+        launchTask = { task -> launchTask(task) },
+        hasQueued = { AnimeServiceDataSingleton.downloadQueue.isNotEmpty() },
+        // MAX MERGE M3 HOLD (correction-2 Blocker 2): a live purge owns the
+        // final stop decision (or restarts the loop for fresh work).
+        mayStop = { !purgeActive && !purgeCoordinator.barrierActive },
+        stopIfIdle = { startId ->
+            // Main thread: a task offered before a start command that already
+            // ran is visible here; a start not yet delivered vetoes the stop.
+            withContext(Dispatchers.Main) {
+                AnimeServiceDataSingleton.downloadQueue.isEmpty() && stopSelfResult(startId)
+            }
+        },
+        currentStartId = { lastStartId },
+    )
+    private val processor = SingleProcessor(processorScope) {
+        val maxParallel = PrefManager.getVal<Int>(PrefName.MaxParallelDownloads).coerceIn(0, 10)
+        semaphore = Semaphore(if (maxParallel > 0) maxParallel else 1)
+        processorLoop.run()
+    }
     /**
      * Correction-2 Blocker 2: true from the purge command's synchronous
      * entry until its outcome is published. Every service stop decision
@@ -174,7 +204,10 @@ class AnimeDownloaderService : Service() {
         releaseWifiMonitor()
         purgeScope.cancel()
         purgeCoordinator.shutdown()
-        AnimeServiceDataSingleton.downloadQueue.clear()
+        processorScope.cancel()
+        // The queue is not cleared: every path that stops on purpose empties
+        // it first, and a task queued after an idle stop belongs to the next
+        // service instance its start command creates.
         downloadJobs.clear()
         AnimeServiceDataSingleton.isServiceRunning = false
         unregisterReceiver(cancelReceiver)
@@ -209,18 +242,9 @@ class AnimeDownloaderService : Service() {
         return START_NOT_STICKY
     }
 
-    /** Ordinary download-processor kick (existing semantics, extracted). */
+    /** Start the queue loop unless it is running; a running loop picks up new work. */
     private fun ensureProcessor() {
-        val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        serviceScope.launch {
-            mutex.withLock {
-                if (!isCurrentlyProcessing) {
-                    isCurrentlyProcessing = true
-                    processQueue()
-                    isCurrentlyProcessing = false
-                }
-            }
-        }
+        processor.ensure()
     }
 
     /**
@@ -246,108 +270,78 @@ class AnimeDownloaderService : Service() {
         }
     }
 
-    private fun processQueue() {
-        CoroutineScope(Dispatchers.Default).launch {
-            val maxParallel = PrefManager.getVal<Int>(PrefName.MaxParallelDownloads).coerceIn(0, 10)
-            val concurrency = if (maxParallel > 0) maxParallel else 1
-            val semaphore = Semaphore(concurrency)
-            val activeJobs = mutableListOf<Job>()
-
-            while (AnimeServiceDataSingleton.downloadQueue.isNotEmpty()) {
-                // MAX MERGE M3 HOLD (Blocker 2): never launch fresh work
-                // into a live purge barrier; queued work survives and
-                // drains after the barrier clears.
-                if (purgeCoordinator.barrierActive) {
-                    delay(500)
-                    continue
-                }
-                val task = AnimeServiceDataSingleton.downloadQueue.poll() ?: continue
-                // MAX MERGE M3 (upstream 3dbce385): fail-closed Wi-Fi gate.
-                // Dropped task is failure-broadcast (user-visible retry),
-                // never silently kept; ownership untouched (no job launched).
-                if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(this@AnimeDownloaderService)) {
-                    broadcastDownloadFailed(task.episode, task.sourceMedia?.id)
-                    withContext(Dispatchers.Main) {
-                        snackString(getString(R.string.download_wifi_only_warning))
-                    }
-                    continue
-                }
-                // The record holder breaks the LAZY self-reference: the
-                // outer finally must retire by Job identity (see below).
-                var jobRef: Job? = null
-                val job = launch(start = CoroutineStart.LAZY) {
-                    val self = jobRef
-                    try {
-                        semaphore.withPermit {
-                            currentTasks.add(task)
-                            try {
-                                download(task)
-                            } finally {
-                                currentTasks.remove(task)
-                            }
-                        }
-                    } finally {
-                        // MAX MERGE M3 HOLD (correction-2 Blocker 1): retire
-                        // the record even when cancellation lands BEFORE
-                        // permit entry (a waiter never runs the inner
-                        // finally). Identity-safe: never removes a fresher
-                        // replacement recorded under the same key.
-                        // The purge cancels this job while holding the mutex; a
-                        // cancellable lock here would throw at once and skip the
-                        // retirement, so the purge would wait for it and time out.
-                        withContext(NonCancellable) {
-                            mutex.withLock {
-                                if (self != null && downloadJobs[task.getTaskName()] === self) {
-                                    downloadJobs.remove(task.getTaskName())
-                                }
-                            }
-                        }
-                        updateNotification()
-                    }
-                }
-                jobRef = job
-                // MAX MERGE M3 HOLD (correction Blocker 1): close the
-                // poll→record gap. The job record is published under the
-                // same mutex the purge snapshot uses; a task that loses
-                // the race to a live barrier is requeued (tagged as old
-                // scope) instead of launching into the purge window. The
-                // LAZY job never executes unless admitted here.
-                var admitted = false
-                mutex.withLock {
-                    if (!purgeCoordinator.barrierActive) {
-                        downloadJobs[task.getTaskName()] = job
-                        admitted = true
-                    } else {
-                        purgeGatedKeys.add(task.getTaskName())
-                        AnimeServiceDataSingleton.downloadQueue.offer(task)
-                    }
-                }
-                if (!admitted) {
-                    // Correction-4 Blocker 2: the never-admitted LAZY job
-                    // must be explicitly terminated — otherwise an
-                    // unstarted, uncancelled child lingers on the processor
-                    // after its task was requeued. Cancelling before start
-                    // never executes the body.
-                    job.cancel()
-                    delay(500)
-                    continue
-                }
-                job.start()
-                activeJobs.add(job)
+    /** Start one polled task under the current parallel limit; null when not started. */
+    private suspend fun launchTask(task: AnimeDownloadTask): Job? {
+        // MAX MERGE M3 (upstream 3dbce385): fail-closed Wi-Fi gate.
+        // Dropped task is failure-broadcast (user-visible retry),
+        // never silently kept; ownership untouched (no job launched).
+        if (PrefManager.getVal<Boolean>(PrefName.DownloadWifiOnly) && !ani.dantotsu.isWifiConnected(this@AnimeDownloaderService)) {
+            broadcastDownloadFailed(task.episode, task.sourceMedia?.id)
+            withContext(Dispatchers.Main) {
+                snackString(getString(R.string.download_wifi_only_warning))
             }
-            activeJobs.joinAll()
-            // MAX MERGE M3 HOLD (correction-2 Blocker 2): the legacy
-            // processor must not stop the service while a purge
-            // transaction owns the lifecycle. The purge path owns the
-            // final stop decision (or keeps draining fresh work).
-            if (AnimeServiceDataSingleton.downloadQueue.isEmpty() &&
-                !purgeActive && !purgeCoordinator.barrierActive
-            ) {
-                withContext(Dispatchers.Main) {
-                    stopSelf()
+            return null
+        }
+        val permits = semaphore
+        // The record holder breaks the LAZY self-reference: the
+        // outer finally must retire by Job identity (see below).
+        var jobRef: Job? = null
+        val job = processorScope.launch(start = CoroutineStart.LAZY) {
+            val self = jobRef
+            try {
+                permits.withPermit {
+                    currentTasks.add(task)
+                    try {
+                        download(task)
+                    } finally {
+                        currentTasks.remove(task)
+                    }
                 }
+            } finally {
+                // MAX MERGE M3 HOLD (correction-2 Blocker 1): retire
+                // the record even when cancellation lands BEFORE
+                // permit entry (a waiter never runs the inner
+                // finally). Identity-safe: never removes a fresher
+                // replacement recorded under the same key.
+                // The purge cancels this job while holding the mutex; a
+                // cancellable lock here would throw at once and skip the
+                // retirement, so the purge would wait for it and time out.
+                withContext(NonCancellable) {
+                    mutex.withLock {
+                        if (self != null && downloadJobs[task.getTaskName()] === self) {
+                            downloadJobs.remove(task.getTaskName())
+                        }
+                    }
+                }
+                updateNotification()
             }
         }
+        jobRef = job
+        // MAX MERGE M3 HOLD (correction Blocker 1): close the
+        // poll→record gap. The job record is published under the
+        // same mutex the purge snapshot uses; a task that loses
+        // the race to a live barrier is requeued (tagged as old
+        // scope) instead of launching into the purge window. The
+        // LAZY job never executes unless admitted here.
+        var admitted = false
+        mutex.withLock {
+            if (!purgeCoordinator.barrierActive) {
+                downloadJobs[task.getTaskName()] = job
+                admitted = true
+            } else {
+                purgeGatedKeys.add(task.getTaskName())
+                AnimeServiceDataSingleton.downloadQueue.offer(task)
+            }
+        }
+        if (!admitted) {
+            // Correction-4 Blocker 2: the never-admitted LAZY job
+            // must be explicitly terminated. Cancelling before start
+            // never executes the body.
+            job.cancel()
+            return null
+        }
+        job.start()
+        return job
     }
 
     /**
@@ -514,7 +508,8 @@ class AnimeDownloaderService : Service() {
             if (!stillBusy && !purgeActive) {
                 notificationManager.cancel(NOTIFICATION_ID)
                 withContext(Dispatchers.Main) {
-                    stopSelf()
+                    // Veto-safe: a task queued meanwhile keeps the service.
+                    if (AnimeServiceDataSingleton.downloadQueue.isEmpty()) stopSelfResult(lastStartId)
                 }
             } else {
                 updateNotification()
