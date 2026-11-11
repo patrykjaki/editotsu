@@ -52,6 +52,7 @@ abstract class SettingsScreenActivity : AppCompatActivity(), SettingsHost {
         val highlight = intent.getStringExtra(EXTRA_ROW)
         val highlighted = highlight?.let { id -> screen.rows().firstOrNull { it.id == id } }
         savedInstanceState?.getIntArray(STATE_EXPANDED)?.let { expanded.addAll(it.toList()) }
+        if (savedInstanceState == null) intent.getIntArrayExtra(EXTRA_OPEN_SECTIONS)?.let { expanded.addAll(it.toList()) }
         if (highlighted?.advanced == true) {
             expanded += ScreenItems.sectionOf(screen.sections(), highlighted.id)
         }
@@ -79,6 +80,9 @@ abstract class SettingsScreenActivity : AppCompatActivity(), SettingsHost {
     override fun refresh() {
         rows.submitList(ScreenItems.build(screen.sections(), expanded))
     }
+
+    /** This screen with its open sections, for [ani.dantotsu.settings.data.ProcessRestart]. */
+    fun reopenIntent(): Intent = Intent(this, this::class.java).putExtra(EXTRA_OPEN_SECTIONS, expanded.toIntArray())
 
     override fun onResume() {
         super.onResume()
@@ -111,11 +115,11 @@ abstract class SettingsScreenActivity : AppCompatActivity(), SettingsHost {
         /** Row id to scroll to and flash (from search). */
         const val EXTRA_ROW = "settings_row"
         private const val STATE_EXPANDED = "settings_open_sections"
+        private const val EXTRA_OPEN_SECTIONS = "settings_reopen_sections"
 
         /**
-         * Open advanced sections by screen id. Kept for the life of the process, not in
-         * prefs: some rows restart the app's task on change (DNS, proxy), and the section
-         * must still be open when the screen comes back.
+         * Open advanced sections by screen id, for the life of the process. Rows that restart
+         * the process (DNS, proxy) pass the open sections along in [reopenIntent].
          */
         private val openSections = HashMap<String, MutableSet<Int>>()
 

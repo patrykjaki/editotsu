@@ -8,7 +8,6 @@ import ani.dantotsu.BuildConfig
 import ani.dantotsu.R
 import ani.dantotsu.animethemes.ThemeFavourites
 import ani.dantotsu.databinding.DialogUserAgentBinding
-import ani.dantotsu.restartApp
 import ani.dantotsu.settings.saving.internal.BackupSection
 import ani.dantotsu.settings.saving.internal.PreferenceKeystore
 import ani.dantotsu.settings.saving.internal.PreferencePackager
@@ -76,7 +75,7 @@ object BackupRestore {
         }
     }
 
-    /** Restores [bytes] read from a file called [name]; restarts the app when done. */
+    /** Restores [bytes] read from a file called [name]; restarts the app process when done. */
     fun restore(activity: Activity, bytes: ByteArray, name: String) {
         when {
             name.endsWith(".sani") -> passwordDialog(activity, exporting = false) { password ->
@@ -117,7 +116,7 @@ object BackupRestore {
         ThemeFavourites.reload()
         val missing = PreferencePackager.lastMissingExtensions
         if (missing.isEmpty()) {
-            activity.restartApp()
+            ProcessRestart.restart(activity)
             return
         }
         activity.customAlertDialog().apply {
@@ -126,7 +125,7 @@ object BackupRestore {
                 activity.getString(R.string.backup_missing_extensions_message) +
                     "\n\n" + missing.joinToString("\n") { "• $it" }
             )
-            setPosButton(R.string.ok) { activity.restartApp() }
+            setPosButton(R.string.ok) { ProcessRestart.restart(activity) }
             setCancelable(false)
             show()
         }

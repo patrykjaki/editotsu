@@ -16,11 +16,13 @@ import ani.dantotsu.restartApp
 import ani.dantotsu.settings.AddRepositoryBottomSheet
 import ani.dantotsu.settings.ProxyDialogFragment
 import ani.dantotsu.settings.SettingsGroupActivity
+import ani.dantotsu.settings.data.ProcessRestart
 import ani.dantotsu.settings.rows.Row
 import ani.dantotsu.settings.rows.RowView
 import ani.dantotsu.settings.rows.Section
 import ani.dantotsu.settings.rows.SettingsHost
 import ani.dantotsu.settings.rows.SettingsScreen
+import ani.dantotsu.settings.rows.SettingsScreenActivity
 import ani.dantotsu.settings.rows.actionRow
 import ani.dantotsu.settings.rows.choiceRow
 import ani.dantotsu.settings.rows.switchRow
@@ -54,7 +56,7 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
                 R.string.skip_loading_extension_icons_desc, R.drawable.ic_round_no_icon_24),
             choiceRow(PrefName.DohProvider, R.string.selected_dns, R.drawable.lan_24,
                 labels = { DNS_PROVIDERS }, advanced = true,
-                onChange = { host, _ -> host.activity.restartApp() }),
+                onChange = { host, _ -> restartProcess(host) }),
             actionRow("extension_installer", R.string.extension_installer, icon = R.drawable.ic_round_new_releases_24,
                 advanced = true,
                 current = { Injekt.get<BasePreferences>().extensionInstaller().get().titleResId },
@@ -69,7 +71,7 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
                 onClick = { host, _ -> editUserAgent(host) }),
             switchRow(PrefName.EnableSocks5Proxy, R.string.proxy, R.string.proxy_desc,
                 R.drawable.swap_horizontal_circle_24, advanced = true,
-                onChange = { host, _ -> host.activity.restartApp() }),
+                onChange = { host, _ -> restartProcess(host) }),
             actionRow("proxy_setup", R.string.proxy_setup, R.string.proxy_setup_desc, R.drawable.lan_24,
                 advanced = true,
                 onClick = { host, _ -> ProxyDialogFragment().show(host.activity.supportFragmentManager, "dialog") }),
@@ -115,6 +117,10 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
                 R.drawable.ic_round_search_sources_24),
         )),
     )
+
+    /** DNS and proxy are read once when the HTTP client is built, so the process restarts. */
+    private fun restartProcess(host: SettingsHost) =
+        ProcessRestart.restart(host.activity, (host.activity as? SettingsScreenActivity)?.reopenIntent())
 
     private fun repoPref(type: MediaType) = when (type) {
         MediaType.ANIME -> PrefName.AnimeExtensionRepos
