@@ -51,14 +51,22 @@ object ThemeFavourites {
 
     fun isFavourite(themeId: Int): Boolean = ThemeFavouriteList.contains(all(), themeId)
 
-    /** Returns true when the theme is a favourite afterwards. */
+    /**
+     * Returns true when the theme is a favourite afterwards. Edits start from the stored list,
+     * not the in-memory copy, so a restore in the same process is never saved over.
+     */
     fun toggle(mediaId: Int, animeTitle: String, track: ThemeTrack): Boolean {
-        val next = ThemeFavouriteList.toggle(all(), FavouriteTheme(mediaId, animeTitle, track, System.currentTimeMillis()))
+        val next = ThemeFavouriteList.toggle(load(), FavouriteTheme(mediaId, animeTitle, track, System.currentTimeMillis()))
         save(next)
         return ThemeFavouriteList.contains(next, track.themeId)
     }
 
-    fun remove(themeId: Int) = save(ThemeFavouriteList.remove(all(), themeId))
+    fun remove(themeId: Int) = save(ThemeFavouriteList.remove(load(), themeId))
+
+    /** Re-reads the stored list, e.g. after a backup was restored. */
+    fun reload() {
+        state.value = load()
+    }
 
     private fun load(): List<FavouriteTheme> =
         ThemeFavouriteList.decode(PrefManager.getVal<String>(PrefName.AnimeThemesFavourites))

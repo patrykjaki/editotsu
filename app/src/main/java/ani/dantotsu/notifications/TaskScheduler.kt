@@ -19,20 +19,7 @@ interface TaskScheduler {
 
     fun scheduleAllTasks(context: Context) {
         for (taskType in TaskType.entries) {
-            val interval = when (taskType) {
-                TaskType.COMMENT_NOTIFICATION -> CommentNotificationWorker.checkIntervals[PrefManager.getVal(
-                    PrefName.CommentNotificationInterval
-                )]
-
-                TaskType.ANILIST_NOTIFICATION -> AnilistNotificationWorker.checkIntervals[PrefManager.getVal(
-                    PrefName.AnilistNotificationInterval
-                )]
-
-                TaskType.SUBSCRIPTION_NOTIFICATION -> SubscriptionNotificationWorker.checkIntervals[PrefManager.getVal(
-                    PrefName.SubscriptionNotificationInterval
-                )]
-            }
-            scheduleRepeatingTask(taskType, interval)
+            scheduleRepeatingTask(taskType, interval(taskType))
         }
     }
 
@@ -43,6 +30,29 @@ interface TaskScheduler {
             } else {
                 WorkManagerScheduler(context)
             }
+        }
+
+        /** Check interval in minutes for [taskType]; 0 means off. */
+        fun interval(taskType: TaskType): Long = when (taskType) {
+            TaskType.COMMENT_NOTIFICATION ->
+                pickInterval(CommentNotificationWorker.checkIntervals, PrefName.CommentNotificationInterval)
+            TaskType.ANILIST_NOTIFICATION ->
+                pickInterval(AnilistNotificationWorker.checkIntervals, PrefName.AnilistNotificationInterval)
+            TaskType.SUBSCRIPTION_NOTIFICATION ->
+                pickInterval(SubscriptionNotificationWorker.checkIntervals, PrefName.SubscriptionNotificationInterval)
+        }
+
+        private fun pickInterval(intervals: Array<Long>, key: PrefName): Long =
+            pickInterval(intervals, PrefManager.getVal(key), key.data.default as Int)
+
+        /** An index from an old or edited backup can be out of range; it falls back to the default. */
+        internal fun pickInterval(intervals: Array<Long>, index: Int, defaultIndex: Int): Long =
+            intervals.getOrNull(index) ?: intervals.getOrElse(defaultIndex) { 0L }
+
+        /** Cancels everything the other scheduler set up and schedules all tasks with this one. */
+        fun switchTo(context: Context, useAlarmManager: Boolean) {
+            create(context, !useAlarmManager).cancelAllTasks()
+            create(context, useAlarmManager).scheduleAllTasks(context)
         }
 
         fun scheduleSingleWork(context: Context) {

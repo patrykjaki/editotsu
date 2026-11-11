@@ -184,7 +184,8 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
                         c.getString(R.string.last_auto_backup_never)
                     }
                 },
-                onClick = { _, _ -> }),
+                // Shows when the last automatic backup ran; the interval row above sets it up.
+                onClick = null),
         )),
         Section(R.string.settings_section_privacy, listOf(
             actionRow("app_lock", R.string.app_lock, R.string.app_lock_desc, R.drawable.ic_round_lock_open_24,
@@ -347,13 +348,11 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
             setTitle(R.string.app_lock)
             setCustomView(view.root)
             setPosButton(R.string.ok) {
-                if (view.forgotPasswordCheckbox.isChecked) {
-                    PrefManager.setVal(PrefName.OverridePassword, true)
-                }
                 val password = view.passwordInput.text.toString()
                 val confirmPassword = view.confirmPasswordInput.text.toString()
                 if (password == confirmPassword && password.isNotEmpty()) {
                     PrefManager.setVal(PrefName.AppPassword, password)
+                    PrefManager.setVal(PrefName.OverridePassword, view.forgotPasswordCheckbox.isChecked)
                     if (view.biometricCheckbox.isChecked) {
                         val canBiometricPrompt = BiometricManager.from(applicationContext)
                             .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) ==

@@ -351,6 +351,15 @@ class SettingsKeysTest {
     /** Written outside the rows: the settings logo easter egg. */
     private val NOT_ON_A_ROW = setOf("OC")
 
+    /**
+     * Rows taken off the screens because nothing reads their key. The keys stay in
+     * Preferences.kt (and in [GOLDEN]) so older backups still restore.
+     */
+    private val REMOVED_ROWS = setOf(
+        "Subtitles", "TextviewSubtitles", "Outline", "SubWindow", "SubAlpha",
+        "AlwaysContinue", "UseAdditionalCodec",
+    )
+
     private val rowKeys = SettingsScreens.all.flatMap { s -> s.rows().flatMap { it.keys } }.toSet()
 
     @Test
@@ -365,9 +374,15 @@ class SettingsKeysTest {
     }
 
     @Test
+    fun removedRowsAreOffEveryScreen() {
+        val names = rowKeys.map { it.name }.toSet()
+        assertEquals(emptySet<String>(), REMOVED_ROWS intersect names)
+    }
+
+    @Test
     fun everyKeyThe07ScreensWroteIsStillOnARow() {
         val names = rowKeys.map { it.name }.toSet()
-        val missing = WRITTEN_BY_07.filter { it !in names && it !in NOT_ON_A_ROW }
+        val missing = WRITTEN_BY_07.filter { it !in names && it !in NOT_ON_A_ROW && it !in REMOVED_ROWS }
         assertEquals(emptyList<String>(), missing)
     }
 }

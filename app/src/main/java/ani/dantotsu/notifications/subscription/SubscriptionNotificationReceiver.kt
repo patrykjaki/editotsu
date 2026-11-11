@@ -5,34 +5,16 @@ import android.content.Context
 import android.content.Intent
 import ani.dantotsu.notifications.AlarmManagerScheduler
 import ani.dantotsu.notifications.TaskScheduler
-import ani.dantotsu.settings.saving.PrefManager
-import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.Logger
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 class SubscriptionNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         Logger.log("SubscriptionNotificationReceiver: onReceive")
-        val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                SubscriptionNotificationTask().execute(context)
-                val subscriptionInterval =
-                    SubscriptionNotificationWorker.checkIntervals[PrefManager.getVal(PrefName.SubscriptionNotificationInterval)]
-                AlarmManagerScheduler(context).scheduleRepeatingTask(
-                    TaskScheduler.TaskType.SUBSCRIPTION_NOTIFICATION,
-                    subscriptionInterval
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.log(e)
-            } finally {
-                pendingResult.finish()
-            }
-        }
+        AlarmManagerScheduler.onAlarm(
+            context,
+            TaskScheduler.TaskType.SUBSCRIPTION_NOTIFICATION,
+            SubscriptionNotificationWorker::class.java,
+            SubscriptionNotificationWorker.WORK_NAME,
+        )
     }
 }

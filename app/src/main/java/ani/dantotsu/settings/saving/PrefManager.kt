@@ -486,10 +486,10 @@ object PrefManager {
     @Suppress("UNCHECKED_CAST")
     fun importAllPrefs(prefs: Map<String, *>, prefLocation: Location): Boolean {
         val pref = getPrefLocation(prefLocation)
-        var hadError = false
-        pref.edit().clear().apply()
+        val contents = PreferencePackager.restoredContents(prefLocation, pref.all, prefs)
         with(pref.edit()) {
-            prefs.forEach { (key, value) ->
+            clear()
+            contents.forEach { (key, value) ->
                 when (value) {
                     is Boolean -> putBoolean(key, value)
                     is Int -> putInt(key, value)
@@ -499,18 +499,14 @@ object PrefManager {
                     is HashSet<*> -> putStringSet(key, value as Set<String>)
                     is ArrayList<*> -> putStringSet(key, arrayListToSet(value))
                     is Set<*> -> putStringSet(key, value as Set<String>)
-                    else -> hadError = true
+                    // decodePayload already left out what cannot be written.
+                    else -> Logger.log("Backup restore: skipped $key")
                 }
             }
             apply()
-            return if (hadError) {
-                snackString("Error importing preferences")
-                false
-            } else {
-                snackString("Preferences imported")
-                true
-            }
         }
+        snackString("Preferences imported")
+        return true
     }
 
     private fun arrayListToSet(arrayList: ArrayList<*>): Set<String> {
