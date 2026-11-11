@@ -133,6 +133,7 @@ class NovelReaderActivity : AppCompatActivity() {
     // TTS
     private var ttsNavigator: AndroidTtsNavigator? = null
     private var ttsLocationJob: Job? = null
+    private var ttsAdvanceJob: Job? = null
     private var ttsPlaybackJob: Job? = null
     private var ttsSpeedIndex = 1
     private val ttsSpeeds = listOf(0.75, 1.0, 1.25, 1.5, 2.0)
@@ -1004,8 +1005,10 @@ class NovelReaderActivity : AppCompatActivity() {
                 (visualNavigator as? DecorableNavigator)?.applyDecorations(listOf(decoration), "tts")
             }.launchIn(scope)
 
-            // Throttle auto-advance so it doesn't jump aggressively
-            tts.location
+            // Throttle auto-advance so it doesn't jump aggressively. Kept so
+            // stopTts cancels it; otherwise each restart adds a collector.
+            ttsAdvanceJob?.cancel()
+            ttsAdvanceJob = tts.location
                 .map { it.tokenLocator ?: it.utteranceLocator }
                 .distinctUntilChanged()
                 .onEach { targetLoc ->
@@ -1018,6 +1021,8 @@ class NovelReaderActivity : AppCompatActivity() {
     }
 
     private fun stopTts() {
+        ttsAdvanceJob?.cancel()
+        ttsAdvanceJob = null
         ttsLocationJob?.cancel()
         ttsPlaybackJob?.cancel()
         ttsNavigator?.close()

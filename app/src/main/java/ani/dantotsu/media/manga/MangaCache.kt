@@ -9,6 +9,9 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.LruCache
+import ani.dantotsu.media.manga.mangareader.BaseImageAdapter
+import ani.dantotsu.media.manga.mangareader.MAX_PAGE_DIMENSION
+import ani.dantotsu.media.manga.mangareader.pageInSampleSize
 import ani.dantotsu.snackString
 import ani.dantotsu.util.Logger
 import ani.dantotsu.util.createDataSaver
@@ -17,6 +20,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
@@ -25,6 +29,13 @@ data class ImageData(
     val page: Page,
     val source: HttpSource
 ) {
+    /**
+     * Downloads the page once through the source's own client (its
+     * interceptors, referer and cookies) and decodes those bytes. Formats
+     * BitmapFactory cannot read (JXL, AVIF before Android 12) are decoded from
+     * the same bytes with libvips. Out-of-memory is not caught here, so the
+     * reader can log it and show the page error state.
+     */
     suspend fun fetchAndProcessImage(
         page: Page,
         httpSource: HttpSource
@@ -32,67 +43,72 @@ data class ImageData(
         return withContext(Dispatchers.IO) {
             try {
                 val dataSaver = createDataSaver()
-                val compressedUrl = dataSaver.compress(page.imageUrl ?: "")
-                
                 val originalUrl = page.imageUrl
-                var bitmap: Bitmap? = null
-                var success = false
-
-                val decodeOptions = BitmapFactory.Options().apply {
-                    inPreferredConfig = Bitmap.Config.RGB_565
-                }
+                val compressedUrl = dataSaver.compress(originalUrl ?: "")
 
                 if (compressedUrl != originalUrl) {
-                    try {
+                    val saved = try {
                         page.imageUrl = compressedUrl
-                        val response = httpSource.getImage(page)
-                        Logger.log("DataSaver Response: ${response.code} - ${response.message}")
-                        if (response.isSuccessful) {
-                            bitmap = response.use {
-                                it.body.byteStream().use { inputStream ->
-                                    BitmapFactory.decodeStream(inputStream, null, decodeOptions)
-                                }
-                            }
-                            if (bitmap != null) {
-                                success = true
-                            }
-                        } else {
-                            response.close()
-                        }
+                        fetchPage(page, httpSource, "DataSaver")
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Logger.log("DataSaver failed, falling back to original: ${e.message}")
+                        null
                     } finally {
                         page.imageUrl = originalUrl
                     }
+                    if (saved != null) return@withContext saved
+                    Logger.log("DataSaver failed or was blocked; falling back to the original URL")
                 }
 
-                if (!success) {
-                    if (compressedUrl != originalUrl) {
-                        Logger.log("DataSaver failed or was blocked by Cloudflare; falling back to original URL: $originalUrl")
-                    }
-                    val response = httpSource.getImage(page)
-                    Logger.log("Response: ${response.code} - ${response.message}")
-                    if (response.isSuccessful) {
-                        bitmap = response.use {
-                            it.body.byteStream().use { inputStream ->
-                                BitmapFactory.decodeStream(inputStream, null, decodeOptions)
-                            }
-                        }
-                    } else {
-                        response.close()
-                    }
-                }
-
-                return@withContext bitmap
+                fetchPage(page, httpSource, "Page")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.log("MangaCache image fetch error: ${e.message}")
-                return@withContext null
+                null
             }
         }
     }
+
+    private suspend fun fetchPage(page: Page, httpSource: HttpSource, label: String): Bitmap? =
+        httpSource.getImage(page).use { response ->
+            Logger.log("$label response: ${response.code} - ${response.message}")
+            if (!response.isSuccessful) return@use null
+            decodePageBytes(response.body.bytes())
+        }
 }
+
+/**
+ * BitmapFactory first; libvips on the same bytes when BitmapFactory cannot
+ * read the format. Long strips are sampled down while decoding and then
+ * scaled to [MAX_PAGE_DIMENSION]; ordinary pages decode at full size.
+ */
+fun decodePageBytes(bytes: ByteArray): Bitmap? = decodeWithFallback(
+    bytes,
+    primary = { decodeWithBitmapFactory(it) },
+    fallback = { BaseImageAdapter.decodeWithLibvips(ByteArrayInputStream(it)) },
+)
+
+private fun decodeWithBitmapFactory(bytes: ByteArray): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    val options = BitmapFactory.Options().apply {
+        inPreferredConfig = Bitmap.Config.RGB_565
+        inSampleSize = pageInSampleSize(bounds.outWidth, bounds.outHeight)
+    }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        ?.let { BaseImageAdapter.capPageBitmap(it) }
+}
+
+/** Tries [primary], then [fallback] on the same bytes; nothing is downloaded twice. */
+inline fun <T : Any> decodeWithFallback(
+    bytes: ByteArray,
+    primary: (ByteArray) -> T?,
+    fallback: (ByteArray) -> T?,
+): T? = primary(bytes) ?: fallback(bytes)
 
 fun saveImage(
     bitmap: Bitmap,
