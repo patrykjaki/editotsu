@@ -1241,23 +1241,45 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         subtitleManager.applySubtitlePreferences(playbackOrigin)
         engine.loadMedia(request)
 
+        // While casting, the new episode goes to the TV and the phone stays paused.
+        val sentToCast = castManager.updateCurrentMedia(
+            buildCastItem(episodeDisplayName), engine, video, playerManager.playbackCoordinator,
+            startPositionMs = savedPosition,
+        )
+
         // Request audio focus and start playback through the coordinator.
         // Without this, MPV auto-plays (pause=no default) but the coordinator
         // never requests audio focus, leaving the session unprotected and
         // potentially killed by Android's audio system.
-        playerManager.playbackCoordinator?.play() ?: engine.play()
+        if (!sentToCast) playerManager.playbackCoordinator?.play() ?: engine.play()
 
         applyResizeMode(isFullscreen)
-        val castItem = androidx.media3.common.MediaItem.Builder()
+        progressManager.updateWidgetState(isExiting = false)
+    }
+
+    /**
+     * The item internal cast sends to the receiver: the stream and, when the receiver can
+     * show its format (WebVTT, TTML), the active server subtitle.
+     */
+    private fun buildCastItem(episodeDisplayName: String): androidx.media3.common.MediaItem {
+        val sub = subtitle
+        val subConfig = sub?.file?.url?.takeIf { it.isNotBlank() }?.let { url ->
+            val mime = ani.dantotsu.media.anime.cast.CastSubtitles.mimeFor(sub.type.name, url) ?: return@let null
+            androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(Uri.parse(url))
+                .setMimeType(mime)
+                .setLabel(sub.language)
+                .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
+                .build()
+        }
+        return androidx.media3.common.MediaItem.Builder()
             .setUri(video!!.file.url)
             .setMediaMetadata(
                 androidx.media3.common.MediaMetadata.Builder()
                     .setTitle("${media.userPreferredName} : $episodeDisplayName")
                     .build()
             )
+            .setSubtitleConfigurations(listOfNotNull(subConfig))
             .build()
-        castManager.updateCurrentMedia(castItem, engine, video, playerManager.playbackCoordinator)
-        progressManager.updateWidgetState(isExiting = false)
     }
 
     private fun releasePlayer() {
