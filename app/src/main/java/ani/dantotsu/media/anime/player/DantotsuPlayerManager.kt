@@ -52,6 +52,7 @@ class DantotsuPlayerManager(
         coverUrl: String? = null,
         mimeType: String? = null,
         preferredSubLang: String? = null,
+        fallbackSubLang: String? = null,
         embedUrl: String? = null,
         audioTracks: List<eu.kanade.tachiyomi.animesource.model.Track> = emptyList(),
         // Beta03: validated extension mpv per-file options for this extractor.
@@ -139,6 +140,7 @@ class DantotsuPlayerManager(
             externalSubtitles = externalSubs,
             externalAudioTracks = externalAudios,
             preferredSubLang = preferredSubLang,
+            fallbackSubLang = fallbackSubLang,
             sourceClass = sourceClass,
             // Beta03: validated extension mpv per-file options.
             extraMpvOptions = mpvFileOptions,

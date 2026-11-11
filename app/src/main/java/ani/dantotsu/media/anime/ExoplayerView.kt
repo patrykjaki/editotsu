@@ -97,6 +97,7 @@ import ani.dantotsu.media.anime.player.PlayerProgressManager
 import ani.dantotsu.media.anime.player.PlayerSubtitleManager
 import ani.dantotsu.media.anime.player.PlayerTrack
 import ani.dantotsu.media.anime.player.ResizeMode
+import ani.dantotsu.media.anime.player.SubtitleLanguageMatch
 import ani.dantotsu.media.anime.player.TrackType
 import ani.dantotsu.others.IdMappers
 import ani.dantotsu.others.getSerialized
@@ -933,6 +934,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         playerManager.playbackEngine?.setResizeMode(resizeMode)
     }
 
+    /** Settings > Subtitle language as a name ("Polish"). */
+    private fun settingsSubtitleLanguage(): String =
+        SubtitleLanguageMatch.settingsLanguage(PrefManager.getVal<Int>(PrefName.SubLanguage))
+
     private fun selectedEpisodeKey(): String? =
         if (this::episodes.isInitialized) episodes.getEpisodeKey(media.anime?.selectedEpisode) else null
 
@@ -1005,14 +1010,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         extractor = ext
         video = ext.videos.getOrNull(episode.selectedVideo) ?: ext.videos.firstOrNull() ?: return
 
-        val subLanguages = arrayOf(
-            "Albanian", "Arabic", "Bosnian", "Bulgarian", "Chinese", "Croatian", "Czech", "Danish", "Dutch", "English",
-            "Estonian", "Finnish", "French", "Georgian", "German", "Greek", "Hebrew", "Hindi", "Indonesian", "Irish",
-            "Italian", "Japanese", "Korean", "Lithuanian", "Luxembourgish", "Macedonian", "Mongolian", "Norwegian",
-            "Polish", "Portuguese", "Punjabi", "Romanian", "Russian", "Serbian", "Slovak", "Slovenian", "Spanish",
-            "Turkish", "Ukrainian", "Urdu", "Vietnamese"
-        )
-        val lang = subLanguages.getOrNull(PrefManager.getVal<Int>(PrefName.SubLanguage)) ?: "English"
+        val lang = settingsSubtitleLanguage()
         var savedSubLang: String? = PrefManager.getNullableCustomVal(legacySubLangKey(media.id, episode.number), null, String::class.java)
         if (savedSubLang?.startsWith("Online:") == true) {
             // The per-episode store is now the source of
@@ -1038,11 +1036,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 null
             } else when {
                 savedSubLang == null -> when (episode.selectedSubtitle) {
-                    null, -1 -> ext.subtitles.find {
-                        it.language.contains(lang, true) ||
-                        it.language.contains("English", true) ||
-                        it.language.contains("en", true)
-                    } ?: ext.subtitles.firstOrNull()
+                    null, -1 -> SubtitleLanguageMatch.pick(ext.subtitles, lang) { it.language }
                     else -> ext.subtitles.getOrNull(episode.selectedSubtitle!!)
                 }
                 savedSubLang == "None" -> null
@@ -1058,11 +1052,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             savedSubLang?.startsWith("[Local]") != true &&
             savedSubLang?.startsWith("Embedded:") != true
         ) {
-            subtitle = ext.subtitles.find {
-                it.language.contains(lang, true) ||
-                it.language.contains("English", true) ||
-                it.language.contains("en", true)
-            } ?: ext.subtitles.firstOrNull()
+            subtitle = SubtitleLanguageMatch.pick(ext.subtitles, lang) { it.language }
         }
         subtitleManager.initialSubtitleLabel = subtitle?.language ?: lang
         if (subtitle != null) {
@@ -1223,6 +1213,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             episodeNumber = episode.number,
             coverUrl = media.cover,
             preferredSubLang = savedSubLang,
+            fallbackSubLang = settingsSubtitleLanguage(),
             embedUrl = extractor?.server?.embed?.url,
             audioTracks = extractor?.audioTracks ?: emptyList(),
             // Beta03: validated extension mpv per-file options (AniKoto etc.).
