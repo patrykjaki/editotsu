@@ -201,8 +201,10 @@
                     android:id="@+id/settingBuyMeCoffee"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    app:srcCompat="@drawable/ic_github_sponsor_button"
-                    tools:ignore="ContentDescription" />
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/sponsor_dantotsu_author"
+                    android:focusable="true"
+                    app:srcCompat="@drawable/ic_github_sponsor_button" />
             </LinearLayout>
 
             <TextView

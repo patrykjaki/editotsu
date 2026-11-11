@@ -585,8 +585,9 @@
     <string name="other">Other</string>
     <string name="total_repeats">TOTAL REPEATS</string>
     <string name="custom_lists">Custom Lists</string>
-    <string name="donate_desc">Want to support Editotsu\'s Maintainer?\nConsider Donating</string>
+    <string name="donate_desc">Editotsu is built on Dantotsu.\nWant to support its original author, rebelonion?</string>
     <string name="donate_goal">No donation goal atm</string>
+    <string name="sponsor_dantotsu_author">Sponsor Dantotsu\'s author on GitHub</string>
     <string name="filter">Filter</string>
     <string name="filter_on_list">List Filter</string>
     <string name="filter_on_list_all">All</string>
@@ -1139,7 +1140,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="button_backup">Backup</string>
     <string name="no_location_selected">No location selected</string>
     <string name="enjoying_app">Enjoying the App?</string>
-    <string name="consider_donating">Consider donating!</string>
+    <string name="consider_donating">Editotsu is built on Dantotsu. Consider donating to its original author, rebelonion!</string>
     <string name="no_moners">no moners :(</string>
     <string name="you_be_rich">That\'s alright, you\'ll be a rich man soon :prayge:</string>
     <string name="donate">donate :)</string>
