@@ -18,7 +18,6 @@ import ani.dantotsu.media.anime.player.SubtitleStylingStore
 import ani.dantotsu.media.anime.player.VideoFilterTheme
 import ani.dantotsu.media.anime.player.upscaler.CunnyUpscalerProvider
 import ani.dantotsu.media.anime.player.upscaler.UpscalerBundleManager
-import ani.dantotsu.media.anime.player.upscaler.UpscalerChoices
 import ani.dantotsu.restartApp
 import ani.dantotsu.settings.PlayerSettingsActivity
 import ani.dantotsu.settings.ResolutionPriorityDialog
@@ -36,7 +35,6 @@ import ani.dantotsu.settings.rows.stepperRow
 import ani.dantotsu.settings.rows.switchRow
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
-import ani.dantotsu.snackString
 import ani.dantotsu.util.customAlertDialog
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -237,32 +235,12 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
                 PrefManager.setVal(PrefName.VideoDebandMode, DEBAND_KEYS[i])
                 ActiveVideoPipeline.refreshFromPrefs()
             },
-            // CuNNy shader upscaler (mpv); off by default. Applied to the playing video at once.
-            pickRow(
-                "upscaler", R.string.upscaler, R.drawable.ic_round_high_quality_24, advanced = true,
+            // CuNNy shader upscaler (mpv); Auto by default. Applied to the playing video at once.
+            actionRow(
+                "upscaler", R.string.upscaler, icon = R.drawable.ic_round_high_quality_24, advanced = true,
                 keys = listOf(PrefName.UpscalerProviderId, PrefName.UpscalerProfileId),
-                labels = { c ->
-                    UpscalerChoices.choices(upscaler(c)).map { choice ->
-                        choice.profileName?.let { c.getString(R.string.upscaler_profile, it) }
-                            ?: c.getString(R.string.upscaler_off)
-                    }
-                },
-                current = { c ->
-                    UpscalerChoices.selectedIndex(
-                        UpscalerChoices.choices(upscaler(c)),
-                        PrefManager.getVal(PrefName.UpscalerProviderId),
-                        PrefManager.getVal(PrefName.UpscalerProfileId),
-                    )
-                },
-                onOpen = { host ->
-                    if (upscaler(host.activity) == null) snackString(host.activity.getString(R.string.upscaler_unavailable))
-                },
-            ) { host, i ->
-                val choice = UpscalerChoices.choices(upscaler(host.activity))[i]
-                PrefManager.setVal(PrefName.UpscalerProviderId, choice.providerId)
-                PrefManager.setVal(PrefName.UpscalerProfileId, choice.profileId)
-                ActiveVideoPipeline.refreshFromPrefs()
-            },
+                current = { c -> UpscalerMenu.currentLabel(c, upscaler(c)) },
+            ) { host, _ -> UpscalerMenu.show(host, upscaler(host.activity)) },
             // Dynamic range compression: quieter loud scenes, louder dialogue.
             switchRow(PrefName.AudioNightMode, R.string.audio_night_mode, R.string.audio_night_mode_hint,
                 R.drawable.ic_round_volume_up_24, onChange = applyToPlayer),
