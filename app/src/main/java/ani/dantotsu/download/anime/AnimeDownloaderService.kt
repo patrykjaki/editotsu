@@ -26,6 +26,7 @@ import ani.dantotsu.defaultHeaders
 import ani.dantotsu.download.DownloadProcessorLoop
 import ani.dantotsu.download.DownloadedType
 import ani.dantotsu.download.SingleProcessor
+import ani.dantotsu.download.notifyTimeoutPause
 import ani.dantotsu.download.WifiLossMonitor
 import ani.dantotsu.download.DownloadsManager
 import ani.dantotsu.download.DownloadsManager.Companion.getSubDirectory
@@ -450,22 +451,45 @@ class AnimeDownloaderService : Service() {
      * waiters included). Used by delete-all purge and the Wi-Fi-loss
      * transition. No new lifecycle invented.
      */
+    /** Cancel every queued and running task (the cancel-all body). */
+    private suspend fun cancelAllUnderLock() {
+        mutex.withLock {
+            val queued = AnimeServiceDataSingleton.downloadQueue.toList()
+            val live = currentTasks.toList()
+            (queued + live).forEach { markTaskCancelled(it) }
+            val scopeKeys = (queued.map { it.getTaskName() } +
+                live.map { it.getTaskName() }).toSet()
+            AnimeServiceDataSingleton.downloadQueue.removeAll { it.getTaskName() in scopeKeys }
+            currentTasks.removeAll { it.getTaskName() in scopeKeys }
+            AnimeServiceDataSingleton.progress.keys.removeAll(scopeKeys)
+            // Cancel EVERY live job, including waiters absent from
+            // queue/current. Records retire in each job's finally.
+            downloadJobs.values.forEach { it.cancel() }
+        }
+    }
+
+    /**
+     * Android 15+: a dataSync foreground service gets 6 hours per 24 hours.
+     * When that runs out the service must stop within seconds or the app
+     * crashes, so cancel everything through the cancel-all path and stop.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Logger.log("Anime download service timed out (fgs type $fgsType)")
+        // Short bounded wait on the main thread: the job records are guarded
+        // by the mutex, and the service is destroyed right after this.
+        kotlinx.coroutines.runBlocking {
+            withTimeoutOrNull(2_000) { cancelAllUnderLock() }
+        }
+        // Nothing resumes on its own after the limit.
+        AnimeServiceDataSingleton.downloadQueue.clear()
+        notifyTimeoutPause(this)
+        stopSelf()
+    }
+
     @UnstableApi
     fun cancelAllDownloads() {
         purgeScope.launch {
-            mutex.withLock {
-                val queued = AnimeServiceDataSingleton.downloadQueue.toList()
-                val live = currentTasks.toList()
-                (queued + live).forEach { markTaskCancelled(it) }
-                val scopeKeys = (queued.map { it.getTaskName() } +
-                    live.map { it.getTaskName() }).toSet()
-                AnimeServiceDataSingleton.downloadQueue.removeAll { it.getTaskName() in scopeKeys }
-                currentTasks.removeAll { it.getTaskName() in scopeKeys }
-                AnimeServiceDataSingleton.progress.keys.removeAll(scopeKeys)
-                // Cancel EVERY live job, including waiters absent from
-                // queue/current. Records retire in each job's finally.
-                downloadJobs.values.forEach { it.cancel() }
-            }
+            cancelAllUnderLock()
             updateNotification()
             // Correction-2 Blocker 2: never steal the stop from a live
             // purge transaction (it owns the final stop decision).
