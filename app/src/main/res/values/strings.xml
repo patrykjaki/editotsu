@@ -1068,6 +1068,9 @@
     <string name="widget_continue_empty_title">Nothing in progress</string>
     <string name="widget_continue_empty_detail">Open Editotsu to start</string>
     <string name="widget_continue_chapter">Chapter %1$s (%2$d/%3$d)</string>
+    <string name="anilist_rate_limited">Rate limited. Try after %1$d seconds</string>
+    <string name="anilist_token_expired">AniList login expired, log in again</string>
+    <string name="anilist_error_fetching">Error fetching AniList data: %1$s</string>
     <string name="post_failed">Could not post to AniList</string>
     <string name="error">Some error occurred</string>
     <string name="error_msg">Error: %1$s</string>

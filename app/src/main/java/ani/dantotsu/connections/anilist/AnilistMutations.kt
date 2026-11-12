@@ -143,14 +143,9 @@ class AnilistMutations {
                 }
             }
         """.trimIndent()
-        val variables = """
-            {
-                "name": "$name",
-                "type": "$type"
-            }
-        """.trimIndent()
+        val variables = deleteCustomListVariables(name, type).toString()
         val result = executeQuery<JsonObject>(query, variables)
-        return result?.get("errors") == null
+        return result != null && result["errors"] == null
     }
 
     suspend fun updateCustomLists(
@@ -760,4 +755,10 @@ internal fun editListVariables(
     status?.let { put("status", it) }
     customList?.let { list -> putJsonArray("customLists") { list.forEach { add(it) } } }
     advancedScores?.let { list -> putJsonArray("advancedScores") { list.forEach { add(it) } } }
+}
+
+/** Variables for DeleteCustomList; built as JSON so quotes and backslashes in the name survive. */
+internal fun deleteCustomListVariables(name: String, type: String): JsonObject = buildJsonObject {
+    put("name", name)
+    put("type", type)
 }
