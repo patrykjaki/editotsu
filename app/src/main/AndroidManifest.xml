@@ -73,11 +73,6 @@
         android:theme="@style/Theme.Dantotsu"
         android:usesCleartextTraffic="true"
         tools:targetApi="tiramisu">
-        <!-- MAX MERGE M4C OCR: on-demand ML Kit OCR model downloads. -->
-        <meta-data
-            android:name="com.google.mlkit.vision.DEPENDENCIES"
-            android:value="ocr,ocr_japanese" />
-
         <receiver
             android:name=".widgets.upcoming.UpcomingWidget"
             android:exported="true">
@@ -382,8 +377,20 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <!-- Hosts are listed one by one: a filter with a scheme and no host would
+                     also match the login callbacks (editotsu://anilist, editotsu://mal)
+                     and the add-repo links, which other activities handle. -->
                 <data android:scheme="editotsu" />
                 <data android:scheme="dantotsu" />
+                <data android:host="open" />
+                <data android:host="media" />
+                <data android:host="anime" />
+                <data android:host="watch" />
+                <data android:host="manga" />
+                <data android:host="read" />
+                <data android:host="user" />
+                <data android:host="u" />
+                <data android:host="profile" />
             </intent-filter>
         </activity>
         <activity
@@ -521,21 +528,6 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
-
-        <service
-            android:name=".media.anime.cast.CastProxyServerService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
-        <activity
-            android:name=".media.anime.cast.CastExpandedControllerActivity"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
-
-        <meta-data
-            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
-            android:value="ani.dantotsu.media.anime.cast.DantotsuCastOptionsProvider" />
     </application>
 
 </manifest>

@@ -14,7 +14,6 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 interface EngineDispatcher {
     fun post(action: () -> Unit)
@@ -117,8 +116,6 @@ class MpvPlaybackEngine(
         const val MPV_EVENT_END_FILE = 7
         const val MPV_EVENT_FILE_LOADED = 8
         const val MPV_EVENT_PLAYBACK_RESTART = 21
-
-        private val engineGenerationSeq = AtomicLong(0L)
     }
 
     enum class LoadOperationState {
@@ -183,7 +180,6 @@ class MpvPlaybackEngine(
         }
     }
 
-    private val engineGen = engineGenerationSeq.incrementAndGet()
     private val listeners = CopyOnWriteArraySet<PlaybackListener>()
 
     private val releaseRequested = AtomicBoolean(false)
@@ -191,8 +187,6 @@ class MpvPlaybackEngine(
     private var observerRegistered = false
 
     private var mpvClient: MpvClient = clientFactory.createFresh()
-    private var ownerToken: MpvOwnerToken? = null
-    private var ownerRequestId: Long? = null
 
     var engineLifecycle: EngineLifecycle = EngineLifecycle.New
         private set
@@ -338,7 +332,6 @@ class MpvPlaybackEngine(
         if (isInitialized || releaseRequested.get() || engineLifecycle is EngineLifecycle.Failed) return
         engineLifecycle = EngineLifecycle.Initializing
 
-        // In test environments or environments where MpvNativeRuntime is bypassed/synchronized
         try {
             val targetContext = context?.applicationContext ?: context
             ani.dantotsu.util.Logger.log("MPVSTEP 01 before create")
@@ -1328,10 +1321,6 @@ class MpvPlaybackEngine(
         engineLifecycle = EngineLifecycle.Released
         listeners.clear()
 
-        ownerRequestId?.let { reqId ->
-            MpvNativeRuntime.cancel(reqId)
-        }
-
         pendingLoadRequest?.let { req ->
             try { req.sourceLease?.close() } catch (_: Exception) {}
         }
@@ -1363,14 +1352,7 @@ class MpvPlaybackEngine(
                 activeEntryId = null
                 try {
                     mpvClient.destroy()
-                } catch (t: Throwable) {
-                    ownerToken?.let { tok ->
-                        MpvNativeRuntime.poisonFromOwner(tok, t)
-                    }
-                }
-                ownerToken?.let { tok ->
-                    MpvNativeRuntime.finishOwnerOnRuntime(tok)
-                }
+                } catch (_: Throwable) {}
             } catch (_: Exception) {}
             engineDispatcher.quit()
         }

@@ -9,7 +9,7 @@ body:
       description: Provide a detailed explanation of your question or query.
       placeholder: |
         Example:
-          "How do I customize the settings in Dartotsu to optimize performance?"
+          "How do I customize the settings in Editotsu to optimize performance?"
     validations:
       required: true
 

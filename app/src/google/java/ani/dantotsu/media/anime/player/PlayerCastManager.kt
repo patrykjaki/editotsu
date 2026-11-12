@@ -43,7 +43,7 @@ class PlayerCastManager(
     private val activity: AppCompatActivity,
     private val playerView: View,
     private val onCastStateChanged: (isPlaying: Boolean) -> Unit
-) : SessionAvailabilityListener {
+) : SessionAvailabilityListener, PlayerCastController {
 
     var castPlayer: CastPlayer? = null
         private set
@@ -61,7 +61,7 @@ class PlayerCastManager(
     private var remotePlaybackEngine: PlaybackEngine? = null
     private var playbackCoordinator: PlaybackCoordinator? = null
 
-    var castScreenView: CastScreenView? = null
+    override var castScreenView: CastScreenView? = null
 
     private companion object {
         /** One thread for Cast init across player sessions (was one leaked thread per open). */
@@ -70,15 +70,15 @@ class PlayerCastManager(
 
     var activeDeviceName: String? = null
         private set
-    var currentPositionMs: Long = 0L
+    override var currentPositionMs: Long = 0L
         private set
     var currentDurationMs: Long = 0L
         private set
     var isBuffering: Boolean = false
         private set
 
-    var onSessionStartedListener: ((deviceName: String?, owner: PlaybackEngine?) -> Unit)? = null
-    var onSessionEndedListener: ((owner: PlaybackEngine?, resumePositionMs: Long, shouldPlay: Boolean) -> Unit)? = null
+    override var onSessionStartedListener: ((deviceName: String?, owner: PlaybackEngine?) -> Unit)? = null
+    override var onSessionEndedListener: ((owner: PlaybackEngine?, resumePositionMs: Long, shouldPlay: Boolean) -> Unit)? = null
 
     private val progressHandler = Handler(Looper.getMainLooper())
     private var isTrackingProgress = false
@@ -230,7 +230,7 @@ class PlayerCastManager(
         progressHandler.removeCallbacks(progressRunnable)
     }
 
-    fun setupCastButton(
+    override fun setupCastButton(
         castButton: CustomCastButton,
         media: Media?,
         video: Video?,
@@ -281,12 +281,12 @@ class PlayerCastManager(
      *
      * @return true when the item was sent to the TV; the caller must not start local playback.
      */
-    fun updateCurrentMedia(
+    override fun updateCurrentMedia(
         mediaItem: MediaItem?,
         engine: PlaybackEngine?,
-        video: Video? = null,
-        coordinator: PlaybackCoordinator? = null,
-        startPositionMs: Long = 0L,
+        video: Video?,
+        coordinator: PlaybackCoordinator?,
+        startPositionMs: Long,
     ): Boolean {
         val wasCasting = isCasting()
         this.currentMediaItem = mediaItem
@@ -297,17 +297,19 @@ class PlayerCastManager(
         return sendToReceiver(mediaItem, startPositionMs)
     }
 
-    fun isCasting(): Boolean = castPlayer?.isCastSessionAvailable == true && castPlayer?.currentMediaItem != null
+    override fun isRemotePlaying(): Boolean = castPlayer?.isPlaying == true
 
-    fun pause() {
+    override fun isCasting(): Boolean = castPlayer?.isCastSessionAvailable == true && castPlayer?.currentMediaItem != null
+
+    override fun pause() {
         castPlayer?.pause()
     }
 
-    fun play() {
+    override fun play() {
         castPlayer?.play()
     }
 
-    fun togglePlayPause() {
+    override fun togglePlayPause() {
         castPlayer?.let { cp ->
             if (cp.isPlaying) {
                 cp.pause()
@@ -317,7 +319,7 @@ class PlayerCastManager(
         }
     }
 
-    fun seekTo(positionMs: Long) {
+    override fun seekTo(positionMs: Long) {
         currentPositionMs = positionMs
         castPlayer?.seekTo(positionMs)
     }
@@ -326,7 +328,7 @@ class PlayerCastManager(
         castPlayer?.playbackParameters = PlaybackParameters(speed)
     }
 
-    fun setRemoteVolume(volumeFraction: Float) {
+    override fun setRemoteVolume(volumeFraction: Float) {
         try {
             castContext?.sessionManager?.currentCastSession?.volume = volumeFraction.toDouble().coerceIn(0.0, 1.0)
         } catch (e: Exception) {
@@ -334,7 +336,7 @@ class PlayerCastManager(
         }
     }
 
-    fun disconnect() {
+    override fun disconnect() {
         try {
             castContext?.sessionManager?.endCurrentSession(true)
         } catch (e: Exception) {
@@ -481,7 +483,7 @@ class PlayerCastManager(
         onSessionEndedListener?.invoke(remotePlaybackEngine, resumePosition, wasPlaying)
     }
 
-    fun release() {
+    override fun release() {
         remotePlaybackEngine = null
         stopProgressTracking()
         try {

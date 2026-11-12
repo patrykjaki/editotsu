@@ -13,11 +13,7 @@ package ani.dantotsu.parsers
  * {
  *   "drmScheme": "widevine",
  *   "licenseUrl": "https://example.com/license",
- *   "licenseHeaders": { "Authorization": "Bearer ..." },
- *   "offline": {
- *     "manifestUrl": "...", "licenseUrl": "...",
- *     "licenseHeaders": {...}, "headers": {...}
- *   }
+ *   "licenseHeaders": { "Authorization": "Bearer ..." }
  * }
  * ```
  * Returns null for anything absent or malformed, so a clear stream — or an
@@ -37,26 +33,10 @@ fun drmInfoFromMap(root: Map<String, Any?>?): DrmInfo? {
         }.toMap()
     }
 
-    val offline = (root["offline"] as? Map<String, Any?>)?.let { off ->
-        val manifest = (off["manifestUrl"] as? String)?.trim().orEmpty()
-        val offlineLicense = (off["licenseUrl"] as? String)?.trim().orEmpty()
-        if (manifest.isEmpty() || offlineLicense.isEmpty()) {
-            null
-        } else {
-            OfflineDrmInfo(
-                manifestUrl = manifest,
-                licenseUrl = offlineLicense,
-                licenseHeaders = headersOf(off, "licenseHeaders"),
-                headers = headersOf(off, "headers"),
-            )
-        }
-    }
-
     return DrmInfo(
         scheme = (root["drmScheme"] as? String)?.trim().ifNullOrBlank { "widevine" },
         licenseUrl = licenseUrl,
         licenseHeaders = headersOf(root, "licenseHeaders"),
-        offline = offline,
     )
 }
 
@@ -71,6 +51,8 @@ sealed interface DrmParseResult {
     data class Invalid(val reason: String) : DrmParseResult
 }
 
+// "offline" (a download-license block some extensions send) is not read, but
+// its presence still marks the stream as DRM rather than clear.
 private val DRM_SIGNAL_KEYS = setOf("drmScheme", "licenseUrl", "offline")
 
 private fun String?.ifNullOrBlank(default: () -> String): String =
