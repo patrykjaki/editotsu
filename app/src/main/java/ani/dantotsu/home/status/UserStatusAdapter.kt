@@ -52,7 +52,7 @@ class UserStatusAdapter(userList: ArrayList<User>) :
         init {
             itemView.setOnClickListener {
                 if (user[bindingAdapterPosition].activity.isEmpty()) {
-                    snackString("No activity")
+                    snackString(R.string.no_activity)
                     return@setOnClickListener
                 }
                 StatusActivity.user = user
