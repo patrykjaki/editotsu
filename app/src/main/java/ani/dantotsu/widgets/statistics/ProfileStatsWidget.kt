@@ -127,6 +127,10 @@ class ProfileStatsWidget : AppWidgetProvider() {
             animeCount: Int, episodesWatched: Int,
             mangaCount: Int, chaptersRead: Int
         ) {
+            // Network before switching to Main: the download must not block the app's main thread.
+            val avatarBitmap = withContext(Dispatchers.IO) {
+                avatarUrl?.takeIf { it.isNotEmpty() }?.let { downloadImageAsBitmap(it) }
+            }
             withContext(Dispatchers.Main) {
                 fun buildViews(): RemoteViews =
                     RemoteViews(context.packageName, R.layout.statistics_widget).apply {
@@ -154,10 +158,7 @@ class ProfileStatsWidget : AppWidgetProvider() {
                         setTextColor(R.id.bottomRightItem, titleTextColor)
                         setTextColor(R.id.bottomRightLabel, statsTextColor)
                         
-                        avatarUrl?.takeIf { it.isNotEmpty() }?.let { url ->
-                            val avatarBitmap = downloadImageAsBitmap(url)
-                            setImageViewBitmap(R.id.userAvatar, avatarBitmap)
-                        }
+                        avatarBitmap?.let { setImageViewBitmap(R.id.userAvatar, it) }
                         
                         setTextViewText(R.id.userLabel, context.getString(R.string.user_stats, userName))
                         setTextViewText(R.id.topLeftItem, animeCount.toString())
