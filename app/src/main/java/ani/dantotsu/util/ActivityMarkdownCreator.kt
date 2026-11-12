@@ -12,6 +12,7 @@ import androidx.core.widget.addTextChangedListener
 import ani.dantotsu.R
 import ani.dantotsu.buildMarkwon
 import ani.dantotsu.connections.anilist.Anilist
+import ani.dantotsu.connections.anilist.AnilistMutations
 import ani.dantotsu.databinding.ActivityMarkdownCreatorBinding
 import ani.dantotsu.initActivity
 import ani.dantotsu.navBarHeight
@@ -220,7 +221,7 @@ class ActivityMarkdownCreator : AppCompatActivity() {
                 setPosButton(R.string.ok) {
                     launchIO {
                         val isEdit = editId != -1
-                        val success = when (type) {
+                        val outcome = when (type) {
                             "activity" -> if (isEdit) {
                                 Anilist.mutation.postActivity(text, editId)
                             } else {
@@ -241,7 +242,10 @@ class ActivityMarkdownCreator : AppCompatActivity() {
 
                             "bio" -> {
                                 val ok = Anilist.mutation.updateUserBio(text)
-                                if (ok) "Profile bio updated" else "Failed to update bio"
+                                AnilistMutations.PostResult(
+                                    ok,
+                                    if (ok) "Profile bio updated" else "Failed to update bio"
+                                )
                             }
 
                             "thread" -> {
@@ -278,14 +282,12 @@ class ActivityMarkdownCreator : AppCompatActivity() {
                                 Anilist.mutation.postMessage(userId, text, isPrivate = private)
                             }
 
-                            else -> "Error: Unknown type"
+                            else -> AnilistMutations.PostResult(false, "Error: Unknown type")
                         }
-                        val isSuccess = success == getString(R.string.success) ||
-                                success == "Success" ||
-                                success == "Profile bio updated"
                         withContext(Dispatchers.Main) {
-                            toast(success)
-                            if (isSuccess) {
+                            toast(outcome.message)
+                            // On failure the editor and its text stay open for a retry.
+                            if (outcome.ok) {
                                 finish()
                             }
                         }
