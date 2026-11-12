@@ -14,25 +14,37 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
+        <ImageButton
+            android:id="@+id/extensionsBack"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="4dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/back"
+            app:srcCompat="@drawable/ic_round_arrow_back_ios_new_24"
+            app:tint="?attr/colorOnBackground" />
+
         <TextView
             android:id="@+id/extensions"
             android:layout_width="0dp"
-            android:layout_height="56dp"
-            android:layout_marginStart="24dp"
+            android:layout_height="64dp"
+            android:layout_marginStart="4dp"
             android:layout_weight="1"
+            android:accessibilityHeading="true"
             android:ellipsize="end"
             android:fontFamily="@font/poppins_bold"
             android:gravity="center_vertical"
             android:maxLines="1"
             android:text="@string/extensions"
-            android:textColor="?attr/colorPrimary"
-            android:textSize="20sp" />
+            android:textColor="?attr/colorOnBackground"
+            android:textSize="22sp"
+            tools:ignore="UnusedAttribute" />
 
         <ImageButton
             android:id="@+id/extensionsMenuButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_marginEnd="12dp"
+            android:layout_marginEnd="4dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/extensions_more_options"
             app:srcCompat="@drawable/ic_round_dots_vertical_24"
@@ -85,7 +97,7 @@
             android:id="@+id/extensionsStatusChips"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="8dp"
             app:selectionRequired="true"
             app:singleLine="true"
             app:singleSelection="true">

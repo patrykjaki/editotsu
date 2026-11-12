@@ -66,6 +66,7 @@ class NovelExtensionsFragment : Fragment(),
         binding.allNovelExtensionsRecyclerView.isNestedScrollingEnabled = false
         binding.allNovelExtensionsRecyclerView.adapter = adapter
         binding.allNovelExtensionsRecyclerView.layoutManager = SafeLinearLayoutManager(context)
+        binding.allNovelExtensionsRecyclerView.addItemDecoration(ExtensionCardDecoration())
         (binding.allNovelExtensionsRecyclerView.layoutManager as LinearLayoutManager).isItemPrefetchEnabled =
             true
 

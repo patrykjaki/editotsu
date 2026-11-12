@@ -5,8 +5,11 @@
     android:id="@+id/extensionCardView"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:minHeight="64dp"
     android:orientation="horizontal"
+    android:paddingStart="16dp"
     android:paddingTop="8dp"
+    android:paddingEnd="4dp"
     android:paddingBottom="8dp">
 
     <ImageView
@@ -30,7 +33,8 @@
             android:layout_height="wrap_content"
             android:fontFamily="@font/poppins_semi_bold"
             android:text="@string/extension_name"
-            android:textSize="15sp" />
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="16sp" />
 
         <TextView
             android:id="@+id/extensionVersionTextView"
@@ -46,11 +50,10 @@
         android:id="@+id/closeTextView"
         android:layout_width="48dp"
         android:layout_height="48dp"
-        android:layout_marginEnd="8dp"
         android:padding="12dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/extensions_row_install"
         android:layout_gravity="center_vertical"
         android:src="@drawable/ic_download_24"
-        app:tint="?attr/colorOnBackground" />
+        app:tint="?attr/colorOnSurfaceVariant" />
 </LinearLayout>

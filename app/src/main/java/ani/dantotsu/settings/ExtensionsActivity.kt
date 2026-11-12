@@ -140,6 +140,17 @@ class ExtensionsActivity : AppCompatActivity() {
             topMargin = statusBarHeight
             bottomMargin = navBarHeight
         }
+        // The shared heights are measured by the first activity; when this screen is the
+        // first one (shortcut, restored task) they are still 0, so read the real insets too.
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.settingsContainer) { v, insets ->
+            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            v.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                if (topMargin < bars.top) topMargin = bars.top
+                if (bottomMargin < bars.bottom) bottomMargin = bars.bottom
+            }
+            insets
+        }
+        binding.extensionsBack.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

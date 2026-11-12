@@ -60,6 +60,7 @@ class AnimeExtensionsFragment : Fragment(),
         binding.allExtensionsRecyclerView.isNestedScrollingEnabled = false
         binding.allExtensionsRecyclerView.adapter = adapter
         binding.allExtensionsRecyclerView.layoutManager = SafeLinearLayoutManager(context)
+        binding.allExtensionsRecyclerView.addItemDecoration(ExtensionCardDecoration())
         (binding.allExtensionsRecyclerView.layoutManager as LinearLayoutManager).isItemPrefetchEnabled =
             true
 
