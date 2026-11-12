@@ -14,6 +14,7 @@ import ani.dantotsu.connections.comments.CommentsAPI
 import ani.dantotsu.connections.comments.CommentsOptIn
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.notifications.TaskScheduler
+import ani.dantotsu.others.CrashProcess
 import ani.dantotsu.others.DisabledReports
 import ani.dantotsu.parsers.AnimeSources
 import ani.dantotsu.parsers.MangaSources
