@@ -27,9 +27,9 @@ import ani.dantotsu.settings.rows.SettingsHost
 import ani.dantotsu.settings.rows.SettingsScreen
 import ani.dantotsu.settings.rows.SettingsScreenActivity
 import ani.dantotsu.settings.rows.actionRow
-import ani.dantotsu.settings.rows.choiceRow
 import ani.dantotsu.settings.rows.segmentedRow
 import ani.dantotsu.settings.rows.sliderRow
+import ani.dantotsu.settings.rows.textSegment
 import ani.dantotsu.settings.rows.switchRow
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
@@ -162,8 +162,8 @@ object AppearanceScreen : SettingsScreen("appearance", R.string.settings_appeara
                 onClick = { host, _ -> pickColor(host) }),
         )),
         Section(R.string.general, listOf(
-            choiceRow(PrefName.DefaultStartUpTab, R.string.startUpTab, R.drawable.ic_round_home_24,
-                labels = { c -> listOf(c.getString(R.string.anime), c.getString(R.string.home), c.getString(R.string.manga)) },
+            segmentedRow(PrefName.DefaultStartUpTab, R.string.startUpTab, R.drawable.ic_round_home_24,
+                listOf(textSegment(R.string.anime), textSegment(R.string.home), textSegment(R.string.manga)),
                 onChange = { host, _ -> initActivity(host.activity) }),
             switchRow(PrefName.ContinueMedia, R.string.always_continue_content, R.string.always_continue_content_desc,
                 R.drawable.ic_round_play_arrow_24),

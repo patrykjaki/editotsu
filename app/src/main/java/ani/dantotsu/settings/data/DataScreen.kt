@@ -1,7 +1,5 @@
 package ani.dantotsu.settings.data
 
-import ani.dantotsu.settings.rows.ChoiceSheet
-import ani.dantotsu.settings.rows.ChoiceOption
 import android.content.Intent
 import android.net.Uri
 import androidx.biometric.BiometricManager
@@ -25,6 +23,10 @@ import ani.dantotsu.settings.rows.SettingsScreen
 import ani.dantotsu.settings.rows.actionRow
 import ani.dantotsu.settings.rows.choiceRow
 import ani.dantotsu.settings.rows.customRow
+import ani.dantotsu.settings.rows.segmentsRow
+import ani.dantotsu.settings.rows.stepperRow
+import ani.dantotsu.settings.rows.stepsRow
+import ani.dantotsu.settings.rows.textSegment
 import ani.dantotsu.settings.rows.switchRow
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
@@ -92,22 +94,17 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
                 }),
             actionRow("purge_downloads", R.string.purge_downloads, R.string.purge_downloads_desc,
                 R.drawable.ic_round_delete_24, onClick = { host, _ -> purgeAll(host) }),
-            actionRow("TorrentRetainedCacheQuota", R.string.torrent_cache_quota, icon = R.drawable.ic_round_folder_24,
-                keys = listOf(PrefName.TorrentRetainedCacheQuota),
-                current = { quotaLabels(it)[quotaIndex()] },
-                onClick = { host, row ->
-                    val labels = quotaLabels(host.activity)
-                    ChoiceSheet.single(
-                        host.activity, host.activity.getString(R.string.torrent_cache_quota),
-                        labels.map { ChoiceOption(it) }, quotaIndex(),
-                    ) { index ->
-                        val chosen = QUOTAS[index]
-                        PrefManager.setVal(PrefName.TorrentRetainedCacheQuota, chosen)
-                        row.setValue(labels[index])
-                        val cacheMgr = TorrentCacheManager.getInstance(host.activity)
-                        host.activity.lifecycleScope.launch(Dispatchers.IO) { cacheMgr.evictIfNeeded(chosen) }
-                    }
-                }),
+            // Stored in bytes; the stepper walks QUOTAS (the last one is unlimited).
+            stepsRow(
+                "TorrentRetainedCacheQuota", R.string.torrent_cache_quota, QUOTAS.size,
+                label = { c, i -> quotaLabels(c)[i] }, get = ::quotaIndex,
+                icon = R.drawable.ic_round_folder_24, keys = listOf(PrefName.TorrentRetainedCacheQuota),
+            ) { host, index ->
+                val chosen = QUOTAS[index]
+                PrefManager.setVal(PrefName.TorrentRetainedCacheQuota, chosen)
+                val cacheMgr = TorrentCacheManager.getInstance(host.activity)
+                host.activity.lifecycleScope.launch(Dispatchers.IO) { cacheMgr.evictIfNeeded(chosen) }
+            },
             actionRow("clear_torrent_cache", R.string.clear_torrent_cache, icon = R.drawable.ic_round_delete_24,
                 current = { (it as SettingsDataActivity).torrentCacheUsageText() },
                 onClick = { host, row -> clearTorrentCache(host, row) }),
@@ -126,8 +123,10 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
                 details = { c -> listOf(null, c.getString(R.string.download_manager_external_desc, "1DM"),
                     c.getString(R.string.download_manager_external_desc, "ADM")) }),
             switchRow(PrefName.DownloadWifiOnly, R.string.download_wifi_only, icon = R.drawable.lan_24),
-            choiceRow(PrefName.MaxParallelDownloads, R.string.max_parallel_downloads, R.drawable.ic_download_24,
-                labels = { c -> listOf(c.getString(R.string.max_parallel_downloads_off)) + (1..10).map { it.toString() } }),
+            // 0 = one at a time (no parallel limit set), else up to 10.
+            stepperRow(PrefName.MaxParallelDownloads, R.string.max_parallel_downloads, R.string.max_parallel_downloads_desc,
+                R.drawable.ic_download_24, from = 0f, to = 10f, step = 1f,
+                format = { c, v -> if (v < 1f) c.getString(R.string.max_parallel_downloads_off_short) else v.toInt().toString() }),
             purgeRow("purge_anime", R.string.purge_anime_downloads, R.string.anime) { host ->
                 Injekt.get<DownloadsManager>().purgeDownloads(MediaType.ANIME)
             },
@@ -161,20 +160,12 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
             choiceRow(PrefName.AutoBackupInterval, R.string.auto_backup_interval, R.drawable.ic_round_auto_awesome_24,
                 labels = ::intervalLabels, refresh = true,
                 onChange = { host, which -> AutoBackupWorker.schedule(host.activity, which) }),
-            actionRow("AutoBackupMaxCopies", R.string.auto_backup_max_copies, icon = R.drawable.backup_restore,
-                keys = listOf(PrefName.AutoBackupMaxCopies),
-                current = { it.getString(R.string.backups_to_retain_count, PrefManager.getVal<Int>(PrefName.AutoBackupMaxCopies)) },
-                onClick = { host, row ->
-                    val current = PrefManager.getVal<Int>(PrefName.AutoBackupMaxCopies)
-                    ChoiceSheet.single(
-                        host.activity, host.activity.getString(R.string.auto_backup_max_copies),
-                        COPY_COUNTS.map { ChoiceOption(it.toString()) },
-                        COPY_COUNTS.indexOf(current).coerceAtLeast(0),
-                    ) { which ->
-                        PrefManager.setVal(PrefName.AutoBackupMaxCopies, COPY_COUNTS[which])
-                        row.setValue(host.activity.getString(R.string.backups_to_retain_count, COPY_COUNTS[which]))
-                    }
-                }),
+            segmentsRow(
+                "AutoBackupMaxCopies", R.string.auto_backup_max_copies,
+                COPY_COUNTS.map { n -> textSegment { n.toString() } },
+                icon = R.drawable.backup_restore, keys = listOf(PrefName.AutoBackupMaxCopies),
+                get = { COPY_COUNTS.indexOf(PrefManager.getVal<Int>(PrefName.AutoBackupMaxCopies)).let { if (it < 0) 2 else it } },
+            ) { _, which -> PrefManager.setVal(PrefName.AutoBackupMaxCopies, COPY_COUNTS[which]) },
             actionRow("auto_backup", R.string.auto_backup, icon = R.drawable.backup_restore,
                 current = { c ->
                     val timestamp = PrefManager.getVal<Long>(PrefName.LastAutoBackupTimestamp)

@@ -248,8 +248,8 @@ class RowAdapter(
                     kind.set(host, next)
                     show()
                 }
-                b.rowMinus.setOnClickListener { step(-kind.step) }
-                b.rowPlus.setOnClickListener { step(kind.step) }
+                repeatOnHold(b.rowMinus) { step(-kind.step) }
+                repeatOnHold(b.rowPlus) { step(kind.step) }
                 show()
             }
 
@@ -259,10 +259,16 @@ class RowAdapter(
                 kind.options.forEachIndexed { i, option ->
                     val button = MaterialButton(context, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
                         id = View.generateViewId()
-                        setIconResource(option.icon)
-                        iconPadding = 0
-                        iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
-                        contentDescription = context.getString(option.label)
+                        if (option.icon != null) {
+                            setIconResource(option.icon)
+                            iconPadding = 0
+                            iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+                            contentDescription = option.text(context)
+                        } else {
+                            text = option.text(context)
+                            isAllCaps = false
+                        }
+                        isEnabled = enabled
                         isCheckable = true
                         minWidth = 0
                         minimumWidth = 0
@@ -366,5 +372,38 @@ class RowAdapter(
             val steps = ((value - from) / step).roundToInt()
             return (from + steps * step).coerceIn(from, to)
         }
+    }
+}
+
+/**
+ * Click steps once; holding repeats, faster after the first second, until the finger lifts
+ * or the button turns disabled at the end of the range.
+ */
+private fun repeatOnHold(button: View, action: () -> Unit) {
+    var repeat: Runnable? = null
+    fun stop() {
+        repeat?.let(button::removeCallbacks)
+        repeat = null
+    }
+    button.setOnClickListener { action() }
+    button.setOnLongClickListener {
+        val r = object : Runnable {
+            var count = 0
+            override fun run() {
+                if (!button.isEnabled) return stop()
+                action()
+                count++
+                button.postDelayed(this, if (count < 8) 150L else 60L)
+            }
+        }
+        repeat = r
+        r.run()
+        true
+    }
+    button.setOnTouchListener { _, event ->
+        if (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
+            event.actionMasked == android.view.MotionEvent.ACTION_CANCEL
+        ) stop()
+        false
     }
 }

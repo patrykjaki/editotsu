@@ -1,10 +1,7 @@
 package ani.dantotsu.settings.screens
 
 import android.content.Context
-import android.text.InputType
 import android.util.TypedValue
-import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
@@ -29,13 +26,16 @@ import ani.dantotsu.settings.rows.SettingsHost
 import ani.dantotsu.settings.rows.SettingsScreen
 import ani.dantotsu.settings.rows.actionRow
 import ani.dantotsu.settings.rows.choiceRow
+import ani.dantotsu.settings.rows.segmentedRow
+import ani.dantotsu.settings.rows.segmentsRow
+import ani.dantotsu.settings.rows.stepsRow
+import ani.dantotsu.settings.rows.textSegment
 import ani.dantotsu.settings.rows.customRow
 import ani.dantotsu.settings.rows.sliderRow
 import ani.dantotsu.settings.rows.stepperRow
 import ani.dantotsu.settings.rows.switchRow
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
-import ani.dantotsu.util.customAlertDialog
 import ani.dantotsu.others.FlavorFeatures
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -83,9 +83,6 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
 
     private val applyToPlayer: (SettingsHost, Any) -> Unit = { _, _ -> ActiveVideoPipeline.refreshFromPrefs() }
     private val refreshPreview: (SettingsHost, Any) -> Unit = { host, _ -> host.refresh() }
-
-    private fun speedLabels(): List<String> =
-        PlaybackSpeedSelection.values(PrefManager.getVal(PrefName.CursedSpeeds)).map { "${it}x" }
 
     private fun percent(c: Context, v: Float) = c.getString(R.string.percent_value, (v * 100).roundToInt())
 
@@ -151,35 +148,22 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
         }
     }
 
-    /** Milliseconds typed into a dialog, clamped to ±5000. */
-    private fun delayRow(key: PrefName, @StringRes title: Int) = actionRow(
-        key.name, title, icon = R.drawable.ic_round_audiotrack_24, advanced = true, keys = listOf(key),
-        current = { c -> c.getString(R.string.ms_value, PrefManager.getVal<Int>(key)) },
-    ) { host, _ ->
-        val c = host.activity
-        val input = EditText(c).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
-            setText(PrefManager.getVal<Int>(key).toString())
-            setSelection(text.length)
-            hint = c.getString(R.string.delay_range)
-        }
-        val margin = (24 * c.resources.displayMetrics.density).toInt()
-        val container = FrameLayout(c).apply {
-            setPadding(margin, margin / 2, margin, margin / 2)
-            addView(input)
-        }
-        c.customAlertDialog().apply {
-            setTitle(c.getString(title))
-            setCustomView(container)
-            setPosButton(R.string.ok) {
-                val value = input.text.toString().toIntOrNull()?.coerceIn(-5000, 5000) ?: 0
-                PrefManager.setVal(key, value)
-                ActiveVideoPipeline.refreshFromPrefs()
-                host.refresh()
-            }
-            setNegButton(R.string.cancel)
-            show()
-        }
+    /** Offset in ms, ±50 per tap (hold to run), within ±5000. */
+    private fun delayRow(key: PrefName, @StringRes title: Int) = stepperRow(
+        key, title, icon = R.drawable.ic_round_audiotrack_24, advanced = true,
+        from = -5000f, to = 5000f, step = 50f,
+        format = { c, v -> c.getString(R.string.ms_value, v.toInt()) }, onChange = applyToPlayer,
+    )
+
+    /** The pref is an index into the speed list, which depends on Cursed Speeds. */
+    private fun speedRow(): Row {
+        val speeds = PlaybackSpeedSelection.values(PrefManager.getVal(PrefName.CursedSpeeds))
+        return stepsRow(
+            PrefName.DefaultSpeed.name, R.string.default_speed, speeds.size,
+            label = { _, i -> "${speeds[i]}x" },
+            get = { PrefManager.getVal(PrefName.DefaultSpeed) },
+            icon = R.drawable.ic_round_slow_motion_video_24, keys = listOf(PrefName.DefaultSpeed),
+        ) { _, i -> PrefManager.setVal(PrefName.DefaultSpeed, i) }
     }
 
     private fun colorRow(key: PrefName, @StringRes title: Int, @StringRes summary: Int? = null, advanced: Boolean = false) =
@@ -211,32 +195,28 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
     override fun sections() = listOf(
         Section(R.string.video, listOf(
             // Speed new episodes start at; the player's speed button overrides it per show.
-            pickRow(
-                PrefName.DefaultSpeed.name, R.string.default_speed, R.drawable.ic_round_slow_motion_video_24,
-                listOf(PrefName.DefaultSpeed), labels = { speedLabels() },
-                current = { PrefManager.getVal<Int>(PrefName.DefaultSpeed).coerceIn(0, speedLabels().lastIndex) },
-            ) { _, i -> PrefManager.setVal(PrefName.DefaultSpeed, i) },
+            speedRow(),
             // 50x playback, for the brave. Both lists have 1x at a different index.
             switchRow(PrefName.CursedSpeeds, R.string.cursed_speeds, icon = R.drawable.ic_round_accessible_forward_24,
                 refresh = true) { _, cursed -> PrefManager.setVal(PrefName.DefaultSpeed, if (cursed) 0 else 5) },
             // How the video fills the screen when playback starts (original, zoom, stretch).
-            choiceRow(PrefName.Resize, R.string.default_resize_mode, R.drawable.ic_round_fullscreen_24, labels = {
-                listOf(it.getString(R.string.resize_original), it.getString(R.string.resize_zoom),
-                    it.getString(R.string.resize_stretch))
-            }),
+            segmentedRow(PrefName.Resize, R.string.default_resize_mode, R.drawable.ic_round_fullscreen_24, listOf(
+                textSegment(R.string.resize_original), textSegment(R.string.resize_zoom),
+                textSegment(R.string.resize_stretch),
+            )),
         )),
         Section(R.string.player_filters, listOf(
             // Smooths colour banding in dark gradients; CPU uses ffmpeg gradfun, GPU uses libmpv's deband.
-            pickRow(
-                PrefName.VideoDebandMode.name, R.string.deband_mode, R.drawable.ic_round_gradient_24,
-                listOf(PrefName.VideoDebandMode),
-                labels = { listOf(it.getString(R.string.deband_off), it.getString(R.string.deband_cpu), it.getString(R.string.deband_gpu)) },
-                current = { DEBAND_KEYS.indexOf(PrefManager.getVal<String>(PrefName.VideoDebandMode)).coerceAtLeast(0) },
+            segmentsRow(
+                PrefName.VideoDebandMode.name, R.string.deband_mode,
+                listOf(textSegment(R.string.deband_off), textSegment(R.string.deband_cpu), textSegment(R.string.deband_gpu)),
+                icon = R.drawable.ic_round_gradient_24, keys = listOf(PrefName.VideoDebandMode),
+                get = { DEBAND_KEYS.indexOf(PrefManager.getVal<String>(PrefName.VideoDebandMode)).coerceAtLeast(0) },
             ) { _, i ->
                 PrefManager.setVal(PrefName.VideoDebandMode, DEBAND_KEYS[i])
                 ActiveVideoPipeline.refreshFromPrefs()
             },
-            // CuNNy shader upscaler (mpv); Auto by default. Applied to the playing video at once.
+            // CuNNy shader upscaler (mpv); Off by default, Auto picks by GPU. Applied to the playing video at once.
             actionRow(
                 "upscaler", R.string.upscaler, icon = R.drawable.ic_round_high_quality_24, advanced = true,
                 keys = listOf(PrefName.UpscalerProviderId, PrefName.UpscalerProfileId),
@@ -267,21 +247,21 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
             delayRow(PrefName.AudioDelayMs, R.string.audio_delay),
             delayRow(PrefName.SubtitleDelayMs, R.string.subtitle_delay),
             // Stretches subtitle timing, for subs made for a different frame rate.
-            pickRow(
-                PrefName.SubtitleSpeed.name, R.string.subtitle_speed, R.drawable.ic_round_audiotrack_24,
-                listOf(PrefName.SubtitleSpeed), advanced = true,
-                labels = { c -> SUB_SPEEDS.map { c.getString(R.string.speed_multiplier, it.toString()) } },
-                current = { SUB_SPEEDS.indexOf(PrefManager.getVal<Float>(PrefName.SubtitleSpeed)) },
+            stepsRow(
+                PrefName.SubtitleSpeed.name, R.string.subtitle_speed, SUB_SPEEDS.size,
+                label = { c, i -> c.getString(R.string.speed_multiplier, SUB_SPEEDS[i].toString()) },
+                get = { SUB_SPEEDS.indexOf(PrefManager.getVal<Float>(PrefName.SubtitleSpeed)).let { if (it < 0) 2 else it } },
+                icon = R.drawable.ic_round_audiotrack_24, keys = listOf(PrefName.SubtitleSpeed), advanced = true,
             ) { _, i ->
                 PrefManager.setVal(PrefName.SubtitleSpeed, SUB_SPEEDS[i])
                 ActiveVideoPipeline.refreshFromPrefs()
             },
             // How far the volume gesture may go above 100%.
-            pickRow(
-                PrefName.VolumeBoostCap.name, R.string.volume_boost_cap, R.drawable.ic_round_volume_up_24,
-                listOf(PrefName.VolumeBoostCap), advanced = true,
-                labels = { c -> BOOST_CAPS.map { c.getString(R.string.plus_percent, it) } },
-                current = { BOOST_CAPS.indexOf(PrefManager.getVal<Int>(PrefName.VolumeBoostCap)) },
+            segmentsRow(
+                PrefName.VolumeBoostCap.name, R.string.volume_boost_cap,
+                BOOST_CAPS.map { cap -> textSegment { c -> c.getString(R.string.plus_percent, cap) } },
+                icon = R.drawable.ic_round_volume_up_24, keys = listOf(PrefName.VolumeBoostCap), advanced = true,
+                get = { BOOST_CAPS.indexOf(PrefManager.getVal<Int>(PrefName.VolumeBoostCap)).let { if (it < 0) 2 else it } },
             ) { _, i ->
                 PrefManager.setVal(PrefName.VolumeBoostCap, BOOST_CAPS[i])
                 ActiveVideoPipeline.refreshFromPrefs()
@@ -381,9 +361,9 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
         )),
         Section(R.string.anime, listOf(
             // Anime pages: episode list layout, dub preference, downloads.
-            choiceRow(PrefName.AnimeDefaultView, R.string.default_ep_view, R.drawable.view_list_24, labels = {
-                listOf(it.getString(R.string.list), it.getString(R.string.grid), it.getString(R.string.compact))
-            }),
+            segmentedRow(PrefName.AnimeDefaultView, R.string.default_ep_view, R.drawable.view_list_24, listOf(
+                textSegment(R.string.list), textSegment(R.string.grid), textSegment(R.string.compact),
+            )),
             switchRow(PrefName.SettingsPreferDub, R.string.prefer_dub, R.string.prefer_dub_desc,
                 R.drawable.ic_round_audiotrack_24),
             switchRow(PrefName.ShowYtButton, R.string.show_yt, R.string.show_yt_desc, R.drawable.ic_round_play_circle_24),

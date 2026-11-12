@@ -96,8 +96,9 @@ sealed interface Kind {
         val get: () -> Int,
         val set: (SettingsHost, Int) -> Unit,
     ) : Kind {
+        // Icon segments name the pick on the second line; text segments already show it.
         override fun value(context: Context) =
-            options.getOrNull(get())?.let { context.getString(it.label) }
+            options.getOrNull(get())?.takeIf { it.icon != null }?.text(context)
     }
 
     class Action(
@@ -119,7 +120,20 @@ sealed interface Kind {
     ) : Kind
 }
 
-class Segment(@DrawableRes val icon: Int, @StringRes val label: Int)
+/**
+ * One button of a [Kind.Segmented] row: an icon with [label] as its description, or (no icon)
+ * a short text, [label] or [labelText]. Text segments suit 2-4 options of a few characters.
+ */
+class Segment(
+    @DrawableRes val icon: Int?,
+    @StringRes val label: Int = 0,
+    private val labelText: ((Context) -> String)? = null,
+) {
+    fun text(context: Context): String = labelText?.invoke(context) ?: context.getString(label)
+}
+
+fun textSegment(@StringRes label: Int) = Segment(null, label)
+fun textSegment(text: (Context) -> String) = Segment(null, labelText = text)
 
 /** What an action can change on its own row after it runs. */
 interface RowView {
@@ -237,6 +251,50 @@ fun stepperRow(
         get = { readNumber(key) },
         set = { host, value -> writeNumber(key, value); onChange(host, value) },
     ),
+)
+
+/**
+ * A stepper over a fixed list of values (speeds, sizes): [get] and [set] use the index,
+ * [label] names a value. For prefs that store the value itself, not an index.
+ */
+fun stepsRow(
+    id: String,
+    @StringRes title: Int,
+    count: Int,
+    label: (Context, Int) -> String,
+    get: () -> Int,
+    @StringRes summary: Int? = null,
+    @DrawableRes icon: Int? = null,
+    keys: List<PrefName> = emptyList(),
+    advanced: Boolean = false,
+    visible: () -> Boolean = { true },
+    enabled: () -> Boolean = { true },
+    set: (SettingsHost, Int) -> Unit,
+) = Row(
+    id = id, title = title, summary = summary, icon = icon, advanced = advanced,
+    visible = visible, enabled = enabled, keys = keys,
+    kind = Kind.Stepper(
+        from = 0f, to = (count - 1).toFloat(), step = 1f,
+        get = { get().coerceIn(0, count - 1).toFloat() },
+        set = { host, v -> set(host, v.toInt()) },
+        format = { c, v -> label(c, v.toInt()) },
+    ),
+)
+
+/** A segmented row whose value is not a plain index pref (strings, value lists). */
+fun segmentsRow(
+    id: String,
+    @StringRes title: Int,
+    options: List<Segment>,
+    get: () -> Int,
+    @DrawableRes icon: Int? = null,
+    keys: List<PrefName> = emptyList(),
+    advanced: Boolean = false,
+    visible: () -> Boolean = { true },
+    set: (SettingsHost, Int) -> Unit,
+) = Row(
+    id = id, title = title, icon = icon, advanced = advanced, visible = visible, keys = keys,
+    kind = Kind.Segmented(options = options, get = get, set = set),
 )
 
 /** Int pref holding an index into [options]. */

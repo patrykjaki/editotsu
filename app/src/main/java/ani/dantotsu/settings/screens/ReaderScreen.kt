@@ -8,7 +8,9 @@ import ani.dantotsu.settings.rows.Segment
 import ani.dantotsu.settings.rows.SettingsScreen
 import ani.dantotsu.settings.rows.choiceRow
 import ani.dantotsu.settings.rows.segmentedRow
+import ani.dantotsu.settings.rows.sliderRow
 import ani.dantotsu.settings.rows.stepperRow
+import ani.dantotsu.settings.rows.textSegment
 import ani.dantotsu.settings.rows.switchRow
 import ani.dantotsu.settings.saving.PrefName
 import java.util.Locale
@@ -67,11 +69,11 @@ object ReaderScreen : SettingsScreen("reading", R.string.settings_reading, R.dra
             switchRow(PrefName.VolumeButtonsNovel, R.string.volume_buttons, icon = R.drawable.ic_round_touch_app_24),
             stepperRow(PrefName.LineHeight, R.string.novel_line_height, from = 0.8f, to = 3f, step = 0.1f,
                 format = { _, v -> String.format(Locale.US, "%.1f", v) }, advanced = true),
-            stepperRow(PrefName.Margin, R.string.novel_margin, from = 0f, to = 0.3f, step = 0.01f,
+            sliderRow(PrefName.Margin, R.string.novel_margin, from = 0f, to = 0.3f, step = 0.01f,
                 format = { c, v -> c.getString(R.string.percent_value, (v * 100).roundToInt()) }, advanced = true),
-            stepperRow(PrefName.MaxInlineSize, R.string.novel_max_inline_size, R.string.novel_max_inline_size_desc,
+            sliderRow(PrefName.MaxInlineSize, R.string.novel_max_inline_size, R.string.novel_max_inline_size_desc,
                 from = 200f, to = 4000f, step = 10f, format = { _, v -> v.toInt().toString() }, advanced = true),
-            stepperRow(PrefName.MaxBlockSize, R.string.novel_max_block_size, R.string.novel_max_block_size_desc,
+            sliderRow(PrefName.MaxBlockSize, R.string.novel_max_block_size, R.string.novel_max_block_size_desc,
                 from = 200f, to = 4000f, step = 10f, format = { _, v -> v.toInt().toString() }, advanced = true),
         )),
         Section(R.string.general, listOf(
@@ -79,8 +81,8 @@ object ReaderScreen : SettingsScreen("reading", R.string.settings_reading, R.dra
             switchRow(PrefName.ShowSystemBars, R.string.show_system_bars, icon = R.drawable.ic_round_smart_button_24),
         )),
         Section(R.string.manga, listOf(
-            choiceRow(PrefName.MangaDefaultView, R.string.default_chp_view, R.drawable.view_list_24,
-                labels = { listOf(it.getString(R.string.list), it.getString(R.string.compact)) }),
+            segmentedRow(PrefName.MangaDefaultView, R.string.default_chp_view, R.drawable.view_list_24,
+                listOf(textSegment(R.string.list), textSegment(R.string.compact))),
             switchRow(PrefName.IncludeMangaList, R.string.include_list, R.string.include_list_desc, R.drawable.view_list_24,
                 onChange = { host, _ -> host.activity.restartApp() }),
             switchRow(PrefName.SmartDownloadManga, R.string.smart_download_manga, R.string.smart_download_manga_desc,

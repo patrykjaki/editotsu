@@ -165,8 +165,8 @@ class SettingsKeysTest {
         g(PrefName.UpdateForHPlayer, Location.Player, Boolean::class, false),
         g(PrefName.UpdateForHReader, Location.Reader, Boolean::class, false),
         // 0.8: the default moved from Off to Auto (owner, 2026-11-11). Stored values keep working.
-        g(PrefName.UpscalerProfileId, Location.Player, String::class, "auto"),
-        g(PrefName.UpscalerProviderId, Location.Player, String::class, "cunny"),
+        g(PrefName.UpscalerProfileId, Location.Player, String::class, ""),
+        g(PrefName.UpscalerProviderId, Location.Player, String::class, "off"),
         g(PrefName.UseAlarmManager, Location.General, Boolean::class, false),
         g(PrefName.UseCustomTheme, Location.UI, Boolean::class, false),
         g(PrefName.UseDarkThemeNovel, Location.NovelReader, Boolean::class, false),
