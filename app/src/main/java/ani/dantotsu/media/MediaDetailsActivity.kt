@@ -7,11 +7,14 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.text.SpannableStringBuilder
 import android.view.GestureDetector
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.ProgressBar
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -64,7 +67,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import nl.joery.animatedbottombar.AnimatedBottomBar
 import kotlin.math.abs
@@ -90,6 +92,10 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
     /** False while the activity is bailing out of [onCreate] without any media. */
     val bindingReady get() = ::binding.isInitialized
 
+    /** Ids of a media still being fetched, saved so a rotation during the load keeps them. */
+    private var pendingId = -1
+    private var pendingMalId = 0
+
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         // Batch 2 correction (review HOLD, Blocker 2): retain ONLY lightweight
@@ -98,14 +104,15 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
         if (::media.isInitialized && media.name != "No media found") {
             outState.putInt("saved_media_id", media.id)
             outState.putInt("saved_media_mal_id", media.idMAL ?: 0)
+        } else if (pendingId != -1) {
+            outState.putInt("saved_media_id", pendingId)
+            outState.putInt("saved_media_mal_id", pendingMalId)
         }
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
-
-        super.onCreate(savedInstanceState)
-        var media: Media = intent.getSerialized("media") ?: mediaSingleton ?: emptyMedia()
+        val intentMedia: Media? = intent.getSerialized("media") ?: mediaSingleton
         // Upstream 3f366f69: drop the large extra so Assist/screenshot serialization
         // never attempts to serialize the Media graph.
         intent.removeExtra("media")
@@ -114,33 +121,64 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
         // "media" extra. Intent key always wins when present.
         val intentId = intent.getIntExtra("mediaId", -1).takeIf { it != -1 }
         val savedId = savedInstanceState?.getInt("saved_media_id", -1)?.takeIf { it != -1 }
+        val savedMalId = savedInstanceState?.getInt("saved_media_mal_id", 0)?.takeIf { it != 0 }
+        // A configuration change keeps the ViewModel, so the media already on
+        // screen is reused and nothing is fetched again.
+        val retained = if (savedInstanceState != null) model.shownMedia else null
         val id = intentId ?: savedId ?: -1
-        if (id != -1) {
-            val rescueMode: Boolean = PrefManager.getVal(PrefName.RescueMode)
-            runBlocking {
-                withContext(Dispatchers.IO) {
-                    if (rescueMode) {
-                        // Prefer the MAL identity matching how this screen was
-                        // opened: intent opens use the intent id (unchanged
-                        // behavior); saved-state opens use the saved MAL id.
-                        val malId = intentId
-                            ?: savedInstanceState?.getInt("saved_media_mal_id", 0)?.takeIf { it != 0 }
-                            ?: id
-                        val animeNode = MAL.query.getAnimeDetails(malId)
-                        if (animeNode != null) {
-                            media = Media(animeNode, true)
-                        } else {
-                            val mangaNode = MAL.query.getMangaDetails(malId)
-                            media = if (mangaNode != null) Media(mangaNode, false)
-                            else emptyMedia()
-                        }
-                    } else {
-                        media = Anilist.query.getMedia(id, false) ?: emptyMedia()
-                    }
-                }
-            }
+        val needsFetch = retained == null && id != -1
+        // When a fetch is needed after process death, the restored tab fragments
+        // would start before the views exist; drop them; the pager recreates them.
+        super.onCreate(if (needsFetch) null else savedInstanceState)
+        ThemeManager(this).applyTheme(MediaSingleton.bitmap)
+        // Activity-result launchers must be registered before the activity starts,
+        // so this cannot wait for an async load.
+        launcher = LauncherWrapper(this, ActivityResultContracts.OpenDocumentTree())
+
+        if (!needsFetch) {
+            setUp(retained ?: intentMedia ?: emptyMedia())
+            return
         }
+        pendingId = id
+        pendingMalId = savedMalId ?: 0
+        setContentView(FrameLayout(this).apply {
+            addView(
+                ProgressBar(this@MediaDetailsActivity),
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER
+                )
+            )
+        })
+        lifecycleScope.launch {
+            val fetched = withContext(Dispatchers.IO) {
+                fetchMedia(id, intentId, savedMalId)
+            }
+            if (isFinishing || isDestroyed) return@launch
+            // A failed fetch falls back to the media the screen was opened with.
+            setUp(fetched ?: intentMedia ?: emptyMedia())
+        }
+    }
+
+    private suspend fun fetchMedia(id: Int, intentId: Int?, savedMalId: Int?): Media? {
+        val rescueMode: Boolean = PrefManager.getVal(PrefName.RescueMode)
+        return if (rescueMode) {
+            // Prefer the MAL identity matching how this screen was opened:
+            // intent opens use the intent id; saved-state opens use the saved MAL id.
+            val malId = intentId ?: savedMalId ?: id
+            MAL.query.getAnimeDetails(malId)?.let { Media(it, true) }
+                ?: MAL.query.getMangaDetails(malId)?.let { Media(it, false) }
+        } else {
+            Anilist.query.getMedia(id, false)
+        }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setUp(initial: Media) {
+        var media = initial
         this.media = media
+        pendingId = -1
         if (media.name == "No media found") {
             snackString(media.name)
             // finish(), not a back press: a back callback can keep the activity alive,
@@ -148,11 +186,9 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
             finish()
             return
         }
-        val contract = ActivityResultContracts.OpenDocumentTree()
-        launcher = LauncherWrapper(this, contract)
+        model.shownMedia = media
 
         mediaSingleton = null
-        ThemeManager(this).applyTheme(MediaSingleton.bitmap)
         initActivity(this)
         MediaSingleton.bitmap = null
         MediaSingleton.media = null
@@ -406,6 +442,7 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
             if (it != null) {
                 val oldId = media.id
                 media = it
+                model.shownMedia = it
 
                 // mapping button for LOCAL media
                 if (media.format?.startsWith("LOCAL") == true) {
