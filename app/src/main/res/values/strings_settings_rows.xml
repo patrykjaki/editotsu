@@ -73,9 +73,6 @@
     <string name="resize_original">Original</string>
     <string name="resize_zoom">Zoom</string>
     <string name="resize_stretch">Stretch</string>
-    <string name="outline_outline">Outline</string>
-    <string name="outline_shine">Shine</string>
-    <string name="outline_drop_shadow">Drop shadow</string>
     <string name="source_sub_size">Source subtitle size</string>
     <string name="sub_preview">Subtitle preview</string>
     <string name="seconds_value">%1$d s</string>

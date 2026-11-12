@@ -237,17 +237,19 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
                                 style ?: PrefManager.getVal(PrefName.MangaDefaultView), media, this
                             )
 
-                        downloadManager.reconcileIncompleteDownloads()
-                        for (download in downloadManager.mangaDownloadedTypes) {
-                            if (media.compareName(download.titleName)) {
-                                chapterAdapter.stopDownload(download.uniqueName)
-                            }
-                        }
-
                         binding.mediaSourceRecycler.adapter =
                             ConcatAdapter(headerAdapter, chapterAdapter)
 
+                        val adapter = chapterAdapter
                         lifecycleScope.launch(Dispatchers.IO) {
+                            // One SAF query per downloaded chapter: off the main thread,
+                            // and still before the chapter list loads.
+                            downloadManager.reconcileIncompleteDownloads()
+                            val downloaded = downloadManager.mangaDownloadedTypes
+                                .filter { download -> media.compareName(download.titleName) }
+                            withContext(Dispatchers.Main) {
+                                downloaded.forEach { adapter.stopDownload(it.uniqueName) }
+                            }
                             val offline =
                                 !isOnline(binding.root.context) || PrefManager.getVal(PrefName.OfflineMode)
                             if (offline && media.format != "LOCAL") media.selected!!.sourceIndex =

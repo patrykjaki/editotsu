@@ -94,9 +94,6 @@ class WrappedDrmCallback(private val delegate: HttpMediaDrmCallback) : MediaDrmC
                         .setMultiSession(config.multiSession)
                         .setPlayClearSamplesWithoutKeys(config.playClearContentWithoutKey)
                         .build(WrappedDrmCallback(http))
-                        // A downloaded item carries the id of a license the CDM already
-                        // holds, so restoring it needs no network.
-                        .also { it.setMode(DefaultDrmSessionManager.MODE_PLAYBACK, config.keySetId) }
                 }
             }
     }

@@ -30,8 +30,6 @@ class DrmInfoParserTest {
         assertEquals("widevine", info.scheme)
         assertEquals("https://lic.example/wv", info.licenseUrl)
         assertEquals(mapOf("Authorization" to "Bearer x"), info.licenseHeaders)
-        assertEquals("https://dl.example/manifest.mpd", info.offline!!.manifestUrl)
-        assertEquals("https://dl.example/license", info.offline!!.licenseUrl)
     }
 
     @Test
@@ -39,7 +37,6 @@ class DrmInfoParserTest {
         val info = drmInfoFromMap(mapOf("licenseUrl" to "https://lic.example/wv"))!!
         assertEquals("widevine", info.scheme)
         assertTrue(info.licenseHeaders.isEmpty())
-        assertNull(info.offline)
     }
 
     @Test
@@ -52,14 +49,14 @@ class DrmInfoParserTest {
     }
 
     @Test
-    fun `incomplete offline block is dropped, online kept`() {
+    fun `offline block is ignored, online kept`() {
         val info = drmInfoFromMap(
             mapOf(
                 "licenseUrl" to "https://lic.example/wv",
                 "offline" to mapOf("manifestUrl" to "https://dl.example/m.mpd")
             )
         )!!
-        assertNull(info.offline)
+        assertEquals(DrmInfo(scheme = "widevine", licenseUrl = "https://lic.example/wv"), info)
     }
 
     @Test

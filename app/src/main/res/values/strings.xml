@@ -448,15 +448,9 @@
     <string name="cursed_speeds">Cursed Speeds</string>
     <string name="resize_mode_button">Default Resize Mode</string>
     <string name="subtitles">Subtitles</string>
-    <string name="subtitle_toggle">Subtitles</string>
     <string name="primary_sub_color_select">Subtitle Color</string>
     <string name="secondary_sub_color_select">Subtitle Outline Color</string>
-    <string name="secondary_sub_outline_type_select">Subtitle Outline Type</string>
     <string name="sub_background_color_select">Subtitle Background Color</string>
-    <string name="sub_window_color_select">Subtitle Window Color</string>
-    <string name="sub_window_color_info">"The subtitle window is the part left and right from them. (where the background isn\'t)"</string>
-    <string name="sub_color_info"><b>Note:</b> Changing above settings only affects Soft-Subtitles!</string>
-    <string name="sub_alpha">Subtitle Transparency</string>
     <string name="sub_text_example">Example Sub</string>
     <string name="sub_font_select">Subtitle Font</string>
     <string name="subtitle_font_size">Subtitle Size</string>
@@ -491,7 +485,6 @@
     <string name="watch_complete_percentage_info">The percentage at which your Anilist progress should be updated after watching an episode. \nThis also sets the \% for when to preload links for the next episode.</string>
 
     <string name="behaviour">Behaviour</string>
-    <string name="always_continue">Always Continue from where you left off</string>
     <string name="pause_video_focus">Pause when not in Focus</string>
     <string name="gestures">Volume &amp; Brightness Gestures</string>
     <string name="double_tap">Double tap to Seek</string>
@@ -592,8 +585,9 @@
     <string name="other">Other</string>
     <string name="total_repeats">TOTAL REPEATS</string>
     <string name="custom_lists">Custom Lists</string>
-    <string name="donate_desc">Want to support Editotsu\'s Maintainer?\nConsider Donating</string>
+    <string name="donate_desc">Editotsu is built on Dantotsu.\nWant to support its original author, rebelonion?</string>
     <string name="donate_goal">No donation goal atm</string>
+    <string name="sponsor_dantotsu_author">Sponsor Dantotsu\'s author on GitHub</string>
     <string name="filter">Filter</string>
     <string name="filter_on_list">List Filter</string>
     <string name="filter_on_list_all">All</string>
@@ -1017,7 +1011,7 @@
     <string name="restore_settings">Import Settings</string>
     <string name="restore_settings_underline"><u>Restore Settings</u></string>
     <string name="cast_torrent_unsupported">Cast works with HTTP sources only. Torrents play on this phone.</string>
-    <string name="try_internal_cast_experimental">Try Internal Cast (Experimental)</string>
+    <string name="internal_cast_experimental">Internal Cast (Experimental)</string>
     <string name="comments_button">Enable Comments</string>
     <string name="comments_button_desc">Sends your AniList login token, username and avatar to api.dantotsu.app, run by the Dantotsu project</string>
     <string name="comments_off_info">Comments are off. Turning them on sends your AniList login token, username and avatar to api.dantotsu.app, a server run by the Dantotsu project, not by Editotsu.</string>
@@ -1146,7 +1140,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="button_backup">Backup</string>
     <string name="no_location_selected">No location selected</string>
     <string name="enjoying_app">Enjoying the App?</string>
-    <string name="consider_donating">Consider donating!</string>
+    <string name="consider_donating">Editotsu is built on Dantotsu. Consider donating to its original author, rebelonion!</string>
     <string name="no_moners">no moners :(</string>
     <string name="you_be_rich">That\'s alright, you\'ll be a rich man soon :prayge:</string>
     <string name="donate">donate :)</string>
@@ -1369,6 +1363,9 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="translated_text">Translated Text</string>
     <string name="copy_translation">Copy Translation</string>
     <string name="translating_page">Recognizing &amp; translating page text…</string>
+    <string name="ocr_notice_title">Translate page text</string>
+    <string name="ocr_notice_message">Text is recognised on this device. Text that needs translating is sent to translate.googleapis.com (unofficial endpoint), or to api.mymemory.translated.net if that fails. It leaves the device.</string>
+    <string name="ocr_notice_confirm">Send text</string>
     <string name="no_text_detected">No text detected on page</string>
     <string name="translation_failed_fallback">Translation failed. Showing detected text.</string>
     <string name="ocr_online_notice">Text is recognized on this device, then sent to Google Translate (MyMemory as fallback).</string>
@@ -1443,10 +1440,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="proxy_setup_desc">Configure your Socks5 Proxy</string>
     <string name="clear_stored_episode">Clear Stored Episode Data</string>
     <string name="clear_stored_chapter">Clear Stored Chapter Data</string>
-    <string name="use_additional_codec">Additional Codec Support</string>
     <string name="use_source_sub_styling">Use Source Subtitle Styling</string>
     <string name="use_source_sub_styling_desc">Preserve rich ASS subtitle typesetting, positions, and embedded fonts</string>
-    <string name="textview_sub">Textview Subtitles (Experimental)</string>
     <string name="textview_sub_stroke">Subtitle Stroke</string>
     <string name="textview_sub_bottom_margin">Bottom Margin</string>
     <string name="number_out_of_range">Enter a number from %1$d to %2$d</string>
