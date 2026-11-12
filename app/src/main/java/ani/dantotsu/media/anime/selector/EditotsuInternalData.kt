@@ -113,8 +113,14 @@ data class EditotsuInternalData(
         return if (sizeApprox) "~$text" else text
     }
 
-    /** display name of [tracker] ("nyaa" -> "Nyaa") */
-    fun trackerLabel(): String? = tracker?.let { TRACKER_LABELS[it.lowercase(Locale.ROOT)] ?: it }
+    /**
+     * display name of [tracker]: the id the source sends with its first letter upper-cased
+     * ("example" -> "Example"); "unknown" -> "Other". The app keeps no list of sites.
+     */
+    fun trackerLabel(): String? = tracker?.trim()?.takeIf { it.isNotEmpty() }?.let { id ->
+        if (id.equals("unknown", ignoreCase = true)) "Other"
+        else id.replaceFirstChar { it.titlecase(Locale.ROOT) }
+    }
 
     /** "1080p" style, the format [SourceRowClassifier] uses */
     fun resolutionText(): String? = resolution?.takeIf { it > 0 }?.let { "${it}p" }
@@ -124,15 +130,6 @@ data class EditotsuInternalData(
 
         /** original-audio languages for anime/donghua/aeni: anything else is a dub */
         private val ORIGINAL_LANGS = setOf("ja", "zh", "ko")
-
-        private val TRACKER_LABELS = mapOf(
-            "nyaa" to "Nyaa",
-            "sukebei" to "Sukebei",
-            "nekobt" to "nekoBT",
-            "anidex" to "AniDex",
-            "tokyotosho" to "TokyoTosho",
-            "unknown" to "Other",
-        )
 
         /** [parse] of the video's internalData, plus its `resolution` */
         fun of(video: eu.kanade.tachiyomi.animesource.model.Video?): EditotsuInternalData? =

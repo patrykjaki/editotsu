@@ -446,6 +446,11 @@ dependencies {
 
     implementation(libs.bundles.media3)
     implementation(libs.mediarouter)
+    // Google-only: Chromecast (play-services-cast) and reader OCR (ML Kit).
+    // The fdroid build must not contain them; their code lives in src/google.
+    "googleImplementation"(libs.media3.cast)
+    "googleImplementation"(libs.mlkit.text.japanese)
+    "googleImplementation"(libs.mlkit.text)
     implementation(libs.androidx.compose.runtime)
 
 
@@ -464,8 +469,6 @@ dependencies {
     implementation(libs.readium.adapter.pdfium.document)
     implementation(libs.readium.adapter.pdfium.navigator)
     implementation(libs.image.decoder)
-    implementation(libs.mlkit.text.japanese)
-    implementation(libs.mlkit.text)
     implementation(libs.dialogs)
     implementation(libs.charts)
 

@@ -46,7 +46,9 @@ import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import ani.dantotsu.media.manga.mangareader.ocr.canShowOcrSheet
-import ani.dantotsu.media.manga.mangareader.ocr.OcrTranslationBottomSheet
+import ani.dantotsu.media.manga.mangareader.ocr.OcrPageImage
+import ani.dantotsu.media.manga.mangareader.ocr.OcrTranslation
+import ani.dantotsu.others.FlavorFeatures
 import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.OrientationHelper
@@ -434,43 +436,46 @@ class MangaReaderActivity : AppCompatActivity() {
         // MAX MERGE M4C OCR (upstream aa98472a): on-device Japanese/Latin
         // OCR with optional translation. Bitmap decode failure or a missing
         // page image degrades to a toast; the sheet itself owns all failure
-        // UI and never blocks ordinary reading.
+        // UI and never blocks ordinary reading. Google build only (ML Kit).
+        binding.mangaReaderTranslate.isVisible = FlavorFeatures.googleServices
         binding.mangaReaderTranslate.setSafeOnClickListener {
             if (!::chapter.isInitialized) return@setSafeOnClickListener
-            val chapImages = if (directionPagedBT) {
-                chapter.images().reversed()
-            } else {
-                chapter.images()
-            }
-            val pageIndex = (currentChapterPage.toInt() - 1).coerceIn(0, (chapImages.size - 1).coerceAtLeast(0))
-            val currentImage = chapImages.getOrNull(pageIndex)
-            if (currentImage != null) {
-                snackString(getString(R.string.translating_page))
-                scope.launch(Dispatchers.IO) {
-                    val loadedBitmap = loadBitmap(currentImage.url, emptyList<BitmapTransformation>())
-                    val pageFile = loadedBitmap?.let { OcrTranslationBottomSheet.writePageImage(this@MangaReaderActivity, it) }
-                    if (pageFile != null) {
-                        withContext(Dispatchers.Main) {
-                            // The page loads in the background; if the user left the
-                            // reader meanwhile, a show() would crash after onSaveInstanceState.
-                            if (canShowOcrSheet(
-                                    lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
-                                    supportFragmentManager.isStateSaved,
-                                    isFinishing || isDestroyed,
-                                )
-                            ) {
-                                OcrTranslationBottomSheet.newInstance(pageFile)
-                                    .show(supportFragmentManager, "ocr_translate")
+            // Translation sends page text off the device: one-time notice first.
+            OcrTranslation.confirmFirstUse(this) {
+                val chapImages = if (directionPagedBT) {
+                    chapter.images().reversed()
+                } else {
+                    chapter.images()
+                }
+                val pageIndex = (currentChapterPage.toInt() - 1).coerceIn(0, (chapImages.size - 1).coerceAtLeast(0))
+                val currentImage = chapImages.getOrNull(pageIndex)
+                if (currentImage != null) {
+                    snackString(getString(R.string.translating_page))
+                    scope.launch(Dispatchers.IO) {
+                        val loadedBitmap = loadBitmap(currentImage.url, emptyList<BitmapTransformation>())
+                        val pageFile = loadedBitmap?.let { OcrPageImage.write(this@MangaReaderActivity, it) }
+                        if (pageFile != null) {
+                            withContext(Dispatchers.Main) {
+                                // The page loads in the background; if the user left the
+                                // reader meanwhile, a show() would crash after onSaveInstanceState.
+                                if (canShowOcrSheet(
+                                        lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
+                                        supportFragmentManager.isStateSaved,
+                                        isFinishing || isDestroyed,
+                                    )
+                                ) {
+                                    OcrTranslation.open(this@MangaReaderActivity, pageFile)
+                                }
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                snackString(getString(R.string.error_loading_data, "page image"))
                             }
                         }
-                    } else {
-                        withContext(Dispatchers.Main) {
-                            snackString(getString(R.string.error_loading_data, "page image"))
-                        }
                     }
+                } else {
+                    snackString(getString(R.string.error_loading_data, "current page"))
                 }
-            } else {
-                snackString(getString(R.string.error_loading_data, "current page"))
             }
         }
 

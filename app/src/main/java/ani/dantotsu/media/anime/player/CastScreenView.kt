@@ -20,7 +20,7 @@ import java.util.Locale
 class CastScreenView(
     private val activity: AppCompatActivity,
     private val binding: LayoutCastScreenBinding,
-    private val castManager: PlayerCastManager,
+    private val castManager: PlayerCastController,
     private val onPlayPauseClick: () -> Unit,
     private val onPreviousClick: () -> Unit,
     private val onNextClick: () -> Unit,

@@ -36,6 +36,7 @@ import ani.dantotsu.settings.rows.switchRow
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.customAlertDialog
+import ani.dantotsu.others.FlavorFeatures
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -372,10 +373,11 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
         Section(R.string.other, listOf(
             // Player buttons and playback paths: picture in picture, cast, rotate, internal cast.
             switchRow(PrefName.Pip, R.string.picture_in_picture, icon = R.drawable.ic_round_picture_in_picture_alt_24),
-            switchRow(PrefName.Cast, R.string.show_cast_button, icon = R.drawable.ic_round_cast_24),
+            switchRow(PrefName.Cast, R.string.show_cast_button, icon = R.drawable.ic_round_cast_24,
+                visible = { FlavorFeatures.googleServices }),
             switchRow(PrefName.RotationPlayer, R.string.show_rotate_button, icon = R.drawable.ic_round_screen_rotation_alt_24),
-            switchRow(PrefName.UseInternalCast, R.string.try_internal_cast_experimental, icon = R.drawable.cast_warning,
-                advanced = true),
+            switchRow(PrefName.UseInternalCast, R.string.internal_cast_experimental, icon = R.drawable.cast_warning,
+                advanced = true, visible = { FlavorFeatures.googleServices }),
         )),
         Section(R.string.anime, listOf(
             // Anime pages: episode list layout, dub preference, downloads.
