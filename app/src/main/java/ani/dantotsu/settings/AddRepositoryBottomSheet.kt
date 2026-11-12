@@ -178,12 +178,10 @@ class AddRepositoryBottomSheet : BottomSheetDialogFragment() {
             false
         )
         adapter.addAll(repositories.map { RepoItem(it, mediaType, ::onRepositoryRemoved) })
+        binding.repositoriesRecyclerView.addItemDecoration(ExtensionCardDecoration())
+        binding.currentRepositoriesText.isVisible = repositories.isNotEmpty()
 
-        binding.repositoryInput.hint = when (mediaType) {
-            MediaType.ANIME -> getString(R.string.anime_add_repository)
-            MediaType.MANGA -> getString(R.string.manga_add_repository)
-            MediaType.NOVEL -> getString(R.string.novel_add_repository)
-        }
+        binding.repositoryInputLayout.hint = getString(R.string.add_repository_hint)
 
         binding.addButton.setOnClickListener {
             val input = binding.repositoryInput.text.toString()
@@ -191,7 +189,7 @@ class AddRepositoryBottomSheet : BottomSheetDialogFragment() {
             if (error == null) {
                 acceptUrl(input)
             } else {
-                binding.repositoryInput.error = error
+                binding.repositoryInputLayout.error = error
             }
         }
 
@@ -210,7 +208,7 @@ class AddRepositoryBottomSheet : BottomSheetDialogFragment() {
                         acceptUrl(url)
                         return@setOnEditorActionListener true
                     } else {
-                        binding.repositoryInput.error = error
+                        binding.repositoryInputLayout.error = error
                     }
                 }
             }
@@ -279,6 +277,7 @@ class AddRepositoryBottomSheet : BottomSheetDialogFragment() {
         onRepositoryRemoved?.invoke(url, mediaType)
         repositories.remove(url)
         adapter.update(repositories.map { RepoItem(it, mediaType, ::onRepositoryRemoved) })
+        _binding?.currentRepositoriesText?.isVisible = repositories.isNotEmpty()
     }
 
     override fun onDestroyView() {

@@ -31,6 +31,8 @@ class ExtensionCardDecoration : RecyclerView.ItemDecoration() {
             val child = parent.getChildAt(i)
             val position = parent.getChildAdapterPosition(child)
             if (position == RecyclerView.NO_POSITION) continue
+            // A row being dragged carries its own card (see lift).
+            if (child.elevation > 0f) continue
             val shape = shape(parent, first = position == 0, last = position == count - 1)
             shape.fillColor = fill
             shape.alpha = (child.alpha * 255).roundToInt()
@@ -59,11 +61,26 @@ class ExtensionCardDecoration : RecyclerView.ItemDecoration() {
         }
     }
 
-    private companion object {
+    companion object {
+        /** Gives a row its own rounded card while it is dragged, so it covers the rows it passes. */
+        fun lift(view: View) {
+            val d = view.resources.displayMetrics.density
+            view.background = MaterialShapeDrawable(
+                ShapeAppearanceModel.builder().setAllCornerSizes(OUTER_DP * d).build()
+            ).apply { fillColor = ColorStateList.valueOf(SettingsCards.fill(view)) }
+            view.elevation = 8f * d
+        }
+
+        fun drop(view: View) {
+            view.background = null
+            view.elevation = 0f
+            view.translationZ = 0f
+        }
+
         // Same numbers as the settings cards.
-        const val OUTER_DP = 20f
-        const val INNER_DP = 4f
-        const val GAP_DP = 2f
-        const val FIRST_TOP_DP = 8f
+        private const val OUTER_DP = 20f
+        private const val INNER_DP = 4f
+        private const val GAP_DP = 2f
+        private const val FIRST_TOP_DP = 8f
     }
 }

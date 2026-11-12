@@ -42,6 +42,13 @@ class NovelSourcePreferencesFragment : PreferenceFragmentCompat() {
 
     private var onCloseAction: (() -> Unit)? = null
 
+    override fun onCreateView(
+        inflater: android.view.LayoutInflater,
+        container: android.view.ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): android.view.View =
+        SourcePrefsHeader.wrap(this, inflater, container, super.onCreateView(inflater, container, savedInstanceState))
+
     /** Draws the extension's preferences with the settings rows. */
     override fun onCreateAdapter(preferenceScreen: PreferenceScreen): RecyclerView.Adapter<*> =
         ExtensionPrefRows(this, preferenceScreen).adapter(listView)
@@ -104,10 +111,11 @@ class NovelSourcePreferencesFragment : PreferenceFragmentCompat() {
 
     fun getInstance(
         pkgName: String,
+        headerTitle: String? = null,
         onCloseAction: (() -> Unit)? = null
     ): NovelSourcePreferencesFragment {
         val fragment = NovelSourcePreferencesFragment()
-        fragment.arguments = bundleOf(PKG_NAME to pkgName)
+        fragment.arguments = bundleOf(PKG_NAME to pkgName, SourcePrefsHeader.ARG_TITLE to headerTitle)
         fragment.onCloseAction = onCloseAction
         return fragment
     }

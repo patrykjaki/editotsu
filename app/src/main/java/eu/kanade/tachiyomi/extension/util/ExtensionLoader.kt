@@ -577,7 +577,7 @@ internal object ExtensionLoader {
             isUnofficial = true,
             icon = context.getApplicationIcon(pkgName),
             repository = savedRepo?.first,
-            repoName = savedRepo?.second,
+            repoName = ani.dantotsu.parsers.ExtensionRepoMetaHelper.installedBadge(savedRepo?.first, savedRepo?.second),
         )
         return AnimeLoadResult.Success(extension)
     }
@@ -714,7 +714,7 @@ internal object ExtensionLoader {
             isUnofficial = true,
             icon = context.getApplicationIcon(pkgName),
             repository = savedRepo?.first,
-            repoName = savedRepo?.second,
+            repoName = ani.dantotsu.parsers.ExtensionRepoMetaHelper.installedBadge(savedRepo?.first, savedRepo?.second),
         )
         return MangaLoadResult.Success(extension)
     }
@@ -813,7 +813,7 @@ internal object ExtensionLoader {
             isUnofficial = true,
             icon = context.getApplicationIcon(pkgName),
             repository = savedRepo?.first,
-            repoName = savedRepo?.second,
+            repoName = ani.dantotsu.parsers.ExtensionRepoMetaHelper.installedBadge(savedRepo?.first, savedRepo?.second),
         )
         return NovelLoadResult.Success(extension)
     }

@@ -44,6 +44,13 @@ class AnimeSourcePreferencesFragment : PreferenceFragmentCompat() {
 
     private var onCloseAction: (() -> Unit)? = null
 
+    override fun onCreateView(
+        inflater: android.view.LayoutInflater,
+        container: android.view.ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): android.view.View =
+        SourcePrefsHeader.wrap(this, inflater, container, super.onCreateView(inflater, container, savedInstanceState))
+
     /** Source name for the per-source download resolution row (MAX MERGE M3, upstream e954d9f1). */
     private var downloadSourceName: String? = null
 
@@ -98,10 +105,11 @@ class AnimeSourcePreferencesFragment : PreferenceFragmentCompat() {
 
     fun getInstance(
         sourceId: Long,
+        headerTitle: String? = null,
         onCloseAction: (() -> Unit)? = null
     ): AnimeSourcePreferencesFragment {
         val fragment = AnimeSourcePreferencesFragment()
-        fragment.arguments = bundleOf(SOURCE_ID to sourceId)
+        fragment.arguments = bundleOf(SOURCE_ID to sourceId, SourcePrefsHeader.ARG_TITLE to headerTitle)
         fragment.onCloseAction = onCloseAction
         return fragment
     }

@@ -54,6 +54,9 @@ import ani.dantotsu.parsers.MangaSources
 import ani.dantotsu.parsers.OfflineMangaParser
 import ani.dantotsu.setNavigationTheme
 import ani.dantotsu.settings.extensionprefs.MangaSourcePreferencesFragment
+import ani.dantotsu.settings.extensionprefs.sourceChoiceLabels
+import ani.dantotsu.settings.rows.ChoiceOption
+import ani.dantotsu.settings.rows.ChoiceSheet
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
@@ -458,65 +461,34 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
 
     fun openSettings(pkg: MangaExtension.Installed) {
         val changeUIVisibility: (Boolean) -> Unit = { show ->
-            val activity = activity
-            if (activity is MediaDetailsActivity && isAdded) {
-                activity.findViewById<AppBarLayout>(R.id.mediaAppBar).isVisible = show
-                activity.findViewById<ViewPager2>(R.id.mediaViewPager).isVisible = show
-                activity.findViewById<CardView>(R.id.mediaCover).isVisible = show
-                activity.findViewById<CardView>(R.id.mediaClose).isVisible = show
-                activity.navBar.isVisible = show
-                activity.findViewById<FrameLayout>(R.id.fragmentExtensionsContainer).isGone = show
-            }
+            if (isAdded) (activity as? MediaDetailsActivity)?.setSourcePrefsVisible(!show)
         }
-        var itemSelected = false
         val allSettings = pkg.sources.filterIsInstance<ConfigurableSource>()
-        if (allSettings.isNotEmpty()) {
-            var selectedSetting = allSettings[0]
-            if (allSettings.size > 1) {
-                val names =
-                    allSettings.map { LanguageMapper.getLanguageName(it.lang) }.toTypedArray()
-                requireContext().customAlertDialog().apply {
-                    setTitle("Select a Source")
-                    singleChoiceItems(names) { which ->
-                        selectedSetting = allSettings[which]
-                        itemSelected = true
-
-                        val fragment =
-                            MangaSourcePreferencesFragment().getInstance(selectedSetting.id) {
-                                changeUIVisibility(true)
-                                loadChapters(media.selected!!.sourceIndex, true)
-                            }
-                        parentFragmentManager.beginTransaction()
-                            .setCustomAnimations(R.anim.slide_up, R.anim.slide_down)
-                            .replace(R.id.fragmentExtensionsContainer, fragment)
-                            .addToBackStack(null)
-                            .commit()
-                    }
-                    onDismiss {
-                        if (!itemSelected) {
-                            changeUIVisibility(true)
-                        }
-                    }
-                    show()
-
-                }
-            } else {
-                // If there's only one setting, proceed with the fragment transaction
-                val fragment = MangaSourcePreferencesFragment().getInstance(selectedSetting.id) {
-                    changeUIVisibility(true)
-                    loadChapters(media.selected!!.sourceIndex, true)
-                }
-                parentFragmentManager.beginTransaction()
-                    .setCustomAnimations(R.anim.slide_up, R.anim.slide_down)
-                    .replace(R.id.fragmentExtensionsContainer, fragment)
-                    .addToBackStack(null)
-                    .commit()
-            }
-
-            changeUIVisibility(false)
-        } else {
-            Toast.makeText(requireContext(), "Source is not configurable", Toast.LENGTH_SHORT)
+        if (allSettings.isEmpty()) {
+            Toast.makeText(requireContext(), getString(R.string.extensions_not_configurable), Toast.LENGTH_SHORT)
                 .show()
+            return
+        }
+        val open: (ConfigurableSource) -> Unit = { source ->
+            changeUIVisibility(false)
+            val fragment = MangaSourcePreferencesFragment().getInstance(source.id, pkg.name) {
+                changeUIVisibility(true)
+                loadChapters(media.selected!!.sourceIndex, true)
+            }
+            parentFragmentManager.beginTransaction()
+                .setCustomAnimations(R.anim.slide_up, R.anim.slide_down)
+                .replace(R.id.fragmentExtensionsContainer, fragment)
+                .addToBackStack(null)
+                .commit()
+        }
+        if (allSettings.size > 1) {
+            ChoiceSheet.single(
+                requireContext(), getString(R.string.extensions_select_source),
+                sourceChoiceLabels(allSettings.map { it.name }, allSettings.map { it.lang }).map { ChoiceOption(it) },
+                -1,
+            ) { which -> open(allSettings[which]) }
+        } else {
+            open(allSettings[0])
         }
     }
 

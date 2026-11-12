@@ -609,18 +609,43 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
 
     private fun syncExtensionPrefsUi() {
         if (!::binding.isInitialized) return
-        val hasExtFragment =
+        setSourcePrefsVisible(
             supportFragmentManager.findFragmentById(R.id.fragmentExtensionsContainer) != null
+        )
+    }
 
-        binding.fragmentExtensionsContainer.isVisible = hasExtFragment
-        binding.mediaAppBar.isVisible = !hasExtFragment
-        binding.mediaViewPager.isVisible = !hasExtFragment
-        binding.mediaCover.isVisible = !hasExtFragment
-        binding.mediaClose.isVisible = !hasExtFragment
-        binding.commentInputLayout.isVisible = !hasExtFragment && selected == MediaTabs.COMMENTS
+    /** The home and incognito badges float above everything, so they are parked while settings show. */
+    private var prefsHidHome = false
+    private var prefsHidIncognito = false
+
+    /** Shows or hides the extension settings that open over the media page. */
+    fun setSourcePrefsVisible(show: Boolean) {
+        if (!::binding.isInitialized || isFinishing || isDestroyed) return
+        binding.fragmentExtensionsContainer.isVisible = show
+        binding.mediaAppBar.isVisible = !show
+        binding.mediaViewPager.isVisible = !show
+        binding.mediaCover.isVisible = !show
+        binding.mediaClose.isVisible = !show
+        binding.commentInputLayout.isVisible = !show && selected == MediaTabs.COMMENTS
+        binding.mediaHome?.let { home ->
+            if (show && home.isVisible) {
+                prefsHidHome = true
+                home.isVisible = false
+            } else if (!show && prefsHidHome) {
+                prefsHidHome = false
+                home.isVisible = true
+            }
+        }
+        if (show && binding.incognito.isVisible) {
+            prefsHidIncognito = true
+            binding.incognito.isVisible = false
+        } else if (!show && prefsHidIncognito) {
+            prefsHidIncognito = false
+            binding.incognito.isVisible = true
+        }
         if (::navBar.isInitialized) {
-            navBar.isVisible = !hasExtFragment
-            if (!hasExtFragment) navBar.selectTabAt(MediaTabs.pageOf(selected, tabWindows))
+            navBar.isVisible = !show
+            if (!show) navBar.selectTabAt(MediaTabs.pageOf(selected, tabWindows))
         }
     }
 

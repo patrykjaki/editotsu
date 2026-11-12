@@ -55,6 +55,9 @@ import ani.dantotsu.setBaseline
 import ani.dantotsu.setNavigationTheme
 import ani.dantotsu.toPx
 import ani.dantotsu.settings.extensionprefs.AnimeSourcePreferencesFragment
+import ani.dantotsu.settings.extensionprefs.sourceChoiceLabels
+import ani.dantotsu.settings.rows.ChoiceOption
+import ani.dantotsu.settings.rows.ChoiceSheet
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
@@ -582,71 +585,34 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
 
     fun openSettings(pkg: AnimeExtension.Installed) {
         val changeUIVisibility: (Boolean) -> Unit = { show ->
-            val activity = activity
-            if (activity is MediaDetailsActivity && isAdded) {
-                activity.findViewById<AppBarLayout>(R.id.mediaAppBar).isVisible = show
-                activity.findViewById<ViewPager2>(R.id.mediaViewPager).isVisible = show
-                activity.findViewById<CardView>(R.id.mediaCover).isVisible = show
-                activity.findViewById<CardView>(R.id.mediaClose).isVisible = show
-                activity.navBar.isVisible = show
-                activity.findViewById<FrameLayout>(R.id.fragmentExtensionsContainer).isGone = show
-            }
+            if (isAdded) (activity as? MediaDetailsActivity)?.setSourcePrefsVisible(!show)
         }
-        var itemSelected = false
         val allSettings = pkg.sources.filterIsInstance<ConfigurableAnimeSource>()
-        if (allSettings.isNotEmpty()) {
-            var selectedSetting = allSettings[0]
-            if (allSettings.size > 1) {
-                val names =
-                    allSettings.map { LanguageMapper.getLanguageName(it.lang) }.toTypedArray()
-                requireContext()
-                    .customAlertDialog()
-                    .apply {
-                        setTitle("Select a Source")
-                        singleChoiceItems(names) { which ->
-                            selectedSetting = allSettings[which]
-                            itemSelected = true
-                            requireActivity().runOnUiThread {
-                                val fragment =
-                                    AnimeSourcePreferencesFragment().getInstance(selectedSetting.id) {
-                                        changeUIVisibility(true)
-                                        loadEpisodes(media.selected!!.sourceIndex, true)
-                                    }
-                                parentFragmentManager.beginTransaction()
-                                    .setCustomAnimations(R.anim.slide_up, R.anim.slide_down)
-                                    .replace(R.id.fragmentExtensionsContainer, fragment)
-                                    .addToBackStack(null)
-                                    .commit()
-                            }
-                        }
-                        onDismiss {
-                            if (!itemSelected) {
-                                changeUIVisibility(true)
-                            }
-                        }
-                        show()
-                    }
-            } else {
-                // If there's only one setting, proceed with the fragment transaction
-                requireActivity().runOnUiThread {
-                    val fragment =
-                        AnimeSourcePreferencesFragment().getInstance(selectedSetting.id) {
-                            changeUIVisibility(true)
-                            loadEpisodes(media.selected!!.sourceIndex, true)
-                        }
-                    parentFragmentManager.beginTransaction().apply {
-                        setCustomAnimations(R.anim.slide_up, R.anim.slide_down)
-                        replace(R.id.fragmentExtensionsContainer, fragment)
-                        addToBackStack(null)
-                        commit()
-                    }
-                }
-            }
-
-            changeUIVisibility(false)
-        } else {
-            Toast.makeText(requireContext(), "Source is not configurable", Toast.LENGTH_SHORT)
+        if (allSettings.isEmpty()) {
+            Toast.makeText(requireContext(), getString(R.string.extensions_not_configurable), Toast.LENGTH_SHORT)
                 .show()
+            return
+        }
+        val open: (ConfigurableAnimeSource) -> Unit = { source ->
+            changeUIVisibility(false)
+            val fragment = AnimeSourcePreferencesFragment().getInstance(source.id, pkg.name) {
+                changeUIVisibility(true)
+                loadEpisodes(media.selected!!.sourceIndex, true)
+            }
+            parentFragmentManager.beginTransaction()
+                .setCustomAnimations(R.anim.slide_up, R.anim.slide_down)
+                .replace(R.id.fragmentExtensionsContainer, fragment)
+                .addToBackStack(null)
+                .commit()
+        }
+        if (allSettings.size > 1) {
+            ChoiceSheet.single(
+                requireContext(), getString(R.string.extensions_select_source),
+                sourceChoiceLabels(allSettings.map { it.name }, allSettings.map { it.lang }).map { ChoiceOption(it) },
+                -1,
+            ) { which -> open(allSettings[which]) }
+        } else {
+            open(allSettings[0])
         }
     }
 

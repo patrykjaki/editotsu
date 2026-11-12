@@ -743,15 +743,7 @@ class NovelReadFragment : Fragment(),
 
     fun openSettings(pkg: NovelExtension.Installed) {
         val changeUIVisibility: (Boolean) -> Unit = { show ->
-            val activity = activity
-            if (activity is MediaDetailsActivity && isAdded) {
-                activity.findViewById<AppBarLayout>(R.id.mediaAppBar).isVisible = show
-                activity.findViewById<ViewPager2>(R.id.mediaViewPager).isVisible = show
-                activity.findViewById<CardView>(R.id.mediaCover).isVisible = show
-                activity.findViewById<CardView>(R.id.mediaClose).isVisible = show
-                activity.navBar.isVisible = show
-                activity.findViewById<FrameLayout>(R.id.fragmentExtensionsContainer).isGone = show
-            }
+            if (isAdded) (activity as? MediaDetailsActivity)?.setSourcePrefsVisible(!show)
         }
         val configurable = pkg.sources.filterIsInstance<ConfigurableNovelSource>()
         val hasPrefMethod = pkg.sources.any { src ->
@@ -759,7 +751,7 @@ class NovelReadFragment : Fragment(),
         }
         if (configurable.isNotEmpty() || hasPrefMethod) {
             changeUIVisibility(false)
-            val fragment = NovelSourcePreferencesFragment().getInstance(pkg.pkgName) {
+            val fragment = NovelSourcePreferencesFragment().getInstance(pkg.pkgName, pkg.name) {
                 changeUIVisibility(true)
                 val sel = media.selected?.sourceIndex ?: 0
                 lifecycleScope.launch {
