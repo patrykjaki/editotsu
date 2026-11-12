@@ -729,8 +729,9 @@ class MangaReaderActivity : AppCompatActivity() {
                 this,
                 media.userPreferredName,
                 media.cover,
-                "Chapter ${chapter.number} (${currentChapterPage}/$maxChapterPage)",
-                isExiting = false
+                getString(R.string.widget_continue_chapter, chapter.number, currentChapterPage, maxChapterPage),
+                isExiting = false,
+                mediaId = media.id
             )
 
         }

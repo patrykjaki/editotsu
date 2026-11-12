@@ -1058,6 +1058,15 @@
     <string name="follows_you">Follows you</string>
     <string name="mutual">Mutual</string>
     <string name="success">Success</string>
+    <string name="widget_continue_watching">CURRENTLY WATCHING</string>
+    <string name="widget_continue_reading">CURRENTLY READING</string>
+    <string name="widget_continue_last_watched">LAST WATCHED</string>
+    <string name="widget_continue_last_read">LAST READ</string>
+    <string name="widget_continue_resume_episode">Resume episode</string>
+    <string name="widget_continue_resume_chapter">Resume chapter</string>
+    <string name="widget_continue_empty_title">Nothing in progress</string>
+    <string name="widget_continue_empty_detail">Open Editotsu to start</string>
+    <string name="widget_continue_chapter">Chapter %1$s (%2$d/%3$d)</string>
     <string name="post_failed">Could not post to AniList</string>
     <string name="error">Some error occurred</string>
     <string name="error_msg">Error: %1$s</string>

@@ -20,6 +20,8 @@ import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.drawable.toBitmap
 import ani.dantotsu.MainActivity
 import ani.dantotsu.R
+import ani.dantotsu.settings.saving.PrefManager
+import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.BitmapUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -51,7 +53,6 @@ class ContinueWidget : AppWidgetProvider() {
         private const val KEY_ACTIVE_TITLE = "active_title"
         private const val KEY_ACTIVE_COVER = "active_cover"
         private const val KEY_ACTIVE_DETAIL = "active_detail"
-        private const val KEY_ACTIVE_HEADER = "active_header"
         private const val KEY_ACTIVE_ICON_RES = "active_icon_res"
         private const val KEY_IS_ACTIVE = "is_active"
 
@@ -63,27 +64,40 @@ class ContinueWidget : AppWidgetProvider() {
         private const val KEY_LAST_READ_COVER = "last_read_cover"
         private const val KEY_LAST_READ_DETAIL = "last_read_detail"
 
+        private const val KEY_ACTIVE_MEDIA_ID = "active_media_id"
+        private const val KEY_ACTIVE_MEDIA_TYPE = "active_media_type"
+        private const val KEY_LAST_WATCHED_MEDIA_ID = "last_watched_media_id"
+        private const val KEY_LAST_READ_MEDIA_ID = "last_read_media_id"
+
+        /** Nothing is recorded in incognito; leaving the player or reader still clears the active state. */
+        private fun recordingAllowed(isExiting: Boolean): Boolean =
+            isExiting || !PrefManager.getVal<Boolean>(PrefName.Incognito)
+
         fun updatePlaybackState(
             context: Context,
             title: String?,
             coverUrl: String?,
             detail: String?,
-            isExiting: Boolean
+            isExiting: Boolean,
+            mediaId: Int = 0
         ) {
+            if (!recordingAllowed(isExiting)) return
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val editor = prefs.edit()
             if (!isExiting && !title.isNullOrEmpty()) {
                 editor.putBoolean(KEY_IS_ACTIVE, true)
                 editor.putString(KEY_ACTIVE_TITLE, title)
                 editor.putString(KEY_ACTIVE_COVER, coverUrl)
-                editor.putString(KEY_ACTIVE_DETAIL, detail ?: "Playing")
-                editor.putString(KEY_ACTIVE_HEADER, "CURRENTLY WATCHING")
+                editor.putString(KEY_ACTIVE_DETAIL, detail)
                 editor.putInt(KEY_ACTIVE_ICON_RES, R.drawable.ic_round_play_circle_24)
+                editor.putInt(KEY_ACTIVE_MEDIA_ID, mediaId)
+                editor.putString(KEY_ACTIVE_MEDIA_TYPE, TYPE_ANIME)
 
                 // Update Last Watched
                 editor.putString(KEY_LAST_WATCHED_TITLE, title)
                 editor.putString(KEY_LAST_WATCHED_COVER, coverUrl)
-                editor.putString(KEY_LAST_WATCHED_DETAIL, detail ?: "Resume Episode")
+                editor.putString(KEY_LAST_WATCHED_DETAIL, detail)
+                editor.putInt(KEY_LAST_WATCHED_MEDIA_ID, mediaId)
             } else {
                 editor.putBoolean(KEY_IS_ACTIVE, false)
             }
@@ -96,28 +110,39 @@ class ContinueWidget : AppWidgetProvider() {
             title: String?,
             coverUrl: String?,
             detail: String?,
-            isExiting: Boolean
+            isExiting: Boolean,
+            mediaId: Int = 0
         ) {
+            if (!recordingAllowed(isExiting)) return
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            if (!isExiting && prefs.getBoolean(KEY_IS_ACTIVE, false) &&
+                prefs.getString(KEY_ACTIVE_TITLE, null) == title &&
+                prefs.getString(KEY_ACTIVE_DETAIL, null) == detail
+            ) return
             val editor = prefs.edit()
             if (!isExiting && !title.isNullOrEmpty()) {
                 editor.putBoolean(KEY_IS_ACTIVE, true)
                 editor.putString(KEY_ACTIVE_TITLE, title)
                 editor.putString(KEY_ACTIVE_COVER, coverUrl)
-                editor.putString(KEY_ACTIVE_DETAIL, detail ?: "Reading")
-                editor.putString(KEY_ACTIVE_HEADER, "CURRENTLY READING")
+                editor.putString(KEY_ACTIVE_DETAIL, detail)
                 editor.putInt(KEY_ACTIVE_ICON_RES, R.drawable.ic_round_menu_book_24)
+                editor.putInt(KEY_ACTIVE_MEDIA_ID, mediaId)
+                editor.putString(KEY_ACTIVE_MEDIA_TYPE, TYPE_MANGA)
 
                 // Update Last Read
                 editor.putString(KEY_LAST_READ_TITLE, title)
                 editor.putString(KEY_LAST_READ_COVER, coverUrl)
-                editor.putString(KEY_LAST_READ_DETAIL, detail ?: "Resume Chapter")
+                editor.putString(KEY_LAST_READ_DETAIL, detail)
+                editor.putInt(KEY_LAST_READ_MEDIA_ID, mediaId)
             } else {
                 editor.putBoolean(KEY_IS_ACTIVE, false)
             }
             editor.apply()
             notifyWidgets(context)
         }
+
+        private const val TYPE_ANIME = "ANIME"
+        private const val TYPE_MANGA = "MANGA"
 
         fun notifyWidgets(context: Context) {
             CoroutineScope(Dispatchers.IO).launch {
@@ -188,34 +213,52 @@ class ContinueWidget : AppWidgetProvider() {
             val coverUrl: String?
             val logoIconRes: Int
 
+            val mediaId: Int
+            val mediaType: String?
+
             if (isActive) {
-                headerText = prefs.getString(KEY_ACTIVE_HEADER, "CURRENTLY ACTIVE") ?: "CURRENTLY ACTIVE"
-                titleText = prefs.getString(KEY_ACTIVE_TITLE, "Editotsu") ?: "Editotsu"
-                detailText = prefs.getString(KEY_ACTIVE_DETAIL, "In Progress") ?: "In Progress"
+                val anime = prefs.getString(KEY_ACTIVE_MEDIA_TYPE, TYPE_ANIME) != TYPE_MANGA
+                headerText = context.getString(
+                    if (anime) R.string.widget_continue_watching else R.string.widget_continue_reading
+                )
+                titleText = prefs.getString(KEY_ACTIVE_TITLE, null) ?: context.getString(R.string.app_name)
+                detailText = prefs.getString(KEY_ACTIVE_DETAIL, null) ?: context.getString(
+                    if (anime) R.string.widget_continue_resume_episode else R.string.widget_continue_resume_chapter
+                )
                 coverUrl = prefs.getString(KEY_ACTIVE_COVER, null)
                 logoIconRes = prefs.getInt(KEY_ACTIVE_ICON_RES, R.drawable.ic_round_play_circle_24)
+                mediaId = prefs.getInt(KEY_ACTIVE_MEDIA_ID, 0)
+                mediaType = if (anime) TYPE_ANIME else TYPE_MANGA
             } else {
                 val lastWatched = prefs.getString(KEY_LAST_WATCHED_TITLE, null)
                 val lastRead = prefs.getString(KEY_LAST_READ_TITLE, null)
 
                 if (!lastWatched.isNullOrEmpty()) {
-                    headerText = "LAST WATCHED"
+                    headerText = context.getString(R.string.widget_continue_last_watched)
                     titleText = lastWatched
-                    detailText = prefs.getString(KEY_LAST_WATCHED_DETAIL, "Tap to resume") ?: "Tap to resume"
+                    detailText = prefs.getString(KEY_LAST_WATCHED_DETAIL, null)
+                        ?: context.getString(R.string.widget_continue_resume_episode)
                     coverUrl = prefs.getString(KEY_LAST_WATCHED_COVER, null)
                     logoIconRes = R.drawable.ic_round_play_circle_24
+                    mediaId = prefs.getInt(KEY_LAST_WATCHED_MEDIA_ID, 0)
+                    mediaType = TYPE_ANIME
                 } else if (!lastRead.isNullOrEmpty()) {
-                    headerText = "LAST READ"
+                    headerText = context.getString(R.string.widget_continue_last_read)
                     titleText = lastRead
-                    detailText = prefs.getString(KEY_LAST_READ_DETAIL, "Tap to resume") ?: "Tap to resume"
+                    detailText = prefs.getString(KEY_LAST_READ_DETAIL, null)
+                        ?: context.getString(R.string.widget_continue_resume_chapter)
                     coverUrl = prefs.getString(KEY_LAST_READ_COVER, null)
                     logoIconRes = R.drawable.ic_round_menu_book_24
+                    mediaId = prefs.getInt(KEY_LAST_READ_MEDIA_ID, 0)
+                    mediaType = TYPE_MANGA
                 } else {
-                    headerText = "DANTOTSU"
-                    titleText = "Nothing active"
-                    detailText = "Open Dantotsu to start"
+                    headerText = context.getString(R.string.app_name)
+                    titleText = context.getString(R.string.widget_continue_empty_title)
+                    detailText = context.getString(R.string.widget_continue_empty_detail)
                     coverUrl = null
                     logoIconRes = R.drawable.ic_dantotsu_round
+                    mediaId = 0
+                    mediaType = null
                 }
             }
 
@@ -245,8 +288,14 @@ class ContinueWidget : AppWidgetProvider() {
                 setTextColor(R.id.widget_subtitle, subtitleTextColor)
                 setImageViewResource(R.id.widget_logo, logoIconRes)
 
+                // Opens the shown media the way the home Continue row does.
                 val intent = Intent(context, MainActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    if (mediaId > 0) {
+                        putExtra("mediaId", mediaId)
+                        putExtra("mediaType", mediaType)
+                        putExtra("continue", true)
+                    }
                 }
                 val pendingIntent = PendingIntent.getActivity(
                     context,
