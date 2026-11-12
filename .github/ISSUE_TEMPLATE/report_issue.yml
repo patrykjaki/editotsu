@@ -49,8 +49,8 @@ body:
   - type: input
     id: dartotsu-version
     attributes:
-      label: Dartotsu Version
-      description: Specify the version of Dartotsu in which the issue occurred.
+      label: Editotsu Version
+      description: Specify the version of Editotsu in which the issue occurred.
       placeholder: |
         Example: "1.2.3"
     validations:
