@@ -26,6 +26,13 @@ class MangaSourcePreferencesFragment : PreferenceFragmentCompat() {
 
     private var onCloseAction: (() -> Unit)? = null
 
+    override fun onCreateView(
+        inflater: android.view.LayoutInflater,
+        container: android.view.ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): android.view.View =
+        SourcePrefsHeader.wrap(this, inflater, container, super.onCreateView(inflater, container, savedInstanceState))
+
     /** Draws the extension's preferences with the settings rows. */
     override fun onCreateAdapter(preferenceScreen: PreferenceScreen): RecyclerView.Adapter<*> =
         ExtensionPrefRows(this, preferenceScreen).adapter(listView)
@@ -70,10 +77,11 @@ class MangaSourcePreferencesFragment : PreferenceFragmentCompat() {
 
     fun getInstance(
         sourceId: Long,
+        headerTitle: String? = null,
         onCloseAction: (() -> Unit)? = null
     ): MangaSourcePreferencesFragment {
         val fragment = MangaSourcePreferencesFragment()
-        fragment.arguments = bundleOf(SOURCE_ID to sourceId)
+        fragment.arguments = bundleOf(SOURCE_ID to sourceId, SourcePrefsHeader.ARG_TITLE to headerTitle)
         fragment.onCloseAction = onCloseAction
         return fragment
     }

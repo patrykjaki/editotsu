@@ -3,7 +3,8 @@ package ani.dantotsu.settings.extensionprefs
 import android.content.Context
 import android.content.Intent
 import android.text.InputType
-import android.widget.EditText
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -235,18 +236,26 @@ internal class ExtensionPrefRows(
 
     private fun editText(host: SettingsHost, pref: EditTextPreference) {
         val c: Context = host.activity
-        val input = EditText(c).apply {
+        val field = TextInputLayout(c, null, com.google.android.material.R.attr.textInputOutlinedStyle)
+        val input = TextInputEditText(field.context).apply {
             inputType = InputType.TYPE_CLASS_TEXT
             setText(pref.text.orEmpty())
         }
         // The extension may set the input type (passwords, numbers) here.
         runCatching { pref.getOnBindEditTextListener()?.onBindEditText(input) }
         input.setIncognito(fragment.lifecycleScope)
-        input.setSelection(input.text.length)
+        input.setSelection(input.text?.length ?: 0)
+        val variation = input.inputType and InputType.TYPE_MASK_VARIATION
+        val isPassword = input.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_TEXT &&
+            (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD || variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD)
+        field.endIconMode =
+            if (isPassword) TextInputLayout.END_ICON_PASSWORD_TOGGLE else TextInputLayout.END_ICON_CLEAR_TEXT
+        field.addView(input)
         val margin = (24 * c.resources.displayMetrics.density).toInt()
         val frame = FrameLayout(c).apply {
             setPadding(margin, margin / 2, margin, 0)
-            addView(input)
+            minimumWidth = (320 * c.resources.displayMetrics.density).toInt()
+            addView(field, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         }
         c.customAlertDialog().apply {
             setTitle(dialogTitle(pref).toString())

@@ -170,8 +170,7 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
             override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
                 super.onSelectedChanged(viewHolder, actionState)
                 if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
-                    viewHolder?.itemView?.elevation = 8f
-                    viewHolder?.itemView?.translationZ = 8f
+                    viewHolder?.itemView?.let { ExtensionCardDecoration.lift(it) }
                 }
             }
 
@@ -181,8 +180,7 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
             ) {
                 super.clearView(recyclerView, viewHolder)
                 extensionsAdapter.updatePref()
-                viewHolder.itemView.elevation = 0f
-                viewHolder.itemView.translationZ = 0f
+                ExtensionCardDecoration.drop(viewHolder.itemView)
             }
         }
         ItemTouchHelper(itemTouchHelperCallback).attachToRecyclerView(extensionsRecyclerView)

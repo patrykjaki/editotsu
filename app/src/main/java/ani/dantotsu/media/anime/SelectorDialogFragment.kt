@@ -1417,6 +1417,11 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             dialog.setContentView(root)
             dialog.setOnDismissListener { if (filterSheet === dialog) filterSheet = null }
             dialog.show()
+            // Same surface as the picker sheet behind it, not the default tinted container.
+            dialog.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.backgroundTintList =
+                android.content.res.ColorStateList.valueOf(
+                    ctx.getThemeColor(com.google.android.material.R.attr.colorSurface)
+                )
         }
 
         /** Source id of the current extension's settings screen, or null when it has none. */

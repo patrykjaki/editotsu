@@ -55,6 +55,16 @@ class ExtensionRepoMetaTest {
     }
 
     @Test
+    fun `a two or three letter badge gives way to a short full name`() {
+        assertEquals("Yūzōnō", ExtensionRepoMetaHelper.pickBadge("Yū", "Yūzōnō"))
+        assertEquals("Custom", ExtensionRepoMetaHelper.pickBadge("Custom", "Custom Repo"))
+        assertEquals("KS", ExtensionRepoMetaHelper.pickBadge("KS", "A repository name far too long for a row"))
+        assertEquals("KS", ExtensionRepoMetaHelper.pickBadge("KS", null))
+        assertEquals("Full", ExtensionRepoMetaHelper.pickBadge(" ", "Full"))
+        assertNull(ExtensionRepoMetaHelper.pickBadge(null, ""))
+    }
+
+    @Test
     fun `missing metadata falls back to url-derived badge`() {
         val badge = ExtensionRepoMetaHelper.getRepoBadgeName(
             "https://example.test/some-repo/index.min.json"
@@ -69,11 +79,11 @@ class ExtensionRepoMetaTest {
         ExtensionRepoMetaHelper.saveMeta(
             repoUrl = repoA,
             name = "Repo A",
-            shortName = "A",
+            shortName = "RepA",
             website = "",
             discord = null
         )
-        assertEquals("A", ExtensionRepoMetaHelper.getRepoBadgeName(repoA))
+        assertEquals("RepA", ExtensionRepoMetaHelper.getRepoBadgeName(repoA))
         // B was never saved: URL-derived badge, never A's metadata.
         val badgeB = ExtensionRepoMetaHelper.getRepoBadgeName(repoB)
         assertTrue(badgeB.startsWith("repo-b-"))

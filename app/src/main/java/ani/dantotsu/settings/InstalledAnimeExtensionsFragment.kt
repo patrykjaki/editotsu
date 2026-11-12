@@ -1,6 +1,7 @@
 package ani.dantotsu.settings
 
 import ani.dantotsu.settings.rows.ChoiceSheet
+import ani.dantotsu.settings.extensionprefs.sourceChoiceLabels
 import ani.dantotsu.settings.rows.ChoiceOption
 import android.app.NotificationManager
 import android.content.Context
@@ -89,7 +90,7 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
                     // One extension, several sources (languages): pick whose settings to open.
                     ChoiceSheet.single(
                         requireContext(), getString(R.string.extensions_select_source),
-                        allSettings.map { ChoiceOption(getLanguageName(it.lang)) }, -1,
+                        sourceChoiceLabels(allSettings.map { it.name }, allSettings.map { it.lang }).map { ChoiceOption(it) }, -1,
                         onCancel = { changeUIVisibility(true) },
                     ) { which -> openPrefFragment(allSettings[which]) }
                 } else {
@@ -143,8 +144,7 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
             override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
                 super.onSelectedChanged(viewHolder, actionState)
                 if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
-                    viewHolder?.itemView?.elevation = 8f
-                    viewHolder?.itemView?.translationZ = 8f
+                    viewHolder?.itemView?.let { ExtensionCardDecoration.lift(it) }
                 }
             }
 
@@ -154,8 +154,7 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
             ) {
                 super.clearView(recyclerView, viewHolder)
                 extensionsAdapter.updatePref()
-                viewHolder.itemView.elevation = 0f
-                viewHolder.itemView.translationZ = 0f
+                ExtensionCardDecoration.drop(viewHolder.itemView)
             }
         }
         ItemTouchHelper(itemTouchHelperCallback).attachToRecyclerView(extensionsRecyclerView)

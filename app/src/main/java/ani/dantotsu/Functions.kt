@@ -449,6 +449,11 @@ open class BottomSheetDialogFragment :
                 com.google.android.material.R.attr.colorSurface
             )
 
+            // The sheet container behind the content (it shows in the gesture bar strip on
+            // Android 15+) defaults to a tinted colour; use the theme surface like the content.
+            (requireView().parent as? View)?.backgroundTintList =
+                android.content.res.ColorStateList.valueOf(surfaceColor)
+
             // Deprecated on Android 15 (API 35)
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
                 @Suppress("DEPRECATION")

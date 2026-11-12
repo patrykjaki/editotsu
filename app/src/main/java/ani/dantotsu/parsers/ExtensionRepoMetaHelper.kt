@@ -198,11 +198,32 @@ object ExtensionRepoMetaHelper {
 
     fun getRepoBadgeName(repoUrl: String, meta: ExtensionRepoMeta? = null): String {
         val m = meta ?: getCachedMeta(repoUrl)
-        val badge = m?.shortName?.takeIf { it.isNotBlank() }
-            ?: m?.name?.takeIf { it.isNotBlank() }
-            ?: extractBadgeNameFromUrl(repoUrl)
+        val badge = pickBadge(m?.shortName, m?.name) ?: extractBadgeNameFromUrl(repoUrl)
         return badge.trim()
     }
+
+    /**
+     * Some repositories declare a two or three letter badge ("Yū" for "Yūzōnō"). The rows
+     * have room for a word, so such an abbreviation gives way to the full name when that
+     * is short enough to sit on the version line.
+     */
+    internal fun pickBadge(shortName: String?, name: String?): String? {
+        val short = shortName?.trim()?.takeIf { it.isNotEmpty() }
+        val full = name?.trim()?.takeIf { it.isNotEmpty() }
+        if (short != null && full != null && short.length < MIN_BADGE_CHARS && full.length <= MAX_FULL_NAME_CHARS) {
+            return full
+        }
+        return short ?: full
+    }
+
+    /** Label for an installed extension: the repository's current metadata when known, else what was stored at install. */
+    fun installedBadge(repoUrl: String?, stored: String?): String? {
+        val m = repoUrl?.let { getCachedMeta(it) } ?: return stored
+        return pickBadge(m.shortName, m.name)?.trim() ?: stored
+    }
+
+    private const val MIN_BADGE_CHARS = 4
+    private const val MAX_FULL_NAME_CHARS = 20
 
     /**
      * Review-HOLD correction (Finding 1): never misrepresent a URL's host.
