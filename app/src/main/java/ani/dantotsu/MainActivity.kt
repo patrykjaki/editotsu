@@ -680,7 +680,7 @@ class MainActivity : AppCompatActivity() {
                 AddRepositoryBottomSheet.addRepoWarning(this) {
                     newRepos.add(url)
                     PrefManager.setVal(prefName, newRepos)
-                    toast("$name Extension Repo added")
+                    toast(getString(R.string.extension_repo_added, name))
                 }
                 return
             }
@@ -693,7 +693,7 @@ class MainActivity : AppCompatActivity() {
             ani.dantotsu.settings.data.BackupRestore.restore(this, jsonString, name, confirm = true)
         } catch (e: Exception) {
             e.printStackTrace()
-            toast("Error importing settings")
+            toast(R.string.error_importing_settings)
         }
     }
 
