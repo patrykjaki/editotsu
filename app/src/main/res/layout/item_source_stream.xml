@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    One stream card (e.g. AnimePahe "MTBB"), laid out like a release card.
+    One stream card (e.g. a source's "MTBB" stream), laid out like a release card.
     All links from one group and audio share the card. A tap plays the
     remembered quality, else the highest, shown as a tag; every other
     link is a small button on the "Also" line.

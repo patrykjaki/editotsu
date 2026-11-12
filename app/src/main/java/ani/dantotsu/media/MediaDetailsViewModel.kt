@@ -100,6 +100,9 @@ class MediaDetailsViewModel : ViewModel() {
     var loading = false
 
     private val media: MutableLiveData<Media> = MutableLiveData<Media>(null)
+
+    /** The media the details screen shows; reused when the activity is recreated. */
+    var shownMedia: Media? = null
     fun getMedia(): LiveData<Media> = media
     fun loadMedia(m: Media) {
         if (!loading) {

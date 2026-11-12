@@ -13,7 +13,35 @@ enum class BackupSection {
     Logins,
 }
 
+/** What restoring a backup overwrites, shown before a restore that came from outside the app. */
+enum class RestoreReplaces { Logins, AppLock, Proxy, ExtensionRepos, Settings, History }
+
 object BackupSections {
+    private val LOGIN_KEYS = setOf(
+        "AnilistToken", "AnilistUserName", "AnilistUserId",
+        "MALUserName", "MALToken", "MALEncryptedToken", "MALAuthSession",
+    )
+    private val APP_LOCK_KEYS = setOf("AppPassword", "BiometricToken", "OverridePassword")
+    private val REPO_KEYS = setOf("AnimeExtensionRepos", "MangaExtensionRepos", "NovelExtensionRepos")
+
+    /** Groups a decoded payload (location -> keys) would overwrite, in display order. */
+    fun replacedBy(payload: Map<String, Set<String>>): List<RestoreReplaces> {
+        val protected = payload[Location.Protected.name].orEmpty()
+        val general = payload[Location.General.name].orEmpty()
+        val result = mutableListOf<RestoreReplaces>()
+        if (protected.any { it in LOGIN_KEYS }) result += RestoreReplaces.Logins
+        if (protected.any { it in APP_LOCK_KEYS }) result += RestoreReplaces.AppLock
+        if (protected.any { it.startsWith("Socks5Proxy") }) result += RestoreReplaces.Proxy
+        if (general.any { it in REPO_KEYS }) result += RestoreReplaces.ExtensionRepos
+        val settingsLocations = payload.keys - Location.Protected.name - Location.Irrelevant.name -
+            INSTALLED_EXTENSIONS
+        if (settingsLocations.any { loc -> payload[loc].orEmpty().any { it !in REPO_KEYS } }) {
+            result += RestoreReplaces.Settings
+        }
+        if (payload[Location.Irrelevant.name].orEmpty().isNotEmpty()) result += RestoreReplaces.History
+        return result
+    }
+
     /** Default shared preferences (Aniyomi/Tachiyomi store): hidden and pinned sources, installer. */
     const val APP_PREFS = "app_prefs"
 

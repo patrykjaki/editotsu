@@ -143,7 +143,7 @@
             </LinearLayout>
 
             <!-- The card plays its best quality; the others of the same release
-                 (SubsPlease 1080p/720p/480p) sit here as small buttons. "Also" is its
+                 (1080p/720p/480p from one group) sit here as small buttons. "Also" is its
                  own column so wrapped buttons line up under the first one. -->
             <LinearLayout
                 android:id="@+id/sourceQualitiesRow"
@@ -187,7 +187,7 @@
                 android:textIsSelectable="true"
                 android:textSize="13sp"
                 android:visibility="gone"
-                tools:text="Release group: EMBER\nTracker: NyaaSi"
+                tools:text="Release group: Group\nTracker: Tracker"
                 tools:visibility="visible" />
         </LinearLayout>
     </androidx.cardview.widget.CardView>

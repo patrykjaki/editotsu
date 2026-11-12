@@ -54,7 +54,7 @@ class LoginFragment : Fragment() {
                         ani.dantotsu.settings.data.BackupRestore.restore(requireActivity(), jsonString, name)
                     } catch (e: Exception) {
                         Logger.log(e)
-                        toast("Error importing settings")
+                        toast(R.string.error_importing_settings)
                     }
                 }
             }

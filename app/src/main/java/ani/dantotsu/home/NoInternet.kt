@@ -1,6 +1,11 @@
 package ani.dantotsu.home
 
+import android.content.Intent
 import android.graphics.drawable.GradientDrawable
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -16,24 +21,28 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.Lifecycle
 import androidx.viewpager2.adapter.FragmentStateAdapter
+import ani.dantotsu.MainActivity
 import ani.dantotsu.R
 import ani.dantotsu.ZoomOutPageTransformer
 import ani.dantotsu.databinding.ActivityNoInternetBinding
 import ani.dantotsu.download.anime.OfflineAnimeFragment
 import ani.dantotsu.download.manga.OfflineMangaFragment
 import ani.dantotsu.initActivity
+import ani.dantotsu.isOnline
 import ani.dantotsu.navBarHeight
 import ani.dantotsu.offline.LocalFragment
-import ani.dantotsu.offline.OfflineFragment
 import ani.dantotsu.selectedOption
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
 import ani.dantotsu.themes.ThemeManager
+import com.google.android.material.snackbar.Snackbar
 import nl.joery.animatedbottombar.AnimatedBottomBar
 
 class NoInternet : AppCompatActivity() {
     private lateinit var binding: ActivityNoInternetBinding
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var goOnlineSnack: Snackbar? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -65,12 +74,15 @@ class NoInternet : AppCompatActivity() {
 
         binding.root.doOnAttach {
             initActivity(this)
-            selectedOption = PrefManager.getVal(PrefName.DefaultStartUpTab)
 
             binding.includedNavbar.navbarContainer.updateLayoutParams<ViewGroup.MarginLayoutParams> {
                 bottomMargin = navBarHeight
             }
         }
+        selectedOption = OfflinePages.startPage(
+            intent.getStringExtra("FRAGMENT_CLASS_NAME"),
+            PrefManager.getVal(PrefName.DefaultStartUpTab)
+        )
         val navbar = binding.includedNavbar.navbar
         ani.dantotsu.bottomBar = navbar
         navbar.visibility = View.VISIBLE
@@ -92,9 +104,69 @@ class NoInternet : AppCompatActivity() {
             }
         })
         navbar.selectTabAt(selectedOption)
+        mainViewPager.setCurrentItem(selectedOption, false)
+    }
 
-        //supportFragmentManager.beginTransaction().replace(binding.fragmentContainer.id, OfflineFragment()).commit()
+    override fun onStart() {
+        super.onStart()
+        watchNetwork()
+    }
 
+    override fun onStop() {
+        super.onStop()
+        networkCallback?.let {
+            runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) }
+        }
+        networkCallback = null
+        goOnlineSnack?.dismiss()
+        goOnlineSnack = null
+    }
+
+    /**
+     * When a network with internet is up: without offline mode chosen, go straight back
+     * to the online app; with it chosen, offer "Go online".
+     */
+    private fun watchNetwork() {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                runOnUiThread { onNetworkBack() }
+            }
+
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                runOnUiThread { onNetworkBack() }
+            }
+        }
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        runCatching { cm.registerNetworkCallback(request, callback) }
+            .onSuccess { networkCallback = callback }
+    }
+
+    private fun onNetworkBack() {
+        // Same test MainActivity uses, so going back can't bounce straight here again.
+        if (isFinishing || isDestroyed || networkCallback == null || !isOnline(this)) return
+        if (!PrefManager.getVal<Boolean>(PrefName.OfflineMode)) {
+            goOnline()
+            return
+        }
+        if (goOnlineSnack?.isShown == true) return
+        goOnlineSnack = Snackbar.make(binding.root, R.string.offline_mode, Snackbar.LENGTH_INDEFINITE)
+            .setAction(R.string.go_online) {
+                PrefManager.setVal(PrefName.OfflineMode, false)
+                goOnline()
+            }
+            .setAnchorView(binding.includedNavbar.navbarContainer)
+            .also { it.show() }
+    }
+
+    private fun goOnline() {
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        )
+        finish()
     }
 
     override fun onDestroy() {
@@ -112,8 +184,7 @@ class NoInternet : AppCompatActivity() {
             return when (position) {
                 0 -> OfflineAnimeFragment()
                 1 -> LocalFragment()
-                2 -> OfflineMangaFragment()
-                else -> OfflineFragment()
+                else -> OfflineMangaFragment()
             }
         }
     }

@@ -331,6 +331,7 @@
     <string name="extension_settings">Extensions</string>
     <string name="downloads">Downloads</string>
     <string name="offline_mode">Offline Mode</string>
+    <string name="go_online">Go online</string>
     <string name="settings">Settings</string>
     <string name="extensions">Extensions</string>
     <!-- Extensions screen redesign (feature/extensions-redesign) -->
@@ -401,7 +402,7 @@
     <string name="theme">Theme</string>
     <string name="ui_settings">UI Settings</string>
     <string name="about">About</string>
-    <string name="desc">"    Editotsu is crafted from the ashes of Saikou and Dantotsu, based on simplistic yet state-of-the-art elegance with a native libmpv video pipeline. It is an Anilist only client, which also lets you stream-download Anime through extensions &amp; Manga.\nEditotsu brings native libmpv playback, modern PiP, torrent streaming, and rich tracking to Android."</string>
+    <string name="desc">"    Editotsu is crafted from the ashes of Saikou and Dantotsu, based on simplistic yet state-of-the-art elegance with a native libmpv video pipeline. It tracks with AniList and MyAnimeList, and lets you stream and download anime and manga through extensions.\nEditotsu brings native libmpv playback, modern PiP, torrent streaming, and rich tracking to Android."</string>
     <string name="devs">Developers/Helpers</string>
     <string name="disclaimer">Disclaimer</string>
     <string name="full_disclaimer">
@@ -600,6 +601,15 @@
     <string name="year">Year</string>
     <string name="apply">Apply</string>
     <string name="cancel">Cancel</string>
+    <string name="restore">Restore</string>
+    <string name="restore_confirm_title">Restore %1$s?</string>
+    <string name="restore_confirm_message">This backup replaces:</string>
+    <string name="restore_replaces_logins">AniList and MyAnimeList logins</string>
+    <string name="restore_replaces_app_lock">App PIN and biometric unlock</string>
+    <string name="restore_replaces_proxy">Proxy settings</string>
+    <string name="restore_replaces_repos">Extension repositories</string>
+    <string name="restore_replaces_settings">App settings</string>
+    <string name="restore_replaces_history">Watch and read history</string>
     <string name="edit">Edit</string>
     <string name="publish">Publish</string>
     <string name="reply_hint">Write a response…</string>
@@ -880,7 +890,7 @@
     <string name="female">Female</string>
 
     <string name="question_1">What is Editotsu?</string>
-    <string name="answer_1">Editotsu is crafted from the ashes of Saikou and Dantotsu, based on simplistic yet state-of-the-art elegance with a native libmpv video playback pipeline. It is an Anilist only client, which also lets you stream &amp; download Anime / Manga through extensions. \n>Editotsu delivers high performance libmpv rendering, Anime Skip integration, PiP enhancements, and torrent streaming on Android!</string>
+    <string name="answer_1">Editotsu is crafted from the ashes of Saikou and Dantotsu, based on simplistic yet state-of-the-art elegance with a native libmpv video playback pipeline. It tracks with AniList and MyAnimeList, and lets you stream and download anime and manga through extensions. \n>Editotsu delivers high performance libmpv rendering, Anime Skip integration, PiP enhancements, and torrent streaming on Android!</string>
 
     <string name="question_2">What are some features of Editotsu?</string>
     <string name="answer_2">Some mentionable features of Editotsu are\n\n- High performance native libmpv player with anime skip and advanced subtitle/audio rendering.\n- Easy and functional way to both, watch anime and read manga and light novels, Ad Free.\n- A completely open source app with a nice UI &amp; Animations\n- 3rd party plugin support \n- Synchronize anime and manga real-time with AniList. Easily categorize anime and manga based on your current status. (Powered by AniList)\n- Find all shows using thoroughly and frequently updated list of all trending, popular and ongoing anime based on scores.\n- View extensive details about anime shows, movies and manga titles. It also features ability to countdown to the next episode of airing anime. (Powered by AniList &amp; MyAnimeList)</string>
@@ -1050,6 +1060,33 @@
     <string name="follows_you">Follows you</string>
     <string name="mutual">Mutual</string>
     <string name="success">Success</string>
+    <string name="widget_continue_watching">CURRENTLY WATCHING</string>
+    <string name="widget_continue_reading">CURRENTLY READING</string>
+    <string name="widget_continue_last_watched">LAST WATCHED</string>
+    <string name="widget_continue_last_read">LAST READ</string>
+    <string name="widget_continue_resume_episode">Resume episode</string>
+    <string name="widget_continue_resume_chapter">Resume chapter</string>
+    <string name="widget_continue_empty_title">Nothing in progress</string>
+    <string name="widget_continue_empty_detail">Open Editotsu to start</string>
+    <string name="widget_continue_chapter">Chapter %1$s (%2$d/%3$d)</string>
+    <string name="anilist_rate_limited">Rate limited. Try after %1$d seconds</string>
+    <string name="anilist_token_expired">AniList login expired, log in again</string>
+    <string name="anilist_error_fetching">Error fetching AniList data: %1$s</string>
+    <string name="activity_like_failed">Failed to like activity</string>
+    <string name="activity_deleted">Deleted activity</string>
+    <string name="activity_delete_failed">Failed to delete activity</string>
+    <string name="reply_deleted">Deleted</string>
+    <string name="reply_delete_failed">Failed to delete</string>
+    <string name="activity_pin_failed">Failed to pin/unpin activity</string>
+    <string name="activity_subscription_failed">Failed to update subscription</string>
+    <string name="no_chart_data">No chart data</string>
+    <string name="user_not_found">User not found</string>
+    <string name="cannot_block_yourself">Cannot block yourself</string>
+    <string name="replies_load_failed">Failed to load replies</string>
+    <string name="no_activity">No activity</string>
+    <string name="extension_repo_added">%1$s extension repo added</string>
+    <string name="episode_n">Episode %1$s</string>
+    <string name="post_failed">Could not post to AniList</string>
     <string name="error">Some error occurred</string>
     <string name="error_msg">Error: %1$s</string>
     <string name="please_wait">Please wait</string>
