@@ -5,8 +5,11 @@
     android:id="@+id/extensionCardView"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:minHeight="64dp"
     android:orientation="horizontal"
+    android:paddingStart="16dp"
     android:paddingTop="8dp"
+    android:paddingEnd="4dp"
     android:paddingBottom="8dp">
 
     <ImageView
@@ -40,7 +43,8 @@
             android:layout_height="wrap_content"
             android:fontFamily="@font/poppins_semi_bold"
             android:text="@string/extension_name"
-            android:textSize="15sp" />
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="16sp" />
 
         <TextView
             android:id="@+id/extensionVersionTextView"
@@ -69,7 +73,7 @@
         android:layout_weight="0"
         android:src="@drawable/ui_bg"
         android:visibility="gone"
-        app:tint="?attr/colorOnBackground"
+        app:tint="?attr/colorOnSurfaceVariant"
         tools:ignore="ContentDescription"/>
 
     <ImageView
@@ -82,7 +86,7 @@
         android:layout_gravity="center_vertical"
         android:layout_weight="0"
         android:src="@drawable/ic_round_sync_24"
-        app:tint="?attr/colorOnBackground" />
+        app:tint="?attr/colorOnSurfaceVariant" />
 
     <ImageView
         android:id="@+id/deleteTextView"
@@ -94,7 +98,7 @@
         android:layout_gravity="center_vertical"
         android:layout_weight="0"
         android:src="@drawable/ic_round_delete_24"
-        app:tint="?attr/colorOnBackground" />
+        app:tint="?attr/colorOnSurfaceVariant" />
 
     <ImageView
         android:id="@+id/settingsImageView"
@@ -104,9 +108,8 @@
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/extensions_more_options"
         android:layout_gravity="center_vertical"
-        android:layout_marginEnd="8dp"
         android:layout_weight="0"
         android:src="@drawable/ic_round_dots_vertical_24"
-        app:tint="?attr/colorOnBackground" />
+        app:tint="?attr/colorOnSurfaceVariant" />
 
 </LinearLayout>

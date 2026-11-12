@@ -118,6 +118,7 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
 
         extensionsRecyclerView = binding.allExtensionsRecyclerView
         extensionsRecyclerView.layoutManager = SafeLinearLayoutManager(requireContext())
+        extensionsRecyclerView.addItemDecoration(ExtensionCardDecoration())
         extensionsRecyclerView.adapter = extensionsAdapter
 
         val itemTouchHelperCallback = object : ItemTouchHelper.SimpleCallback(
