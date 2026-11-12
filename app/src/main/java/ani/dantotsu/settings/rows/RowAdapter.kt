@@ -50,7 +50,9 @@ class RowAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val item = getItem(position)) {
             is ScreenItem.Header ->
-                ItemSettingHeaderBinding.bind(holder.itemView).headerTitle.setText(item.title)
+                ItemSettingHeaderBinding.bind(holder.itemView).headerTitle.let { t ->
+                    if (item.label != null) t.text = item.label else t.setText(item.title)
+                }
             is ScreenItem.More -> {
                 bindMore(ItemSettingMoreBinding.bind(holder.itemView), item)
                 applyCard(holder.itemView, position)
@@ -131,7 +133,7 @@ class RowAdapter(
         val kind = row.kind
         val enabled = row.enabled()
 
-        b.rowTitle.setText(row.title)
+        b.rowTitle.text = row.titleText(context)
         if (row.icon != null) {
             b.rowIcon.setImageResource(row.icon)
             b.rowIcon.visibility = View.VISIBLE
@@ -186,7 +188,7 @@ class RowAdapter(
                 val labels = kind.labels(context)
                 val details = kind.details?.invoke(context)
                 ChoiceSheet.single(
-                    context, context.getString(row.title),
+                    context, row.titleText(context),
                     labels.mapIndexed { i, label -> ChoiceOption(label, details?.getOrNull(i)) },
                     kind.get(),
                 ) { which ->
@@ -204,7 +206,7 @@ class RowAdapter(
                 val value = snap(kind.get(), kind.from, kind.to, kind.step)
                 b.rowSlider.value = value
                 b.rowValue.text = kind.format(context, value)
-                b.rowSlider.contentDescription = context.getString(row.title)
+                b.rowSlider.contentDescription = row.titleText(context)
                 // A drag saves once, on release (some sliders restart the app); keyboard
                 // and accessibility steps save at once.
                 var dragging = false
@@ -311,7 +313,7 @@ class RowAdapter(
             is Kind.Slider, is Kind.Stepper -> null
             else -> row.kind.value(context)
         }
-        val text = value ?: row.summary?.let(context::getString)
+        val text = value ?: row.summaryText?.invoke() ?: row.summary?.let(context::getString)
         b.rowSummary.text = text
         b.rowSummary.isVisible = !text.isNullOrBlank()
     }

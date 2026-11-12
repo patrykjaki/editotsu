@@ -25,8 +25,8 @@ abstract class SettingsScreen(
 sealed interface ScreenItem {
     val key: String
 
-    data class Header(@StringRes val title: Int) : ScreenItem {
-        override val key get() = "header:$title"
+    data class Header(@StringRes val title: Int, val label: CharSequence? = null) : ScreenItem {
+        override val key get() = "header:$title:${label ?: ""}"
     }
 
     class RowItem(val row: Row) : ScreenItem {
@@ -58,7 +58,7 @@ object ScreenItems {
             if (visible.isEmpty()) return@forEachIndexed
             val (advanced, basic) = visible.partition { it.advanced }
             val open = index in expanded
-            if (section.title != 0) out += ScreenItem.Header(section.title)
+            if (section.title != 0 || section.label != null) out += ScreenItem.Header(section.title, section.label)
             basic.forEach { out += ScreenItem.RowItem(it) }
             if (open) advanced.forEach { out += ScreenItem.RowItem(it) }
             if (advanced.isNotEmpty()) out += ScreenItem.More(index, advanced.size, open)
