@@ -109,6 +109,122 @@ object TmdbService {
 
     private const val IMAGE_BASE_W500 = "https://image.tmdb.org/t/p/w500"
 
+    private val seasonMarker = Regex(
+        """\s*[:\-]?\s*(?:(?:season|part|cour)\s*\d+|\d+(?:st|nd|rd|th)\s+season|\d+)\s*$""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val romanMarker = Regex("""\s+(?:II|III|IV|V|VI)\s*$""")
+
+    /**
+     * Titles to search with: each title as given, then without a trailing
+     * season marker ("II", "2", "Season 2", "2nd Season"), since a sequel
+     * is a season of the first show's entry there. Order kept, no repeats.
+     */
+    internal fun searchTitles(titles: List<String?>): List<String> {
+        val out = LinkedHashSet<String>()
+        for (t in titles) {
+            val title = t?.trim().orEmpty()
+            if (title.isEmpty()) continue
+            out += title
+            val base = romanMarker.replace(seasonMarker.replace(title, ""), "").trim()
+            if (base.length >= 3) out += base
+        }
+        return out.toList()
+    }
+
+    /**
+     * The season (specials excluded) whose first air date is within
+     * [toleranceDays] of [start] (yyyy-MM-dd), nearest first. The date is
+     * the check that a title hit is the same show and the right season.
+     */
+    internal fun pickSeasonByAirDate(
+        seasons: List<Pair<Int, String?>>,
+        start: String,
+        toleranceDays: Long = 3,
+    ): Int? {
+        val target = runCatching { java.time.LocalDate.parse(start) }.getOrNull() ?: return null
+        return seasons
+            .filter { it.first > 0 }
+            .mapNotNull { (number, date) ->
+                val aired = runCatching { java.time.LocalDate.parse(date) }.getOrNull() ?: return@mapNotNull null
+                number to kotlin.math.abs(java.time.temporal.ChronoUnit.DAYS.between(target, aired))
+            }
+            .filter { it.second <= toleranceDays }
+            .minByOrNull { it.second }
+            ?.first
+    }
+
+    /**
+     * Episodes from the one that aired on [start] (within [toleranceDays])
+     * onwards, renumbered from 1. For a show listed as its own entry that
+     * the other side keeps inside a longer season (second cour, "part 2").
+     * Null when no episode aired on that date.
+     */
+    internal fun sliceFromAirDate(
+        episodes: Map<String, Episode>,
+        start: String,
+        toleranceDays: Long = 1,
+    ): Map<String, Episode>? {
+        val target = runCatching { java.time.LocalDate.parse(start) }.getOrNull() ?: return null
+        val ordered = episodes.values.sortedBy { it.number.toIntOrNull() ?: Int.MAX_VALUE }
+        val first = ordered.indexOfFirst { ep ->
+            val aired = runCatching { java.time.LocalDate.parse(ep.extra?.get("airDate")) }.getOrNull()
+            aired != null && kotlin.math.abs(java.time.temporal.ChronoUnit.DAYS.between(target, aired)) <= toleranceDays
+        }
+        if (first < 0) return null
+        return ordered.drop(first).mapIndexed { i, ep ->
+            val key = (i + 1).toString()
+            key to ep.copy(number = key)
+        }.toMap()
+    }
+
+    /**
+     * For shows the id mapping does not know yet (new seasons, mostly):
+     * search by title and accept a result only when the show's own start
+     * date is found in it, either as a season's first air date or as the
+     * air date of an episode inside an earlier-started season. Keys are
+     * the show's own episode numbers. Null rather than a guess.
+     */
+    suspend fun findEpisodesByAirDate(titles: List<String?>, start: String): Map<String, Episode>? =
+        withContext(Dispatchers.IO) {
+            val seen = HashSet<Int>()
+            for (title in searchTitles(titles).take(4)) {
+                try {
+                    val query = java.net.URLEncoder.encode(title, "utf-8")
+                    val text = client.get("$BASE_URL/search/tv?api_key=$API_KEY&query=$query").text
+                    val results = json.parseToJsonElement(text).jsonObject["results"]?.jsonArray ?: continue
+                    for (item in results.take(3)) {
+                        val id = item.jsonObject["id"]?.jsonPrimitive?.intOrNull ?: continue
+                        if (!seen.add(id)) continue
+                        val show = json.parseToJsonElement(client.get("$BASE_URL/tv/$id?api_key=$API_KEY").text).jsonObject
+                        val seasons = show["seasons"]?.jsonArray.orEmpty().mapNotNull { s ->
+                            val number = s.jsonObject["season_number"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+                            number to s.jsonObject["air_date"]?.jsonPrimitive?.contentOrNull
+                        }
+                        val season = pickSeasonByAirDate(seasons, start)
+                        if (season != null) {
+                            getEpisodeDetails(id, season)?.let { return@withContext it }
+                            continue
+                        }
+                        // no season starts that day: look inside the seasons that began before it
+                        val earlier = seasons
+                            .filter { it.first > 0 && (it.second ?: "9999") < start }
+                            .sortedByDescending { it.second }
+                            .take(2)
+                        for ((number, _) in earlier) {
+                            val sliced = getEpisodeDetails(id, number)?.let { sliceFromAirDate(it, start) }
+                            if (sliced != null) return@withContext sliced
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.log("$TAG: findEpisodesByAirDate failed for \"$title\": ${e.message}")
+                }
+            }
+            null
+        }
+
     /**
      * MAX MERGE M5 correction 3: bulk season fetch translated back to
      * LOCAL episode identity. Each local key maps individually through

@@ -48,8 +48,8 @@
 
                 <ImageView
                     android:id="@+id/itemMediaImage"
-                    android:layout_width="164dp"
-                    android:layout_height="109dp"
+                    android:layout_width="150dp"
+                    android:layout_height="100dp"
                     android:layout_gravity="center"
                     android:scaleType="centerCrop"
                     tools:ignore="ContentDescription" />
@@ -78,7 +78,7 @@
 
                 <LinearLayout
                     android:id="@+id/itemMediaProgress_cont"
-                    android:layout_width="164dp"
+                    android:layout_width="150dp"
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom"
                     android:orientation="horizontal"
@@ -132,7 +132,7 @@
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginVertical="8dp"
+                android:layout_marginVertical="4dp"
                 android:layout_weight="1"
                 android:gravity="center"
                 android:minHeight="92dp"
@@ -154,12 +154,12 @@
                     android:id="@+id/itemEpisodeTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:ellipsize="marquee"
+                    android:ellipsize="end"
                     android:fontFamily="@font/poppins_bold"
-                    android:layout_marginStart="4dp"
-                    android:maxLines="5"
+                    android:layout_marginStart="12dp"
+                    android:maxLines="3"
                     android:text="@string/empty"
-                    app:lineHeight="15sp" />
+                    app:lineHeight="18sp" />
                 
                 <TextView
                     android:id="@+id/itemEpisodeDate"
@@ -167,7 +167,7 @@
                     android:layout_height="wrap_content"
                     android:textSize="11sp"
                     android:alpha="0.6"
-                    android:layout_marginStart="4dp"
+                    android:layout_marginStart="12dp"
                     android:layout_marginTop="2dp"
                     android:fontFamily="@font/poppins"
                     android:visibility="gone"
@@ -203,11 +203,13 @@
             android:id="@+id/itemEpisodeDesc"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:alpha="0.58"
+            android:alpha="0.7"
             android:ellipsize="end"
             android:maxLines="3"
-            android:padding="16dp"
-            app:lineHeight="16sp"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="16dp"
+            app:lineHeight="20sp"
             tools:ignore="TextContrastCheck"
             tools:text="@tools:sample/lorem/random" />
 

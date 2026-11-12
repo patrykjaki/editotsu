@@ -157,4 +157,38 @@ class TmdbMappingTest {
         assertEquals("S2E1", out["5"]?.title)
         assertEquals("5", out["5"]?.number)
     }
+
+    @Test
+    fun `search titles add the title without its season marker`() {
+        assertEquals(
+            listOf("Some Show II", "Some Show", "Some Show Season 2", "Other 2nd Season", "Other"),
+            TmdbService.searchTitles(listOf("Some Show II", null, " ", "Some Show Season 2", "Other 2nd Season")),
+        )
+        assertEquals(listOf("Vivid"), TmdbService.searchTitles(listOf("Vivid")))
+    }
+
+    @Test
+    fun `season is picked by its air date and specials never match`() {
+        val seasons = listOf(0 to "2026-10-09", 1 to "2023-01-06", 2 to "2026-10-10", 3 to null)
+        assertEquals(2, TmdbService.pickSeasonByAirDate(seasons, "2026-10-09"))
+        assertEquals(1, TmdbService.pickSeasonByAirDate(seasons, "2023-01-05"))
+        assertEquals(null, TmdbService.pickSeasonByAirDate(seasons, "2025-04-01"))
+        assertEquals(null, TmdbService.pickSeasonByAirDate(seasons, "not a date"))
+    }
+
+    @Test
+    fun `a second cour inside a longer season is cut at its start date and renumbered`() {
+        fun ep(n: Int, date: String?) = n.toString() to Episode(
+            number = n.toString(), title = "t$n",
+            extra = buildMap { date?.let { put("airDate", it) } },
+        )
+        val season = mapOf(ep(1, "2026-01-05"), ep(2, "2026-01-12"), ep(13, "2026-07-06"), ep(14, "2026-07-13"), ep(15, null))
+        val cut = TmdbService.sliceFromAirDate(season, "2026-07-05")!!
+        assertEquals(listOf("1", "2", "3"), cut.keys.toList())
+        assertEquals("t13", cut["1"]!!.title)
+        assertEquals("1", cut["1"]!!.number)
+        assertEquals("t15", cut["3"]!!.title)
+        assertEquals(null, TmdbService.sliceFromAirDate(season, "2026-04-01"))
+        assertEquals(null, TmdbService.sliceFromAirDate(season, "2026-07-10"))
+    }
 }
