@@ -38,10 +38,17 @@ class Row(
     /** Small icon buttons bound on the right of the row, before the switch or chevron. */
     val trailing: ((SettingsHost, ViewGroup) -> Unit)? = null,
     val onLongClick: ((SettingsHost) -> Unit)? = null,
+    /** Title as text, for rows built at run time (extension settings); wins over [title]. */
+    val label: CharSequence? = null,
+    /** Second line read on every bind; after the kind's value, before [summary]. */
+    val summaryText: (() -> CharSequence?)? = null,
 )
 
-/** Rows under one header; [title] 0 draws no header. */
-class Section(@StringRes val title: Int, val rows: List<Row>)
+/** Rows under one header; [title] 0 (and no [label]) draws no header. */
+class Section(@StringRes val title: Int, val rows: List<Row>, val label: CharSequence? = null)
+
+/** The row's title, from [Row.label] or its string resource. */
+fun Row.titleText(context: Context): CharSequence = label ?: context.getString(title)
 
 sealed interface Kind {
     /** Current value shown as the second line, or null to show [Row.summary]. [context] is the host activity. */

@@ -7,7 +7,8 @@ import androidx.core.os.bundleOf
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.DialogPreference
 import androidx.preference.EditTextPreference
-import androidx.preference.Preference
+import androidx.recyclerview.widget.RecyclerView
+import ani.dantotsu.settings.rows.actionRow
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.forEach
 import androidx.preference.getOnBindEditTextListener
@@ -43,6 +44,21 @@ class AnimeSourcePreferencesFragment : PreferenceFragmentCompat() {
 
     private var onCloseAction: (() -> Unit)? = null
 
+    /** Source name for the per-source download resolution row (MAX MERGE M3, upstream e954d9f1). */
+    private var downloadSourceName: String? = null
+
+    override fun onCreateAdapter(preferenceScreen: PreferenceScreen): RecyclerView.Adapter<*> =
+        ExtensionPrefRows(this, preferenceScreen) { _ ->
+            val name = downloadSourceName ?: return@ExtensionPrefRows emptyList()
+            listOf(
+                actionRow(
+                    "ext:pref_download_resolution_priority", R.string.custom_extension_resolution_priority,
+                    icon = R.drawable.ic_round_high_quality_24,
+                    current = { PrefManager.getPreferredDownloadResolutions(name).joinToString(", ") },
+                ) { host, _ -> ResolutionPriorityDialog.show(host.activity, name) { host.refresh() } },
+            )
+        }.adapter(listView)
+
     override fun onDestroyView() {
         super.onDestroyView()
         try {
@@ -76,22 +92,7 @@ class AnimeSourcePreferencesFragment : PreferenceFragmentCompat() {
                 }
             }
         }
-        // MAX MERGE M3 (upstream e954d9f1): per-source download
-        // resolution override.
-        val downloadResPref = Preference(requireContext()).apply {
-            key = "pref_download_resolution_priority"
-            title = requireContext().getString(R.string.custom_extension_resolution_priority)
-            val current = PrefManager.getPreferredDownloadResolutions(source.name)
-            summary = current.joinToString(", ")
-            isIconSpaceReserved = false
-            setOnPreferenceClickListener {
-                ResolutionPriorityDialog.show(requireContext(), source.name) { updated ->
-                    summary = updated.joinToString(", ")
-                }
-                true
-            }
-        }
-        sourceScreen.addPreference(downloadResPref)
+        downloadSourceName = source.name
         return sourceScreen
     }
 

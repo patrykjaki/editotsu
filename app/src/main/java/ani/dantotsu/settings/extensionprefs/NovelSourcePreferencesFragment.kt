@@ -7,6 +7,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.preference.DialogPreference
 import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceFragmentCompat
+import androidx.recyclerview.widget.RecyclerView
 import androidx.preference.forEach
 import androidx.preference.getOnBindEditTextListener
 import ani.dantotsu.R
@@ -40,6 +41,10 @@ class NovelSourcePreferencesFragment : PreferenceFragmentCompat() {
     }
 
     private var onCloseAction: (() -> Unit)? = null
+
+    /** Draws the extension's preferences with the settings rows. */
+    override fun onCreateAdapter(preferenceScreen: PreferenceScreen): RecyclerView.Adapter<*> =
+        ExtensionPrefRows(this, preferenceScreen).adapter(listView)
 
     override fun onDestroyView() {
         super.onDestroyView()
