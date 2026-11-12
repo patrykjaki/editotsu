@@ -65,7 +65,7 @@ internal class ExtensionPrefRows(
             it.setPadding(0, pad, 0, pad * 4)
         }
         fragment.setDivider(null)
-        rows = RowAdapter(this)
+        rows = RowAdapter(this, iconSlot = false)
         refresh()
         return rows
     }

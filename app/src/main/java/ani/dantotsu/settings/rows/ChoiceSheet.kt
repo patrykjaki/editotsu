@@ -10,6 +10,8 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -146,6 +148,13 @@ object ChoiceSheet {
         b.choiceList.itemAnimator = null
 
         dialog.setContentView(b.root)
+        // Keep the last option and the buttons above the gesture bar.
+        val basePadding = b.root.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(b.root) { v, insets ->
+            val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            v.updatePadding(bottom = basePadding + nav)
+            insets
+        }
         // TalkBack announces the window title when the sheet opens.
         dialog.setTitle(title)
         dialog.setOnDismissListener { if (!sheet.confirmed) onCancel?.invoke() }
@@ -165,6 +174,13 @@ object ChoiceSheet {
                 .scrollToPositionWithOffset(position, (metrics.heightPixels * 0.15f).toInt())
         }
         dialog.show()
+        // The default sheet surface is a tinted container; use the theme's surface so OLED and
+        // custom themes match the screen behind it.
+        dialog.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(
+                MaterialColors.getColor(b.root, com.google.android.material.R.attr.colorSurface)
+            )
+        ViewCompat.requestApplyInsets(b.root)
         return sheet
     }
 
