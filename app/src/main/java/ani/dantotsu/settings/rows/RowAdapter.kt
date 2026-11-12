@@ -21,6 +21,8 @@ import kotlin.math.roundToInt
 /** Draws a screen's [ScreenItem]s. Values are read from prefs on every bind. */
 class RowAdapter(
     private val host: SettingsHost,
+    /** False for screens whose rows never have icons (extension settings): no empty slot. */
+    private val iconSlot: Boolean = true,
     /** Opens or closes the advanced rows of the section at this index. */
     private val onToggleSection: (Int) -> Unit = {},
 ) : ListAdapter<ScreenItem, RecyclerView.ViewHolder>(Diff) {
@@ -138,8 +140,11 @@ class RowAdapter(
             b.rowIcon.setImageResource(row.icon)
             b.rowIcon.visibility = View.VISIBLE
         } else {
-            b.rowIcon.visibility = View.INVISIBLE
+            b.rowIcon.visibility = if (iconSlot) View.INVISIBLE else View.GONE
         }
+        // The slider sits under the text; without the icon slot it lines up with the title.
+        (b.rowSlider.layoutParams as ViewGroup.MarginLayoutParams).marginStart =
+            if (iconSlot) (28 * b.root.resources.displayMetrics.density).toInt() else 0
         setSummary(b, context, row)
 
         // Reset every optional part; each kind turns on what it uses.

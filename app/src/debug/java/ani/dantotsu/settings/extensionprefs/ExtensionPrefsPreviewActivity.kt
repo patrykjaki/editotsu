@@ -5,6 +5,8 @@ import android.os.Bundle
 import android.text.InputType
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.preference.CheckBoxPreference
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
@@ -31,6 +33,11 @@ class ExtensionPrefsPreviewActivity : AppCompatActivity() {
         initActivity(this)
         val frame = FrameLayout(this).apply { id = android.view.View.generateViewId() }
         setContentView(frame)
+        ViewCompat.setOnApplyWindowInsetsListener(frame) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(bars.left, bars.top, bars.right, 0)
+            insets
+        }
         if (savedInstanceState == null) {
             val fragment = PreviewFragment().apply {
                 arguments = Bundle().apply { putBoolean(RAW, intent.getBooleanExtra(RAW, false)) }
@@ -43,6 +50,8 @@ class ExtensionPrefsPreviewActivity : AppCompatActivity() {
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             preferenceManager.sharedPreferencesName = "extension_prefs_preview"
             preferenceScreen = build(requireContext())
+            // Dependencies resolve against the attached screen, so set this one afterwards.
+            findPreference<Preference>("disabled")?.dependency = "dub"
         }
 
         /** `--ez raw true` shows the plain androidx list, for before/after shots. */
@@ -94,7 +103,6 @@ class ExtensionPrefsPreviewActivity : AppCompatActivity() {
             content.addPreference(CheckBoxPreference(c).apply { key = "show_raw_titles" })
             content.addPreference(SwitchPreferenceCompat(c).apply {
                 key = "disabled"; title = "Hardsub only"; summary = "Needs Prefer dub on"
-                dependency = "dub"
             })
             content.addPreference(Preference(c).apply {
                 key = "info"; title = "Version"; summary = "14.2"; isSelectable = false
