@@ -3,6 +3,7 @@ package ani.dantotsu.profile
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import ani.dantotsu.R
 import ani.dantotsu.databinding.ActivitySingleStatBinding
 import ani.dantotsu.getThemeColor
 import ani.dantotsu.initActivity
@@ -24,7 +25,7 @@ class SingleStatActivity : AppCompatActivity() {
             binding.chartView.aa_drawChartWithChartOptions(chartOptions)
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         } else {
-            toast("No chart data")
+            toast(R.string.no_chart_data)
             finish()
         }
     }

@@ -336,6 +336,14 @@ object Anilist {
         }
     }
 
+    fun rateLimitedMessage(seconds: Long): String =
+        currContext()?.getString(R.string.anilist_rate_limited, seconds)
+            ?: "Rate limited. Try after $seconds seconds"
+
+    fun anilistErrorMessage(detail: String): String =
+        currContext()?.getString(R.string.anilist_error_fetching, detail)
+            ?: "Error fetching AniList data: $detail"
+
     suspend inline fun <reified T : Any> executeQuery(
         query: String,
         variables: String = "",
@@ -352,7 +360,7 @@ object Anilist {
             val nowSec = System.currentTimeMillis() / 1000
             val secondsRemaining = rateLimitReset - nowSec
             if (secondsRemaining > 0) {
-                val rateMsg = "Rate limited. Try after $secondsRemaining seconds"
+                val rateMsg = rateLimitedMessage(secondsRemaining)
                 toast(rateMsg)
                 lastError = rateMsg
                 throw Exception(rateMsg)
@@ -415,13 +423,14 @@ object Anilist {
 
                     rateLimitReset = currentSec + actualWait
 
-                    val rateMsg = "Rate limited. Try after $actualWait seconds"
+                    val rateMsg = rateLimitedMessage(actualWait.toLong())
                     toast(rateMsg)
                     lastError = rateMsg
                     throw Exception(rateMsg)
                 }
 
-                if (json.code == 403 || json.code == 400) {
+                // 401: AniList answers an expired or revoked token with "Invalid token".
+                if (json.code == 403 || json.code == 400 || json.code == 401) {
                     // Upstream e70fdc56: surface field-level validation messages
                     // instead of a generic Forbidden.
                     val message = runCatching {
@@ -448,10 +457,13 @@ object Anilist {
 
                     if (message.contains("disabled", ignoreCase = true)) {
                         anilistDisabledSignal = true
-                    } else if (message.contains("Invalid token")) {
-                        if (!show) snackString("Anilist token expired, please login again")
+                    } else if (json.code == 401 || message.contains("Invalid token")) {
+                        if (!show) snackString(
+                            currContext()?.getString(R.string.anilist_token_expired)
+                                ?: "AniList login expired, log in again"
+                        )
                     } else {
-                        if (!show) snackString("Error fetching Anilist data: $message")
+                        if (!show) snackString(anilistErrorMessage(message))
                     }
 
                     throw Exception(message)
@@ -478,7 +490,7 @@ object Anilist {
             if (lastError == null) {
                 lastError = e.message
             }
-            if (show) snackString("Error fetching Anilist data: ${e.message}")
+            if (show) snackString(anilistErrorMessage(e.message.orEmpty()))
             Logger.log("Anilist Query Error: ${e.message}")
             null
         }

@@ -26,7 +26,7 @@ import ani.dantotsu.home.NoInternet
 import ani.dantotsu.incognitoNotification
 import ani.dantotsu.loadImage
 import ani.dantotsu.snackString
-import ani.dantotsu.offline.OfflineFragment
+import ani.dantotsu.offline.LocalFragment
 import ani.dantotsu.profile.ProfileActivity
 import ani.dantotsu.profile.activity.FeedActivity
 import ani.dantotsu.profile.notification.NotificationActivity
@@ -180,6 +180,10 @@ class SettingsDialogFragment : BottomSheetDialogFragment() {
                 val currentActivity = activity
                 // Ensure fragment is added and activity is not null
                 if (currentActivity != null && isAdded) {
+                    // Set first: the started activity reads it in onCreate.
+                    PrefManager.setVal(PrefName.OfflineMode, isChecked)
+                    // Replace the task so repeated toggles don't stack activities.
+                    val switchFlags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                     when (pageType) {
                         PageType.MANGA -> {
                             val intent = Intent(currentActivity, NoInternet::class.java)
@@ -187,7 +191,7 @@ class SettingsDialogFragment : BottomSheetDialogFragment() {
                                 "FRAGMENT_CLASS_NAME",
                                 OfflineMangaFragment::class.java.name
                             )
-                            startActivity(intent)
+                            startActivity(intent.addFlags(switchFlags))
                         }
 
                         PageType.ANIME -> {
@@ -196,19 +200,19 @@ class SettingsDialogFragment : BottomSheetDialogFragment() {
                                 "FRAGMENT_CLASS_NAME",
                                 OfflineAnimeFragment::class.java.name
                             )
-                            startActivity(intent)
+                            startActivity(intent.addFlags(switchFlags))
                         }
 
                         PageType.HOME -> {
                             val intent = Intent(currentActivity, NoInternet::class.java)
-                            intent.putExtra("FRAGMENT_CLASS_NAME", OfflineFragment::class.java.name)
-                            startActivity(intent)
+                            intent.putExtra("FRAGMENT_CLASS_NAME", LocalFragment::class.java.name)
+                            startActivity(intent.addFlags(switchFlags))
                         }
 
                         PageType.OfflineMANGA -> {
                             val intent = Intent(currentActivity, MainActivity::class.java)
                             intent.putExtra("FRAGMENT_CLASS_NAME", MangaFragment::class.java.name)
-                            startActivity(intent)
+                            startActivity(intent.addFlags(switchFlags))
                         }
 
                         PageType.OfflineHOME -> {
@@ -217,18 +221,17 @@ class SettingsDialogFragment : BottomSheetDialogFragment() {
                                 "FRAGMENT_CLASS_NAME",
                                 if (Anilist.token != null) HomeFragment::class.java.name else LoginFragment::class.java.name
                             )
-                            startActivity(intent)
+                            startActivity(intent.addFlags(switchFlags))
                         }
 
                         PageType.OfflineANIME -> {
                             val intent = Intent(currentActivity, MainActivity::class.java)
                             intent.putExtra("FRAGMENT_CLASS_NAME", AnimeFragment::class.java.name)
-                            startActivity(intent)
+                            startActivity(intent.addFlags(switchFlags))
                         }
                     }
 
                     dismiss()
-                    PrefManager.setVal(PrefName.OfflineMode, isChecked)
                 }
             }, 300)
         }

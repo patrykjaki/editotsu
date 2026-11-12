@@ -96,7 +96,7 @@ class ActivityItem(
                         binding.activityLike.setColorFilter(if (activity.isLiked == true) likeColor else notLikeColor)
 
                     } else {
-                        snackString("Failed to like activity")
+                        snackString(R.string.activity_like_failed)
                     }
                 }
             }
@@ -115,10 +115,10 @@ class ActivityItem(
                         val res = Anilist.mutation.deleteActivity(activity.id)
                         withContext(Dispatchers.Main) {
                             if (res) {
-                                snackString("Deleted activity")
+                                snackString(R.string.activity_deleted)
                                 parentAdapter.remove(this@ActivityItem)
                             } else {
-                                snackString("Failed to delete activity")
+                                snackString(R.string.activity_delete_failed)
                             }
                         }
                     }
@@ -140,7 +140,7 @@ class ActivityItem(
                         binding.activityPin.text = if (activity.isPinned == true) "Unpin" else "Pin"
                         snackString(if (newPinned) "Pinned activity" else "Unpinned activity")
                     } else {
-                        snackString("Failed to pin/unpin activity")
+                        snackString(R.string.activity_pin_failed)
                     }
                 }
             }
@@ -158,7 +158,7 @@ class ActivityItem(
                         binding.activitySubscribe.text = if (activity.isSubscribed == true) "Unsubscribe" else "Subscribe"
                         snackString(if (newSub) "Subscribed to activity" else "Unsubscribed from activity")
                     } else {
-                        snackString("Failed to update subscription")
+                        snackString(R.string.activity_subscription_failed)
                     }
                 }
             }

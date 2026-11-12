@@ -34,7 +34,8 @@ object BitmapUtil {
         var bitmap: Bitmap? = null
 
         runBlocking(Dispatchers.IO) {
-            val cacheName = imageUrl.substringAfterLast("/")
+            // Full url: two users' avatars can share a file name.
+            val cacheName = imageUrl
             bitmap = bitmapCache[cacheName]
             if (bitmap != null) return@runBlocking
             var inputStream: InputStream? = null
@@ -43,6 +44,8 @@ object BitmapUtil {
                 val url = URL(imageUrl)
                 urlConnection = url.openConnection() as HttpURLConnection
                 urlConnection.requestMethod = "GET"
+                urlConnection.connectTimeout = 10_000
+                urlConnection.readTimeout = 15_000
                 urlConnection.connect()
 
                 if (urlConnection.responseCode == HttpURLConnection.HTTP_OK) {
