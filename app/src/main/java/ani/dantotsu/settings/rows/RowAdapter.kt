@@ -276,7 +276,8 @@ class RowAdapter(
                         setPadding(pad, paddingTop, pad, paddingBottom)
                         tag = i
                     }
-                    b.rowSegments.addView(button)
+                    // Equal segments across the row, as in the Material 3 segmented button.
+                    b.rowSegments.addView(button, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     if (i == kind.get()) b.rowSegments.check(button.id)
                 }
                 b.rowSegments.addOnButtonCheckedListener { group, checkedId, isChecked ->

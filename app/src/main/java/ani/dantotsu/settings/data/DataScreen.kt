@@ -23,10 +23,8 @@ import ani.dantotsu.settings.rows.SettingsScreen
 import ani.dantotsu.settings.rows.actionRow
 import ani.dantotsu.settings.rows.choiceRow
 import ani.dantotsu.settings.rows.customRow
-import ani.dantotsu.settings.rows.segmentsRow
 import ani.dantotsu.settings.rows.stepperRow
 import ani.dantotsu.settings.rows.stepsRow
-import ani.dantotsu.settings.rows.textSegment
 import ani.dantotsu.settings.rows.switchRow
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
@@ -123,10 +121,10 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
                 details = { c -> listOf(null, c.getString(R.string.download_manager_external_desc, "1DM"),
                     c.getString(R.string.download_manager_external_desc, "ADM")) }),
             switchRow(PrefName.DownloadWifiOnly, R.string.download_wifi_only, icon = R.drawable.lan_24),
-            // 0 = one at a time (no parallel limit set), else up to 10.
+            // A stored 0 (the old "off") downloads one at a time, the same as 1.
             stepperRow(PrefName.MaxParallelDownloads, R.string.max_parallel_downloads, R.string.max_parallel_downloads_desc,
-                R.drawable.ic_download_24, from = 0f, to = 10f, step = 1f,
-                format = { c, v -> if (v < 1f) c.getString(R.string.max_parallel_downloads_off_short) else v.toInt().toString() }),
+                R.drawable.ic_download_24, from = 1f, to = 10f, step = 1f,
+                format = { _, v -> v.toInt().toString() }, read = { it.coerceAtLeast(1f) }),
             purgeRow("purge_anime", R.string.purge_anime_downloads, R.string.anime) { host ->
                 Injekt.get<DownloadsManager>().purgeDownloads(MediaType.ANIME)
             },
@@ -160,11 +158,12 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
             choiceRow(PrefName.AutoBackupInterval, R.string.auto_backup_interval, R.drawable.ic_round_auto_awesome_24,
                 labels = ::intervalLabels, refresh = true,
                 onChange = { host, which -> AutoBackupWorker.schedule(host.activity, which) }),
-            segmentsRow(
-                "AutoBackupMaxCopies", R.string.auto_backup_max_copies,
-                COPY_COUNTS.map { n -> textSegment { n.toString() } },
-                icon = R.drawable.backup_restore, keys = listOf(PrefName.AutoBackupMaxCopies),
+            // A count: stepper like the other numbers on this screen.
+            stepsRow(
+                "AutoBackupMaxCopies", R.string.auto_backup_max_copies, COPY_COUNTS.size,
+                label = { _, i -> COPY_COUNTS[i].toString() },
                 get = { COPY_COUNTS.indexOf(PrefManager.getVal<Int>(PrefName.AutoBackupMaxCopies)).let { if (it < 0) 2 else it } },
+                icon = R.drawable.backup_restore, keys = listOf(PrefName.AutoBackupMaxCopies),
             ) { _, which -> PrefManager.setVal(PrefName.AutoBackupMaxCopies, COPY_COUNTS[which]) },
             actionRow("auto_backup", R.string.auto_backup, icon = R.drawable.backup_restore,
                 current = { c ->
