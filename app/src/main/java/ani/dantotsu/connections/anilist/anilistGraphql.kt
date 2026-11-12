@@ -347,16 +347,6 @@ fun fullMediaInformation(id: Int) = """
         }
       }
     }
-    producers: studios(isMain: false) {
-      nodes {
-        id
-        name
-        isAnimationStudio
-        siteUrl
-        isFavourite
-        favourites
-      }
-    }
     description
     trailer {
       site
