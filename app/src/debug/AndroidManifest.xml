@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: preview of the extension settings renderer with a hand-built screen. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="ani.dantotsu.settings.extensionprefs.ExtensionPrefsPreviewActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Dantotsu.NoActionBar" />
+    </application>
+</manifest>
