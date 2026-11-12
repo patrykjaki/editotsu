@@ -20,7 +20,6 @@ class DantotsuPlayerManager(
     private val playerView: DantotsuPlayerView,
     private val subtitleManager: PlayerSubtitleManager,
     private val client: OkHttpClient,
-    private val onPlayerErrorCallback: (error: PlaybackError) -> Unit
 ) {
 
     var playbackEngine: PlaybackEngine? = null

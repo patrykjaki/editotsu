@@ -335,37 +335,20 @@ class AniskipCsvFallback(context: Context) {
                     null, null, null
                 ).use { cursor ->
                     val rows = mutableListOf<CsvRow>()
-                    // Old v1 rows lack the new columns; read defensively.
-                    val hasProvider = cursor.getColumnIndex(COL_PROVIDER) >= 0
+                    // onUpgrade drops a v1 table, so every row has all six columns.
                     while (cursor.moveToNext()) {
-                        if (hasProvider) {
-                            rows.add(
-                                CsvRow(
-                                    animeId = malId.toLong(),
-                                    episode = episodeNumber,
-                                    provider = cursor.getString(0).orEmpty().ifEmpty { "unknown" },
-                                    skipType = cursor.getString(1).orEmpty(),
-                                    votes = cursor.getDouble(2),
-                                    start = cursor.getDouble(3),
-                                    end = cursor.getDouble(4),
-                                    episodeLength = cursor.getDouble(5)
-                                )
+                        rows.add(
+                            CsvRow(
+                                animeId = malId.toLong(),
+                                episode = episodeNumber,
+                                provider = cursor.getString(0).orEmpty().ifEmpty { "unknown" },
+                                skipType = cursor.getString(1).orEmpty(),
+                                votes = cursor.getDouble(2),
+                                start = cursor.getDouble(3),
+                                end = cursor.getDouble(4),
+                                episodeLength = cursor.getDouble(5)
                             )
-                        } else {
-                            // v1 schema fallback: type/start/end only.
-                            rows.add(
-                                CsvRow(
-                                    animeId = malId.toLong(),
-                                    episode = episodeNumber,
-                                    provider = "unknown",
-                                    skipType = cursor.getString(0).orEmpty(),
-                                    votes = 0.0,
-                                    start = cursor.getDouble(1),
-                                    end = cursor.getDouble(2),
-                                    episodeLength = 0.0
-                                )
-                            )
-                        }
+                        )
                     }
                     val selected = selectCsvStamps(rows, durationSec, malId, episodeNumber)
                     if (selected.isNotEmpty()) selected else null

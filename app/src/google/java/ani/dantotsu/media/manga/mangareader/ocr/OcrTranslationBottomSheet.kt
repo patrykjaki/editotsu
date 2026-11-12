@@ -13,7 +13,6 @@ import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import ani.dantotsu.R
 import ani.dantotsu.databinding.DialogOcrTranslationBinding
-import ani.dantotsu.util.Logger
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -274,26 +273,6 @@ class OcrTranslationBottomSheet : BottomSheetDialogFragment() {
 
     companion object {
         private const val ARG_PAGE_IMAGE = "page_image"
-
-        /** Writes [bitmap] to the cache for the sheet. Call off the main thread. */
-        fun writePageImage(context: Context, bitmap: Bitmap): File? = try {
-            val dir = File(context.cacheDir, "ocr").apply { mkdirs() }
-            val file = File(dir, "page.jpg")
-            val source = if (bitmap.config == Bitmap.Config.HARDWARE) {
-                bitmap.copy(Bitmap.Config.ARGB_8888, false)
-            } else {
-                bitmap
-            }
-            try {
-                file.outputStream().use { source.compress(Bitmap.CompressFormat.JPEG, 95, it) }
-            } finally {
-                if (source !== bitmap) source.recycle()
-            }
-            file
-        } catch (e: Exception) {
-            Logger.log("OCR: could not write page image: ${e.javaClass.simpleName}")
-            null
-        }
 
         fun newInstance(pageImage: File): OcrTranslationBottomSheet =
             OcrTranslationBottomSheet().apply {
