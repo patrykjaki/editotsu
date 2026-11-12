@@ -343,6 +343,7 @@ class OtherDetailsViewModel : ViewModel() {
     }
 
     private suspend fun loadCalendarFromAnilist(showOnlyLibrary: Boolean, showOnlyDubbed: Boolean) {
+        var fresh: Pair<Map<String, MutableList<Media>>, Map<String, MutableList<Media>>>? = null
         if (cachedAllCalendarData == null || cachedLibraryCalendarData == null) {
             val curr = System.currentTimeMillis() / 1000
             val res = Anilist.query.recentlyUpdated(curr - 86400, curr + (86400 * 6))
@@ -375,14 +376,19 @@ class OtherDetailsViewModel : ViewModel() {
                 }
             }
 
-            cachedAllCalendarData = allMap
-            cachedLibraryCalendarData = libraryMap
+            // An empty week means the load failed (or returned nothing): don't keep it,
+            // so the next load (filter toggle, refresh) fetches again.
+            if (allMap.isNotEmpty()) {
+                cachedAllCalendarData = allMap
+                cachedLibraryCalendarData = libraryMap
+            }
+            fresh = allMap to libraryMap
         }
 
         var cacheToUse: Map<String, MutableList<Media>> = if (showOnlyLibrary) {
-            cachedLibraryCalendarData ?: emptyMap()
+            cachedLibraryCalendarData ?: fresh?.second ?: emptyMap()
         } else {
-            cachedAllCalendarData ?: emptyMap()
+            cachedAllCalendarData ?: fresh?.first ?: emptyMap()
         }
         if (showOnlyDubbed) {
             cacheToUse = applyDubFilter(cacheToUse, rescueMode = false)
@@ -391,6 +397,7 @@ class OtherDetailsViewModel : ViewModel() {
     }
 
     private suspend fun loadCalendarFromJikan(showOnlyLibrary: Boolean, showOnlyDubbed: Boolean) {
+        var fresh: Pair<Map<String, MutableList<Media>>, Map<String, MutableList<Media>>>? = null
         if (cachedAllCalendarData == null || cachedLibraryCalendarData == null) {
             val jikan = MAL.jikan
             val df = DateFormat.getDateInstance(DateFormat.FULL)
@@ -527,14 +534,19 @@ class OtherDetailsViewModel : ViewModel() {
                 }
             }
 
-            cachedAllCalendarData = allMap
-            cachedLibraryCalendarData = libraryMap
+            // An empty week means the load failed (or returned nothing): don't keep it,
+            // so the next load (filter toggle, refresh) fetches again.
+            if (allMap.isNotEmpty()) {
+                cachedAllCalendarData = allMap
+                cachedLibraryCalendarData = libraryMap
+            }
+            fresh = allMap to libraryMap
         }
 
         var cacheToUse: Map<String, MutableList<Media>> = if (showOnlyLibrary) {
-            cachedLibraryCalendarData ?: emptyMap()
+            cachedLibraryCalendarData ?: fresh?.second ?: emptyMap()
         } else {
-            cachedAllCalendarData ?: emptyMap()
+            cachedAllCalendarData ?: fresh?.first ?: emptyMap()
         }
         if (showOnlyDubbed) {
             cacheToUse = applyDubFilter(cacheToUse, rescueMode = true)
