@@ -115,9 +115,8 @@ class MainActivity : AppCompatActivity() {
             if (pin.isNotEmpty()) {
                 ContextCompat.startActivity(
                     this@MainActivity,
-                    Intent(this@MainActivity, CalcActivity::class.java)
-                        .putExtra("code", pin)
-                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+                    CalcActivity.lockIntent(this@MainActivity, intent)
+                        .putExtra("code", pin),
                     null
                 )
                 finish()
@@ -361,69 +360,71 @@ class MainActivity : AppCompatActivity() {
 
         var launched = handleIncomingExtras(intent)
         val offlineMode: Boolean = PrefManager.getVal(PrefName.OfflineMode)
-        if (!isOnline(this)) {
-            snackString(this@MainActivity.getString(R.string.no_internet_connection))
+        if (!isOnline(this) || offlineMode) {
+            snackString(
+                this@MainActivity.getString(
+                    if (offlineMode) R.string.offline_mode else R.string.no_internet_connection
+                )
+            )
             startActivity(Intent(this, NoInternet::class.java))
+            // The online shell has loaded nothing; don't leave it under the offline one.
+            // A VIEW intent (file restore, repo link) keeps its dialog here, so that case stays.
+            if (Intent.ACTION_VIEW != intent.action) finish()
         } else {
-            if (offlineMode) {
-                snackString(this@MainActivity.getString(R.string.no_internet_connection))
-                startActivity(Intent(this, NoInternet::class.java))
-            } else {
-                val model: AnilistHomeViewModel by viewModels()
+            val model: AnilistHomeViewModel by viewModels()
 
-                //Load Data
-                if (!load && !launched) {
-                    scope.launch(Dispatchers.IO) {
-                        model.loadMain(this@MainActivity)
-                        launchMediaFromExtras(intent)
-                        val username = intent.extras?.getString("username")
-                        if (username != null) {
-                            val nameInt = username.toIntOrNull()
-                            if (nameInt != null) {
-                                startActivity(
-                                    Intent(this@MainActivity, ProfileActivity::class.java)
-                                        .putExtra("userId", nameInt)
-                                )
-                            } else {
-                                startActivity(
-                                    Intent(this@MainActivity, ProfileActivity::class.java)
-                                        .putExtra("username", username)
-                                )
-                            }
+            //Load Data
+            if (!load && !launched) {
+                scope.launch(Dispatchers.IO) {
+                    model.loadMain(this@MainActivity)
+                    launchMediaFromExtras(intent)
+                    val username = intent.extras?.getString("username")
+                    if (username != null) {
+                        val nameInt = username.toIntOrNull()
+                        if (nameInt != null) {
+                            startActivity(
+                                Intent(this@MainActivity, ProfileActivity::class.java)
+                                    .putExtra("userId", nameInt)
+                            )
+                        } else {
+                            startActivity(
+                                Intent(this@MainActivity, ProfileActivity::class.java)
+                                    .putExtra("username", username)
+                            )
                         }
                     }
-                    load = true
                 }
+                load = true
+            }
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (!(PrefManager.getVal(PrefName.AllowOpeningLinks) as Boolean)) {
-                        CustomBottomDialog.newInstance().apply {
-                            title = this@MainActivity.getString(R.string.allow_opening_links_title)
-                            val md = this@MainActivity.getString(R.string.allow_opening_links_steps)
-                            addView(TextView(this@MainActivity).apply {
-                                val markWon =
-                                    Markwon.builder(this@MainActivity)
-                                        .usePlugin(SoftBreakAddsNewLinePlugin.create()).build()
-                                markWon.setMarkdown(this, md)
-                            })
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (!(PrefManager.getVal(PrefName.AllowOpeningLinks) as Boolean)) {
+                    CustomBottomDialog.newInstance().apply {
+                        title = this@MainActivity.getString(R.string.allow_opening_links_title)
+                        val md = this@MainActivity.getString(R.string.allow_opening_links_steps)
+                        addView(TextView(this@MainActivity).apply {
+                            val markWon =
+                                Markwon.builder(this@MainActivity)
+                                    .usePlugin(SoftBreakAddsNewLinePlugin.create()).build()
+                            markWon.setMarkdown(this, md)
+                        })
 
-                            setNegativeButton(this@MainActivity.getString(R.string.no)) {
-                                PrefManager.setVal(PrefName.AllowOpeningLinks, true)
-                                dismiss()
+                        setNegativeButton(this@MainActivity.getString(R.string.no)) {
+                            PrefManager.setVal(PrefName.AllowOpeningLinks, true)
+                            dismiss()
+                        }
+
+                        setPositiveButton(this@MainActivity.getString(R.string.yes)) {
+                            PrefManager.setVal(PrefName.AllowOpeningLinks, true)
+                            tryWith(true) {
+                                startActivity(
+                                    Intent(Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS)
+                                        .setData(Uri.parse("package:$packageName"))
+                                )
                             }
-
-                            setPositiveButton(this@MainActivity.getString(R.string.yes)) {
-                                PrefManager.setVal(PrefName.AllowOpeningLinks, true)
-                                tryWith(true) {
-                                    startActivity(
-                                        Intent(Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS)
-                                            .setData(Uri.parse("package:$packageName"))
-                                    )
-                                }
-                                dismiss()
-                            }
-                        }.show(supportFragmentManager, "dialog")
-                    }
+                            dismiss()
+                        }
+                    }.show(supportFragmentManager, "dialog")
                 }
             }
         }
@@ -679,7 +680,7 @@ class MainActivity : AppCompatActivity() {
                 AddRepositoryBottomSheet.addRepoWarning(this) {
                     newRepos.add(url)
                     PrefManager.setVal(prefName, newRepos)
-                    toast("$name Extension Repo added")
+                    toast(getString(R.string.extension_repo_added, name))
                 }
                 return
             }
@@ -689,10 +690,10 @@ class MainActivity : AppCompatActivity() {
                     ?: throw Exception("Error reading file")
             val name =
                 DocumentFile.fromSingleUri(this, uri)?.name ?: "settings"
-            ani.dantotsu.settings.data.BackupRestore.restore(this, jsonString, name)
+            ani.dantotsu.settings.data.BackupRestore.restore(this, jsonString, name, confirm = true)
         } catch (e: Exception) {
             e.printStackTrace()
-            toast("Error importing settings")
+            toast(R.string.error_importing_settings)
         }
     }
 

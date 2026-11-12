@@ -119,6 +119,16 @@ class PreferencePackager {
             return unpackagePreferences(decodePayload(payloadJson))
         }
 
+        /** Location -> keys a valid backup would write, or null when [json] is not a valid backup. */
+        fun preview(json: String): Map<String, Set<String>>? {
+            val check = validateBackupPayload(json) as? BackupCheck.Valid ?: return null
+            return try {
+                decodePayload(check.payloadJson).mapValues { it.value.keys }
+            } catch (e: Exception) {
+                null
+            }
+        }
+
         /**
          * Payload json to location -> key -> typed value. Entries with a type or value restore
          * cannot write are left out (and logged), so one odd entry does not fail the restore.

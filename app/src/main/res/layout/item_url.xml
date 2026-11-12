@@ -58,7 +58,7 @@
                         android:singleLine="true"
                         android:ellipsize="end"
                         android:textSize="20sp"
-                        tools:text="SubsPlease" />
+                        tools:text="Release group" />
 
                     <ImageView
                         android:id="@+id/urlTrackerCue"
@@ -158,7 +158,7 @@
                         android:singleLine="true"
                         android:ellipsize="end"
                         android:textSize="13sp"
-                        tools:text="· 1.48 GB · NyaaSi" />
+                        tools:text="· 1.48 GB · Tracker" />
                 </LinearLayout>
             </LinearLayout>
 

@@ -1,6 +1,7 @@
 package ani.dantotsu.others.calc
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -12,6 +13,7 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import androidx.core.view.doOnAttach
 import androidx.core.view.updateLayoutParams
 import ani.dantotsu.MainActivity
@@ -132,12 +134,23 @@ class CalcActivity : AppCompatActivity() {
 
     private fun success() {
         hasPermission = true
-        ContextCompat.startActivity(
-            this,
-            Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
-            null
-        )
+        // Replay what opened the app (notification, widget, link, file) once.
+        val locked = IntentCompat.getParcelableExtra(intent, EXTRA_LOCKED_INTENT, Intent::class.java)
+        intent.removeExtra(EXTRA_LOCKED_INTENT)
+        val plain = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+        val target = locked?.let {
+            // Always MainActivity, with the original's action, data and extras only.
+            Intent(it).setClass(this, MainActivity::class.java)
+                .setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                .apply { if (data?.scheme == "content") addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        }
+        try {
+            ContextCompat.startActivity(this, target ?: plain, null)
+        } catch (e: Exception) {
+            // e.g. the file's read grant is gone: open the app without it.
+            ContextCompat.startActivity(this, plain, null)
+        }
     }
 
     private fun updateDisplay() {
@@ -169,6 +182,28 @@ class CalcActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val EXTRA_LOCKED_INTENT = "lockedIntent"
+
+        /**
+         * Intent for the lock screen that keeps [incoming] for after the unlock.
+         * A launcher start keeps nothing. A content uri is set as data with
+         * its read grant so the lock screen can pass the grant on.
+         */
+        fun lockIntent(context: Context, incoming: Intent): Intent {
+            val lock = Intent(context, CalcActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (incoming.hasCategory(Intent.CATEGORY_LAUNCHER) && incoming.data == null) return lock
+            lock.putExtra(EXTRA_LOCKED_INTENT, Intent(incoming).setComponent(null))
+            val data = incoming.data
+            if (data != null && data.scheme == "content" &&
+                (incoming.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0
+            ) {
+                lock.setDataAndType(data, incoming.type)
+                lock.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            return lock
+        }
+
         var hasPermission = false
     }
 }

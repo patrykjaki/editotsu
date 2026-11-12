@@ -83,7 +83,7 @@ class ProfileActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedListene
                     Anilist.query.getUserProfile(username)
             val user = respond?.data?.user
             if (user == null) {
-                toast("User not found")
+                toast(R.string.user_not_found)
                 finish()
                 return@launch
             }
@@ -171,7 +171,7 @@ class ProfileActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedListene
 
                                 R.id.action_block_user -> {
                                     if (user.id == Anilist.userid) {
-                                        snackString("Cannot block yourself")
+                                        snackString(R.string.cannot_block_yourself)
                                         return@setOnMenuItemClickListener true
                                     }
                                     customAlertDialog().apply {

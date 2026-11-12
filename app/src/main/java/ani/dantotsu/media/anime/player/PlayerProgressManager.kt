@@ -82,7 +82,8 @@ class PlayerProgressManager(
             m.userPreferredName,
             m.cover,
             currentEpTitle,
-            isExiting = isExiting
+            isExiting = isExiting,
+            mediaId = m.id
         )
     }
 

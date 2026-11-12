@@ -206,7 +206,7 @@ class UpcomingRemoteViewsFactory(private val context: Context) :
             setTextViewText(R.id.text_show_title, item.title)
             setTextViewText(R.id.text_show_countdown, item.countdown)
             
-            val episodeText = item.episode?.let { "Episode $it" } ?: ""
+            val episodeText = item.episode?.let { context.getString(R.string.episode_n, it.toString()) } ?: ""
             setTextViewText(R.id.text_show_episode, episodeText)
             setViewVisibility(R.id.text_show_episode, if (episodeText.isEmpty()) View.GONE else View.VISIBLE)
             

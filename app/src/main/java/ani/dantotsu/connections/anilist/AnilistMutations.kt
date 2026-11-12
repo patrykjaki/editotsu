@@ -143,14 +143,9 @@ class AnilistMutations {
                 }
             }
         """.trimIndent()
-        val variables = """
-            {
-                "name": "$name",
-                "type": "$type"
-            }
-        """.trimIndent()
+        val variables = deleteCustomListVariables(name, type).toString()
         val result = executeQuery<JsonObject>(query, variables)
-        return result?.get("errors") == null
+        return result != null && result["errors"] == null
     }
 
     suspend fun updateCustomLists(
@@ -430,7 +425,27 @@ class AnilistMutations {
         return if (messages.isNotEmpty()) messages.joinToString("\n") else null
     }
 
-    suspend fun postActivity(text: String, edit: Int? = null): String {
+    /** Result of a post-style mutation; [message] is shown to the user either way. */
+    data class PostResult(val ok: Boolean, val message: String)
+
+    /**
+     * A null [result] means executeQuery failed (network, timeout, 429, 400/403),
+     * so it is a failure too, reported with the query's last error.
+     */
+    internal fun postOutcome(
+        result: JsonObject?,
+        lastError: String? = Anilist.lastError,
+        successText: String = currContext()?.getString(ani.dantotsu.R.string.success) ?: "Success",
+        fallbackError: String = currContext()?.getString(ani.dantotsu.R.string.post_failed) ?: "Could not post to AniList"
+    ): PostResult {
+        if (result == null) return PostResult(false, lastError?.takeIf { it.isNotBlank() } ?: fallbackError)
+        if (result["errors"] != null) {
+            return PostResult(false, result.extractErrorMessage() ?: lastError ?: fallbackError)
+        }
+        return PostResult(true, successText)
+    }
+
+    suspend fun postActivity(text: String, edit: Int? = null): PostResult {
         val encodedText = text.stringSanitizer()
         val query = """
             mutation {
@@ -440,13 +455,12 @@ class AnilistMutations {
             }
         """.trimIndent()
         val result = executeQuery<JsonObject>(query)
-        val errors = result?.get("errors")
+        val outcome = postOutcome(result)
         // Upstream 5ffa682b: successful posts must drop the stories cache.
-        if (errors == null && result != null) {
+        if (outcome.ok) {
             Anilist.query.invalidateUserStatusCache()
         }
-        return errors?.toString() ?: (currContext()?.getString(ani.dantotsu.R.string.success)
-            ?: "Success")
+        return outcome
     }
 
     suspend fun postMessage(
@@ -454,7 +468,7 @@ class AnilistMutations {
         text: String,
         edit: Int? = null,
         isPrivate: Boolean = false
-    ): String {
+    ): PostResult {
         val encodedText = text.replace("", "").stringSanitizer()
         val query = """
             mutation {
@@ -469,12 +483,10 @@ class AnilistMutations {
             }
         """.trimIndent()
         val result = executeQuery<JsonObject>(query)
-        val errors = result?.get("errors")
-        return errors?.toString() ?: (currContext()?.getString(ani.dantotsu.R.string.success)
-            ?: "Success")
+        return postOutcome(result)
     }
 
-    suspend fun postReply(activityId: Int, text: String, edit: Int? = null): String {
+    suspend fun postReply(activityId: Int, text: String, edit: Int? = null): PostResult {
         val encodedText = text.stringSanitizer()
         val query = """
             mutation {
@@ -488,9 +500,7 @@ class AnilistMutations {
             }
         """.trimIndent()
         val result = executeQuery<JsonObject>(query)
-        val errors = result?.get("errors")
-        return errors?.toString() ?: (currContext()?.getString(ani.dantotsu.R.string.success)
-            ?: "Success")
+        return postOutcome(result)
     }
 
     suspend fun postReview(
@@ -500,7 +510,7 @@ class AnilistMutations {
         score: Int,
         edit: Int? = null,
         isPrivate: Boolean = false
-    ): String {
+    ): PostResult {
         val encodedSummary = summary.stringSanitizer()
         val encodedBody = body.stringSanitizer()
         val query = """
@@ -519,16 +529,7 @@ class AnilistMutations {
             }
         """.trimIndent()
         val result = executeQuery<JsonObject>(query)
-        // Upstream e70fdc56: surface the extracted message (or the query's
-        // lastError) instead of raw error JSON. convert only postReview:
-        // postActivity/postMessage/postReply keep local behavior (upstream
-        // did not convert them either).
-        val errorMessage = result?.extractErrorMessage() ?: Anilist.lastError
-        return if (result == null || errorMessage != null) {
-            errorMessage ?: "Failed to post review"
-        } else {
-            currContext()?.getString(ani.dantotsu.R.string.success) ?: "Success"
-        }
+        return postOutcome(result)
     }
 
     suspend fun deleteReview(reviewId: Int): Boolean {
@@ -574,7 +575,7 @@ class AnilistMutations {
         categories: List<Int>? = null,
         mediaCategories: List<Int>? = null,
         edit: Int? = null
-    ): String {
+    ): PostResult {
         val encodedTitle = title.stringSanitizer()
         val encodedBody = body.stringSanitizer()
         val categoriesArg = if (!categories.isNullOrEmpty()) ", categories: [${categories.joinToString(",")}]" else ""
@@ -594,9 +595,7 @@ class AnilistMutations {
             }
         """.trimIndent()
         val result = executeQuery<JsonObject>(query)
-        val errors = result?.get("errors")
-        return errors?.toString() ?: (currContext()?.getString(ani.dantotsu.R.string.success)
-            ?: "Success")
+        return postOutcome(result)
     }
 
     suspend fun deleteThread(threadId: Int): Boolean {
@@ -617,7 +616,7 @@ class AnilistMutations {
         comment: String,
         parentCommentId: Int? = null,
         edit: Int? = null
-    ): String {
+    ): PostResult {
         val encodedComment = comment.stringSanitizer()
         val parentArg = if (parentCommentId != null) ", parentCommentId: $parentCommentId" else ""
         val query = """
@@ -634,9 +633,7 @@ class AnilistMutations {
             }
         """.trimIndent()
         val result = executeQuery<JsonObject>(query)
-        val errors = result?.get("errors")
-        return errors?.toString() ?: (currContext()?.getString(ani.dantotsu.R.string.success)
-            ?: "Success")
+        return postOutcome(result)
     }
 
     suspend fun deleteThreadComment(commentId: Int): Boolean {
@@ -758,4 +755,10 @@ internal fun editListVariables(
     status?.let { put("status", it) }
     customList?.let { list -> putJsonArray("customLists") { list.forEach { add(it) } } }
     advancedScores?.let { list -> putJsonArray("advancedScores") { list.forEach { add(it) } } }
+}
+
+/** Variables for DeleteCustomList; built as JSON so quotes and backslashes in the name survive. */
+internal fun deleteCustomListVariables(name: String, type: String): JsonObject = buildJsonObject {
+    put("name", name)
+    put("type", type)
 }
