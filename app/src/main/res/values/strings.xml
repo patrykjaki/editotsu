@@ -1257,7 +1257,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="faq_desc">General questions about Editotsu</string>
     <string name="check_app_updates_desc">Check Github for app updates</string>
     <string name="share_username_in_crash_reports_desc">Share username in crash reports</string>
-    <string name="devs_desc">The people who built Dantotsu, which Editotsu is based on</string>
+    <string name="devs_desc">Editotsu\'s maintainer and the people who built Dantotsu</string>
     <string name="forks_desc">Forks &amp; related projects</string>
     <string name="disclaimer_desc">Something to keep in mind</string>
     <string name="enable_torrent_desc">This will run a torrent server in the background</string>
