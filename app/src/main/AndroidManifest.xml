@@ -377,8 +377,20 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <!-- Hosts are listed one by one: a filter with a scheme and no host would
+                     also match the login callbacks (editotsu://anilist, editotsu://mal)
+                     and the add-repo links, which other activities handle. -->
                 <data android:scheme="editotsu" />
                 <data android:scheme="dantotsu" />
+                <data android:host="open" />
+                <data android:host="media" />
+                <data android:host="anime" />
+                <data android:host="watch" />
+                <data android:host="manga" />
+                <data android:host="read" />
+                <data android:host="user" />
+                <data android:host="u" />
+                <data android:host="profile" />
             </intent-filter>
         </activity>
         <activity
