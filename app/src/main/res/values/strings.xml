@@ -599,6 +599,15 @@
     <string name="year">Year</string>
     <string name="apply">Apply</string>
     <string name="cancel">Cancel</string>
+    <string name="restore">Restore</string>
+    <string name="restore_confirm_title">Restore %1$s?</string>
+    <string name="restore_confirm_message">This backup replaces:</string>
+    <string name="restore_replaces_logins">AniList and MyAnimeList logins</string>
+    <string name="restore_replaces_app_lock">App PIN and biometric unlock</string>
+    <string name="restore_replaces_proxy">Proxy settings</string>
+    <string name="restore_replaces_repos">Extension repositories</string>
+    <string name="restore_replaces_settings">App settings</string>
+    <string name="restore_replaces_history">Watch and read history</string>
     <string name="edit">Edit</string>
     <string name="publish">Publish</string>
     <string name="reply_hint">Write a response…</string>

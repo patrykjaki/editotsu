@@ -689,7 +689,7 @@ class MainActivity : AppCompatActivity() {
                     ?: throw Exception("Error reading file")
             val name =
                 DocumentFile.fromSingleUri(this, uri)?.name ?: "settings"
-            ani.dantotsu.settings.data.BackupRestore.restore(this, jsonString, name)
+            ani.dantotsu.settings.data.BackupRestore.restore(this, jsonString, name, confirm = true)
         } catch (e: Exception) {
             e.printStackTrace()
             toast("Error importing settings")

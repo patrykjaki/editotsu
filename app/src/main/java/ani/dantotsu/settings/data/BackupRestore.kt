@@ -9,6 +9,8 @@ import ani.dantotsu.R
 import ani.dantotsu.animethemes.ThemeFavourites
 import ani.dantotsu.databinding.DialogUserAgentBinding
 import ani.dantotsu.settings.saving.internal.BackupSection
+import ani.dantotsu.settings.saving.internal.BackupSections
+import ani.dantotsu.settings.saving.internal.RestoreReplaces
 import ani.dantotsu.settings.saving.internal.PreferenceKeystore
 import ani.dantotsu.settings.saving.internal.PreferencePackager
 import ani.dantotsu.settings.saving.internal.wrapBackupEnvelope
@@ -75,8 +77,15 @@ object BackupRestore {
         }
     }
 
-    /** Restores [bytes] read from a file called [name]; restarts the app process when done. */
-    fun restore(activity: Activity, bytes: ByteArray, name: String) {
+    /**
+     * Restores [bytes] read from a file called [name]; restarts the app process when done.
+     * With [confirm] (files opened from other apps) nothing is written until the user
+     * accepts a dialog listing what the backup replaces.
+     */
+    fun restore(activity: Activity, bytes: ByteArray, name: String, confirm: Boolean = false) {
+        val applyOrConfirm: (String) -> Unit = { json ->
+            if (confirm) confirmThenApply(activity, json, name) else apply(activity, json)
+        }
         when {
             name.endsWith(".sani") -> passwordDialog(activity, exporting = false) { password ->
                 if (password == null) return@passwordDialog
@@ -94,11 +103,38 @@ object BackupRestore {
                     toast(activity.getString(R.string.backup_wrong_password))
                     return@passwordDialog
                 }
-                apply(activity, json)
+                applyOrConfirm(json)
             }
             name.endsWith(".ani") || name.endsWith(".json") ->
-                apply(activity, bytes.toString(Charsets.UTF_8))
+                applyOrConfirm(bytes.toString(Charsets.UTF_8))
             else -> toast(activity.getString(R.string.unknown_file_type))
+        }
+    }
+
+    private fun confirmThenApply(activity: Activity, json: String, name: String) {
+        val replaced = PreferencePackager.preview(json)?.let { BackupSections.replacedBy(it) }
+        if (replaced.isNullOrEmpty()) {
+            toast(activity.getString(R.string.backup_invalid_file))
+            return
+        }
+        val lines = replaced.joinToString("\n") {
+            "• " + activity.getString(
+                when (it) {
+                    RestoreReplaces.Logins -> R.string.restore_replaces_logins
+                    RestoreReplaces.AppLock -> R.string.restore_replaces_app_lock
+                    RestoreReplaces.Proxy -> R.string.restore_replaces_proxy
+                    RestoreReplaces.ExtensionRepos -> R.string.restore_replaces_repos
+                    RestoreReplaces.Settings -> R.string.restore_replaces_settings
+                    RestoreReplaces.History -> R.string.restore_replaces_history
+                }
+            )
+        }
+        activity.customAlertDialog().apply {
+            setTitle(activity.getString(R.string.restore_confirm_title, name))
+            setMessage(activity.getString(R.string.restore_confirm_message) + "\n\n" + lines)
+            setPosButton(R.string.restore) { this@BackupRestore.apply(activity, json) }
+            setNegButton(R.string.cancel)
+            show()
         }
     }
 
