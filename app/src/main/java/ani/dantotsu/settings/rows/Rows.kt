@@ -243,12 +243,14 @@ fun stepperRow(
     enabled: () -> Boolean = { true },
     keywords: List<Int> = emptyList(),
     onChange: (SettingsHost, Float) -> Unit = { _, _ -> },
+    /** Maps a stored value into the range, for prefs where several stored values mean the same. */
+    read: (Float) -> Float = { it },
 ) = Row(
     id = key.name, title = title, summary = summary, icon = icon, advanced = advanced,
     visible = visible, enabled = enabled, keywords = keywords, keys = listOf(key),
     kind = Kind.Stepper(
         from = from, to = to, step = step, format = format,
-        get = { readNumber(key) },
+        get = { read(readNumber(key)) },
         set = { host, value -> writeNumber(key, value); onChange(host, value) },
     ),
 )

@@ -6,9 +6,8 @@
     <string name="decrease">Decrease</string>
     <string name="speed_kbps">%1$d KB/s</string>
     <string name="storage_downloads_path">Downloads: %1$s</string>
-    <string name="max_parallel_downloads">Max parallel downloads</string>
-    <string name="max_parallel_downloads_off_short">Off</string>
-    <string name="max_parallel_downloads_desc">Off: one at a time. High values can hit source rate limits</string>
+    <string name="max_parallel_downloads">Parallel downloads</string>
+    <string name="max_parallel_downloads_desc">High values can hit source rate limits</string>
     <string name="clear_app_cache_confirm">Clear temporary cache, dormant torrents, and subtitle files? Active playback streams will be preserved.</string>
     <string name="clear_app_cache_done">Cleared app cache! (%1$s freed)</string>
     <string name="clear_torrent_cache_confirm">Purge all dormant/retained torrent downloads? Active playback streams will be preserved.</string>

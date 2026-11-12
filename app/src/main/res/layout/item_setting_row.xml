@@ -58,7 +58,7 @@
 
         <ImageButton
             android:id="@+id/rowMinus"
-            android:layout_width="48dp"
+            android:layout_width="44dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/decrease"
@@ -70,10 +70,11 @@
             android:id="@+id/rowValue"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
             android:fontFamily="@font/poppins_semi_bold"
             android:gravity="center"
-            android:minWidth="40dp"
+            android:maxLines="2"
+            android:maxWidth="104dp"
+            android:minWidth="36dp"
             android:textColor="?attr/colorOnSurface"
             android:textSize="14sp"
             android:visibility="gone"
@@ -81,7 +82,7 @@
 
         <ImageButton
             android:id="@+id/rowPlus"
-            android:layout_width="48dp"
+            android:layout_width="44dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/increase"
@@ -134,7 +135,7 @@
 
     <com.google.android.material.button.MaterialButtonToggleGroup
         android:id="@+id/rowSegments"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="40dp"
         android:layout_marginTop="8dp"
