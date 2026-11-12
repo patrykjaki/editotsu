@@ -160,7 +160,7 @@ class EpisodeAdapter(
                         }
                     } else null
                 }
-                Glide.with(binding.itemMediaImage).load(thumb ?: media.cover).override(400, 0)
+                Glide.with(binding.itemMediaImage).load(thumb ?: media.banner ?: media.cover).override(400, 0)
                     .into(binding.itemMediaImage)
                 binding.itemEpisodeNumber.text = ep.number
                 binding.itemEpisodeTitle.text = if (ep.number == title) "Episode $title" else title
@@ -231,7 +231,7 @@ class EpisodeAdapter(
                         }
                     } else null
                 }
-                Glide.with(binding.itemMediaImage).load(thumb ?: media.cover).override(400, 0)
+                Glide.with(binding.itemMediaImage).load(thumb ?: media.banner ?: media.cover).override(400, 0)
                     .into(binding.itemMediaImage)
 
                 binding.itemEpisodeNumber.text = ep.number

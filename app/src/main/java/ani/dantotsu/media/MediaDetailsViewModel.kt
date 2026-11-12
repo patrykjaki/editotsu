@@ -719,6 +719,17 @@ class MediaDetailsViewModel : ViewModel() {
                         if (tmdbEpisodes.isNotEmpty()) {
                             episodes = tmdbEpisodes
                         }
+                    } else {
+                        // no id mapping yet (a new season, usually): find the
+                        // season by title and the show's own start date
+                        val start = s.startDate?.let { d ->
+                            val (y, m, day) = Triple(d.year, d.month, d.day)
+                            if (y != null && m != null && day != null) "%04d-%02d-%02d".format(y, m, day) else null
+                        }
+                        if (start != null) {
+                            TmdbService.findEpisodesByAirDate(listOf(s.name, s.nameRomaji), start)
+                                ?.let { episodes = it }
+                        }
                     }
                 }
                 anifyEpisodes.postValue(episodes)
