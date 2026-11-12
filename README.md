@@ -30,9 +30,10 @@ with a few edits of its own. Hence the name.
 > to, and you take responsibility for any extensions you install. Editotsu is
 > provided as-is, without warranty.
 >
-> **Services.** Editotsu talks to the official APIs of AniList, MyAnimeList,
-> AnimeThemes and Discord. Questions about content belong to the service or
-> extension that provides it. See the [privacy policy](privacy_policy.md).
+> **Services.** Editotsu has no server of its own. It talks directly to AniList,
+> MyAnimeList and the metadata, skip-time, subtitle and translation services
+> listed in the [privacy policy](privacy_policy.md). Questions about content
+> belong to the service or extension that provides it.
 
 ## Downloads
 

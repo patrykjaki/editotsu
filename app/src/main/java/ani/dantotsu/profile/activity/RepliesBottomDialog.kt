@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import ani.dantotsu.R
 import ani.dantotsu.BottomSheetDialogFragment
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.api.ActivityReply
@@ -70,7 +71,7 @@ class RepliesBottomDialog : BottomSheetDialogFragment() {
                         binding.subscribeButton.alpha = if (isSubscribed) 1.0f else 0.5f
                         snackString(if (isSubscribed) "Subscribed to activity" else "Unsubscribed from activity")
                     } else {
-                        snackString("Failed to update subscription")
+                        snackString(R.string.activity_subscription_failed)
                     }
                 }
             }
@@ -98,7 +99,7 @@ class RepliesBottomDialog : BottomSheetDialogFragment() {
                     }
                 )
             } else {
-                snackString("Failed to load replies")
+                snackString(R.string.replies_load_failed)
             }
         }
     }

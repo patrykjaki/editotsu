@@ -209,7 +209,9 @@ object Logger {
 
 class FinalExceptionHandler : Thread.UncaughtExceptionHandler {
     private val defaultUEH = Thread.getDefaultUncaughtExceptionHandler()
-    private val MAX_STACK_TRACE_SIZE = 131071 //128 KB - 1
+    // Both strings go into one Intent (UTF-16 in the Binder parcel, about 1 MB max per
+    // transaction); 48K chars each keeps the pair near 200 KB.
+    private val MAX_STACK_TRACE_SIZE = 48_000
 
     override fun uncaughtException(t: Thread, e: Throwable) {
         val stackTraceString = Log.getStackTraceString(e)

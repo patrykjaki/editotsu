@@ -14,6 +14,7 @@ import ani.dantotsu.connections.comments.CommentsAPI
 import ani.dantotsu.connections.comments.CommentsOptIn
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
 import ani.dantotsu.notifications.TaskScheduler
+import ani.dantotsu.others.CrashProcess
 import ani.dantotsu.others.DisabledReports
 import ani.dantotsu.parsers.AnimeSources
 import ani.dantotsu.parsers.MangaSources
@@ -61,6 +62,15 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         PrefManager.init(this)
+        // The crash screen runs in its own process. It needs prefs, theme and logging
+        // only; running the rest of the init there could crash it the same way again.
+        if (CrashProcess.isCrashProcess(currentProcessName())) {
+            Logger.init(this)
+            if (PrefManager.getVal<Boolean>(PrefName.UseMaterialYou)) {
+                DynamicColors.applyToActivitiesIfAvailable(this)
+            }
+            return
+        }
         ani.dantotsu.connections.discord.DiscordLegacyCleanup.cleanOnce(this)
 
         val crashlytics =
@@ -187,6 +197,15 @@ class App : Application() {
             }
         }
     }
+
+    private fun currentProcessName(): String? =
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            getProcessName()
+        } else {
+            runCatching {
+                java.io.File("/proc/self/cmdline").readText().trimEnd(Char(0))
+            }.getOrNull()
+        }
 
     private fun setupNotificationChannels() {
         try {

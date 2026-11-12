@@ -192,7 +192,7 @@
                 android:fontFamily="@font/poppins"
                 android:gravity="center"
                 android:textSize="14sp"
-                tools:text="AnimePahe returned nothing. It may not have this episode yet, or the site may be down." />
+                tools:text="Source returned nothing. It may not have this episode yet, or the site may be down." />
 
             <LinearLayout
                 android:layout_width="wrap_content"
