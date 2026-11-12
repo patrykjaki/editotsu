@@ -115,9 +115,8 @@ class MainActivity : AppCompatActivity() {
             if (pin.isNotEmpty()) {
                 ContextCompat.startActivity(
                     this@MainActivity,
-                    Intent(this@MainActivity, CalcActivity::class.java)
-                        .putExtra("code", pin)
-                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+                    CalcActivity.lockIntent(this@MainActivity, intent)
+                        .putExtra("code", pin),
                     null
                 )
                 finish()

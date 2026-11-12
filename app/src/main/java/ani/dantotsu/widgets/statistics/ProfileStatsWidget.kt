@@ -16,7 +16,6 @@ import androidx.core.graphics.drawable.toBitmap
 import ani.dantotsu.MainActivity
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
-import ani.dantotsu.profile.ProfileActivity
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.BitmapUtil.downloadImageAsBitmap
@@ -170,8 +169,10 @@ class ProfileStatsWidget : AppWidgetProvider() {
                         setTextViewText(R.id.bottomRightItem, chaptersRead.toString())
                         setTextViewText(R.id.bottomRightLabel, context.getString(R.string.chapters_read_n))
                         
-                        val intent = Intent(context, ProfileActivity::class.java)
-                            .putExtra("userId", userPref.toInt())
+                        // Through MainActivity so the app lock applies; it opens the profile.
+                        val intent = Intent(context, MainActivity::class.java)
+                            .putExtra("username", userPref)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                         val pendingIntent = PendingIntent.getActivity(
                             context, 0, intent, PendingIntent.FLAG_IMMUTABLE
                         )
