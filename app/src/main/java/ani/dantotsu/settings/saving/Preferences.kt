@@ -338,8 +338,8 @@ enum class PrefName(val data: Pref) {
     VideoDebandRange(Pref(Location.Player, Int::class, 16)),
     VideoDebandGrain(Pref(Location.Player, Int::class, 48)),
     // Default is Auto (cunny/auto): the model follows the GPU, Off on unknown GPUs.
-    UpscalerProviderId(Pref(Location.Player, String::class, "cunny")),
-    UpscalerProfileId(Pref(Location.Player, String::class, "auto")),
+    UpscalerProviderId(Pref(Location.Player, String::class, "off")),
+    UpscalerProfileId(Pref(Location.Player, String::class, "")),
     /** Model Auto stepped down to, as model@renderer; cleared when Auto is picked again. */
     UpscalerAutoCap(Pref(Location.Irrelevant, String::class, "")),
     AudioDelayMs(Pref(Location.Player, Int::class, 0)),
