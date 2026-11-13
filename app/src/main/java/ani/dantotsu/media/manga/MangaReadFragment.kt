@@ -387,7 +387,7 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
         model.mangaReadSources?.get(selected.sourceIndex)?.showUserTextListener = null
         selected.sourceIndex = i
         selected.server = null
-        model.saveSelected(media.id, selected)
+        model.saveSelected(media.id, selected, media)
         // The subscription keeps its own source; the bell shows whether it uses this one.
         subscribed = SubscriptionHelper.isSubscribedOn(media.id, model.mangaReadSources?.names?.getOrNull(i))
         if (this::headerAdapter.isInitialized) headerAdapter.subscribe?.setState(subscribed)
@@ -398,7 +398,7 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
     fun onLangChange(i: Int, saveName: String) {
         val selected = model.loadSelected(media)
         selected.langIndex = i
-        model.saveSelected(media.id, selected)
+        model.saveSelected(media.id, selected, media)
         media.selected = selected
         PrefManager.removeCustomVal("${saveName}_${media.id}")
     }
@@ -406,7 +406,7 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
     fun onScanlatorChange(list: List<String>) {
         val selected = model.loadSelected(media)
         selected.scanlators = list
-        model.saveSelected(media.id, selected)
+        model.saveSelected(media.id, selected, media)
         media.selected = selected
     }
 
@@ -419,7 +419,7 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
         reverse = rev
         media.selected!!.recyclerStyle = style
         media.selected!!.recyclerReversed = reverse
-        model.saveSelected(media.id, media.selected!!)
+        model.saveSelected(media.id, media.selected!!, media)
         reload()
     }
 
@@ -427,7 +427,7 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
         media.selected!!.chip = i
         start = s
         end = e
-        model.saveSelected(media.id, media.selected!!)
+        model.saveSelected(media.id, media.selected!!, media)
         reload()
     }
 
@@ -496,7 +496,7 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
         model.continueMedia = false
         media.manga?.chapters?.get(i.uniqueNumber())?.let {
             media.manga?.selectedChapter = i
-            model.saveSelected(media.id, media.selected!!)
+            model.saveSelected(media.id, media.selected!!, media)
             ChapterLoaderDialog.newInstance(it, true)
                 .show(requireActivity().supportFragmentManager, "dialog")
         }
@@ -722,7 +722,7 @@ open class MangaReadFragment : Fragment(), ScanlatorSelectionListener {
         selected.latest =
             media.userProgress?.toFloat()?.takeIf { selected.latest < it } ?: selected.latest
 
-        model.saveSelected(media.id, selected)
+        model.saveSelected(media.id, selected, media)
         headerAdapter.handleChapters()
         chapterAdapter.notifyItemRangeRemoved(0, chapterAdapter.arr.size)
         var arr: ArrayList<MangaChapter> = arrayListOf()

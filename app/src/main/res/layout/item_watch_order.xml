@@ -62,10 +62,9 @@
                 android:id="@+id/watchOrderRelation"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="@font/poppins_bold"
-                android:textAllCaps="true"
+                android:fontFamily="@font/poppins_semi_bold"
                 android:textColor="?attr/colorPrimary"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 tools:text="Prequel" />
 
             <TextView
@@ -87,7 +86,7 @@
                 android:layout_marginTop="2dp"
                 android:ellipsize="end"
                 android:fontFamily="@font/poppins"
-                android:maxLines="1"
+                android:maxLines="2"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="12sp"
                 tools:text="TV · Jan 6 – Mar 24, 2023 · 12 episodes" />

@@ -168,8 +168,9 @@
                                     android:scaleType="center"
                                     android:scaleX="1.2"
                                     android:scaleY="1.2"
-                                    android:tint="@color/bg_white"
+                                    android:contentDescription="@string/search"
                                     app:srcCompat="@drawable/ic_round_search_24"
+                                    app:tint="?attr/colorOnBackground"
                                     tools:ignore="ContentDescription,ImageContrastCheck" />
 
                             </com.google.android.material.card.MaterialCardView>

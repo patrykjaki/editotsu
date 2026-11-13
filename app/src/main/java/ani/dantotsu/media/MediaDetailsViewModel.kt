@@ -63,12 +63,16 @@ import kotlinx.coroutines.supervisorScope
 class MediaDetailsViewModel : ViewModel() {
     val scrolledToTop = MutableLiveData(true)
 
-    fun saveSelected(id: Int, data: Selected) {
+    fun saveSelected(id: Int, data: Selected, of: Media? = null) {
         PrefManager.setCustomVal("Selected-$id", data)
-        val shown = (media.value ?: shownMedia)?.takeIf { it.id == id } ?: return
-        val (names, ready) = sourceNamesFor(shown)
-        SelectedSource.nameFor(data.sourceIndex, names, ready)
-            ?.let { PrefManager.setCustomVal("${SelectedSource.KEY}$id", it) }
+        val shown = (of ?: media.value ?: shownMedia)?.takeIf { it.id == id }
+        val name = shown?.let {
+            val (names, ready) = sourceNamesFor(it)
+            SelectedSource.nameFor(data.sourceIndex, names, ready)
+        }
+        // an unknown name must not outlive the position it was saved for
+        if (name != null) PrefManager.setCustomVal("${SelectedSource.KEY}$id", name)
+        else PrefManager.removeCustomVal("${SelectedSource.KEY}$id")
     }
 
     /** The source list a show's saved position points into, and whether its extensions have loaded. */

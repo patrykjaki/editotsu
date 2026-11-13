@@ -388,7 +388,7 @@ class NovelReadFragment : Fragment(),
         end = e
         media.selected?.chip = page
         if (media.selected != null) {
-            model.saveSelected(media.id, media.selected!!)
+            model.saveSelected(media.id, media.selected!!, media)
         }
         reloadChapters()
     }
@@ -641,7 +641,7 @@ class NovelReadFragment : Fragment(),
             if (save) {
                 val selected = model.loadSelected(media)
                 selected.server = query
-                model.saveSelected(media.id, selected)
+                model.saveSelected(media.id, selected, media)
             }
         }
     }
@@ -651,7 +651,7 @@ class NovelReadFragment : Fragment(),
         selected.sourceIndex = i
         source = i
         selected.server = null
-        model.saveSelected(media.id, selected)
+        model.saveSelected(media.id, selected, media)
         media.selected = selected
         searching = false
         resetChapterState()

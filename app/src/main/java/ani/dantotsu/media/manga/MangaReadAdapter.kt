@@ -146,6 +146,16 @@ class MangaReadAdapter(
                 displayNames
             )
         )
+        ani.dantotsu.media.SourcePicker.attach(
+            binding.mediaSourceNameContainer,
+            binding.mediaSourceIcon,
+            binding.mediaSource,
+            fragment.getString(R.string.source),
+            icon = { i ->
+                mangaReadSources.names.indexOf(displayNames.getOrNull(i)).takeIf { it >= 0 }
+                    ?.let { (mangaReadSources[it] as? DynamicMangaParser)?.extension?.icon }
+            },
+        )
         binding.mediaSourceTitle.isSelected = true
         binding.mediaSource.setOnItemClickListener { _, _, i, _ ->
             val actualIndex = mangaReadSources.names.indexOf(displayNames[i])

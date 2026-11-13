@@ -242,9 +242,12 @@ abstract class BaseParser {
         }
     }
 
+    /**
+     * A saved match is keyed by [saveName] only. The host used to be required here too, which
+     * made every source without a fixed address (a self-hosted server, an index that is set up
+     * in its settings) report "no installed extensions".
+     */
     fun checkIfVariablesAreEmpty() {
-        if (hostUrl.isEmpty()) throw UninitializedPropertyAccessException("Cannot find any installed extensions")
-        if (name.isEmpty()) throw UninitializedPropertyAccessException("Cannot find any installed extensions")
         if (saveName.isEmpty()) throw UninitializedPropertyAccessException("Cannot find any installed extensions")
     }
 

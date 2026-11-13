@@ -200,6 +200,7 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
                 )
             } else {
                 holder.binding.watchOrderRelation.text = item.relationType
+                    ?.replace('_', ' ')?.lowercase()?.replaceFirstChar { it.uppercase() }
                 holder.binding.watchOrderRelation.visibility =
                     if (item.relationType.isBlank()) View.GONE else View.VISIBLE
                 holder.binding.watchOrderNumber.setTextColor(quiet)
