@@ -33,6 +33,8 @@ import ani.dantotsu.others.TmdbService
 import ani.dantotsu.others.sanitizedStamps
 import ani.dantotsu.parsers.ListCache
 import ani.dantotsu.parsers.AnimeSources
+import ani.dantotsu.parsers.HAnimeSources
+import ani.dantotsu.parsers.HMangaSources
 import ani.dantotsu.parsers.Book
 import ani.dantotsu.parsers.MangaImage
 import ani.dantotsu.parsers.MangaReadSources
@@ -63,6 +65,19 @@ class MediaDetailsViewModel : ViewModel() {
 
     fun saveSelected(id: Int, data: Selected) {
         PrefManager.setCustomVal("Selected-$id", data)
+        val shown = (media.value ?: shownMedia)?.takeIf { it.id == id } ?: return
+        val (names, ready) = sourceNamesFor(shown)
+        SelectedSource.nameFor(data.sourceIndex, names, ready)
+            ?.let { PrefManager.setCustomVal("${SelectedSource.KEY}$id", it) }
+    }
+
+    /** The source list a show's saved position points into, and whether its extensions have loaded. */
+    private fun sourceNamesFor(m: Media): Pair<List<String>, Boolean> = when {
+        m.anime != null ->
+            (watchSources ?: if (m.isAdult) HAnimeSources else AnimeSources).names to AnimeSources.isInitialized
+        m.format == "MANGA" || m.format == "ONE_SHOT" ->
+            (mangaReadSources ?: if (m.isAdult) HMangaSources else MangaSources).names to MangaSources.isInitialized
+        else -> NovelSources.names.let { it to it.isNotEmpty() }
     }
 
 
@@ -78,6 +93,17 @@ class MediaDetailsViewModel : ViewModel() {
                     saveSelected(media.id, it)
                     it
                 }
+        if (!isDownload) {
+            val (names, ready) = sourceNamesFor(media)
+            val savedName = PrefManager.getNullableCustomVal("${SelectedSource.KEY}${media.id}", null, String::class.java)
+            if (savedName != null) {
+                if (ready) data.sourceIndex = SelectedSource.resolve(savedName, data.sourceIndex, names)
+            } else {
+                // a choice saved before names were kept: remember what its position means today
+                SelectedSource.nameFor(data.sourceIndex, names, ready)
+                    ?.let { PrefManager.setCustomVal("${SelectedSource.KEY}${media.id}", it) }
+            }
+        }
         if (isDownload) {
             data.sourceIndex = when {
                 media.anime != null -> {

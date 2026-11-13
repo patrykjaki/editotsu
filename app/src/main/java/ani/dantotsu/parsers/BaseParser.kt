@@ -1,5 +1,7 @@
 package ani.dantotsu.parsers
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import android.graphics.drawable.Drawable
 import ani.dantotsu.FileUrl
 import ani.dantotsu.R
@@ -94,87 +96,54 @@ abstract class BaseParser {
             }
             saveShowResponse(mediaObj.id, response, true)
         } else {
-            setUserText("Searching : ${mediaObj.mainName()}")
-            Logger.log("Searching : ${mediaObj.mainName()}")
-            val results = search(mediaObj.mainName())
-            //log all results
-            results.forEach {
-                Logger.log("Result: ${it.name}")
+            // The title, the romaji title and the synonyms used to be searched one
+            // after another, each a full request to the source. They are asked at
+            // the same time now, in two rounds, and judged in the same order as before.
+            val mainName = mediaObj.mainName()
+            val romaji = mediaObj.nameRomaji
+            setUserText("Searching : $mainName")
+            Logger.log("Searching : $mainName")
+            val (results, romajiResults) = coroutineScope {
+                val romajiSearch = if (romaji.isNotBlank() && romaji != mainName) {
+                    async { searchOrEmpty(romaji) }
+                } else null
+                // a failed search for the main title still fails the lookup, as before
+                val main = search(mainName)
+                main to (romajiSearch?.await() ?: main)
             }
-            val sortedResults = if (results.isNotEmpty()) {
-                results.sortedByDescending {
-                    titleMatchScore(it.name, mediaObj.mainName())
-                }
-            } else {
-                emptyList()
-            }
-            response = sortedResults.firstOrNull()
+            results.forEach { Logger.log("Result: ${it.name}") }
+            response = results.maxByOrNull { titleMatchScore(it.name, mainName) }
 
-            if (response == null || titleMatchScore(response.name, mediaObj.mainName()) < 100
-            ) {
-                setUserText("Searching : ${mediaObj.nameRomaji}")
-                Logger.log("Searching : ${mediaObj.nameRomaji}")
-                val romajiResults = search(mediaObj.nameRomaji)
-                val sortedRomajiResults = if (romajiResults.isNotEmpty()) {
-                    romajiResults.sortedByDescending {
-                        titleMatchScore(it.name, mediaObj.nameRomaji)
-                    }
-                } else {
-                    emptyList()
-                }
-                val closestRomaji = sortedRomajiResults.firstOrNull()
+            if (response == null || titleMatchScore(response.name, mainName) < 100) {
+                val closestRomaji = romajiResults.maxByOrNull { titleMatchScore(it.name, romaji) }
                 Logger.log("Closest match from RomajiResults: ${closestRomaji?.name ?: "None"}")
-
                 response = if (response == null) {
-                    Logger.log("No exact match found in results. Using closest match from RomajiResults.")
                     closestRomaji
                 } else {
-                    val romajiRatio = titleMatchScore(closestRomaji?.name ?: "", mediaObj.nameRomaji)
-                    val mainNameRatio = titleMatchScore(response.name, mediaObj.mainName())
-                    Logger.log("Fuzzy ratio for closest match in results: $mainNameRatio for ${response.name.lowercase()}")
-                    Logger.log("Fuzzy ratio for closest match in RomajiResults: $romajiRatio for ${closestRomaji?.name?.lowercase() ?: "None"}")
-
-                    if (romajiRatio > mainNameRatio) {
-                        Logger.log("RomajiResults has a closer match. Replacing response.")
-                        closestRomaji
-                    } else {
-                        Logger.log("Results has a closer or equal match. Keeping existing response.")
-                        response
-                    }
+                    val romajiRatio = titleMatchScore(closestRomaji?.name ?: "", romaji)
+                    val mainNameRatio = titleMatchScore(response.name, mainName)
+                    if (romajiRatio > mainNameRatio) closestRomaji else response
                 }
             }
 
-            if (response == null || titleMatchScore(response.name, mediaObj.mainName()) < 80
-            ) {
-                for (synonym in mediaObj.synonyms.take(MAX_SYNONYM_SEARCHES)) {
-                    if (synonym.isBlank() || synonym == mediaObj.mainName() || synonym == mediaObj.nameRomaji) continue
-                    setUserText("Searching : $synonym")
-                    Logger.log("Searching : $synonym")
-                    val synonymResults = try {
-                        search(synonym)
-                    } catch (e: Exception) {
-                        Logger.log("Synonym search failed for $synonym: $e")
-                        emptyList()
+            if (response == null || titleMatchScore(response.name, mainName) < 80) {
+                val synonyms = mediaObj.synonyms.take(MAX_SYNONYM_SEARCHES)
+                    .filter { it.isNotBlank() && it != mainName && it != romaji }
+                if (synonyms.isNotEmpty()) {
+                    setUserText("Searching : ${synonyms.first()}")
+                    Logger.log("Searching : $synonyms")
+                    val synonymResults = coroutineScope {
+                        synonyms.map { synonym -> async { searchOrEmpty(synonym) } }.map { it.await() }
                     }
-                    val sortedSynonymResults = if (synonymResults.isNotEmpty()) {
-                        synonymResults.sortedByDescending {
-                            titleMatchScore(it.name, synonym)
-                        }
-                    } else {
-                        emptyList()
-                    }
-                    val closestSynonym = sortedSynonymResults.firstOrNull()
-                    if (closestSynonym != null) {
+                    for ((synonym, found) in synonyms.zip(synonymResults)) {
+                        val closestSynonym = found.maxByOrNull { titleMatchScore(it.name, synonym) } ?: continue
                         val synonymRatio = titleMatchScore(closestSynonym.name, synonym)
-                        if (synonymRatio >= 80) {
-                            val currentRatio = if (response != null) titleMatchScore(response.name, mediaObj.mainName()) else 0
-                            if (synonymRatio > currentRatio) {
-                                Logger.log("Synonym search found a better match: ${closestSynonym.name}")
-                                response = closestSynonym
-                                if (synonymRatio >= 95) {
-                                    break
-                                }
-                            }
+                        if (synonymRatio < 80) continue
+                        val currentRatio = response?.let { titleMatchScore(it.name, mainName) } ?: 0
+                        if (synonymRatio > currentRatio) {
+                            Logger.log("Synonym search found a better match: ${closestSynonym.name}")
+                            response = closestSynonym
+                            if (synonymRatio >= 95) break
                         }
                     }
                 }
@@ -182,6 +151,15 @@ abstract class BaseParser {
             saveShowResponse(mediaObj.id, response)
         }
         return response
+    }
+
+    private suspend fun searchOrEmpty(query: String): List<ShowResponse> = try {
+        search(query)
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.log("Search failed for $query: $e")
+        emptyList()
     }
 
     /**

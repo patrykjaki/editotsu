@@ -52,6 +52,11 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
         val media: Media? = arguments?.getSerialized(ARG_MEDIA) ?: model.getMedia().value
 
         binding.title.text = title
+        if (mode == MODE_WATCH_ORDER) {
+            // the shared sheet header has no start inset and a lighter face than the page headers
+            binding.title.setPadding((24 * resources.displayMetrics.density).toInt(), 0, 0, 0)
+            binding.title.typeface = androidx.core.content.res.ResourcesCompat.getFont(requireContext(), R.font.poppins_bold)
+        }
         binding.subscribeButton.visibility = View.GONE
         binding.replyButton.visibility = View.GONE
 
@@ -180,55 +185,38 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
             val imageUrl = if (item.image.isNotEmpty()) item.image else currentMedia?.cover
             holder.binding.watchOrderImage.loadImage(imageUrl)
 
-            // Relation Badge
-            holder.binding.watchOrderRelation.text = item.relationType.ifEmpty { "Entry" }
+            holder.binding.watchOrderNumber.text = (position + 1).toString()
+            val primaryColor = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
+            val quiet = context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
 
-            // Current Highlight & Badge
+            // one label per row: where you are, or how the entry relates
             if (item.isCurrent) {
-                holder.binding.watchOrderCurrentBadge.visibility = View.VISIBLE
-                val density = context.resources.displayMetrics.density
-                holder.binding.watchOrderCard.strokeWidth = (2 * density).toInt()
-                val primaryColor = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
-                holder.binding.watchOrderCard.strokeColor = primaryColor
+                holder.binding.watchOrderRelation.setText(R.string.current)
+                holder.binding.watchOrderRelation.visibility = View.VISIBLE
+                holder.binding.watchOrderNumber.setTextColor(primaryColor)
+                holder.binding.watchOrderChevron.visibility = View.INVISIBLE
                 holder.binding.watchOrderCard.setCardBackgroundColor(
-                    ColorUtils.setAlphaComponent(primaryColor, 35)
+                    ColorUtils.setAlphaComponent(primaryColor, 40)
                 )
             } else {
-                holder.binding.watchOrderCurrentBadge.visibility = View.GONE
-                val density = context.resources.displayMetrics.density
-                holder.binding.watchOrderCard.strokeWidth = (0.5f * density).toInt()
-                holder.binding.watchOrderCard.strokeColor =
-                    context.getThemeColor(com.google.android.material.R.attr.colorOutline)
+                holder.binding.watchOrderRelation.text = item.relationType
+                holder.binding.watchOrderRelation.visibility =
+                    if (item.relationType.isBlank()) View.GONE else View.VISIBLE
+                holder.binding.watchOrderNumber.setTextColor(quiet)
+                holder.binding.watchOrderChevron.visibility = View.VISIBLE
                 holder.binding.watchOrderCard.setCardBackgroundColor(
                     context.getThemeColor(com.google.android.material.R.attr.colorSurfaceVariant)
                 )
             }
 
-            // Metadata: Format
-            val format = item.mediaType.ifEmpty { "Anime" }
-            holder.binding.watchOrderFormat.text = format
-
-            // Metadata: Air Date / Year
-            if (item.airDate.isNotEmpty()) {
-                holder.binding.watchOrderAirDate.visibility = View.VISIBLE
-                holder.binding.watchOrderDot1.visibility = View.VISIBLE
-                holder.binding.watchOrderAirDate.text = item.airDate
-            } else {
-                holder.binding.watchOrderAirDate.visibility = View.GONE
-                holder.binding.watchOrderDot1.visibility = View.GONE
-            }
-
-            // Metadata: Episodes
-            if (item.episodes.isNotEmpty()) {
-                holder.binding.watchOrderEpisodes.visibility = View.VISIBLE
-                holder.binding.watchOrderDot2.visibility = View.VISIBLE
-                holder.binding.watchOrderEpisodes.text = item.episodes
-            } else {
-                holder.binding.watchOrderEpisodes.visibility = View.GONE
-                holder.binding.watchOrderDot2.visibility = View.GONE
-            }
-
-
+            val episodes = watchOrderEpisodeCount(item.episodes)
+            holder.binding.watchOrderMeta.text = watchOrderMeta(
+                item.mediaType,
+                item.airDate,
+                episodes?.let { context.resources.getQuantityString(R.plurals.watch_order_episodes, it, it) },
+            )
+            holder.binding.watchOrderMeta.visibility =
+                if (holder.binding.watchOrderMeta.text.isNullOrBlank()) View.GONE else View.VISIBLE
 
             // Click listener
             holder.binding.watchOrderCard.setOnClickListener {
@@ -367,3 +355,16 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
         }
     }
 }
+
+/** "12ep × 24min." -> 12; unknown or zero counts ("0ep × ? min.", "") -> null. */
+internal fun watchOrderEpisodeCount(raw: String): Int? =
+    Regex("""^\s*(\d+)\s*ep""", RegexOption.IGNORE_CASE).find(raw)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }
+
+/** One line: format, air dates without an unknown end ("Oct 9, 2026 – ?" -> "Oct 9, 2026"), episode count. */
+internal fun watchOrderMeta(format: String, airDate: String, episodes: String?): String =
+    listOf(
+        format.trim(),
+        airDate.replace(Regex("""\s*[–-]\s*\?\s*$"""), "").trim().takeUnless { it == "?" }.orEmpty(),
+        episodes.orEmpty(),
+    ).filter { it.isNotEmpty() }.joinToString(" · ")
+
