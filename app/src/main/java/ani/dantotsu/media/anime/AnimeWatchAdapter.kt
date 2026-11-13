@@ -660,6 +660,16 @@ class AnimeWatchAdapter(
                         fragment.loadEpisodes(nextIndex, false)
                     }
                 }
+            } else if (media.anime?.episodes != null) {
+                // loaded and empty: the source has nothing for this title. Null is "still loading".
+                binding.sourceContinue.visibility = View.GONE
+                clearChips()
+                binding.sourceProgressBar.visibility = View.GONE
+                binding.sourceNotFound.setText(
+                    if (watchSources[media.selected!!.sourceIndex] is OfflineAnimeParser) R.string.download_not_found else R.string.source_not_found
+                )
+                binding.sourceNotFound.visibility = View.VISIBLE
+                binding.faqbutton.visibility = View.VISIBLE
             } else {
                 binding.sourceContinue.visibility = View.GONE
                 binding.sourceNotFound.visibility = View.GONE

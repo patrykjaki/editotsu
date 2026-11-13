@@ -7,13 +7,12 @@
     android:layout_height="wrap_content"
     android:background="@drawable/bottom_sheet_background">
 
-    <ProgressBar
+    <ani.dantotsu.others.SkeletonView
         android:id="@+id/mediaListProgressBar"
-        style="?android:attr/progressBarStyle"
-        android:layout_width="wrap_content"
+        android:tag="grid"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:indeterminate="true"
         tools:visibility="invisible" />
 
     <LinearLayout
