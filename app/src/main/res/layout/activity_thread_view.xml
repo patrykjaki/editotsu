@@ -184,9 +184,10 @@
                 android:textColor="?attr/colorOnBackground"
                 android:textSize="18sp" />
 
-            <ProgressBar
+            <ani.dantotsu.others.SkeletonView
                 android:id="@+id/commentsProgressBar"
-                android:layout_width="wrap_content"
+        android:tag="rows"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:layout_marginTop="16dp"

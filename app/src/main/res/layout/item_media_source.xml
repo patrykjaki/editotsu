@@ -487,7 +487,7 @@
             app:singleSelection="true" />
     </HorizontalScrollView>
 
-    <ani.dantotsu.others.EpisodeSkeletonView
+    <ani.dantotsu.others.SkeletonView
         android:id="@+id/sourceProgressBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

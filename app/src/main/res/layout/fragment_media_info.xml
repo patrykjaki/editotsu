@@ -21,13 +21,11 @@
             android:layout_height="wrap_content"
             android:gravity="center">
 
-            <ProgressBar
+            <ani.dantotsu.others.SkeletonView
                 android:id="@+id/mediaInfoProgressBar"
-                style="?android:attr/progressBarStyle"
+        android:tag="lines"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_margin="32dp"
-                android:indeterminate="true"
                 android:visibility="gone"
                 tools:visibility="gone" />
 

@@ -94,13 +94,11 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <ProgressBar
+    <ani.dantotsu.others.SkeletonView
         android:id="@+id/characterProgress"
-        style="?android:attr/progressBarStyle"
+        android:tag="grid"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_margin="24dp"
-        android:indeterminate="true"
+        android:layout_height="wrap_content"
         app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 
     <androidx.core.widget.NestedScrollView

@@ -103,8 +103,8 @@ class HomeFragment : Fragment() {
                 }
 
                 if (!rescueMode) {
-                    binding.homeUserEpisodesWatched.text = Anilist.episodesWatched.toString()
-                    binding.homeUserChaptersRead.text = Anilist.chapterRead.toString()
+                    binding.homeUserEpisodesWatched.text = Anilist.episodesWatched?.toString() ?: "—"
+                    binding.homeUserChaptersRead.text = Anilist.chapterRead?.toString() ?: "—"
                     binding.homeNotificationCount.isVisible = Anilist.unreadNotificationCount > 0
                             && PrefManager.getVal<Boolean>(PrefName.ShowNotificationRedDot) == true
                     binding.homeNotificationCount.text = Anilist.unreadNotificationCount.toString()
