@@ -163,6 +163,7 @@ class EpisodeAdapter(
                 Glide.with(binding.itemMediaImage).load(thumb ?: media.banner ?: media.cover).override(400, 0)
                     .into(binding.itemMediaImage)
                 binding.itemEpisodeNumber.text = ep.number
+                binding.itemEpisodeTitle.maxLines = 3
                 binding.itemEpisodeTitle.text = if (ep.number == title) "Episode $title" else title
 
                 if (ep.filler) {
@@ -513,6 +514,16 @@ class EpisodeAdapter(
                     binding.itemEpisodeDesc.maxLines = 100
                 else
                     binding.itemEpisodeDesc.maxLines = 3
+            }
+            // a cut-off title opens in full on tap; a title that fits passes the tap to the row
+            binding.itemEpisodeTitle.setOnClickListener { title ->
+                title as android.widget.TextView
+                val cut = title.layout?.let { l -> l.lineCount > 0 && l.getEllipsisCount(l.lineCount - 1) > 0 } == true
+                when {
+                    title.maxLines > 3 -> title.maxLines = 3
+                    cut -> title.maxLines = 100
+                    else -> itemView.performClick()
+                }
             }
         }
 
