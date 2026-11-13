@@ -706,13 +706,7 @@ class ZoomOutPageTransformer :
     ViewPager2.PageTransformer {
     override fun transformPage(view: View, position: Float) {
         if (position == 0.0f && PrefManager.getVal(PrefName.LayoutAnimations)) {
-            setAnimation(
-                view.context,
-                view,
-                300,
-                floatArrayOf(1.3f, 1f, 1.3f, 1f),
-                0.5f to 0f
-            )
+            // the pager already slides the page in; a short fade is enough on top of it
             ObjectAnimator.ofFloat(view, "alpha", 0f, 1.0f)
                 .setDuration((200 * (PrefManager.getVal(PrefName.AnimationSpeed) as Float)).toLong())
                 .start()
