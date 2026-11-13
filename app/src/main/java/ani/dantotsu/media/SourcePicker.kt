@@ -1,0 +1,77 @@
+package ani.dantotsu.media
+
+import android.annotation.SuppressLint
+import android.content.res.ColorStateList
+import android.graphics.drawable.Drawable
+import android.view.MotionEvent
+import android.view.View
+import android.widget.AutoCompleteTextView
+import android.widget.ImageView
+import ani.dantotsu.R
+import ani.dantotsu.getThemeColor
+import ani.dantotsu.settings.rows.ChoiceOption
+import ani.dantotsu.settings.rows.ChoiceSheet
+
+/**
+ * Makes a source field open the app's choice sheet instead of its own drop-down. The field
+ * keeps its adapter and item click listener, so the screens that own it need no other change:
+ * a pick sets the text and runs the listener with the picked position.
+ */
+internal object SourcePicker {
+
+    @SuppressLint("ClickableViewAccessibility")
+    fun attach(
+        row: View,
+        iconView: ImageView,
+        field: AutoCompleteTextView,
+        title: CharSequence,
+        /** The icon of the source at an adapter position, or null for the stock one. */
+        icon: (Int) -> Drawable? = { null },
+        onOpen: () -> Unit = {},
+    ) {
+        val quiet = ColorStateList.valueOf(
+            field.context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
+        )
+        val inset = (8 * field.resources.displayMetrics.density).toInt()
+        fun names() = field.adapter?.let { a -> (0 until a.count).map { a.getItem(it).toString() } }.orEmpty()
+        fun showIcon() {
+            val own = icon(names().indexOf(field.text.toString()))
+            if (own != null) {
+                // an extension's own icon fills the tile; the stock glyph sits inset and tinted
+                iconView.setPadding(0, 0, 0, 0)
+                iconView.imageTintList = null
+                iconView.setImageDrawable(own)
+            } else {
+                iconView.setPadding(inset, inset, inset, inset)
+                iconView.imageTintList = quiet
+                iconView.setImageResource(R.drawable.ic_round_source_24)
+            }
+        }
+        showIcon()
+        // the name is also set from code (next source when one has no match): keep the icon with it
+        field.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) = showIcon()
+        })
+        row.setOnClickListener {
+            val names = names()
+            if (names.isEmpty()) return@setOnClickListener
+            onOpen()
+            ChoiceSheet.single(
+                field.context,
+                title,
+                names.map { ChoiceOption(it) },
+                names.indexOf(field.text.toString()),
+            ) { picked ->
+                field.setText(names[picked], false)
+                field.onItemClickListener?.onItemClick(null, field, picked, picked.toLong())
+            }
+        }
+        // the field would open its own drop-down on touch; hand the touch to the row
+        field.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_UP) row.performClick()
+            true
+        }
+    }
+}

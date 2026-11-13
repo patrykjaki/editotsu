@@ -2,6 +2,7 @@ package ani.dantotsu.media.comments
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.text.Spannable
@@ -303,9 +304,7 @@ class CommentItem(
             )
             comment.profilePictureUrl?.let { commentUserAvatar.loadImage(it) }
             commentUserName.text = comment.username
-            val userColor = "[${levelColor.second}]"
-            commentUserLevel.text = userColor
-            commentUserLevel.setTextColor(levelColor.first)
+            commentUserLevel.text = commentUserLevel.context.getString(R.string.comment_level, levelColor.second)
             commentUserTime.text = formatTimestamp(comment.timestamp)
         }
     }
@@ -323,16 +322,20 @@ class CommentItem(
     }
 
     fun replying(isReplying: Boolean) {
-        binding.commentReply.text =
-            if (isReplying) commentsFragment.activity.getString(R.string.cancel) else "Reply"
+        binding.commentReply.setImageResource(
+            if (isReplying) R.drawable.ic_round_close_24 else R.drawable.ic_round_reply_24
+        )
+        binding.commentReply.contentDescription =
+            binding.root.context.getString(if (isReplying) R.string.cancel else R.string.reply)
         this.isReplying = isReplying
     }
 
     fun editing(isEditing: Boolean) {
-        binding.commentEdit.text =
-            if (isEditing) commentsFragment.activity.getString(R.string.cancel) else commentsFragment.activity.getString(
-                R.string.edit
-            )
+        binding.commentEdit.setImageResource(
+            if (isEditing) R.drawable.ic_round_close_24 else R.drawable.ic_round_edit_note_24
+        )
+        binding.commentEdit.contentDescription =
+            binding.root.context.getString(if (isEditing) R.string.cancel else R.string.edit)
         this.isEditing = isEditing
     }
 
@@ -354,24 +357,20 @@ class CommentItem(
     }
 
     private fun setVoteButtons(viewBinding: ItemCommentsBinding) {
-        when (comment.userVoteType) {
-            1 -> {
-                viewBinding.commentUpVote.setImageResource(R.drawable.ic_round_upvote_active_24)
-                viewBinding.commentUpVote.alpha = 1f
-                viewBinding.commentDownVote.setImageResource(R.drawable.ic_round_upvote_inactive_24)
-            }
-
-            -1 -> {
-                viewBinding.commentUpVote.setImageResource(R.drawable.ic_round_upvote_inactive_24)
-                viewBinding.commentDownVote.setImageResource(R.drawable.ic_round_upvote_active_24)
-                viewBinding.commentDownVote.alpha = 1f
-            }
-
-            else -> {
-                viewBinding.commentUpVote.setImageResource(R.drawable.ic_round_upvote_inactive_24)
-                viewBinding.commentDownVote.setImageResource(R.drawable.ic_round_upvote_inactive_24)
-            }
-        }
+        val context = viewBinding.root.context
+        val active = ColorStateList.valueOf(context.getThemeColor(androidx.appcompat.R.attr.colorPrimary))
+        val quiet = ColorStateList.valueOf(context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+        val up = comment.userVoteType == 1
+        val down = comment.userVoteType == -1
+        viewBinding.commentUpVote.setImageResource(
+            if (up) R.drawable.ic_round_upvote_active_24 else R.drawable.ic_round_upvote_inactive_24
+        )
+        viewBinding.commentDownVote.setImageResource(
+            if (down) R.drawable.ic_round_upvote_active_24 else R.drawable.ic_round_upvote_inactive_24
+        )
+        viewBinding.commentUpVote.imageTintList = if (up) active else quiet
+        viewBinding.commentDownVote.imageTintList = if (down) active else quiet
+        viewBinding.commentTotalVotes.setTextColor(if (up || down) active else quiet)
     }
 
     private fun applyTimestampHighlighting(textView: android.widget.TextView) {
@@ -436,16 +435,7 @@ class CommentItem(
 
             val diff = currentDate.time - (parsedDate?.time ?: 0)
 
-            val days = diff / (24 * 60 * 60 * 1000)
-            val hours = diff / (60 * 60 * 1000) % 24
-            val minutes = diff / (60 * 1000) % 60
-
-            return when {
-                days > 0 -> "${days}d"
-                hours > 0 -> "${hours}h"
-                minutes > 0 -> "${minutes}m"
-                else -> "now"
-            }
+            return commentAge(diff, parsedDate ?: currentDate)
         } catch (e: Exception) {
             "now"
         }
@@ -543,4 +533,18 @@ class CommentItem(
         "#191970",
         "#ffffff",
     )
+}
+
+/** "now", minutes, hours and days while that is easy to read; a date once it is a month old. */
+internal fun commentAge(diffMs: Long, posted: Date, locale: Locale = Locale.getDefault()): String {
+    val minutes = diffMs / 60_000
+    val hours = minutes / 60
+    val days = hours / 24
+    return when {
+        days >= 30 -> java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM, locale).format(posted)
+        days > 0 -> "${days}d"
+        hours > 0 -> "${hours}h"
+        minutes > 0 -> "${minutes}m"
+        else -> "now"
+    }
 }

@@ -159,6 +159,12 @@ class NovelReadAdapter(
                 dialog.show(fragment.requireActivity().supportFragmentManager, "SourceSearchDialogFragment")
             }
 
+            ani.dantotsu.media.SourcePicker.attach(
+                binding.mediaSourceNameContainer,
+                binding.mediaSourceIcon,
+                binding.mediaSource,
+                fragment.getString(R.string.source),
+            )
             binding.mediaSource.setOnItemClickListener { _, _, i, _ ->
                 val actualIndex = novelReadSources.names.indexOf(displayNames[i])
                 fragment.onSourceChange(actualIndex)

@@ -154,6 +154,17 @@ class AnimeWatchAdapter(
                 displayNames
             )
         )
+        ani.dantotsu.media.SourcePicker.attach(
+            binding.mediaSourceNameContainer,
+            binding.mediaSourceIcon,
+            binding.mediaSource,
+            fragment.getString(R.string.source),
+            icon = { i ->
+                watchSources.names.indexOf(displayNames.getOrNull(i)).takeIf { it >= 0 }
+                    ?.let { (watchSources[it] as? DynamicAnimeParser)?.extension?.icon }
+            },
+            onOpen = { autoSelect = false },
+        )
         binding.mediaSourceTitle.isSelected = true
         binding.mediaSource.setOnItemClickListener { _, _, i, _ ->
             val actualIndex = watchSources.names.indexOf(displayNames[i])
@@ -644,7 +655,6 @@ class AnimeWatchAdapter(
                         fragment.loadEpisodes(nextIndex, false)
                     }
                 }
-                binding.mediaSource.setOnClickListener { autoSelect = false }
             } else {
                 binding.sourceContinue.visibility = View.GONE
                 binding.sourceNotFound.visibility = View.GONE

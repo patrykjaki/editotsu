@@ -323,9 +323,12 @@ android {
             applicationIdSuffix = ".beta"
             versionNameSuffix = "+$devBuildId"
             buildConfigField("String", "EDITOTSU_BUILD_ID", "\"$devBuildId\"")
-            resValue("string", "app_build_label", "Editotsu β")
-            manifestPlaceholders["icon_placeholder"] = "@mipmap/ic_launcher_beta"
-            manifestPlaceholders["icon_placeholder_round"] = "@mipmap/ic_launcher_beta_round"
+            // same channel mark as the signed build of this version
+            val alphaVersion = editotsuVersion.contains("-alpha")
+            resValue("string", "app_build_label", if (alphaVersion) "Editotsu α" else "Editotsu β")
+            val channelIcon = if (alphaVersion) "ic_launcher_alpha" else "ic_launcher_beta"
+            manifestPlaceholders["icon_placeholder"] = "@mipmap/$channelIcon"
+            manifestPlaceholders["icon_placeholder_round"] = "@mipmap/${channelIcon}_round"
             isDebuggable = false
         }
 
@@ -352,6 +355,8 @@ android {
     // Give them the alpha resources (red splash, "Editotsu α" app_name) instead.
     if (editotsuVersion.contains("-alpha")) {
         sourceSets.getByName("beta").res.setSrcDirs(listOf("src/alpha/res"))
+        // debug builds of an alpha version get the same mark as the signed build
+        sourceSets.getByName("debug").res.setSrcDirs(listOf("src/alpha/res"))
     }
 
     buildFeatures {

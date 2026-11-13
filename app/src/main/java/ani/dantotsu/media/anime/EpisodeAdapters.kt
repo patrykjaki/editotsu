@@ -163,7 +163,7 @@ class EpisodeAdapter(
                 Glide.with(binding.itemMediaImage).load(thumb ?: media.banner ?: media.cover).override(400, 0)
                     .into(binding.itemMediaImage)
                 binding.itemEpisodeNumber.text = ep.number
-                binding.itemEpisodeTitle.maxLines = 3
+                binding.itemEpisodeTitle.maxLines = if (ep.number in expandedTitles) 100 else 3
                 binding.itemEpisodeTitle.text = if (ep.number == title) "Episode $title" else title
 
                 if (ep.filler) {
@@ -412,6 +412,9 @@ class EpisodeAdapter(
     }
 
 
+    /** Episode numbers whose list-row title is shown in full. */
+    private val expandedTitles = mutableSetOf<String>()
+
     inner class EpisodeCompactViewHolder(val binding: ItemEpisodeCompactBinding) :
         RecyclerView.ViewHolder(binding.root) {
         init {
@@ -518,10 +521,18 @@ class EpisodeAdapter(
             // a cut-off title opens in full on tap; a title that fits passes the tap to the row
             binding.itemEpisodeTitle.setOnClickListener { title ->
                 title as android.widget.TextView
+                val number = arr.getOrNull(bindingAdapterPosition)?.number
                 val cut = title.layout?.let { l -> l.lineCount > 0 && l.getEllipsisCount(l.lineCount - 1) > 0 } == true
                 when {
-                    title.maxLines > 3 -> title.maxLines = 3
-                    cut -> title.maxLines = 100
+                    number != null && number in expandedTitles -> {
+                        expandedTitles.remove(number)
+                        title.maxLines = 3
+                    }
+                    number != null && cut -> {
+                        // kept per episode: rows are rebound while the page updates
+                        expandedTitles.add(number)
+                        title.maxLines = 100
+                    }
                     else -> itemView.performClick()
                 }
             }

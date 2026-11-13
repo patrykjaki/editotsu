@@ -377,7 +377,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
     fun onScanlatorChange(list: List<String>) {
         val selected = model.loadSelected(media)
         selected.scanlators = list
-        model.saveSelected(media.id, selected)
+        model.saveSelected(media.id, selected, media)
         media.selected = selected
     }
 
@@ -492,7 +492,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         val previousSourceIndex = selected.sourceIndex
         selected.sourceIndex = i
         selected.server = null
-        model.saveSelected(media.id, selected)
+        model.saveSelected(media.id, selected, media)
         // The subscription keeps its own source; the bell shows whether it uses this one.
         subscribed = SubscriptionHelper.isSubscribedOn(media.id, model.watchSources?.names?.getOrNull(i))
         if (this::headerAdapter.isInitialized) headerAdapter.subscribe?.setState(subscribed)
@@ -512,7 +512,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
     fun onLangChange(i: Int) {
         val selected = model.loadSelected(media)
         selected.langIndex = i
-        model.saveSelected(media.id, selected)
+        model.saveSelected(media.id, selected, media)
         media.selected = selected
     }
 
@@ -520,7 +520,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         val selected = model.loadSelected(media)
         model.watchSources?.get(selected.sourceIndex)?.selectDub = checked
         selected.preferDub = checked
-        model.saveSelected(media.id, selected)
+        model.saveSelected(media.id, selected, media)
         media.selected = selected
         lifecycleScope.launch(Dispatchers.IO) {
             model.forceLoadEpisode(
@@ -543,7 +543,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         reverse = rev
         media.selected!!.recyclerStyle = style
         media.selected!!.recyclerReversed = reverse
-        model.saveSelected(media.id, media.selected!!)
+        model.saveSelected(media.id, media.selected!!, media)
         reload()
     }
 
@@ -551,7 +551,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         media.selected!!.chip = i
         start = s
         end = e
-        model.saveSelected(media.id, media.selected!!)
+        model.saveSelected(media.id, media.selected!!, media)
         reload()
     }
 
@@ -643,7 +643,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
 
     fun onEpisodeClick(i: String) {
         model.continueMedia = false
-        model.saveSelected(media.id, media.selected!!)
+        model.saveSelected(media.id, media.selected!!, media)
         model.onEpisodeClick(media, i, requireActivity().supportFragmentManager)
     }
 
@@ -863,7 +863,7 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         selected.latest =
             media.userProgress?.toFloat()?.takeIf { selected.latest < it } ?: selected.latest
 
-        model.saveSelected(media.id, selected)
+        model.saveSelected(media.id, selected, media)
         headerAdapter.handleEpisodes()
         val isDownloaded = model.watchSources!!.isDownloadedSource(media.selected!!.sourceIndex)
         episodeAdapter.offlineMode = isDownloaded
