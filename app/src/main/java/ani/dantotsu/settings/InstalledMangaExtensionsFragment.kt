@@ -157,7 +157,7 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
                 ExtensionCardDecoration.drop(viewHolder.itemView)
             }
         }
-        ItemTouchHelper(itemTouchHelperCallback).attachToRecyclerView(extensionsRecyclerView)
+        ExtensionReorder.attach(itemTouchHelperCallback, extensionsRecyclerView, binding.extensionsSwipeRefresh)
 
 
         lifecycleScope.launch {

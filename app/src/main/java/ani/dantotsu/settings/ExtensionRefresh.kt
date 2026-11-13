@@ -44,8 +44,6 @@ object ExtensionRefresh {
         SharedRefresh<MediaType, Int?>(CoroutineScope(SupervisorJob() + Dispatchers.IO))
 
     fun bind(swipe: SwipeRefreshLayout, owner: LifecycleOwner, type: MediaType) {
-        swipe.setColorSchemeColors(PrefManager.getVal<Int>(PrefName.PrimaryColor))
-        swipe.setProgressBackgroundColorSchemeResource(R.color.nav_bg)
         swipe.setOnRefreshListener {
             val job = refreshes.start(type) { checkRepos(type) }
             owner.lifecycleScope.launch {
