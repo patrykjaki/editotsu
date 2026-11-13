@@ -20,6 +20,7 @@ import ani.dantotsu.settings.rows.ChoiceSheet
  */
 internal object SourcePicker {
     private const val OWN_ICON_SCALE = 1.15f
+    private const val TAP_GUARD_MS = 700L
 
     @SuppressLint("ClickableViewAccessibility")
     fun attach(
@@ -74,6 +75,11 @@ internal object SourcePicker {
         row.setOnClickListener {
             val names = field.adapter?.let { a -> (0 until a.count).map { a.getItem(it).toString() } }.orEmpty()
             if (names.isEmpty()) return@setOnClickListener
+            // the card is only reachable before the sheet is up and while it closes after a
+            // pick; taps in those moments would stack a second sheet
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now < ((row.getTag(R.id.mediaSourceNameContainer) as? Long) ?: 0L)) return@setOnClickListener
+            row.setTag(R.id.mediaSourceNameContainer, now + TAP_GUARD_MS)
             onOpen()
             ChoiceSheet.single(
                 field.context,
@@ -82,6 +88,7 @@ internal object SourcePicker {
                 // the owner may keep the position in the tag: names can repeat
                 (field.tag as? Int)?.takeIf { it in names.indices } ?: names.indexOf(field.text.toString()),
             ) { picked ->
+                row.setTag(R.id.mediaSourceNameContainer, android.os.SystemClock.uptimeMillis() + TAP_GUARD_MS)
                 if (field.tag is Int) field.tag = picked
                 field.setText(names[picked], false)
                 field.onItemClickListener?.onItemClick(null, field, picked, picked.toLong())

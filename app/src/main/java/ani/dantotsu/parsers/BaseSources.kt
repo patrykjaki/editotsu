@@ -34,9 +34,13 @@ abstract class WatchSources : BaseSources() {
         val key = parser.saveName.ifBlank { parser.name }
         val cached = if (onCached != null && !offline) episodeCache.load(key, media.id) else null
         if (!cached.isNullOrEmpty()) onCached?.invoke(cached)
-        val loaded = tryWithSuspend(true) {
-            val res = parser.autoSearch(media) ?: return@tryWithSuspend mutableMapOf()
-            loadEpisodes(i, res.link, res.extra, res.sAnime)
+        // a source that never answers (a server that is not set up, a dead host) must end in
+        // "not found", not in a list that loads for as long as its retries last
+        val loaded = kotlinx.coroutines.withTimeoutOrNull(LIST_LOAD_LIMIT_MS) {
+            tryWithSuspend(true) {
+                val res = parser.autoSearch(media) ?: return@tryWithSuspend mutableMapOf()
+                loadEpisodes(i, res.link, res.extra, res.sAnime)
+            }
         } ?: mutableMapOf()
         if (loaded.isNotEmpty() && !offline) episodeCache.save(key, media.id, loaded)
         return if (loaded.isEmpty() && !cached.isNullOrEmpty()) cached else loaded
@@ -98,9 +102,11 @@ abstract class MangaReadSources : BaseSources() {
         val key = parser.saveName.ifBlank { parser.name }
         val cached = if (onCached != null && !offline) chapterCache.load(key, media.id) else null
         if (!cached.isNullOrEmpty()) onCached?.invoke(cached)
-        val loaded = tryWithSuspend(true) {
-            val res = parser.autoSearch(media) ?: return@tryWithSuspend mutableMapOf()
-            loadChapters(i, res)
+        val loaded = kotlinx.coroutines.withTimeoutOrNull(LIST_LOAD_LIMIT_MS) {
+            tryWithSuspend(true) {
+                val res = parser.autoSearch(media) ?: return@tryWithSuspend mutableMapOf()
+                loadChapters(i, res)
+            }
         } ?: mutableMapOf()
         if (loaded.isNotEmpty() && !offline) chapterCache.save(key, media.id, loaded)
         return if (loaded.isEmpty() && !cached.isNullOrEmpty()) cached else loaded
@@ -177,3 +183,6 @@ abstract class BaseSources {
         get(i)?.saveShowResponse(mediaId, response, true)
     }
 }
+
+/** How long a source gets to find a title and list its episodes or chapters. */
+internal const val LIST_LOAD_LIMIT_MS = 40_000L

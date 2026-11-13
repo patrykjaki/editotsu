@@ -71,7 +71,7 @@
             android:gravity="center"
             android:visibility="gone" />
 
-        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        <ani.dantotsu.others.ThemedSwipeRefreshLayout
             android:id="@+id/feedSwipeRefresh"
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -89,7 +89,7 @@
                 android:requiresFadingEdge="vertical"
                 tools:listitem="@layout/item_activity" />
 
-        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+        </ani.dantotsu.others.ThemedSwipeRefreshLayout>
 
         <ProgressBar
             android:id="@+id/feedRefresh"

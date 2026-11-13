@@ -9,7 +9,7 @@
     android:clipToPadding="false"
     android:fillViewport="true">
 
-    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+    <ani.dantotsu.others.ThemedSwipeRefreshLayout
         android:id="@+id/commentsRefresh"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -160,5 +160,5 @@
                     app:icon="@drawable/ic_round_comment_24" />
             </LinearLayout>
         </LinearLayout>
-    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+    </ani.dantotsu.others.ThemedSwipeRefreshLayout>
 </androidx.core.widget.NestedScrollView>

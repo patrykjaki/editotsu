@@ -486,9 +486,6 @@ class NovelReadFragment : Fragment(),
         binding.mediaSourceRecycler.layoutManager = gridLayoutManager
 
         binding.mediaSourceSwipeRefresh.apply {
-            val primaryColor = PrefManager.getVal<Int>(PrefName.PrimaryColor)
-            setColorSchemeColors(primaryColor)
-            setProgressBackgroundColorSchemeResource(R.color.nav_bg)
             setOnRefreshListener {
                 if (!this@NovelReadFragment::media.isInitialized) {
                     isRefreshing = false
