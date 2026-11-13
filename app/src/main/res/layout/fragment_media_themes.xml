@@ -22,28 +22,12 @@
             android:orientation="vertical"
             android:paddingTop="16dp">
 
-            <LinearLayout
+            <ani.dantotsu.others.SkeletonView
                 android:id="@+id/themesLoading"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="32dp">
-
-                <ProgressBar
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:indeterminate="true" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:fontFamily="@font/poppins"
-                    android:text="@string/anime_themes_loading"
-                    android:textColor="?attr/colorOnSurfaceVariant"
-                    android:textSize="13sp" />
-            </LinearLayout>
+                android:contentDescription="@string/anime_themes_loading"
+                android:tag="rows" />
 
             <LinearLayout
                 android:id="@+id/themesFailed"
