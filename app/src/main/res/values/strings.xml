@@ -29,6 +29,12 @@
     <string name="watch">Watch</string>
     <string name="read">Read</string>
     <string name="language">Language</string>
+    <string name="repo_links">Repository links</string>
+    <string name="repo_open_github">Open on GitHub</string>
+    <string name="repo_open_website">Open website</string>
+    <string name="repo_open_discord">Open Discord</string>
+    <string name="repo_copy_link">Copy link</string>
+    <string name="source_variant">Variant</string>
     <string name="language_code" translatable="false">LANG</string>
 
     <string name="anime_list">Anime List</string>

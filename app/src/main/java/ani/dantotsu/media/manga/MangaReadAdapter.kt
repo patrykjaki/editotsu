@@ -171,6 +171,11 @@ class MangaReadAdapter(
             fragment.loadChapters(actualIndex, invalidate)
         }
 
+        ani.dantotsu.media.SourcePicker.attachSheet(
+            binding.mediaSourceLanguageContainer,
+            binding.mediaSourceLanguage,
+            { binding.mediaSourceLanguageLabel.text },
+        )
         binding.mediaSourceLanguage.setOnItemClickListener { _, _, i, _ ->
             // Check if 'extension' and 'selected' properties exist and are accessible
             (mangaReadSources[source] as? DynamicMangaParser)?.let { ext ->
@@ -526,18 +531,19 @@ class MangaReadAdapter(
                 (mangaReadSources[source] as? DynamicMangaParser)?.let { ext ->
                     ext.sourceLanguage = lang
                 }
-                try {
-                    binding?.mediaSourceLanguage?.setText(parser.extension.sources[lang].lang)
-                } catch (e: IndexOutOfBoundsException) {
-                    binding?.mediaSourceLanguage?.setText(
-                        parser.extension.sources.firstOrNull()?.lang ?: "Unknown"
-                    )
-                }
-                val adapter = ArrayAdapter(
-                    fragment.requireContext(),
-                    R.layout.item_dropdown,
-                    parser.extension.sources.map { LanguageMapper.getLanguageName(it.lang) }
+                val langs = parser.extension.sources.map { LanguageMapper.getLanguageName(it.lang) }
+                val labels = ani.dantotsu.media.SourcePicker.variantLabels(
+                    langs, parser.extension.sources.map { it.name })
+                val shown = lang.takeIf { it in labels.indices } ?: 0
+                binding?.mediaSourceLanguage?.tag = shown
+                binding?.mediaSourceLanguage?.setText(labels.getOrNull(shown) ?: "", false)
+                binding?.mediaSourceLanguageLabel?.setText(
+                    if (labels == langs) R.string.language else R.string.source_variant
                 )
+                binding?.mediaSourceLanguageIcon?.setImageResource(
+                    if (labels == langs) R.drawable.ic_round_translate_24 else R.drawable.ic_round_source_24
+                )
+                val adapter = ArrayAdapter(fragment.requireContext(), R.layout.item_dropdown, labels)
                 val items = adapter.count
                 binding?.mediaSourceLanguageContainer?.isVisible = items > 1
 

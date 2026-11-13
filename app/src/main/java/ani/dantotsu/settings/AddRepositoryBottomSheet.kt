@@ -2,7 +2,6 @@ package ani.dantotsu.settings
 
 import android.content.Context
 import android.os.Bundle
-import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
@@ -60,10 +59,6 @@ class RepoItem(
         viewBinding.repoDeleteImageView.setOnClickListener {
             onRemove(url, mediaType)
         }
-        viewBinding.repoCopyImageView.setOnClickListener {
-            viewBinding.repoCopyImageView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            copyToClipboard(url, true)
-        }
     }
 
     private fun bindMeta(viewBinding: ItemRepoBinding, meta: ExtensionRepoMeta?) {
@@ -94,54 +89,29 @@ class RepoItem(
             viewBinding.repoUrlTextView.setOnClickListener(null)
         }
 
-        if (repoPageUrl != null) {
-            // Review HOLD Finding 1: the GitHub icon must only represent
-            // GitHub project pages; GitLab/Codeberg/generic sites use globe.
-            if (ExtensionRepoMetaHelper.classifyRepoPageUrl(repoPageUrl) ==
-                ExtensionRepoMetaHelper.RepoLinkKind.GITHUB
-            ) {
-                viewBinding.repoGithubImageView.isVisible = true
-                viewBinding.repoGithubImageView.setOnClickListener {
-                    context.openInBrowser(repoPageUrl)
-                }
-            } else {
-                viewBinding.repoGithubImageView.isGone = true
-            }
-        } else {
-            viewBinding.repoGithubImageView.isGone = true
-        }
-
+        // the links a repository lists about itself, behind one button so the name and
+        // address keep the row's width
+        val links = mutableListOf<Pair<Int, () -> Unit>>()
         val websiteUrl = meta?.website?.takeIf { it.isNotBlank() }
-        // Review HOLD Finding 1: the globe opens the website when distinct;
-        // otherwise it affords a non-GitHub project page (name/URL text
-        // remains clickable in all cases).
-        val globeUrl = if (websiteUrl != null && websiteUrl != repoPageUrl && websiteUrl != "$repoPageUrl/") {
-            websiteUrl
-        } else if (repoPageUrl != null &&
-            ExtensionRepoMetaHelper.classifyRepoPageUrl(repoPageUrl) !=
-            ExtensionRepoMetaHelper.RepoLinkKind.GITHUB
-        ) {
-            repoPageUrl
-        } else {
-            null
+        if (repoPageUrl != null) {
+            // only a GitHub project page is called GitHub; other hosts are "website"
+            val label = if (ExtensionRepoMetaHelper.classifyRepoPageUrl(repoPageUrl) ==
+                ExtensionRepoMetaHelper.RepoLinkKind.GITHUB
+            ) R.string.repo_open_github else R.string.repo_open_website
+            links += label to { context.openInBrowser(repoPageUrl) }
         }
-        if (globeUrl != null) {
-            viewBinding.repoWebsiteImageView.isVisible = true
-            viewBinding.repoWebsiteImageView.setOnClickListener {
-                context.openInBrowser(globeUrl)
-            }
-        } else {
-            viewBinding.repoWebsiteImageView.isGone = true
+        if (websiteUrl != null && websiteUrl != repoPageUrl && websiteUrl != "$repoPageUrl/") {
+            links += R.string.repo_open_website to { context.openInBrowser(websiteUrl) }
         }
-
-        val discordUrl = meta?.discord?.takeIf { it.isNotBlank() }
-        if (discordUrl != null) {
-            viewBinding.repoDiscordImageView.isVisible = true
-            viewBinding.repoDiscordImageView.setOnClickListener {
-                context.openInBrowser(discordUrl)
-            }
-        } else {
-            viewBinding.repoDiscordImageView.isGone = true
+        meta?.discord?.takeIf { it.isNotBlank() }?.let { discordUrl ->
+            links += R.string.repo_open_discord to { context.openInBrowser(discordUrl) }
+        }
+        links += R.string.repo_copy_link to { copyToClipboard(url, true) }
+        viewBinding.repoMoreImageView.setOnClickListener { anchor ->
+            android.widget.PopupMenu(context, anchor).apply {
+                links.forEachIndexed { i, (label, _) -> menu.add(0, i, i, label) }
+                setOnMenuItemClickListener { item -> links[item.itemId].second(); true }
+            }.show()
         }
     }
 
@@ -181,7 +151,7 @@ class AddRepositoryBottomSheet : BottomSheetDialogFragment() {
         binding.repositoriesRecyclerView.addItemDecoration(ExtensionCardDecoration())
         binding.currentRepositoriesText.isVisible = repositories.isNotEmpty()
 
-        binding.repositoryInputLayout.hint = getString(R.string.add_repository_hint)
+        binding.repositoryInput.hint = getString(R.string.add_repository_hint)
 
         binding.addButton.setOnClickListener {
             val input = binding.repositoryInput.text.toString()

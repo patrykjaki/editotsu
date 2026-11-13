@@ -65,16 +65,24 @@ internal object SourcePicker {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: android.text.Editable?) = showIcon()
         })
+        attachSheet(row, field, { title }, onOpen)
+    }
+
+    /** The sheet half of [attach], for a field with no icon of its own (language). */
+    @SuppressLint("ClickableViewAccessibility")
+    fun attachSheet(row: View, field: AutoCompleteTextView, title: () -> CharSequence, onOpen: () -> Unit = {}) {
         row.setOnClickListener {
-            val names = names()
+            val names = field.adapter?.let { a -> (0 until a.count).map { a.getItem(it).toString() } }.orEmpty()
             if (names.isEmpty()) return@setOnClickListener
             onOpen()
             ChoiceSheet.single(
                 field.context,
-                title,
+                title(),
                 names.map { ChoiceOption(it) },
-                names.indexOf(field.text.toString()),
+                // the owner may keep the position in the tag: names can repeat
+                (field.tag as? Int)?.takeIf { it in names.indices } ?: names.indexOf(field.text.toString()),
             ) { picked ->
+                if (field.tag is Int) field.tag = picked
                 field.setText(names[picked], false)
                 field.onItemClickListener?.onItemClick(null, field, picked, picked.toLong())
             }
@@ -84,5 +92,15 @@ internal object SourcePicker {
             if (event.action == MotionEvent.ACTION_UP) row.performClick()
             true
         }
+    }
+
+    /**
+     * What to call an extension's sources in the picker under the source card: their languages
+     * when those tell them apart, else their own names, numbered where even those repeat.
+     */
+    fun variantLabels(languages: List<String>, names: List<String>): List<String> {
+        if (languages.distinct().size == languages.size) return languages
+        if (names.size == languages.size && names.distinct().size == names.size) return names
+        return languages.indices.map { "${names.getOrNull(it) ?: languages[it]} ${it + 1}" }
     }
 }
