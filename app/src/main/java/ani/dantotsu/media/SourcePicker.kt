@@ -2,6 +2,7 @@ package ani.dantotsu.media
 
 import android.annotation.SuppressLint
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.view.MotionEvent
 import android.view.View
@@ -18,6 +19,7 @@ import ani.dantotsu.settings.rows.ChoiceSheet
  * a pick sets the text and runs the listener with the picked position.
  */
 internal object SourcePicker {
+    private const val OWN_ICON_SCALE = 1.15f
 
     @SuppressLint("ClickableViewAccessibility")
     fun attach(
@@ -33,15 +35,24 @@ internal object SourcePicker {
             field.context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
         )
         val inset = (8 * field.resources.displayMetrics.density).toInt()
+        val tile = iconView.parent as? androidx.cardview.widget.CardView
+        val tileColor = field.context.getThemeColor(com.google.android.material.R.attr.colorSurface)
         fun names() = field.adapter?.let { a -> (0 until a.count).map { a.getItem(it).toString() } }.orEmpty()
         fun showIcon() {
             val own = icon(names().indexOf(field.text.toString()))
             if (own != null) {
                 // an extension's own icon fills the tile; the stock glyph sits inset and tinted
+                // launcher icons carry their own shape and margin: no tile behind them, drawn a little larger
+                tile?.setCardBackgroundColor(Color.TRANSPARENT)
                 iconView.setPadding(0, 0, 0, 0)
+                iconView.scaleX = OWN_ICON_SCALE
+                iconView.scaleY = OWN_ICON_SCALE
                 iconView.imageTintList = null
                 iconView.setImageDrawable(own)
             } else {
+                tile?.setCardBackgroundColor(tileColor)
+                iconView.scaleX = 1f
+                iconView.scaleY = 1f
                 iconView.setPadding(inset, inset, inset, inset)
                 iconView.imageTintList = quiet
                 iconView.setImageResource(R.drawable.ic_round_source_24)
