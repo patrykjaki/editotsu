@@ -1,3 +1,4 @@
+import java.security.MessageDigest
 import java.io.File
 import java.util.Properties
 
@@ -117,18 +118,38 @@ if (libtorrentArm64Jar != null) {
 }
 val libtorrentNativeLabel = libtorrentArm64Jar?.nameWithoutExtension ?: "maven"
 
-// libmpv: Maven mpv-android-lib by default. -Peditotsu.libmpvAar=/abs/path.aar swaps in a
-// local build of the same lib with Vulkan (libplacebo vulkan backend, needed for compute
-// shaders such as CuNNy; recipe: native/libmpv-vulkan). Its directory must hold
-// provenance.json next to the aar. LIBMPV_VULKAN tells the player it may use gpu-api=vulkan.
-val libmpvAar: File? = providers.gradleProperty("editotsu.libmpvAar").orNull?.let { File(it) }
-if (libmpvAar != null) {
-    require(libmpvAar.isFile) { "editotsu.libmpvAar not found: $libmpvAar" }
-    require(File(libmpvAar.parentFile, "provenance.json").isFile) {
-        "editotsu.libmpvAar needs provenance.json next to it: ${libmpvAar.parentFile}"
+// libmpv: Maven mpv-android-lib, with its arm64 libmpv.so replaced by the build in
+// native/libmpv-vulkan/lib (same sources plus the libplacebo Vulkan backend, needed for
+// compute shaders such as CuNNy; recipe and provenance next to it). The other ABIs stay Maven's.
+//   -Peditotsu.libmpv=maven   use the Maven libmpv.so on arm64 too (A/B)
+// Every build checks the file against provenance.json. LIBMPV_VULKAN tells the player it may
+// use gpu-api=vulkan.
+val libmpvUseMaven = providers.gradleProperty("editotsu.libmpv").orNull == "maven"
+val libmpvVulkanDir = rootProject.file("native/libmpv-vulkan")
+val libmpvVulkanSo = File(libmpvVulkanDir, "lib/arm64-v8a/libmpv.so")
+val libmpvProvenance = File(libmpvVulkanDir, "provenance.json")
+if (!libmpvUseMaven) {
+    require(libmpvVulkanSo.isFile && libmpvProvenance.isFile) { "missing $libmpvVulkanSo or $libmpvProvenance" }
+    val verifyLibmpvVulkan = tasks.register("verifyLibmpvVulkan") {
+        group = "verification"
+        description = "Fails unless the in-repo arm64 libmpv.so matches its provenance."
+        // locals, so the action holds two files and not the build script
+        val so = libmpvVulkanSo
+        val provenance = libmpvProvenance
+        inputs.files(so, provenance)
+        doLast {
+            val want = Regex("\"sha256\"\\s*:\\s*\"([0-9a-f]{64})\"").find(provenance.readText())!!.groupValues[1]
+            val got = MessageDigest.getInstance("SHA-256").digest(so.readBytes())
+                .joinToString("") { b -> "%02x".format(b) }
+            check(got == want) { "libmpv.so sha256 $got does not match provenance $want" }
+        }
+    }
+    tasks.configureEach {
+        if (name == "preBuild") dependsOn(verifyLibmpvVulkan)
     }
 }
-val libmpvLabel = libmpvAar?.nameWithoutExtension ?: "maven"
+val libmpvLabel = if (libmpvUseMaven) "maven" else "vulkan-" +
+    Regex("\"revision\"\\s*:\\s*\"([^\"]+)\"").find(libmpvProvenance.readText())!!.groupValues[1]
 
 val malClientId: String = (project.findProperty("malClientId") as? String)
     ?.takeIf { it.isNotBlank() }
@@ -164,7 +185,7 @@ android {
         // Torrent bench hook (task 7 rig): off unless -Peditotsu.torrentBench=true.
         buildConfigField("boolean", "TORRENT_BENCH", torrentBench.toString())
         buildConfigField("String", "LIBTORRENT_ARM64", "\"$libtorrentNativeLabel\"")
-        buildConfigField("boolean", "LIBMPV_VULKAN", (libmpvAar != null).toString())
+        buildConfigField("boolean", "LIBMPV_VULKAN", (!libmpvUseMaven).toString())
         buildConfigField("String", "LIBMPV", "\"$libmpvLabel\"")
     }
 
@@ -366,9 +387,12 @@ android {
         aidl = true
     }
 
+    if (!libmpvUseMaven) sourceSets.getByName("main").jniLibs.srcDir(File(libmpvVulkanDir, "lib"))
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            // the module's own jniLibs come before a dependency's, so this keeps the in-repo build
+            pickFirsts.add("lib/arm64-v8a/libmpv.so")
             pickFirsts.add("**/libavcodec.so")
             pickFirsts.add("**/libavdevice.so")
             pickFirsts.add("**/libavfilter.so")
@@ -421,8 +445,8 @@ configurations.all {
 }
 
 dependencies {
-    // MPV Native Player (see editotsu.libmpvAar above)
-    if (libmpvAar != null) implementation(files(libmpvAar)) else implementation(libs.mpv)
+    // MPV Native Player (arm64 libmpv.so comes from native/libmpv-vulkan, see above)
+    implementation(libs.mpv)
 
     // ffmpeg-kit
     implementation(libs.ffmpeg.kit)

@@ -1,0 +1,39 @@
+{
+  "artifact": "lib/arm64-v8a/libmpv.so",
+  "revision": "r3",
+  "sha256": "b6634fc5af98f307f34aeb084f3aae64496b0a7c71654e9891ae19fba9916b75",
+  "replaces": {
+    "coordinate": "io.github.abdallahmehiz:mpv-android-lib:0.1.12",
+    "entry": "jni/arm64-v8a/libmpv.so",
+    "sha256": "ea485887c3663a69c7ea9586530e173fda8d498f67891e29909ddcf06bf19f16"
+  },
+  "sources": {
+    "mpv": "76a5eba991733f41310912c79c60f6c565a77cc9",
+    "libplacebo": "b2ea27dceb6418aabfe9121174c6dbb232942998 (v7.360.0)",
+    "glslang": "f0bd0257c308b9a26562c1a30c4748a0219cc951 (16.2.0)",
+    "ffmpeg_headers": "a7522f3fefa719be687f4627631ac6e5e481ef4c (N-122742-ga7522f3fef; .so files from base aar, not rebuilt)",
+    "freetype": "VER-2-14-3",
+    "harfbuzz": "12.3.0",
+    "fribidi": "v1.0.16",
+    "libass": "0.17.4",
+    "lua": "5.2.4"
+  },
+  "patches": [
+    "patches/libplacebo-glslang-dirs.patch (search dirs for glslang + glslang-default-resource-limits)",
+    "patches/mpv-weak-vk11.h (forced include: weak vkGetPhysicalDeviceProperties2 / QueueFamilyProperties2)"
+  ],
+  "toolchain": {
+    "ndk": "28.2.13676358",
+    "api": 26,
+    "abi": "arm64-v8a",
+    "clang": "19.0.1 (r530567e)",
+    "meson": "1.12.1"
+  },
+  "checks": "check_undefined.sh: every strong undefined symbol resolves against NEEDED libs at API 26",
+  "libmpv_needed_added": [
+    "libvulkan.so"
+  ],
+  "other_abis": "armeabi-v7a, x86, x86_64 unchanged from base (no vulkan); the app requests vulkan only on arm64-v8a, API 28+",
+  "recipe": "native/libmpv-vulkan (fetch.sh, env.sh, build.sh, check_undefined.sh, package.sh)",
+  "post_processing": "r3 = the r2 libmpv.so with the build directory in mpv's embedded configuration string overwritten by a same-length placeholder (/build___...); no code or symbols changed"
+}

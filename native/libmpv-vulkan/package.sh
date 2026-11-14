@@ -6,6 +6,14 @@ set -euo pipefail
 REV="$1"; D=$ROOT/$REV; W=$ROOT/aar-work; BASE=$(ls ~/.gradle/caches/modules-2/files-2.1/io.github.abdallahmehiz/mpv-android-lib/0.1.12/*/mpv-android-lib-0.1.12.aar)
 mkdir -p "$ROOT/out" "$D"; $STRIP --strip-unneeded -o "$ROOT/out/libmpv.so" "$PREFIX/lib/libmpv.so"
 "$(dirname "$0")/check_undefined.sh" "$ROOT/out/libmpv.so"
+# mpv embeds its configure line, which carries the build directory. Overwrite that path with a
+# placeholder of the same length so the shipped library doesn't name the build machine.
+python3 -I - "$ROOT/out/libmpv.so" "$ROOT" <<'EOF2'
+import sys
+path, root = sys.argv[1:3]
+data, old = open(path, 'rb').read(), root.encode()
+open(path, 'wb').write(data.replace(old, (b'/build' + b'_' * len(old))[:len(old)]))
+EOF2
 rm -rf "$W"; mkdir -p "$W"; (cd "$W" && unzip -q "$BASE"); cp "$ROOT/out/libmpv.so" "$W/jni/arm64-v8a/libmpv.so"
 A="$D/mpv-android-lib-0.1.12-vulkan-$REV.aar"; rm -f "$A"
 (cd "$W" && TZ=UTC find . -exec touch -t 198001010000 {} + && zip -q -X "$A" $(find . -type f | sed 's|^\./||' | sort))
@@ -30,7 +38,8 @@ prov = {
  "checks": "check_undefined.sh: every strong undefined symbol resolves against NEEDED libs at API 26",
  "libmpv_needed_added": ["libvulkan.so"],
  "other_abis": "armeabi-v7a, x86, x86_64 unchanged from base (no vulkan); the app requests vulkan only on arm64-v8a, API 28+",
- "recipe": "native/libmpv-vulkan (fetch.sh, env.sh, build.sh, check_undefined.sh, package.sh)"
+ "recipe": "native/libmpv-vulkan (fetch.sh, env.sh, build.sh, check_undefined.sh, package.sh)",
+ "post_processing": "build directory in mpv's embedded configuration string overwritten by a same-length placeholder"
 }
 open(os.path.join(os.path.dirname(aar),'provenance.json'),'w').write(json.dumps(prov, indent=2)+"\n")
 print(prov["aar_sha256"], json.dumps(prov["changed_entries"]))
