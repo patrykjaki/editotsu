@@ -10,9 +10,6 @@ libplacebo v7.360.0, ffmpeg headers N-122742-ga7522f3fef; the ffmpeg .so files, 
 libc++_shared.so are the base aar's). Adds libplacebo Vulkan + glslang 16.2.0 (static).
 Other ABIs are untouched; the app requests Vulkan only on arm64-v8a and API 28+.
 
-Use: `-Peditotsu.libmpvAar=/abs/path/mpv-android-lib-0.1.12-vulkan-<rev>.aar` (provenance.json
-must sit next to it). Without it the build uses Maven and nothing changes.
-
 Build (macOS host, NDK 28.2.13676358, meson in a venv, see env.sh):
 
     ./fetch.sh            # pinned sources into $ROOT/src
@@ -23,6 +20,15 @@ Patches: `patches/libplacebo-glslang-dirs.patch` (meson static lookups ignore -L
 and glslang-default-resource-limits the -Dvulkan-sdk dir), `patches/mpv-weak-vk11.h` (forced
 include; mpv calls two Vulkan 1.1 functions directly, which libvulkan.so exports only from API 28;
 weak refs keep libmpv loadable on API 26/27).
+
+In the app: `lib/arm64-v8a/libmpv.so` here is that one rebuilt file, and every build packages
+it in place of the Maven aar's (`app/build.gradle.kts`; `-Peditotsu.libmpv=maven` builds without
+it). `provenance.json` records its SHA-256, sources and toolchain, and the build fails when the
+file doesn't match. After a rebuild, copy `$ROOT/out/libmpv.so` over it and update the hash and
+revision in `provenance.json`.
+
+r3 is r2 with the build directory in mpv's embedded configure line overwritten (package.sh does
+this for every build now); no code changed.
 
 r1 was broken (GetDefaultResources unresolved -> UnsatisfiedLinkError on player open);
 check_undefined.sh now gates packaging.

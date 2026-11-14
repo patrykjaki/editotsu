@@ -26,6 +26,8 @@ output.json
 
 # Native binaries
 *.so
+# the arm64 libmpv build the app ships (recipe and provenance next to it)
+!native/libmpv-vulkan/lib/arm64-v8a/libmpv.so
 **/jniLibs/
 
 
