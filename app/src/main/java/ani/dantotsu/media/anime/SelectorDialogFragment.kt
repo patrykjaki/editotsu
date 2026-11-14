@@ -116,6 +116,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import tachiyomi.core.util.lang.launchIO
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -843,6 +844,48 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
     @OptIn(DelicateCoroutinesApi::class)
     @SuppressLint("UnsafeOptInUsageError")
     fun startExoplayer(media: Media) {
+        if (!isAdded || _binding == null) return
+        // a torrent release whose source may hold a direct link: ask first, then play
+        // the selection can sit on the listed episode or on the one this picker loaded
+        val ep = listOfNotNull(media.anime?.episodes?.getEpisode(media.anime?.selectedEpisode), episode)
+            .firstOrNull { e -> e.extractors?.any { it.server.name == e.selectedExtractor } == true }
+        val extractor = ep?.extractors?.find { it.server.name == ep.selectedExtractor }
+        val index = ep?.selectedVideo ?: 0
+        val picked = extractor?.videos?.getOrNull(index)
+        val asked = extractor?.server?.video
+        val parser = model.watchSources?.get(media.selected?.sourceIndex ?: 0) as? DynamicAnimeParser
+        val source = parser?.extension?.sources?.getOrNull(parser.sourceLanguage)
+            as? eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+        if (extractor == null || picked == null || asked == null || source == null ||
+            !ani.dantotsu.media.anime.selector.SourceLink.wanted(asked.internalData, picked.file.url)
+        ) {
+            startExoplayerNow(media)
+            return
+        }
+        if (askingSourceLink) return
+        askingSourceLink = true
+        snackString(getString(R.string.source_link_checking))
+        viewLifecycleOwner.lifecycleScope.launch {
+            val link = withContext(Dispatchers.IO) {
+                withTimeoutOrNull(ani.dantotsu.media.anime.selector.SourceLink.TIMEOUT_MS) {
+                    runCatching { source.resolveVideo(asked)?.videoUrl }.getOrNull()
+                }
+            }
+            if (ani.dantotsu.media.anime.selector.SourceLink.usable(link)) {
+                extractor.videos = extractor.videos.toMutableList().also {
+                    it[index] = picked.copy(file = ani.dantotsu.FileUrl(link!!, picked.file.headers))
+                }
+            }
+            askingSourceLink = false
+            startExoplayerNow(media)
+        }
+    }
+
+    private var askingSourceLink = false
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @SuppressLint("UnsafeOptInUsageError")
+    private fun startExoplayerNow(media: Media) {
         if (!isAdded || _binding == null) return
         prevEpisode = null
 

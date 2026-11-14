@@ -1126,6 +1126,8 @@ object SourceRowClassifier {
         val revision: String? = null,
         /** True for "OV" (original video, often English-subs-only) releases. */
         val originalVideo: Boolean = false,
+        /** The source has a ready link for this release: no waiting for peers. */
+        val instant: Boolean = false,
     )
 
     /**
@@ -1171,6 +1173,7 @@ object SourceRowClassifier {
             tracker = tracker,
             indexer = tracker,
             batch = data.isPack || names.batch,
+            instant = data.instant,
         )
         return withTags(withMedia(base, data), data.tags)
     }

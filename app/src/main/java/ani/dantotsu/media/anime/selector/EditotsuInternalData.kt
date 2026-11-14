@@ -42,6 +42,13 @@ data class EditotsuInternalData(
     val media: Media? = null,
     /** facts only names carry, read once by the source */
     val tags: Tags? = null,
+    /**
+     * the source wants to be asked for a link when this release is picked
+     * (`AnimeHttpSource.resolveVideo`); the magnet plays if it has none
+     */
+    val resolve: Boolean = false,
+    /** that link is known to be ready: the release plays without waiting for peers */
+    val instant: Boolean = false,
 ) {
     data class Track(val lang: String?, val codec: String?, val channels: Int?, val forced: Boolean, val title: String?)
 
@@ -160,6 +167,8 @@ data class EditotsuInternalData(
                 numFiles = int("numFiles"),
                 media = (obj["media"] as? JsonObject)?.let(::media),
                 tags = (obj["tags"] as? JsonObject)?.let(::tags),
+                resolve = num("resolve")?.booleanOrNull ?: false,
+                instant = num("instant")?.booleanOrNull ?: false,
             )
         }
 
