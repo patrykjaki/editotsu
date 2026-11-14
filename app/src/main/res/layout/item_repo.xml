@@ -58,7 +58,7 @@
             android:layout_height="40dp"
             android:padding="9dp"
             android:scaleType="fitCenter"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/icon_button_ripple"
             android:contentDescription="@string/repo_links"
             app:srcCompat="@drawable/ic_round_dots_vertical_24"
             app:tint="?attr/colorOnSurfaceVariant" />
@@ -69,7 +69,7 @@
             android:layout_height="40dp"
             android:padding="9dp"
             android:scaleType="fitCenter"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/icon_button_ripple"
             android:contentDescription="@string/remove"
             app:srcCompat="@drawable/ic_delete"
             app:tint="?attr/colorOnSurfaceVariant" />

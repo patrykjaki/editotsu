@@ -540,27 +540,3 @@ data class JikanPersonVoiceRole(
     val anime: JikanRoleMedia? = null,
     val character: JikanCharacterRef? = null
 )
-
-@Serializable
-data class JikanProducerFullResponse(
-    val data: JikanProducerFullData? = null
-)
-
-@Serializable
-data class JikanProducerFullData(
-    @SerialName("mal_id") val malId: Int,
-    val url: String? = null,
-    val titles: List<JikanProducerTitle>? = null,
-    val images: JikanImages? = null,
-    val favorites: Int? = null,
-    val count: Int? = null,
-    val established: String? = null,
-    val about: String? = null,
-)
-
-@Serializable
-data class JikanProducerTitle(
-    val type: String? = null,
-    val title: String? = null,
-)
-

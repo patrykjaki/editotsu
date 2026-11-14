@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TV launcher banner: the Kin 3.1 mark as the E of the wordmark, on the icon's dark ink. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:fillColor="#162129" android:pathData="M0,0H320V180H0Z" />
+    <group android:scaleX="0.18952" android:scaleY="0.18952" android:translateX="-8.388" android:translateY="17.225">
+        <group>
+            <clip-path android:pathData="M642.29,183 H413 A201,201 0 0 0 212,384 A201,201 0 0 0 413,585 H642.29 Z M642.29,511 H413 A127,127 0 0 1 340.7,488.4 A37,37 0 0 1 361.8,421 H445 A37,37 0 0 0 445,347 H361.8 A37,37 0 0 1 340.7,279.6 A127,127 0 0 1 413,257 H642.29 Z" />
+            <path android:fillColor="#00AE9F" android:pathData="M0,0H768V768H0Z" />
+            <path android:fillColor="#2EE0C6" android:pathData="M129.5,100.5 L330.3,301.3 H1200 V-400 Z" />
+            <path android:fillColor="#00897F" android:pathData="M129.5,667.5 L330.3,466.7 H1200 V1168 Z" />
+        </group>
+        <path android:fillColor="#EFE7FF" android:pathData="m547,366.7l-76.02,-43.89c-13.32,-7.69 -29.96,1.92 -29.96,17.3v87.78c0,15.38 16.65,24.99 29.96,17.3l76.02,-43.89c13.32,-7.69 13.32,-26.91 0,-34.6Z" />
+        <path android:fillColor="#00AE9F" android:fillType="evenOdd" android:pathData="M686.29,317H730.29A67,67 0 0 1 730.29,451H686.29ZM716.29,347H730.29A37,37 0 0 1 730.29,421H716.29Z" />
+        <path android:fillColor="#00AE9F" android:fillType="evenOdd" android:pathData="M827.29,317h30v134h-30Z" />
+        <path android:fillColor="#2EE0C6" android:fillType="evenOdd" android:pathData="M887.29,317h104v30h-37v104h-30v-104h-37Z" />
+        <path android:fillColor="#2EE0C6" android:fillType="evenOdd" android:pathData="M1021.29,384a67,67 0 1 0 134,0a67,67 0 1 0 -134,0ZM1051.29,384a37,37 0 1 0 74,0a37,37 0 1 0 -74,0Z" />
+        <path android:fillColor="#2EE0C6" android:fillType="evenOdd" android:pathData="M1185.29,317h104v30h-37v104h-30v-104h-37Z" />
+        <path android:fillColor="#2EE0C6" android:fillType="evenOdd" android:pathData="M1461.49,317h30v82a22,22 0 0 0 44,0v-82h30v82a52,52 0 0 1 -104,0Z" />
+        <path android:strokeColor="#2EE0C6" android:strokeWidth="25" android:pathData="M1409.75,339.97A43.6,27.25 0 0 0 1375.39,329.5A43.6,27.25 0 0 0 1375.39,384A43.6,27.25 0 0 1 1375.39,438.5A43.6,27.25 0 0 1 1341.03,428.03" />
+    </group>
+</vector>

@@ -63,7 +63,7 @@
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:banner="@mipmap/ic_banner_foreground"
+        android:banner="@drawable/ic_banner"
         android:enableOnBackInvokedCallback="true"
         android:icon="${icon_placeholder}"
         android:label="@string/app_build_label"

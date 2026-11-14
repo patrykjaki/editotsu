@@ -147,6 +147,11 @@ class SettingsDialogFragment : BottomSheetDialogFragment() {
             dismiss()
         }
 
+        binding.settingsThemes.setSafeOnClickListener {
+            startActivity(Intent(activity, ani.dantotsu.animethemes.ThemesActivity::class.java))
+            dismiss()
+        }
+
         binding.settingsDownloadQueue.setSafeOnClickListener {
             startActivity(Intent(activity, DownloadQueueActivity::class.java))
             dismiss()

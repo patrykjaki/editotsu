@@ -117,6 +117,13 @@ class App : Application() {
             Logger.log("Failed to schedule auto backup: ${e.message}")
         }
 
+        // daily list sync between the trackers, when the user turned it on
+        try {
+            ani.dantotsu.connections.mal.ListSyncWorker.apply(this@App)
+        } catch (e: Exception) {
+            Logger.log("Failed to schedule list sync: ${e.message}")
+        }
+
         // MAX MERGE M5 (upstream 36d57c56): keep the offline AniSkip CSV
         // dump fresh in the background (weekly, no-op when current).
         CoroutineScope(Dispatchers.IO).launch {

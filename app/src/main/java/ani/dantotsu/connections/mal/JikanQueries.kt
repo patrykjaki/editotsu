@@ -99,16 +99,6 @@ class JikanQueries {
         }
     }
 
-    suspend fun getTopAnime(
-        filter: String = "airing",
-        page: Int = 1,
-        limit: Int = 15,
-    ): JikanSearchResponse? {
-        return tryWithSuspend {
-            fetchWithFallback<JikanSearchResponse>("/top/anime?filter=$filter&page=$page&limit=$limit")
-        }
-    }
-
     suspend fun getTopManga(
         filter: String = "publishing",
         page: Int = 1,
@@ -251,12 +241,6 @@ class JikanQueries {
     suspend fun getPersonFull(malId: Int): JikanPersonFullData? {
         return tryWithSuspend {
             fetchWithFallback<JikanPersonFullResponse>("/people/$malId/full")?.data
-        }
-    }
-
-    suspend fun getProducerFull(malId: Int): JikanProducerFullData? {
-        return tryWithSuspend {
-            fetchWithFallback<JikanProducerFullResponse>("/producers/$malId/full")?.data
         }
     }
 

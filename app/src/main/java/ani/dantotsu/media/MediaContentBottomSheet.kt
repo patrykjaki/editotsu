@@ -164,6 +164,9 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
         private val items: List<MediaDetailsViewModel.WatchOrderItem>,
         private val currentMedia: Media?
     ) : RecyclerView.Adapter<WatchOrderAdapter.ViewHolder>() {
+        private val currentIndex = items.indexOfFirst { it.isCurrent }
+        private val optional = items.map { !it.isCurrent && watchOrderOptional(it.mediaType, it.relationType) }
+        private val numbers = watchOrderNumbers(optional)
 
         inner class ViewHolder(val binding: ItemWatchOrderBinding) :
             RecyclerView.ViewHolder(binding.root)
@@ -185,30 +188,56 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
             val imageUrl = if (item.image.isNotEmpty()) item.image else currentMedia?.cover
             holder.binding.watchOrderImage.loadImage(imageUrl)
 
-            holder.binding.watchOrderNumber.text = (position + 1).toString()
-            val primaryColor = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
-            val quiet = context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
+            // an optional entry is a small dot on the line, without a number
+            val isOptional = optional[position]
+            holder.binding.watchOrderNumber.text = numbers[position]?.toString().orEmpty()
+            holder.binding.watchOrderNumber.scaleX = if (isOptional) 0.4f else 1f
+            holder.binding.watchOrderNumber.scaleY = if (isOptional) 0.4f else 1f
+            val primary = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
+            val line = context.getThemeColor(com.google.android.material.R.attr.colorOutlineVariant)
+            val surfaceVariant = context.getThemeColor(com.google.android.material.R.attr.colorSurfaceVariant)
+            val place = watchOrderPlace(position, currentIndex)
 
-            // one label per row: where you are, or how the entry relates
+            // the stop on the line: filled up to the open title, plain after it
+            val (stop, onStop) = when (place) {
+                WatchOrderPlace.CURRENT -> primary to context.getThemeColor(com.google.android.material.R.attr.colorOnPrimary)
+                WatchOrderPlace.EARLIER -> context.getThemeColor(com.google.android.material.R.attr.colorSecondaryContainer) to
+                    context.getThemeColor(com.google.android.material.R.attr.colorOnSecondaryContainer)
+                WatchOrderPlace.LATER -> surfaceVariant to
+                    context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
+            }
+            holder.binding.watchOrderNumber.backgroundTintList = android.content.res.ColorStateList.valueOf(stop)
+            holder.binding.watchOrderNumber.setTextColor(onStop)
+            holder.binding.watchOrderLineAbove.setBackgroundColor(if (place == WatchOrderPlace.LATER) line else primary)
+            holder.binding.watchOrderLineBelow.setBackgroundColor(if (place == WatchOrderPlace.EARLIER) primary else line)
+            holder.binding.watchOrderLineAbove.visibility = if (position == 0) View.INVISIBLE else View.VISIBLE
+            holder.binding.watchOrderLineBelow.visibility = if (position == items.lastIndex) View.INVISIBLE else View.VISIBLE
+
+            // one label per row: where you are, or how the entry relates when AniList says
             if (item.isCurrent) {
-                holder.binding.watchOrderRelation.setText(R.string.current)
+                holder.binding.watchOrderRelation.setText(R.string.watch_order_here)
                 holder.binding.watchOrderRelation.visibility = View.VISIBLE
-                holder.binding.watchOrderNumber.setTextColor(primaryColor)
                 holder.binding.watchOrderChevron.visibility = View.INVISIBLE
-                holder.binding.watchOrderCard.setCardBackgroundColor(
-                    ColorUtils.setAlphaComponent(primaryColor, 40)
-                )
+                holder.binding.watchOrderCard.setCardBackgroundColor(ColorUtils.setAlphaComponent(primary, 40))
             } else {
-                holder.binding.watchOrderRelation.text = item.relationType
-                    ?.replace('_', ' ')?.lowercase()?.replaceFirstChar { it.uppercase() }
+                val optionalWord = context.getString(R.string.watch_order_optional)
+                holder.binding.watchOrderRelation.text = when {
+                    !isOptional -> item.relationType
+                    item.relationType.isBlank() -> optionalWord
+                    else -> "$optionalWord · ${item.relationType}"
+                }
                 holder.binding.watchOrderRelation.visibility =
-                    if (item.relationType.isBlank()) View.GONE else View.VISIBLE
-                holder.binding.watchOrderNumber.setTextColor(quiet)
+                    if (holder.binding.watchOrderRelation.text.isNullOrBlank()) View.GONE else View.VISIBLE
                 holder.binding.watchOrderChevron.visibility = View.VISIBLE
                 holder.binding.watchOrderCard.setCardBackgroundColor(
-                    context.getThemeColor(com.google.android.material.R.attr.colorSurfaceVariant)
+                    if (isOptional) android.graphics.Color.TRANSPARENT else surfaceVariant,
                 )
             }
+            holder.binding.watchOrderRelation.setTextColor(
+                if (isOptional) context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant) else primary,
+            )
+            holder.binding.watchOrderCard.strokeWidth = if (isOptional) (1 * context.resources.displayMetrics.density).toInt().coerceAtLeast(1) else 0
+            holder.binding.watchOrderCard.strokeColor = line
 
             val episodes = watchOrderEpisodeCount(item.episodes)
             holder.binding.watchOrderMeta.text = watchOrderMeta(
@@ -369,3 +398,33 @@ internal fun watchOrderMeta(format: String, airDate: String, episodes: String?):
         episodes.orEmpty(),
     ).filter { it.isNotEmpty() }.joinToString(" · ")
 
+/** AniList's relation as a label: "SIDE_STORY" -> "Side story"; nothing when there is none. */
+internal fun watchOrderRelation(raw: String?): String =
+    raw.orEmpty().replace('_', ' ').trim().lowercase().replaceFirstChar { it.uppercase() }
+
+/** where a row sits against the open title; with no open title in the list every row is [LATER] */
+internal enum class WatchOrderPlace { EARLIER, CURRENT, LATER }
+
+internal fun watchOrderPlace(position: Int, currentIndex: Int): WatchOrderPlace = when {
+    currentIndex < 0 || position > currentIndex -> WatchOrderPlace.LATER
+    position == currentIndex -> WatchOrderPlace.CURRENT
+    else -> WatchOrderPlace.EARLIER
+}
+
+/**
+ * Entries the story doesn't need: extras by format (OVA, special, music video) or by what
+ * AniList calls them (side story, spin-off, recap, alternative, other). A plain TV season or a
+ * film with no such relation is part of the order.
+ */
+internal fun watchOrderOptional(format: String, relation: String): Boolean {
+    val f = format.trim().lowercase()
+    val r = relation.trim().lowercase().replace('_', ' ')
+    return f in setOf("ova", "special", "tv special", "music", "pv", "cm") ||
+        r in setOf("side story", "spin off", "summary", "alternative", "other", "character", "compilation")
+}
+
+/** the number on each stop: main entries count 1, 2, 3; optional ones (null) don't take a number */
+internal fun watchOrderNumbers(optional: List<Boolean>): List<Int?> {
+    var n = 0
+    return optional.map { if (it) null else ++n }
+}

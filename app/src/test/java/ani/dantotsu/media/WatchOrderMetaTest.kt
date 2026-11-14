@@ -21,4 +21,35 @@ class WatchOrderMetaTest {
         assertEquals("Movie", watchOrderMeta("Movie", "?", null))
         assertEquals("", watchOrderMeta("", "", null))
     }
+
+    @Test
+    fun `relation label comes from the tracker's relation only`() {
+        assertEquals("Side story", watchOrderRelation("SIDE_STORY"))
+        assertEquals("Prequel", watchOrderRelation("PREQUEL"))
+        assertEquals("", watchOrderRelation(null))
+        assertEquals("", watchOrderRelation(" "))
+    }
+
+    @Test
+    fun `rows are earlier, current or later against the open title`() {
+        assertEquals(WatchOrderPlace.EARLIER, watchOrderPlace(0, 2))
+        assertEquals(WatchOrderPlace.CURRENT, watchOrderPlace(2, 2))
+        assertEquals(WatchOrderPlace.LATER, watchOrderPlace(3, 2))
+        assertEquals(WatchOrderPlace.LATER, watchOrderPlace(0, -1))
+    }
+
+    @Test
+    fun `extras are optional, seasons and films are not`() {
+        assertEquals(false, watchOrderOptional("TV", ""))
+        assertEquals(false, watchOrderOptional("Movie", "Sequel"))
+        assertEquals(true, watchOrderOptional("OVA", ""))
+        assertEquals(true, watchOrderOptional("Special", "Prequel"))
+        assertEquals(true, watchOrderOptional("TV", "Side story"))
+        assertEquals(true, watchOrderOptional("Movie", "Summary"))
+    }
+
+    @Test
+    fun `only main entries take a number`() {
+        assertEquals(listOf(1, null, 2, null, 3), watchOrderNumbers(listOf(false, true, false, true, false)))
+    }
 }

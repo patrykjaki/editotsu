@@ -1369,24 +1369,10 @@ class MediaDetailsViewModel : ViewModel() {
             val rows = doc.select("tr[data-id]")
             val relationsMap = media.relations?.associateBy { it.id.toString() } ?: emptyMap()
 
-            // Parse relations relative to targetId from data-related JSON attribute
-            val targetRow = rows.find { it.attr("data-id") == targetId }
-            val targetRelatedJson = targetRow?.attr("data-related") ?: "{}"
-            val relatedMap = try {
-                val jsonObj = org.json.JSONObject(targetRelatedJson)
-                val map = mutableMapOf<String, String>()
-                jsonObj.keys().forEach { key ->
-                    map[key] = jsonObj.getString(key)
-                }
-                map
-            } catch (_: Exception) {
-                emptyMap<String, String>()
-            }
-
-            rows.mapIndexedNotNull { index, row ->
+            rows.mapNotNull { row ->
                 val title = row.select("span.wo_title").text().trim()
                     .ifEmpty { row.select(".wo_title").text().trim() }
-                if (title.isEmpty() || title.equals("Unknown title", ignoreCase = true)) return@mapIndexedNotNull null
+                if (title.isEmpty() || title.equals("Unknown title", ignoreCase = true)) return@mapNotNull null
 
                 val id = row.attr("data-id").ifEmpty { targetId }
                 val anilistId = row.attr("data-anilist-id")
@@ -1431,20 +1417,10 @@ class MediaDetailsViewModel : ViewModel() {
                                 title.equals(media.name, ignoreCase = true) ||
                                 title.equals(media.nameRomaji, ignoreCase = true)))
 
-                // 4. Relation type
-                val relationType = when {
-                    isCurrent -> "Selected"
-                    relatedMap.containsKey(id) -> relatedMap[id]!!
-                    relationsMap.containsKey(anilistId) -> {
-                        relationsMap[anilistId]?.relation?.replace("_", " ")?.lowercase()
-                            ?.split(" ")?.joinToString(" ") { it.replaceFirstChar(Char::titlecase) } ?: ""
-                    }
-                    index == 0 -> "Main Story"
-                    format.equals("TV", ignoreCase = true) -> "Sequel"
-                    format.equals("OVA", ignoreCase = true) || format.equals("Special", ignoreCase = true) -> "Side Story"
-                    format.equals("Movie", ignoreCase = true) -> "Movie"
-                    else -> format.ifEmpty { "Entry" }
-                }
+                // 4. How the entry relates to the open title. Only AniList's own relation is
+                // used; the order itself says what comes before and after, and a guessed word
+                // ("Sequel" for any TV entry) was wrong more often than right.
+                val relationType = if (isCurrent) "" else watchOrderRelation(relationsMap[anilistId]?.relation)
 
                 WatchOrderItem(
                     id = id,

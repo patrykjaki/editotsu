@@ -80,6 +80,7 @@ class CalendarActivity : AppCompatActivity() {
         }
         setContentView(binding.root)
 
+        showWeekPlaceholder()
         filter = (savedInstanceState?.getInt(STATE_FILTER) ?: 0).coerceIn(0, 2)
         selectedKey = savedInstanceState?.getString(STATE_DAY)
         showFilter()
@@ -112,6 +113,18 @@ class CalendarActivity : AppCompatActivity() {
                     live.postValue(false)
                 }
             }
+        }
+    }
+
+    /** seven empty day cells while the week loads, so the strip has its final height from the start */
+    private fun showWeekPlaceholder() {
+        val block = ColorStateList.valueOf(getThemeColor(com.google.android.material.R.attr.colorSurfaceVariant))
+        repeat(7) {
+            val cell = ItemCalendarDayBinding.inflate(LayoutInflater.from(this), binding.calendarWeek, true)
+            cell.calendarDayNumber.backgroundTintList = block
+            cell.root.isClickable = false
+            cell.root.isFocusable = false
+            cell.root.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
     }
 
