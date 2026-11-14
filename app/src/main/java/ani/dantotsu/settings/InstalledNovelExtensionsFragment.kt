@@ -192,7 +192,8 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
                 ExtensionUpdateAll.bind(
                     _binding?.updateAllButton ?: return@collect,
                     ExtensionUpdateAll.pending(extensions, ExtensionUpdateAll::novelHasUpdate),
-                    ::updateItem
+                    refresh = { novelExtensionManager.findAvailableExtensions() },
+                    toItem = ::updateItem,
                 )
             }
         }

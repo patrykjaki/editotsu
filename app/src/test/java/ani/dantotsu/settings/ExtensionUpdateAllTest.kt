@@ -1,5 +1,6 @@
 package ani.dantotsu.settings
 
+import eu.kanade.tachiyomi.extension.InstallStep
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -54,5 +55,15 @@ class ExtensionUpdateAllTest {
         val b = ExtensionUpdateAll.notificationId("eu.kanade.tachiyomi.animeextension.en.b")
         assertNotEquals(a, b)
         assertEquals(a, ExtensionUpdateAll.notificationId("eu.kanade.tachiyomi.animeextension.en.a"))
+    }
+
+    @Test
+    fun `only the Installed step counts as an update`() {
+        assertNull(ExtensionUpdateAll.failureOf(InstallStep.Installed))
+        assertEquals(ExtensionUpdateAll.Failure.FAILED, ExtensionUpdateAll.failureOf(InstallStep.Error))
+        assertEquals(ExtensionUpdateAll.Failure.CANCELLED, ExtensionUpdateAll.failureOf(InstallStep.Idle))
+        // a download that never got past Downloading before the stream ended
+        assertEquals(ExtensionUpdateAll.Failure.FAILED, ExtensionUpdateAll.failureOf(InstallStep.Downloading))
+        assertEquals(ExtensionUpdateAll.Failure.NOT_LISTED, ExtensionUpdateAll.failureOf(null))
     }
 }
