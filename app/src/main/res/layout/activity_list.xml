@@ -10,8 +10,8 @@
         android:id="@+id/listProgressBar"
         android:tag="grid"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center" />
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/listAppBar"
@@ -149,16 +149,28 @@
             </com.google.android.material.textfield.TextInputLayout>
         </LinearLayout>
 
-        <com.google.android.material.tabs.TabLayout
-            android:id="@+id/listTabLayout"
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            app:tabContentStart="32dp"
-            app:tabMode="scrollable"
-            app:tabPaddingEnd="16dp"
-            app:tabPaddingStart="16dp"
-            app:tabTextAppearance="@style/NavBarText"
-            tools:ignore="SpeakableTextPresentCheck" />
+            android:layout_height="48dp">
+
+            <com.google.android.material.tabs.TabLayout
+                android:id="@+id/listTabLayout"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:tabContentStart="32dp"
+                app:tabMode="scrollable"
+                app:tabPaddingEnd="16dp"
+                app:tabPaddingStart="16dp"
+                app:tabTextAppearance="@style/NavBarText"
+                tools:ignore="SpeakableTextPresentCheck" />
+
+            <!-- stands in for the status tabs until the list arrives; above the tab strip, which has its own background -->
+            <ani.dantotsu.others.SkeletonView
+                android:id="@+id/listTabsSkeleton"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:tag="tabs" />
+        </FrameLayout>
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.viewpager2.widget.ViewPager2

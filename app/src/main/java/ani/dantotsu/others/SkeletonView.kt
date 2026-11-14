@@ -24,6 +24,7 @@ import kotlin.math.ceil
  *  - "circles": one row of round avatars with a name bar under each
  *  - "grid": rows of cover tiles, three across
  *  - "lines": label and value bars, for a details page
+ *  - "tabs": a strip of tab labels
  */
 class SkeletonView @JvmOverloads constructor(
     context: Context,
@@ -62,6 +63,7 @@ class SkeletonView @JvmOverloads constructor(
         GRID -> 2 * GRID_ROW_DP
         LINES -> LINE_COUNT * LINE_DP
         ROWS -> ROW_COUNT * ROW_DP
+        TABS -> 48
         PAGE -> HEAD_DP + CARDS * CARD_DP + (CARDS - 1) * GAP_DP
         else -> CARDS * CARD_DP + (CARDS - 1) * GAP_DP
     }
@@ -96,6 +98,7 @@ class SkeletonView @JvmOverloads constructor(
             CIRCLES -> drawCircles(canvas)
             GRID -> drawGrid(canvas)
             LINES -> drawLines(canvas)
+            TABS -> drawTabs(canvas)
             else -> drawCards(canvas)
         }
         if (shown) postInvalidateOnAnimation()
@@ -167,20 +170,35 @@ class SkeletonView @JvmOverloads constructor(
         }
     }
 
+    // follows the list screens: three cells across, a cover of at most 108dp centred in each
+    // (narrower on small screens), a two-line title and a progress line under it
     private fun drawGrid(canvas: Canvas) {
-        val side = 20 * dp
-        val gap = 16 * dp
-        val tileWidth = (width - 2 * side - 2 * gap) / 3
-        val tileHeight = tileWidth * 1.45f
-        val rows = ceil(height / (GRID_ROW_DP * dp)).toInt().coerceAtLeast(1)
+        val cell = (width - 14 * dp) / 3
+        val tileWidth = minOf(108 * dp, cell - 20 * dp)
+        val tileHeight = tileWidth * 1.48f
+        val pitch = tileHeight + GRID_TEXT_DP * dp
+        val rows = ceil(height / pitch).toInt().coerceAtLeast(1)
         for (row in 0 until rows) {
-            val top = row * (tileHeight + 56 * dp) + 8 * dp
+            val top = row * pitch + 14 * dp
             blockPaint.alpha = (255 - row * (255 / (rows + 1))).coerceAtLeast(40)
             for (column in 0 until 3) {
-                val left = side + column * (tileWidth + gap)
+                val left = 7 * dp + column * cell + (cell - tileWidth) / 2
                 canvas.drawRoundRect(left, top, left + tileWidth, top + tileHeight, 16 * dp, 16 * dp, blockPaint)
-                pill(canvas, left, top + tileHeight + 12 * dp, left + tileWidth * 0.8f, 12 * dp)
+                pill(canvas, left, top + tileHeight + 14 * dp, left + tileWidth * 0.9f, 12 * dp)
+                pill(canvas, left, top + tileHeight + 40 * dp, left + tileWidth * 0.45f, 10 * dp)
             }
+        }
+    }
+
+    private fun drawTabs(canvas: Canvas) {
+        blockPaint.alpha = 255
+        val bar = 12 * dp
+        val top = (height - bar) / 2
+        var left = 48 * dp
+        for (w in intArrayOf(96, 112, 84, 72)) {
+            if (left > width) break
+            pill(canvas, left, top, left + w * dp, bar)
+            left += (w + 32) * dp
         }
     }
 
@@ -232,7 +250,9 @@ class SkeletonView @JvmOverloads constructor(
         const val CIRCLES = "circles"
         const val GRID = "grid"
         const val LINES = "lines"
-        const val GRID_ROW_DP = 230
+        const val TABS = "tabs"
+        const val GRID_ROW_DP = 236
+        const val GRID_TEXT_DP = 92
         const val LINE_DP = 30
         const val LINE_COUNT = 10
         const val CIRCLE_ROW_DP = 96

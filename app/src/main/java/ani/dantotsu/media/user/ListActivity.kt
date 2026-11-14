@@ -101,6 +101,7 @@ class ListActivity : AppCompatActivity() {
 
             if (it != null) {
                 binding.listProgressBar.visibility = View.GONE
+                binding.listTabsSkeleton.visibility = View.GONE
                 binding.listViewPager.adapter = ListViewPagerAdapter(it.size, false, this)
                 val keys = it.keys.toList()
                     .map { key -> userKeys.getOrNull(defaultKeys.indexOf(key)) ?: key }
@@ -146,6 +147,7 @@ class ListActivity : AppCompatActivity() {
                     sort ?: ""
                 )
                 binding.listProgressBar.visibility = View.VISIBLE
+                binding.listTabsSkeleton.visibility = View.VISIBLE
                 binding.listViewPager.adapter = null
                 scope.launch {
                     withContext(Dispatchers.IO) {
