@@ -1888,4 +1888,27 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="player_shortcuts_lock">Lock: blocks every touch until you unlock</string>
     <string name="player_shortcuts_settings">You found the secret menu. That was it. Long-press the gear again any time</string>
     <string name="source_link_checking">Checking for a direct link…</string>
+    <string name="mal_sync">Copy AniList lists here</string>
+    <string name="mal_sync_title">Copy AniList lists to MyAnimeList</string>
+    <string name="mal_sync_comparing">Comparing your lists…</string>
+    <string name="mal_sync_read_failed">Couldn\'t read both lists. Nothing was changed.</string>
+    <string name="mal_sync_same">MyAnimeList already matches AniList.</string>
+    <string name="mal_sync_confirm">%1$d anime and %2$d manga are missing or different on MyAnimeList. Their status, progress and score will be set to what AniList has.\n\nEntries that are only on MyAnimeList stay as they are. AniList is not changed.</string>
+    <string name="mal_sync_update">Update %1$d</string>
+    <string name="mal_sync_progress">Updating MyAnimeList: %1$d of %2$d</string>
+    <string name="mal_sync_done">MyAnimeList updated: %1$d entries.</string>
+    <string name="mal_sync_done_failed">MyAnimeList updated: %1$d entries. %2$d were not accepted; run it again to retry them.</string>
+    <string name="calendar_everything">Everything</string>
+    <string name="calendar_filter_title">Show</string>
+    <string name="calendar_my_list">My list</string>
+    <string name="calendar_dubbed">Dubbed</string>
+    <string name="calendar_day_empty">Nothing airs this day.</string>
+    <string name="calendar_day_empty_filtered">Nothing from this filter airs this day.</string>
+    <string name="calendar_failed">Couldn\'t load the calendar. Check your connection and open it again.</string>
+    <string name="calendar_on_list">On your list</string>
+    <string name="calendar_on_list_seen">On your list · seen %1$d</string>
+    <plurals name="calendar_day_description">
+        <item quantity="one">%1$s, %2$d episode</item>
+        <item quantity="other">%1$s, %2$d episodes</item>
+    </plurals>
 </resources>

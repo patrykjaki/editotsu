@@ -416,7 +416,8 @@ class MALQueries {
             "COMPLETED"  -> "completed"
             "PAUSED"     -> "on_hold"
             "DROPPED"    -> "dropped"
-            "REPEATING"  -> if (isAnime) "rewatching" else "rereading"
+            // MyAnimeList has no such status: a rewatch is "completed" plus the is_rewatching flag
+            "REPEATING"  -> "completed"
             "CURRENT"    -> if (isAnime) "watching" else "reading"
             else         -> if (isAnime) "watching" else "reading"
         }

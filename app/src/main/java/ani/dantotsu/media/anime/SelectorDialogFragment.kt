@@ -866,11 +866,19 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         askingSourceLink = true
         snackString(getString(R.string.source_link_checking))
         viewLifecycleOwner.lifecycleScope.launch {
-            val link = withContext(Dispatchers.IO) {
+            val answer = withContext(Dispatchers.IO) {
                 withTimeoutOrNull(ani.dantotsu.media.anime.selector.SourceLink.TIMEOUT_MS) {
-                    runCatching { source.resolveVideo(asked)?.videoUrl }.getOrNull()
+                    runCatching { source.resolveVideo(asked)?.videoUrl }
                 }
             }
+            // the source refusing with a message means: don't play this as a torrent either
+            val refusal = ani.dantotsu.media.anime.selector.SourceLink.refusal(answer?.exceptionOrNull())
+            if (refusal != null) {
+                askingSourceLink = false
+                snackString(refusal)
+                return@launch
+            }
+            val link = answer?.getOrNull()
             if (ani.dantotsu.media.anime.selector.SourceLink.usable(link)) {
                 extractor.videos = extractor.videos.toMutableList().also {
                     it[index] = picked.copy(file = ani.dantotsu.FileUrl(link!!, picked.file.headers))

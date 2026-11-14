@@ -25,6 +25,7 @@ import kotlin.math.ceil
  *  - "grid": rows of cover tiles, three across
  *  - "lines": label and value bars, for a details page
  *  - "tabs": a strip of tab labels
+ *  - "agenda": calendar rows, a time, a cover and two text bars each
  */
 class SkeletonView @JvmOverloads constructor(
     context: Context,
@@ -64,6 +65,7 @@ class SkeletonView @JvmOverloads constructor(
         LINES -> LINE_COUNT * LINE_DP
         ROWS -> ROW_COUNT * ROW_DP
         TABS -> 48
+        AGENDA -> ROW_COUNT * AGENDA_ROW_DP
         PAGE -> HEAD_DP + CARDS * CARD_DP + (CARDS - 1) * GAP_DP
         else -> CARDS * CARD_DP + (CARDS - 1) * GAP_DP
     }
@@ -99,6 +101,7 @@ class SkeletonView @JvmOverloads constructor(
             GRID -> drawGrid(canvas)
             LINES -> drawLines(canvas)
             TABS -> drawTabs(canvas)
+            AGENDA -> drawAgenda(canvas)
             else -> drawCards(canvas)
         }
         if (shown) postInvalidateOnAnimation()
@@ -233,6 +236,26 @@ class SkeletonView @JvmOverloads constructor(
         }
     }
 
+    /** item_calendar_entry: 16dp side, 56dp time column, 12dp gap, 64x92dp cover, 12dp gap, text */
+    private fun drawAgenda(canvas: Canvas) {
+        val side = 16 * dp
+        val coverLeft = side + 56 * dp + 12 * dp
+        val coverW = 64 * dp
+        val coverH = 92 * dp
+        val textStart = coverLeft + coverW + 12 * dp
+        val textWidth = width - side - textStart
+        val rows = ceil(height / (AGENDA_ROW_DP * dp)).toInt()
+        for (row in 0 until rows) {
+            val top = 8 * dp + row * AGENDA_ROW_DP * dp + 8 * dp
+            val middle = top + coverH / 2
+            blockPaint.alpha = (255 - row * (255 / rows)).coerceAtLeast(40)
+            pill(canvas, side, middle - 7 * dp, side + 44 * dp, 14 * dp)
+            canvas.drawRoundRect(coverLeft, top, coverLeft + coverW, top + coverH, 12 * dp, 12 * dp, blockPaint)
+            pill(canvas, textStart, middle - 16 * dp, textStart + textWidth * 0.8f, 14 * dp)
+            pill(canvas, textStart, middle + 6 * dp, textStart + textWidth * 0.35f, 12 * dp)
+        }
+    }
+
     private fun pill(canvas: Canvas, left: Float, top: Float, right: Float, height: Float) {
         canvas.drawRoundRect(left, top, right, top + height, height / 2, height / 2, blockPaint)
     }
@@ -251,6 +274,8 @@ class SkeletonView @JvmOverloads constructor(
         const val GRID = "grid"
         const val LINES = "lines"
         const val TABS = "tabs"
+        const val AGENDA = "agenda"
+        const val AGENDA_ROW_DP = 108
         const val GRID_ROW_DP = 236
         const val GRID_TEXT_DP = 92
         const val LINE_DP = 30
