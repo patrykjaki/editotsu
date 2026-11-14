@@ -1887,4 +1887,5 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="player_shortcuts_title_tap">Tap the episode name at the top: episode list</string>
     <string name="player_shortcuts_lock">Lock: blocks every touch until you unlock</string>
     <string name="player_shortcuts_settings">You found the secret menu. That was it. Long-press the gear again any time</string>
+    <string name="source_link_checking">Checking for a direct link…</string>
 </resources>

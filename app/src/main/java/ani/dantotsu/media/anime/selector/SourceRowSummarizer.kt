@@ -324,6 +324,7 @@ object SourceRowSummarizer {
      */
     private fun buildReleaseMeta(fields: SourceRowClassifier.ReleaseFields): List<SourceMetaChip> {
         val out = mutableListOf<SourceMetaChip>()
+        if (fields.instant) out += SourceMetaChip(SourceMetaIcon.TRACK, "Instant")
         fields.seeders?.let { out += SourceMetaChip(SourceMetaIcon.SEEDERS, "$it seeders") }
         fields.sizeText?.let { out += SourceMetaChip(SourceMetaIcon.SIZE, it) }
         fields.indexer?.let { out += SourceMetaChip(SourceMetaIcon.INDEXER, it) }
