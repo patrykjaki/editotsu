@@ -138,25 +138,35 @@
                 tools:visibility="visible">
 
                 <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:gravity="center"
+                    android:text="@string/comments_off_title"
+                    android:textColor="?attr/colorOnBackground"
+                    android:textSize="18sp" />
+
+                <TextView
                     android:id="@+id/commentsDisabledText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
                     android:fontFamily="@font/poppins"
                     android:gravity="center"
                     android:lineSpacingExtra="2dp"
                     android:maxWidth="360dp"
                     android:text="@string/comments_off_info"
-                    android:textColor="?attr/colorOnBackground"
+                    android:textColor="?attr/colorOnSurfaceVariant"
                     android:textSize="14sp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/commentsEnable"
-                    style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                    style="@style/Widget.Material3.Button.TonalButton.Icon"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:contentDescription="@string/comments_enable"
-                    android:tooltipText="@string/comments_enable"
+                    android:layout_marginTop="20dp"
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:text="@string/comments_enable"
                     app:icon="@drawable/ic_round_comment_24" />
             </LinearLayout>
         </LinearLayout>

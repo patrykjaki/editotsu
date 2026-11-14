@@ -89,7 +89,7 @@ class InstalledMangaExtensionsFragment : Fragment(), SearchQueryHandler {
                 if (allSettings.size > 1) {
                     // One extension, several sources (languages): pick whose settings to open.
                     ChoiceSheet.single(
-                        requireContext(), getString(R.string.extensions_select_source),
+                        requireContext(), getString(R.string.extension_settings_pick_source, name),
                         sourceChoiceLabels(allSettings.map { it.name }, allSettings.map { it.lang }).map { ChoiceOption(it) }, -1,
                         onCancel = { changeUIVisibility(true) },
                     ) { which -> openPrefFragment(allSettings[which]) }
