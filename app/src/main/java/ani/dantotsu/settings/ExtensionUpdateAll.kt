@@ -11,6 +11,10 @@ import ani.dantotsu.snackString
 import ani.dantotsu.util.Logger
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.extension.InstallStep
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import rx.Observable
 import rx.Subscription
 import rx.android.schedulers.AndroidSchedulers
@@ -59,15 +63,55 @@ object ExtensionUpdateAll {
         else Summary.SomeFailed(outcomes.size - failed.size, failed)
     }
 
+    /** Why an update whose install stream has ended did not install; null when it did. */
+    enum class Failure { NOT_LISTED, CANCELLED, FAILED }
+
+    /**
+     * The stream ends after its last step whatever that step is, so ending says nothing:
+     * only [InstallStep.Installed] is an update. No step at all means no repository lists
+     * the extension any more; Idle is a dismissed install prompt.
+     */
+    fun failureOf(last: InstallStep?): Failure? = when (last) {
+        InstallStep.Installed -> null
+        null -> Failure.NOT_LISTED
+        InstallStep.Idle -> Failure.CANCELLED
+        else -> Failure.FAILED
+    }
+
+    private fun failureText(context: Context, failure: Failure): String = context.getString(
+        when (failure) {
+            Failure.NOT_LISTED -> R.string.extension_update_not_listed
+            Failure.CANCELLED -> R.string.extension_update_cancelled
+            Failure.FAILED -> R.string.extension_update_install_failed
+        }
+    )
+
     fun notificationId(pkg: String): Int = "extension-update:$pkg".hashCode()
 
     private val running = ConcurrentHashMap<String, Subscription>()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /**
      * Starts every update not already running. [onFinished] runs on the main thread
      * once all of them ended, with true when at least one failed.
      */
-    fun run(context: Context, items: List<Item>, onFinished: (anyFailed: Boolean) -> Unit = {}) {
+    fun run(
+        context: Context,
+        items: List<Item>,
+        refresh: (suspend () -> Unit)? = null,
+        onFinished: (anyFailed: Boolean) -> Unit = {},
+    ) {
+        if (refresh == null) return start(context, items, onFinished)
+        // The repository list in memory can be hours old, and a repository replaces its apk
+        // files on every release: an update started from it downloads a file that is gone.
+        // So the list is fetched again first, as opening the Available tab does.
+        scope.launch {
+            runCatching { refresh() }.onFailure { Logger.log(it) }
+            start(context, items, onFinished)
+        }
+    }
+
+    private fun start(context: Context, items: List<Item>, onFinished: (anyFailed: Boolean) -> Unit) {
         val app = context.applicationContext
         val toStart = items.filter { !running.containsKey(it.pkg) }
         if (toStart.isEmpty()) {
@@ -76,26 +120,30 @@ object ExtensionUpdateAll {
         }
         val outcomes = ArrayList<Outcome>()
         val endedPkgs = HashSet<String>()
-        fun ended(item: Item, error: Throwable?) {
+        fun ended(item: Item, reason: String?) {
             endedPkgs += item.pkg
             running.remove(item.pkg)
-            outcomes += Outcome(item.name, error?.let { it.message ?: app.getString(R.string.extension_update_unknown_error) })
-            if (error == null) notifyDone(app, item) else notifyFailed(app, item, outcomes.last().error!!)
+            outcomes += Outcome(item.name, reason)
+            if (reason == null) notifyDone(app, item) else notifyFailed(app, item, reason)
             if (outcomes.size == toStart.size) {
                 summarize(outcomes)?.let { snackString(text(app, it)) }
                 onFinished(outcomes.any { it.error != null })
             }
         }
         for (item in toStart) {
+            var last: InstallStep? = null
             val subscription = item.update()
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(
-                    { step -> notifyProgress(app, item, step) },
+                    { step ->
+                        last = step
+                        notifyProgress(app, item, step)
+                    },
                     { error ->
                         Logger.log(error)
-                        ended(item, error)
+                        ended(item, error.message ?: app.getString(R.string.extension_update_unknown_error))
                     },
-                    { ended(item, null) },
+                    { ended(item, failureOf(last)?.let { failureText(app, it) }) },
                 )
             // a stream that ended synchronously already called ended()
             if (item.pkg !in endedPkgs) {
@@ -163,12 +211,12 @@ object ExtensionUpdateAll {
      * Shows the button with the count when [pending] is non-empty; a tap updates each
      * one. The button turns back on when an update fails (the list does not change then).
      */
-    fun <T> bind(button: Button, pending: List<T>, toItem: (T) -> Item) {
+    fun <T> bind(button: Button, pending: List<T>, refresh: (suspend () -> Unit)? = null, toItem: (T) -> Item) {
         button.isVisible = pending.isNotEmpty()
         button.text = button.context.getString(R.string.extensions_update_all, pending.size)
         button.setOnClickListener {
             button.isEnabled = false
-            run(button.context, pending.map(toItem)) { anyFailed ->
+            run(button.context, pending.map(toItem), refresh) { anyFailed ->
                 if (anyFailed) button.isEnabled = true
             }
         }

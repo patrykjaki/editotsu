@@ -61,8 +61,15 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
 
     private val updateOne: (AnimeExtension.Installed) -> Unit = { pkg ->
         if (isAdded) {
-            if (pkg.hasUpdate) ExtensionUpdateAll.run(requireContext(), listOf(updateItem(pkg)))
-            else snackString(getString(R.string.extension_update_no_update))
+            // the row's update flag comes from the repository list in memory, which can be stale:
+            // fetch it again before deciding there is nothing to update
+            val app = requireContext().applicationContext
+            lifecycleScope.launch {
+                runCatching { animeExtensionManager.findAvailableExtensions() }
+                val fresh = animeExtensionManager.installedExtensionsFlow.value.firstOrNull { it.pkgName == pkg.pkgName } ?: pkg
+                if (fresh.hasUpdate) ExtensionUpdateAll.run(app, listOf(updateItem(fresh)))
+                else snackString(app.getString(R.string.extension_update_no_update))
+            }
         }
     }
 
@@ -166,7 +173,8 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
                 ExtensionUpdateAll.bind(
                     _binding?.updateAllButton ?: return@collect,
                     ExtensionUpdateAll.pending(extensions) { it.hasUpdate },
-                    ::updateItem
+                    refresh = { animeExtensionManager.findAvailableExtensions() },
+                    toItem = ::updateItem,
                 )
             }
         }
