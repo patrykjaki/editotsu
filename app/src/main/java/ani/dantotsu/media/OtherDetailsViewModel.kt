@@ -348,7 +348,7 @@ class OtherDetailsViewModel : ViewModel() {
             val curr = System.currentTimeMillis() / 1000
             val res = Anilist.query.recentlyUpdated(curr - 86400, curr + (86400 * 6))
             val df = DateFormat.getDateInstance(DateFormat.FULL)
-            val tf = DateFormat.getTimeInstance(DateFormat.SHORT)
+            val tf = calendarTimeFormat()
             val allMap = mutableMapOf<String, MutableList<Media>>()
             val libraryMap = mutableMapOf<String, MutableList<Media>>()
             val idMap = mutableMapOf<String, MutableList<Int>>()
@@ -393,7 +393,7 @@ class OtherDetailsViewModel : ViewModel() {
         if (showOnlyDubbed) {
             cacheToUse = applyDubFilter(cacheToUse, rescueMode = false)
         }
-        calendar.postValue(cacheToUse)
+        calendar.postValue(withAllDays(cacheToUse))
     }
 
     private suspend fun loadCalendarFromJikan(showOnlyLibrary: Boolean, showOnlyDubbed: Boolean) {
@@ -402,7 +402,7 @@ class OtherDetailsViewModel : ViewModel() {
             val jikan = MAL.jikan
             val df = DateFormat.getDateInstance(DateFormat.FULL)
 
-            val tf = DateFormat.getTimeInstance(DateFormat.SHORT)
+            val tf = calendarTimeFormat()
             val dayNames = arrayOf(
                 "sunday", "monday", "tuesday", "wednesday",
                 "thursday", "friday", "saturday"
@@ -551,7 +551,21 @@ class OtherDetailsViewModel : ViewModel() {
         if (showOnlyDubbed) {
             cacheToUse = applyDubFilter(cacheToUse, rescueMode = true)
         }
-        calendar.postValue(cacheToUse)
+        calendar.postValue(withAllDays(cacheToUse))
+    }
+
+    /** airing times in the phone's own 12- or 24-hour setting, not the language's default */
+    private fun calendarTimeFormat(): DateFormat =
+        ani.dantotsu.currContext()?.let { android.text.format.DateFormat.getTimeFormat(it) }
+            ?: DateFormat.getTimeInstance(DateFormat.SHORT)
+
+    /**
+     * A filter leaves out the days it empties. The calendar keeps every day of the week in
+     * place (an empty one says so), so a day never turns into another date under the user.
+     */
+    private fun withAllDays(filtered: Map<String, MutableList<Media>>): Map<String, MutableList<Media>> {
+        val days = cachedAllCalendarData?.keys ?: return filtered
+        return days.associateWithTo(linkedMapOf()) { filtered[it] ?: mutableListOf() }
     }
 
     private suspend fun applyDubFilter(

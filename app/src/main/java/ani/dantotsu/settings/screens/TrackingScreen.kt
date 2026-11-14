@@ -12,6 +12,7 @@ import android.view.View
 import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
 import ani.dantotsu.R
+import ani.dantotsu.connections.mal.MalListSync
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.api.NotificationType
 import ani.dantotsu.connections.discord.rpc.DiscordRpcPublisher
@@ -287,6 +288,8 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
         b.settingsMALLogin.visibility = View.VISIBLE
         b.settingsMALUsername.visibility = View.VISIBLE
         b.settingsMALLogin.isEnabled = true
+        b.settingsMALSync.visibility = if (MAL.isLoggedIn()) View.VISIBLE else View.GONE
+        b.settingsMALSync.setOnClickListener { copyListsToMal(host, b.settingsMALSync) }
         when {
             MAL.isLoggedIn() -> {
                 b.settingsMALLogin.setText(R.string.logout)
@@ -321,6 +324,54 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                 b.settingsMALUsername.visibility = View.GONE
                 b.settingsMALLogin.setText(R.string.account_login)
                 b.settingsMALLogin.setOnClickListener { MAL.loginIntent(activity) }
+            }
+        }
+    }
+
+    /** Compares the AniList lists with MyAnimeList, asks, then writes what differs. */
+    private fun copyListsToMal(host: SettingsHost, button: TextView) {
+        val activity = host.activity
+        val label = activity.getString(R.string.mal_sync)
+        fun finish(message: String) {
+            button.isEnabled = true
+            button.text = label
+            ani.dantotsu.snackString(message)
+        }
+        button.isEnabled = false
+        button.setText(R.string.mal_sync_comparing)
+        activity.lifecycleScope.launch {
+            val (anime, manga) = withContext(Dispatchers.IO) {
+                MalListSync.load(true) to MalListSync.load(false)
+            }
+            if (anime == null && manga == null) return@launch finish(activity.getString(R.string.mal_sync_read_failed))
+            val total = (anime?.toWrite?.size ?: 0) + (manga?.toWrite?.size ?: 0)
+            if (total == 0) return@launch finish(activity.getString(R.string.mal_sync_same))
+            button.text = label
+            activity.customAlertDialog().apply {
+                setTitle(R.string.mal_sync_title)
+                setMessage(R.string.mal_sync_confirm, anime?.toWrite?.size ?: 0, manga?.toWrite?.size ?: 0)
+                setNegButton(R.string.cancel) { button.isEnabled = true }
+                setPosButton(activity.getString(R.string.mal_sync_update, total)) {
+                    activity.lifecycleScope.launch {
+                        var done = 0
+                        var failed = 0
+                        for (side in listOfNotNull(anime, manga)) {
+                            val before = done
+                            failed += withContext(Dispatchers.IO) {
+                                MalListSync.write(side.isAnime, side.toWrite) { n ->
+                                    done = before + n
+                                    button.post { button.text = activity.getString(R.string.mal_sync_progress, done, total) }
+                                }
+                            }
+                        }
+                        finish(
+                            if (failed == 0) activity.getString(R.string.mal_sync_done, total)
+                            else activity.getString(R.string.mal_sync_done_failed, total - failed, failed),
+                        )
+                    }
+                }
+                setCancelable(false)
+                show()
             }
         }
     }

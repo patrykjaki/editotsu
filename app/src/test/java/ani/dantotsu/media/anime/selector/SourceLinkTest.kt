@@ -34,4 +34,12 @@ class SourceLinkTest {
         val unknown = EditotsuInternalData.parse("""{"editotsu":1,"resolve":true}""")!!
         assertEquals(true to false, unknown.resolve to unknown.instant)
     }
+
+    @Test
+    fun `a source error with a message stops playback, one without lets the torrent play`() {
+        assertEquals("Not ready yet", SourceLink.refusal(Exception(" Not ready yet ")))
+        assertEquals(null, SourceLink.refusal(Exception()))
+        assertEquals(null, SourceLink.refusal(null))
+        assertEquals(null, SourceLink.refusal(kotlinx.coroutines.CancellationException("timed out")))
+    }
 }
