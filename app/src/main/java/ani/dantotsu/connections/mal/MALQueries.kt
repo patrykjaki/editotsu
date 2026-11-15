@@ -274,12 +274,14 @@ class MALQueries {
         val statusParam = status?.let { "&status=$it" } ?: ""
         val offsetParam = if (offset > 0) "&offset=$offset" else ""
         return tryWithSuspend {
-            executeRequest {
+            val response = executeRequest {
                 httpGet(
                     "$apiUrl/users/@me/animelist?fields=$listFields&sort=$sort&limit=$limit$offsetParam&nsfw=1$statusParam",
                     authHeader ?: emptyMap()
                 )
-            }.parsed<MalListResponse>()
+            }
+            // an error body parses as an empty list, which would make every entry look missing
+            if (!response.isSuccessful) null else response.parsed<MalListResponse>()
         }
     }
 
@@ -293,12 +295,14 @@ class MALQueries {
         val statusParam = status?.let { "&status=$it" } ?: ""
         val offsetParam = if (offset > 0) "&offset=$offset" else ""
         return tryWithSuspend {
-            executeRequest {
+            val response = executeRequest {
                 httpGet(
                     "$apiUrl/users/@me/mangalist?fields=$listFields&sort=$sort&limit=$limit$offsetParam&nsfw=1$statusParam",
                     authHeader ?: emptyMap()
                 )
-            }.parsed<MalListResponse>()
+            }
+            // an error body parses as an empty list, which would make every entry look missing
+            if (!response.isSuccessful) null else response.parsed<MalListResponse>()
         }
     }
 
@@ -440,12 +444,13 @@ class MALQueries {
     suspend fun getCompletedAnimeWithRelations(limit: Int = 100): MalListResponse? {
         if (authHeader == null) return null
         return tryWithSuspend {
-            executeRequest {
+            val response = executeRequest {
                 httpGet(
                     "$apiUrl/users/@me/animelist?fields=$sequelListFields&status=completed&sort=list_updated_at&limit=$limit&nsfw=1",
                     authHeader ?: emptyMap()
                 )
-            }.parsed<MalListResponse>()
+            }
+            if (!response.isSuccessful) null else response.parsed<MalListResponse>()
         }
     }
 

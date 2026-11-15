@@ -1440,6 +1440,17 @@ class MALOAuthTest {
     }
 
     @Test
+    fun `user list error response is null, not an empty list`() = runBlocking {
+        MAL.token = "T_LIST"
+        fakeTokenStore.storedToken = MAL.ResponseToken("Bearer", 1000L, "T_LIST", "R_LIST")
+        MALQueries.testHttpHandler = { _, _, _, _ ->
+            createNiceResponse(403, """{"error":"forbidden"}""")
+        }
+        assertNull(MAL.query.getUserAnimeList(limit = 100))
+        assertNull(MAL.query.getUserMangaList(limit = 100))
+    }
+
+    @Test
     fun `downstream MAL call site refreshes token on 401 and retries with refreshed Authorization header`() = runBlocking {
         MAL.token = "T_OLD_BEARER"
         fakeTokenStore.storedToken = MAL.ResponseToken("Bearer", 1000L, "T_OLD_BEARER", "R_REFRESH")
