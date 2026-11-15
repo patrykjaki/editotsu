@@ -1497,7 +1497,7 @@ class MediaDetailsViewModel : ViewModel() {
         val byId = try {
             ids.chunked(50).flatMap { chunk ->
                 Anilist.executeQuery<ani.dantotsu.connections.anilist.api.Query.MediaList>(
-                    "{Page(page:1,perPage:50){media(id_in:[${chunk.joinToString(",")}]){id format title{romaji english native userPreferred} status(version:2) startDate{year month day} mediaListEntry{status} relations{edges{relationType(version:2) node{id format}}}}}}",
+                    "{Page(page:1,perPage:50){media(id_in:[${chunk.joinToString(",")}]){id format title{romaji english native userPreferred} status(version:2) startDate{year month day} mediaListEntry{status} relations{edges{relationType(version:2) node{id idMal type format title{romaji english native userPreferred} coverImage{large} seasonYear episodes status(version:2) startDate{year month day} mediaListEntry{status}}}}}}}",
                     force = true,
                 )?.data?.page?.media.orEmpty()
             }.associateBy { it.id }
@@ -1514,6 +1514,8 @@ class MediaDetailsViewModel : ViewModel() {
             }
         }
         // recaps and alternate versions of an entry in the list (see watchOrderAlternatives)
+        // a hand-written order's main entries stay main: AniList only labels what the order calls extra
+        val mainIds = items.filter { it.mainStory == true }.mapNotNull { it.anilistId.trim().toIntOrNull() }.toSet()
         val alternatives = watchOrderAlternatives(
             order = ids,
             format = byId.mapValues { it.value.format?.name },
@@ -1523,7 +1525,37 @@ class MediaDetailsViewModel : ViewModel() {
                     (e.relationType?.name ?: return@mapNotNull null) to to
                 }
             },
+        ).filterKeys { it !in mainIds }
+        // recap films AniList ties to a season that the order leaves out (Attack on Titan's S1 films)
+        val nodes = byId.values.flatMap { m -> m.relations?.edges.orEmpty().mapNotNull { it.node } }
+            .filter { it.type?.name == "ANIME" }.associateBy { it.id }
+        val missing = watchOrderMissingAlternatives(
+            order = ids,
+            format = byId.mapValues { it.value.format?.name },
+            edges = byId.mapValues { (_, m) ->
+                m.relations?.edges.orEmpty().mapNotNull { e ->
+                    val node = e.node?.takeIf { it.id in nodes } ?: return@mapNotNull null
+                    Triple(e.relationType?.name ?: return@mapNotNull null, node.id, node.format?.name)
+                }
+            },
+            replaced = alternatives.keys,
         )
+        val extra = missing.mapNotNull { (id, of) ->
+            val m = nodes[id] ?: return@mapNotNull null
+            WatchOrderItem(
+                id = (m.idMal ?: 0).toString(),
+                anilistId = id.toString(),
+                image = m.coverImage?.large ?: "",
+                name = m.title?.userPreferred ?: m.title?.romaji ?: return@mapNotNull null,
+                relationType = "",
+                airDate = m.seasonYear?.toString() ?: m.startDate?.year?.toString() ?: "",
+                mediaType = watchOrderFormat(m.format?.name),
+                episodes = m.episodes?.let { "$it eps" } ?: "",
+                mainStory = false,
+                alternativeTo = of.toString(),
+                listStatus = m.mediaListEntry?.status?.name,
+            )
+        }
         val start = items.firstOrNull { it.isCurrent }?.anilistId?.trim()?.toIntOrNull()
         val story = if (start != null && start in byId) watchOrderStory(start, links) else null
         return items.map { item ->
@@ -1542,7 +1574,7 @@ class MediaDetailsViewModel : ViewModel() {
                 startDay = if (upcoming) m.startDate?.day else null,
                 listStatus = m.mediaListEntry?.status?.name,
             )
-        }.let { watchOrderPlaceAlternatives(it) }
+        }.plus(extra).let { watchOrderPlaceAlternatives(it) }
     }
 
 
@@ -1774,9 +1806,9 @@ internal fun watchOrderPlaceAlternatives(items: List<MediaDetailsViewModel.Watch
  * Which listed entry is a recap or alternate version of which (id -> the id it can replace).
  * AniList links them both ways, so the direction is decided here:
  *  - a season lists its recap as SUMMARY: the recap replaces the season
- *  - a movie whose PARENT is a TV season (how recap films are often linked) replaces that season
- *  - ALTERNATIVE goes both ways: a movie/special/OVA replaces the TV series; between two of a kind,
- *    the later one in the order replaces the earlier
+ *  - PARENT alone is not used: side-story films (Inuyasha, Hunter x Hunter) point at their show that way
+ *  - ALTERNATIVE goes both ways: a movie/special/OVA replaces the TV series; two films, the later one
+ *    replaces the earlier; two TV series are separate takes and replace nothing
  * An entry that is replaced is never itself an alternative, so there are no cycles.
  */
 internal fun watchOrderAlternatives(
@@ -1794,8 +1826,8 @@ internal fun watchOrderAlternatives(
     }
     for (id in order) for ((type, to) in edges[id].orEmpty()) when (type) {
         "SUMMARY" -> claim(to, id)
-        "PARENT" -> if (format[id] == "MOVIE" && series(to)) claim(id, to)
         "ALTERNATIVE" -> when {
+            series(id) && series(to) -> Unit // another TV take (FMA 2003, Cinderella Girls), not a recap
             series(to) && !series(id) -> claim(id, to)
             series(id) && !series(to) -> claim(to, id)
             (position[id] ?: 0) > (position[to] ?: 0) -> claim(id, to)
@@ -1804,4 +1836,29 @@ internal fun watchOrderAlternatives(
     }
     val targets = found.values.toSet()
     return found.filterKeys { it !in targets }
+}
+
+/**
+ * Recaps and retelling films AniList links to a season of the order that the order itself doesn't list:
+ * new id -> the season it stands in for. Only films, specials and OVAs (a TV remake is its own show),
+ * only off a series entry that isn't itself replaced, first link wins.
+ */
+internal fun watchOrderMissingAlternatives(
+    order: List<Int>,
+    format: Map<Int, String?>,
+    edges: Map<Int, List<Triple<String, Int, String?>>>,
+    replaced: Set<Int> = emptySet(),
+): Map<Int, Int> {
+    val listed = order.toSet()
+    val found = LinkedHashMap<Int, Int>()
+    for (id in order) {
+        if (id in replaced || format[id] !in setOf("TV", "TV_SHORT", "ONA")) continue
+        for ((type, to, toFormat) in edges[id].orEmpty()) {
+            if (to in listed || type !in setOf("SUMMARY", "ALTERNATIVE")) continue
+            // ALTERNATIVE also covers PVs, pilots and spin-off OVAs; only films are retellings there
+            if (toFormat !in (if (type == "SUMMARY") setOf("MOVIE", "SPECIAL", "OVA") else setOf("MOVIE"))) continue
+            found.putIfAbsent(to, id)
+        }
+    }
+    return found
 }

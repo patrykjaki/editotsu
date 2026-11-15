@@ -71,6 +71,28 @@ class WatchOrderWikiTest {
         assertEquals(listOf(true, true, true, false, false), watchOrderWikiItems(order, 1).map { it.mainStory })
     }
 
+    @Test fun chainAfterAlternativeTitlesWithTags() {
+        // Amagami as scraped: every step flagged optional, the chain tags the real extras
+        val order = WikiOrder(
+            "Main Story",
+            "Alternative Titles: x\nAmagami SS [TV]\n->\nAmagami SS: Imouto [Special]\n->\nAmagami SS [OVA]\n(Optional) ->\nAmagami SS+ Plus [TV]\n→ Amagami SS+ Plus: Extra [Special]\n(Optional)\nNote:\nstuff",
+            listOf(
+                WikiStep("Amagami SS [TV]", optional = true, media = WikiMedia(1)),
+                WikiStep("Amagami SS: Imouto [Special]", optional = true, media = WikiMedia(2)),
+                WikiStep("Amagami SS [OVA]", optional = true, media = WikiMedia(3)),
+                WikiStep("Amagami SS+ Plus [TV]", optional = true, media = WikiMedia(4)),
+                WikiStep("Amagami SS+ Plus: Extra [Special]", optional = true, media = WikiMedia(5)),
+                WikiStep("Picture Drama", media = WikiMedia(6)),
+            ),
+        )
+        assertEquals(listOf(true, true, false, true, false, false), watchOrderWikiItems(order, 1).map { it.mainStory })
+    }
+
+    @Test fun noChainAllFlaggedMeansNothing() {
+        val order = WikiOrder("x", "prose", listOf(WikiStep("a", optional = true, media = WikiMedia(1)), WikiStep("b (Optional 5 Mins)", optional = true, media = WikiMedia(2))))
+        assertEquals(listOf(true, false), watchOrderWikiItems(order, 1).map { it.mainStory })
+    }
+
     @Test fun noChainKeepsTheFlags() {
         val order = WikiOrder("x", "Just some text", listOf(WikiStep("a", media = WikiMedia(1)), WikiStep("b", optional = true, media = WikiMedia(2))))
         assertEquals(listOf(true, false), watchOrderWikiItems(order, 1).map { it.mainStory })
@@ -103,5 +125,27 @@ class WatchOrderWikiTest {
             edges = mapOf(10 to listOf("ALTERNATIVE" to 11, "ALTERNATIVE" to 12), 11 to listOf("ALTERNATIVE" to 10), 12 to listOf("ALTERNATIVE" to 10)),
         )
         assertEquals(mapOf(11 to 10, 12 to 10), madoka)
+        // two TV takes (FMA 2003 / Brotherhood) and a side-story film with only PARENT stay as they are
+        val other = watchOrderAlternatives(
+            order = listOf(20, 21, 22),
+            format = mapOf(20 to "TV", 21 to "TV", 22 to "MOVIE"),
+            edges = mapOf(20 to listOf("ALTERNATIVE" to 21), 21 to listOf("ALTERNATIVE" to 20), 22 to listOf("PARENT" to 20)),
+        )
+        assertTrue(other.isEmpty())
+    }
+
+    @Test fun filmsTheOrderLeavesOut() {
+        // Attack on Titan: the order lists S1, an OVA, S2; AniList ties two films to S1 and one to S2
+        val added = watchOrderMissingAlternatives(
+            order = listOf(1, 2, 3),
+            format = mapOf(1 to "TV", 2 to "OVA", 3 to "TV"),
+            edges = mapOf(
+                1 to listOf(Triple("ALTERNATIVE", 10, "MOVIE"), Triple("ALTERNATIVE", 11, "MOVIE"), Triple("SIDE_STORY", 2, "OVA"), Triple("SPIN_OFF", 12, "TV")),
+                2 to listOf(Triple("SUMMARY", 13, "MOVIE")),
+                3 to listOf(Triple("ALTERNATIVE", 14, "MOVIE"), Triple("ALTERNATIVE", 15, "TV"), Triple("ALTERNATIVE", 16, "SPECIAL"), Triple("SUMMARY", 10, "MOVIE")),
+            ),
+        )
+        assertEquals(mapOf(10 to 1, 11 to 1, 14 to 3), added)
+        assertTrue(watchOrderMissingAlternatives(listOf(1), mapOf(1 to "TV"), mapOf(1 to listOf(Triple("SUMMARY", 9, "MOVIE"))), replaced = setOf(1)).isEmpty())
     }
 }

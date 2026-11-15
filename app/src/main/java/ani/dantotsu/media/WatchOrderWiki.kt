@@ -129,30 +129,49 @@ internal fun watchOrderFormat(format: String?): String = when (format) {
     else -> format.lowercase().replaceFirstChar { it.uppercase() }
 }
 
+private val wikiArrow = Regex("""^(?:\(([^)]*)\)\s*)?(?:-{1,2}>|→|>)\s*(.*)$""")
+private val wikiTag = Regex("""^\(([^)]*)\)$""")
+
 /**
- * The titles of the order's own "A -> B -> C" chain at the top of its text. Every link on the wiki page
- * becomes a step, so recap movies and side stories named in the notes after the chain come through as
- * steps too, and none of them carry an optional flag; the chain is what the page says to watch.
+ * The order's own "A -> B -> C" chain in its text: title key -> true when the chain tags it
+ * ("(Optional) ->", "(Spinoff) ->", a closing "(Optional)"), false for a plain link. Every link on the wiki
+ * page becomes a step and the scraped optional flags are unreliable, so the chain is what the page says
+ * to watch. It may start after an "Alternative Titles" line; arrows are ->, -->, > or →.
  */
-internal fun watchOrderWikiChain(description: String?): Set<String> {
+internal fun watchOrderWikiChain(description: String?): Map<String, Boolean> {
     val lines = description.orEmpty().lines().map { it.trim() }.filter { it.isNotEmpty() }
-    if (lines.size < 3 || lines[1] != "->") return emptySet()
-    val chain = mutableListOf(lines[0])
-    var i = 1
-    while (i + 1 < lines.size && lines[i] == "->") {
-        chain += lines[i + 1]
-        i += 2
+    val start = (0 until lines.size - 1).firstOrNull { !wikiArrow.matches(lines[it]) && wikiArrow.matches(lines[it + 1]) }
+        ?: return emptyMap()
+    val items = mutableListOf(lines[start])
+    val tagged = mutableSetOf<Int>()
+    var j = start + 1
+    while (j < lines.size) {
+        val arrow = wikiArrow.matchEntire(lines[j])
+        if (arrow != null) {
+            if (arrow.groupValues[1].isNotEmpty()) tagged += items.lastIndex
+            val rest = arrow.groupValues[2]
+            if (rest.isNotEmpty()) { items += rest; j++; continue }
+            if (j + 1 < lines.size && !wikiArrow.matches(lines[j + 1])) { items += lines[j + 1]; j += 2; continue }
+            break
+        }
+        if (wikiTag.matches(lines[j])) tagged += items.lastIndex
+        break
     }
-    return chain.map { watchOrderWikiKey(it) }.toSet()
+    val out = LinkedHashMap<String, Boolean>()
+    items.forEachIndexed { i, t -> out.putIfAbsent(watchOrderWikiKey(t), i in tagged) }
+    return out
 }
 
-private fun watchOrderWikiKey(title: String) = title.lowercase().replace(Regex("""\s*\[[^]]*]\s*"""), "").replace(Regex("""\s+"""), " ").trim()
+// the [TV] / [OVA] tags stay: "Amagami SS [TV]" and "Amagami SS [OVA]" are different links
+private fun watchOrderWikiKey(title: String) = title.lowercase().replace(Regex("""\s+"""), " ").trim()
 
 internal fun watchOrderWikiItems(order: WikiOrder, currentId: Int): List<MediaDetailsViewModel.WatchOrderItem> {
     var currentSeen = false
     val chain = watchOrderWikiChain(order.description)
     // trust the chain only when it names at least two of the steps
     val useChain = order.steps.count { watchOrderWikiKey(it.title) in chain } >= 2
+    // flags set on every step say nothing
+    val flagsMean = !order.steps.all { it.optional }
     return order.steps.mapNotNull { step ->
         val m = step.media?.takeIf { it.id > 0 } ?: return@mapNotNull null
         val current = !currentSeen && m.id == currentId
@@ -167,7 +186,11 @@ internal fun watchOrderWikiItems(order: WikiOrder, currentId: Int): List<MediaDe
             airDate = m.seasonYear?.toString() ?: "",
             mediaType = watchOrderFormat(m.format),
             episodes = m.episodes?.let { "$it eps" } ?: "",
-            mainStory = if (useChain) watchOrderWikiKey(step.title) in chain && !step.optional else !step.optional,
+            mainStory = when {
+                "(optional" in step.title.lowercase() -> false
+                useChain -> chain[watchOrderWikiKey(step.title)] == false
+                else -> !flagsMean || !step.optional
+            },
         )
     }
 }

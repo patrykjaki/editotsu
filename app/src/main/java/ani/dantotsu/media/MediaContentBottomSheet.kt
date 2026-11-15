@@ -282,7 +282,10 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
 
             // the numbers carry the order, so a row says only where you are or that it is optional
             if (item.isCurrent) {
-                holder.binding.watchOrderRelation.setText(R.string.watch_order_here)
+                holder.binding.watchOrderRelation.text = listOfNotNull(
+                    context.getString(R.string.watch_order_here),
+                    if (watchOrderCompleted(item.listStatus)) context.getString(R.string.watch_order_completed) else null,
+                ).joinToString(" · ")
                 holder.binding.watchOrderRelation.visibility = View.VISIBLE
                 holder.binding.watchOrderChevron.visibility = View.INVISIBLE
                 holder.binding.watchOrderCard.setCardBackgroundColor(ColorUtils.setAlphaComponent(primary, 40))
