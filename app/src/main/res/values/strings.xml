@@ -217,7 +217,7 @@
     <string name="picker_play_quality">Play %1$s %2$s</string>
     <!-- Source Picker v3 fixes: filter and sort (feature/picker-v3-fixes) -->
     <string name="picker_filter">Filter</string>
-    <string name="picker_filter_active">Filter · %1$d</string>
+    <string name="picker_filter_active">Filter (%1$d)</string>
     <string name="picker_filter_title">Filter and sort</string>
     <string name="picker_filter_active_cd">Filter and sort, %1$d on</string>
     <string name="picker_filter_resolution">Resolution</string>
@@ -233,7 +233,7 @@
     <string name="picker_filter_hidden_all">Filters hide all %1$d streams</string>
     <string name="picker_filter_clear">Clear filters</string>
     <string name="picker_filter_results">%1$d of %2$d releases</string>
-    <string name="picker_filter_value_count">%1$s · %2$d</string>
+    <string name="picker_filter_value_count">%1$s (%2$d)</string>
     <string name="picker_filter_more">+%1$d more</string>
     <string name="picker_source_filters">Source filters</string>
     <string name="picker_source_filters_failed">Could not open the source settings</string>
@@ -291,10 +291,10 @@
     <string name="anime_themes_none">No openings or endings listed</string>
     <string name="theme_retry">Retry</string>
     <string name="theme_next">Next theme</string>
-    <string name="theme_status_connecting">Connecting · try %1$d of %2$d</string>
-    <string name="theme_status_rate_limited">AnimeThemes rate limit · retry in %1$d s</string>
-    <string name="theme_status_http">AnimeThemes error %1$d · try %2$d of %3$d</string>
-    <string name="theme_status_unreachable">No answer from AnimeThemes · try %1$d of %2$d</string>
+    <string name="theme_status_connecting">Connecting, try %1$d of %2$d</string>
+    <string name="theme_status_rate_limited">AnimeThemes is busy, retrying in %1$d s</string>
+    <string name="theme_status_http">AnimeThemes error %1$d, try %2$d of %3$d</string>
+    <string name="theme_status_unreachable">No answer from AnimeThemes, try %1$d of %2$d</string>
     <string name="theme_status_saved">Saved copy</string>
     <string name="theme_status_audio">Audio</string>
     <string name="theme_failed">Could not reach AnimeThemes</string>
@@ -459,7 +459,7 @@
     <string name="height">Height</string>
     <string name="width">Width</string>
     <string name="default_quality_info">Automatically uses the closest quality provided by default, ONLY applied for \"Multi Quality\" Servers. Auto changes upon playing a video.</string>
-    <string name="default_playback_speed">Default Playback Speed : %1$s</string>
+    <string name="default_playback_speed">Default Playback Speed: %1$s</string>
     <string name="cursed_speeds">Cursed Speeds</string>
     <string name="resize_mode_button">Default Resize Mode</string>
     <string name="subtitles">Subtitles</string>
@@ -670,7 +670,7 @@
     <string name="remove_all_subscriptions">Remove All Subscriptions</string>
     <string name="remove_all_subscriptions_desc">Are you sure you want to remove all subscriptions for %1$s?</string>
     <string name="checking_subscriptions">Notification for Checking Subscriptions</string>
-    <string name="subscriptions_checking_time_s">Subscriptions Update Frequency : %1$s</string>
+    <string name="subscriptions_checking_time_s">Subscriptions Update Frequency: %1$s</string>
     <string name="subscriptions_checking_time">Subscriptions Update Frequency</string>
     <string name="subscriptions_info">Amount of time for Editotsu to periodically check for new Episodes/Chapters\n(Less time will cause more battery consumption)</string>
     <string name="do_not_update">Don\'t Update</string>
@@ -741,7 +741,7 @@
     <string name="error_loading_mal_user_data">Error loading MAL user data</string>
     <string name="error_loading_mal_data">Failed to load data from MAL</string>
     <string name="error_loading_anilist_user_data">Error loading Anilist user data</string>
-    <string name="episode_not_found">Couldn\'t find episode : %1$s</string>
+    <string name="episode_not_found">Couldn\'t find episode: %1$s</string>
     <string name="list_updated">List Updated</string>
     <string name="deleted_from_list">Deleted from List</string>
     <string name="no_list_id">No List ID found…</string>
@@ -768,14 +768,14 @@
     <string name="sync_partial">%1$d updates could not be synced yet</string>
     <string name="failed_to_load_data">Failed to load saved data of %1$d</string>
     <string name="access_not_available">Wasn\'t able to get access</string>
-    <string name="mal_login_uri_not_found">Mal Login : Uri not Found</string>
-    <string name="mal_login_code_challenge_not_found">Mal Login : codeChallenge not found</string>
-    <string name="mal_login_code_not_present">Mal Login : Code not present in redirected URI</string>
+    <string name="mal_login_uri_not_found">Mal Login: Uri not Found</string>
+    <string name="mal_login_code_challenge_not_found">Mal Login: codeChallenge not found</string>
+    <string name="mal_login_code_not_present">Mal Login: Code not present in redirected URI</string>
     <string name="mal_login_cancelled">MAL Login cancelled</string>
     <string name="mal_login_failed">MAL Login failed</string>
     <string name="mal_login_unavailable">MAL login unavailable in this build (no client ID configured)</string>
     <string name="mal_login_session_invalid">Invalid or expired MAL login session</string>
-    <string name="refresh_token_load_failed">Refresh Token : Failed to load saved token</string>
+    <string name="refresh_token_load_failed">Refresh Token: Failed to load saved token</string>
     <string name="refreshing_token_failed">Refreshing Token Failed</string>
     <string name="episode_release_countdown">Episode %1$d will be released in</string>
     <string name="chapter_number">Chapter %1$d</string>
@@ -813,9 +813,9 @@
     <string name="read_on_dantotsu">Read on Editotsu</string>
     <string name="watch_on_dantotsu">Watch on Editotsu</string>
 
-    <string name="continue_episode">Continue : Episode %1$s%2$s\n%3$s</string>
+    <string name="continue_episode">Continue: Episode %1$s%2$s\n%3$s</string>
     <string name="filler_tag"> - Filler</string>
-    <string name="continue_chapter">Continue : %1$s\n%2$s</string>
+    <string name="continue_chapter">Continue: %1$s\n%2$s</string>
     <string name="episode">"Episode "</string>
     <string name="episode_num">"Episode %1$s"</string>
     <string name="chapter">"Chapter "</string>
@@ -835,8 +835,8 @@
     <string name="sleep_timer_cancelled">Sleep timer off</string>
     <string name="sleep_timer_paused">Sleep timer: paused</string>
     <string name="sleep_timer_stopped">Sleep timer: stopped after the episode</string>
-    <string name="sleep_timer_title_remaining">Sleep timer · %1$d min left</string>
-    <string name="sleep_timer_title_episode">Sleep timer · stops after this episode</string>
+    <string name="sleep_timer_title_remaining">Sleep timer: %1$d min left</string>
+    <string name="sleep_timer_title_episode">Sleep timer: stops after this episode</string>
     <string name="auto_update">Auto Update progress for %1$s?</string>
     <string name="continue_from">Continue from %1$s?</string>
     <string name="title_update_progress">Update progress on AniList?</string>
@@ -977,16 +977,32 @@
     <string name="chapter_singular">Chapter</string>
     <string name="chapter_plural">Chapters</string>
 
-    <string name="filter_status">"Status : %1$s"</string>
-    <string name="filter_source">"Source : %1$s"</string>
-    <string name="filter_format">"Format : %1$s"</string>
-    <string name="filter_country">"Country : %1$s"</string>
-    <string name="filter_sort">"Sort : %1$s"</string>
+    <string name="filter_status">"Status: %1$s"</string>
+    <string name="filter_source">"Source: %1$s"</string>
+    <string name="filter_format">"Format: %1$s"</string>
+    <string name="filter_country">"Country: %1$s"</string>
+    <string name="filter_sort">"Sort: %1$s"</string>
     <string name="filter_exclude">"Not %1$s"</string>
     <string name="search_by_image">Search by Image</string>
-    <string name="upload_image">Upload Image</string>
-    <string name="similarity_text">Similarity: %1$s %%</string>
-    <string name="time_range">From %1$s to %2$s</string>
+    <string name="image_search_pick_title">Find a scene</string>
+    <string name="image_search_pick_body">Pick a screenshot to see which show, episode and moment it\'s from. Full, uncropped frames match best.</string>
+    <string name="image_search_pick">Pick image</string>
+    <string name="image_search_change">New image</string>
+    <string name="image_search_your_image">Your image</string>
+    <string name="image_search_searching">Searching…</string>
+    <plurals name="image_search_matches">
+        <item quantity="one">%d match</item>
+        <item quantity="other">%d matches</item>
+    </plurals>
+    <string name="image_search_percent">%1$d%%</string>
+    <string name="image_search_weaker">Probably not it</string>
+    <string name="image_search_weak_meta">Episode %1$s · %2$s</string>
+    <string name="image_search_none">No match found</string>
+    <string name="image_search_none_body">Try a full frame from the episode, without crops, borders or text on top.</string>
+    <string name="image_search_failed">Couldn\'t search this image</string>
+    <string name="image_search_failed_body">The search service didn\'t answer. Check your connection and try again.</string>
+    <string name="image_search_match_cd">%1$s, episode %2$s at %3$s, %4$d%% match</string>
+    <string name="image_search_match_movie_cd">%1$s at %2$s, %3$d%% match</string>
     <string name="invalid_url">Invalid URL</string>
     <string name="no_anilist_id_found">No Anilist ID found</string>
     <string name="error_loading_image">Error loading image</string>
@@ -1139,7 +1155,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="copy_user_id" >Copy user ID</string>
     <string name="anilist_notification_filters">Filter Notifications</string>
     <string name="anilist_notifications_checking_time">AniList notifications update frequency: %1$s</string>
-    <string name="comment_notification_checking_time">Comment notifications update frequency : %1$s</string>
+    <string name="comment_notification_checking_time">Comment notifications update frequency: %1$s</string>
     <string name="activities">Activities &amp; Forums</string>
     <string name="discord_rich_presence_desc">Show what you\'re watching or reading on your Discord profile.</string>
 
@@ -1892,8 +1908,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="list_sync_explain">%2$s is not changed. Entries that are only on %1$s stay there.</string>
     <string name="list_sync_auto">Sync once a day</string>
     <string name="list_sync_auto_desc">In the background, in this direction</string>
-    <string name="list_sync_group_missing">Not on %1$s · %2$d</string>
-    <string name="list_sync_group_changed">Different · %1$d</string>
+    <string name="list_sync_group_missing">%2$d not on %1$s</string>
+    <string name="list_sync_group_changed">%1$d different</string>
     <string name="list_sync_select_all">Select all</string>
     <string name="list_sync_selected">%1$d of %2$d selected</string>
     <string name="list_sync_update">Update %1$s</string>
@@ -1906,6 +1922,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="list_sync_done">Updated %1$d entries on %2$s.</string>
     <string name="list_sync_done_failed">Updated %1$d entries. These %2$d were not accepted:</string>
     <string name="list_sync_missing">%1$s · progress %2$d</string>
+    <string name="list_sync_missing_scored">%1$s · progress %2$d · score %3$d</string>
     <string name="list_sync_field">%1$s %2$s → %3$s</string>
     <string name="list_sync_field_status">Status</string>
     <string name="list_sync_field_progress">Progress</string>
@@ -1928,9 +1945,28 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="calendar_day_empty_filtered">Nothing from this filter airs this day.</string>
     <string name="calendar_failed">Couldn\'t load the calendar. Check your connection and open it again.</string>
     <string name="calendar_on_list">On your list</string>
-    <string name="calendar_on_list_seen">On your list · seen %1$d</string>
+    <string name="calendar_on_list_seen">Watched up to %1$d</string>
     <plurals name="calendar_day_description">
         <item quantity="one">%1$s, %2$d episode</item>
         <item quantity="other">%1$s, %2$d episodes</item>
     </plurals>
+    <string name="clear">Clear</string>
+    <string name="list_view">List view</string>
+    <string name="grid_view">Grid view</string>
+    <string name="recent_searches">Recent</string>
+    <string name="browse_genres">Browse by genre</string>
+    <string name="search_hint">Search %1$s</string>
+    <string name="chip_sort">Sort</string>
+    <string name="chip_status">Status</string>
+    <string name="chip_any">Any</string>
+    <string name="chip_exclude">Exclude</string>
+    <string name="chip_country">Country</string>
+    <string name="country_japan">Japan</string>
+    <string name="country_korea">South Korea</string>
+    <string name="country_china">China</string>
+    <string name="country_taiwan">Taiwan</string>
+    <string name="search_type">Search for</string>
+    <string name="search_type_of">Searching %1$s</string>
+    <string name="watch_order_role_coming">%1$s, %2$s</string>
+    <string name="watch_order_finished_cd">%1$s, completed</string>
 </resources>

@@ -97,6 +97,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_light_1_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_light_1_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_light_1_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerLow">#F3F4F8</item>
+        <item name="colorSurfaceContainer">#EEF0F4</item>
+        <item name="colorSurfaceContainerHigh">#E7EAEE</item>
+        <item name="colorSurfaceContainerHighest">#E0E4E9</item>
     </style>
 
     <style name="Theme.Dantotsu.Green" parent="Theme.Base">
@@ -126,6 +131,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_light_2_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_light_2_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_light_2_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerLow">#F5F4EC</item>
+        <item name="colorSurfaceContainer">#F0F0E8</item>
+        <item name="colorSurfaceContainerHigh">#EAEAE1</item>
+        <item name="colorSurfaceContainerHighest">#E4E4DA</item>
     </style>
 
     <style name="Theme.Dantotsu.Purple" parent="Theme.Base">
@@ -155,6 +165,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_light_3_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_light_3_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_light_3_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerLow">#F7F3F8</item>
+        <item name="colorSurfaceContainer">#F3EFF4</item>
+        <item name="colorSurfaceContainerHigh">#EEE8EF</item>
+        <item name="colorSurfaceContainerHighest">#E8E2E9</item>
     </style>
 
     <style name="Theme.Dantotsu.Pink" parent="Theme.Base">
@@ -184,6 +199,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_light_4_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_light_4_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_light_4_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerLow">#F9F4F9</item>
+        <item name="colorSurfaceContainer">#F6F0F6</item>
+        <item name="colorSurfaceContainerHigh">#F2EBF1</item>
+        <item name="colorSurfaceContainerHighest">#EDE5EC</item>
     </style>
 
     <style name="Theme.Dantotsu.Saikou" parent="Theme.Base">
@@ -213,6 +233,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_light_5_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_light_5_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_light_5_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerLow">#F8F2F7</item>
+        <item name="colorSurfaceContainer">#F5EDF3</item>
+        <item name="colorSurfaceContainerHigh">#F0E6ED</item>
+        <item name="colorSurfaceContainerHighest">#EBDFE7</item>
     </style>
 
     <style name="Theme.Dantotsu.Red" parent="Theme.Base">
@@ -242,6 +267,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_light_6_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_light_6_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_light_6_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerLow">#F8F2F6</item>
+        <item name="colorSurfaceContainer">#F5EDF1</item>
+        <item name="colorSurfaceContainerHigh">#F0E6EA</item>
+        <item name="colorSurfaceContainerHighest">#EBDFE3</item>
     </style>
 
     <style name="Theme.Dantotsu.Lavender" parent="Theme.Base">
@@ -271,6 +301,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_light_7_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_light_7_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_light_7_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerLow">#F7F3F8</item>
+        <item name="colorSurfaceContainer">#F3EFF4</item>
+        <item name="colorSurfaceContainerHigh">#EDE9EF</item>
+        <item name="colorSurfaceContainerHighest">#E7E2EA</item>
     </style>
 
     <style name="Theme.Dantotsu.Ocean" parent="Theme.Base">
@@ -300,6 +335,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_light_8_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_light_8_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_light_8_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerLow">#F1F5F3</item>
+        <item name="colorSurfaceContainer">#ECF1EF</item>
+        <item name="colorSurfaceContainerHigh">#E5EBE9</item>
+        <item name="colorSurfaceContainerHighest">#DEE5E3</item>
     </style>
 
     <style name="Theme.Dantotsu.Oriax" parent="Theme.Base">
@@ -329,6 +369,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_light_9_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_light_9_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_light_9_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerLow">#F9F4F5</item>
+        <item name="colorSurfaceContainer">#F6F0F1</item>
+        <item name="colorSurfaceContainerHigh">#F2EBE9</item>
+        <item name="colorSurfaceContainerHighest">#EEE5E2</item>
     </style>
 
     <style name="Theme.Dantotsu.Monochrome" parent="Theme.Base">
@@ -338,8 +383,8 @@
         <item name="colorOnPrimaryContainer">@color/bg_white</item>
         <item name="colorSecondary">@color/bg_black</item>
         <item name="colorOnSecondary">@color/bg_white</item>
-        <item name="colorSecondaryContainer">@color/bg_black</item>
-        <item name="colorOnSecondaryContainer">@color/bg_white</item>
+        <item name="colorSecondaryContainer">#D6D6D6</item>
+        <item name="colorOnSecondaryContainer">@color/bg_black</item>
         <item name="colorTertiary">@color/bg_black</item>
         <item name="colorOnTertiary">@color/bg_white</item>
         <item name="colorTertiaryContainer">@color/bg_black</item>
@@ -352,12 +397,17 @@
         <item name="colorOnBackground">@color/bg_black</item>
         <item name="colorSurface">@color/bg_white</item>
         <item name="colorOnSurface">@color/bg_black</item>
-        <item name="colorSurfaceVariant">@color/bg_white</item>
+        <item name="colorSurfaceVariant">#E7E7E7</item>
         <item name="colorOnSurfaceVariant">@color/bg_black</item>
         <item name="colorOutline">@color/bg_black</item>
         <item name="colorOnSurfaceInverse">@color/bg_black</item>
         <item name="colorSurfaceInverse">@color/bg_white</item>
         <item name="colorPrimaryInverse">@color/bg_white</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerLow">#E4E4E4</item>
+        <item name="colorSurfaceContainer">#E0E0E0</item>
+        <item name="colorSurfaceContainerHigh">#D9D9D9</item>
+        <item name="colorSurfaceContainerHighest">#D1D1D1</item>
     </style>
 
     <style name="Theme.Dantotsu.AppWidgetContainerParent" parent="@android:style/Theme.DeviceDefault">

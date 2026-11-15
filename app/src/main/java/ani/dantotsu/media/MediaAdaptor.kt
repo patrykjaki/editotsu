@@ -133,7 +133,8 @@ class MediaAdaptor(
                             topMargin = 0
                         }
                         b.itemCompactProgressContainer.background = null
-                        b.itemCompactScoreBG.isVisible = true
+                        // nothing to show for an unscored title (unaired, too new): no "0.0" badge
+                        b.itemCompactScoreBG.isVisible = media.userScore != 0 || (media.meanScore ?: 0) > 0
                         b.itemCompactImage.loadImage(media.cover)
                         b.itemCompactOngoing.isVisible =
                             media.status == b.root.context.getString(R.string.status_releasing)

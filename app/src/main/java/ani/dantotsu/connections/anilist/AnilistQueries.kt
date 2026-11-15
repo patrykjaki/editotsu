@@ -213,7 +213,7 @@ class AnilistQueries {
                             media.tags = arrayListOf()
                             media.tagsIsSpoiler = arrayListOf()
                             this.forEach { i ->
-                                media.tags.add("${i.name} : ${i.rank.toString()}%")
+                                media.tags.add("${i.name} ${i.rank}%")
                                 media.tagsIsSpoiler.add(i.isMediaSpoiler == true)
                             }
                         }

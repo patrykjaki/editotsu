@@ -39,12 +39,21 @@ class SearchHistoryAdapter(type: SearchType, private val searchClicked: (String)
     private fun MutableList<SearchHistory>?.sorted(): List<String>? =
         this?.sortedByDescending { it.time }?.map { it.search }
 
+    var onListChanged: (() -> Unit)? = null
+
+    override fun onCurrentListChanged(previousList: MutableList<String>, currentList: MutableList<String>) {
+        onListChanged?.invoke()
+    }
+
+    // the idle screen shows the latest few; older ones stay saved
+    private fun shown(): List<String>? = searchHistory?.sorted()?.take(6)
+
     init {
         searchHistoryLiveData =
             PrefManager.getLiveVal(historyType, mutableListOf<SearchHistory>()).asLiveClass()
         searchHistoryLiveData?.observeForever { data ->
             searchHistory = data.toMutableList()
-            submitList(searchHistory?.sorted())
+            submitList(shown())
         }
     }
 
@@ -53,7 +62,7 @@ class SearchHistoryAdapter(type: SearchType, private val searchClicked: (String)
             list.removeAll { it.search == item }
         }
         PrefManager.setVal(historyType, searchHistory)
-        submitList(searchHistory?.sorted())
+        submitList(shown())
     }
 
     fun add(item: String) {
@@ -66,14 +75,14 @@ class SearchHistoryAdapter(type: SearchType, private val searchClicked: (String)
                 searchHistory?.sorted()?.lastIndex ?: 0
             )
         }
-        submitList(searchHistory?.sorted())
+        submitList(shown())
         PrefManager.setVal(historyType, searchHistory)
     }
 
     fun clearHistory() {
         searchHistory?.clear()
         PrefManager.setVal(historyType, searchHistory)
-        submitList(searchHistory?.sorted())
+        submitList(shown())
     }
 
     override fun onCreateViewHolder(

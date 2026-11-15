@@ -1,97 +1,109 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- One match: the matched frame with the episode tab and the match badge (the cover card's score badge), then the title. -->
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/itemContainer"
+    style="@style/Widget.Material3.CardView.Filled"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="8dp"
-    app:cardBackgroundColor="?attr/colorSurface"
+    android:layout_marginBottom="12dp"
+    app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
     app:cardCornerRadius="16dp">
 
-
     <LinearLayout
-        android:layout_width="fill_parent"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
         android:orientation="vertical">
 
-        <FrameLayout
+        <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
             <ImageView
                 android:id="@+id/itemImage"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:adjustViewBounds="true"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
                 android:background="@color/bg_black"
-                android:scaleType="fitCenter"
-                tools:ignore="ContentDescription"
+                android:importantForAccessibility="no"
+                android:scaleType="centerCrop"
+                app:layout_constraintDimensionRatio="16:9"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
                 tools:srcCompat="@tools:sample/backgrounds/scenic" />
 
-        </FrameLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:id="@+id/itemCompactTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:fontFamily="@font/poppins_bold"
-                android:maxLines="3"
-                android:textSize="14sp"
-                android:transitionName="mediaTitle"
-                tools:ignore="SpUsage"
-                tools:text="@string/slogan" />
+            <View
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:background="@drawable/linear_gradient_black"
+                app:layout_constraintBottom_toBottomOf="@id/itemImage"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
 
             <TextView
-                android:id="@+id/episode_number"
+                android:id="@+id/episodeNumber"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:alpha="0.66"
-                android:text="@string/eps"
-                android:textSize="14sp"
-                tools:ignore="SpUsage" />
+                android:background="@drawable/image_search_episode_tab"
+                android:fontFamily="@font/poppins_bold"
+                android:minWidth="44dp"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="2dp"
+                android:textColor="?android:colorBackground"
+                android:textSize="20sp"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                tools:text="12" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="horizontal">
+            <TextView
+                android:id="@+id/timeStamp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/poppins_bold"
+                android:shadowColor="#80000000"
+                android:shadowRadius="4"
+                android:textColor="@android:color/white"
+                android:textSize="12sp"
+                app:layout_constraintBottom_toBottomOf="@id/itemImage"
+                app:layout_constraintStart_toStartOf="parent"
+                tools:text="12:34" />
 
-                <TextView
-                    android:id="@+id/itemTotal"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:alpha="0.66"
-                    android:text="@string/eps"
-                    android:textSize="14sp"
-                    tools:ignore="SpUsage" />
+            <TextView
+                android:id="@+id/itemTotal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/item_score"
+                android:fontFamily="@font/poppins_bold"
+                android:paddingStart="12dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="2dp"
+                android:textColor="?attr/colorOnPrimary"
+                android:textSize="12sp"
+                app:layout_constraintBottom_toBottomOf="@id/itemImage"
+                app:layout_constraintEnd_toEndOf="parent"
+                tools:text="94%" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
-                <TextView
-                    android:id="@+id/timeStamp"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="bottom|start"
-                    android:layout_marginStart="8dp"
-                    android:layout_marginEnd="8dp"
-                    android:layout_marginBottom="4dp"
-                    android:layout_weight="1"
-                    android:alpha="0.66"
-                    android:text="@string/eps"
-                    android:textSize="14sp"
-                    tools:ignore="SpUsage" />
-
-            </LinearLayout>
-
-        </LinearLayout>
-
+        <TextView
+            android:id="@+id/itemCompactTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="@font/poppins_bold"
+            android:maxLines="2"
+            android:paddingStart="16dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="16sp"
+            tools:text="@string/slogan" />
     </LinearLayout>
-
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>

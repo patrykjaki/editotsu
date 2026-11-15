@@ -1,22 +1,14 @@
 package ani.dantotsu.media
 
 import android.annotation.SuppressLint
-import android.graphics.drawable.Drawable
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.content.res.AppCompatResources
-import androidx.recyclerview.widget.LinearLayoutManager
-import ani.dantotsu.App.Companion.context
-import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.AnilistSearch.SearchType
-import ani.dantotsu.connections.anilist.AnilistSearch.SearchType.Companion.toAnilistString
 import ani.dantotsu.connections.anilist.SearchResults
-import ani.dantotsu.settings.saving.PrefManager
-import ani.dantotsu.settings.saving.PrefName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -29,12 +21,10 @@ class SupportingSearchAdapter(private val activity: SearchActivity, private val 
     override fun onBindViewHolder(holder: SearchHeaderViewHolder, position: Int) {
         binding = holder.binding
 
-        searchHistoryAdapter = SearchHistoryAdapter(type) {
+        bindChrome(activity, type) {
             binding.searchBarText.setText(it)
             binding.searchBarText.setSelection(it.length)
         }
-        binding.searchHistoryList.layoutManager = LinearLayoutManager(binding.root.context)
-        binding.searchHistoryList.adapter = searchHistoryAdapter
 
         val imm: InputMethodManager =
             activity.getSystemService(AppCompatActivity.INPUT_METHOD_SERVICE) as InputMethodManager
@@ -46,18 +36,9 @@ class SupportingSearchAdapter(private val activity: SearchActivity, private val 
         binding.searchByImage.visibility = View.GONE
         binding.searchResultGrid.visibility = View.GONE
         binding.searchResultList.visibility = View.GONE
-        binding.searchFilter.visibility = View.GONE
-        binding.searchAdultCheck.visibility = View.GONE
-        binding.searchList.visibility = View.GONE
-        binding.searchChipRecycler.visibility = View.GONE
-
-        binding.searchBar.hint = activity.searchType.toAnilistString()
-        if (PrefManager.getVal(PrefName.Incognito)) {
-            val startIconDrawableRes = R.drawable.ic_incognito_24
-            val startIconDrawable: Drawable? =
-                context?.let { AppCompatResources.getDrawable(it, startIconDrawableRes) }
-            binding.searchBar.startIconDrawable = startIconDrawable
-        }
+        bindChips(activity, type, null) {}
+        binding.searchGenreHeader.visibility = View.GONE
+        binding.searchGenreList.visibility = View.GONE
 
         binding.searchBarText.removeTextChangedListener(textWatcher)
         when (type) {
@@ -80,11 +61,6 @@ class SupportingSearchAdapter(private val activity: SearchActivity, private val 
             else -> throw IllegalArgumentException("Invalid search type")
         }
 
-        binding.clearHistory.setOnClickListener {
-            it.startAnimation(fadeOutAnimation())
-            it.visibility = View.GONE
-            searchHistoryAdapter.clearHistory()
-        }
         updateClearHistoryVisibility()
         fun searchTitle() {
             val searchText = binding.searchBarText.text.toString().takeIf { it.isNotEmpty() }
@@ -135,7 +111,6 @@ class SupportingSearchAdapter(private val activity: SearchActivity, private val 
                 else -> false
             }
         }
-        binding.searchBar.setEndIconOnClickListener { searchTitle() }
 
         search = Runnable { searchTitle() }
         requestFocus = Runnable { binding.searchBarText.requestFocus() }

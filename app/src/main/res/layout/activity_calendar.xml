@@ -32,13 +32,10 @@
 
             <com.google.android.material.chip.Chip
                 android:id="@+id/calendarFilter"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:textAppearance="@style/TextAppearance.Editotsu.Chip"
+                style="@style/Widget.Editotsu.Chip.Dropdown"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/calendar_everything"
-                app:closeIcon="@drawable/ic_round_arrow_drop_down_24"
-                app:closeIconVisible="true" />
+                android:text="@string/calendar_everything" />
         </LinearLayout>
 
         <LinearLayout

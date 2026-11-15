@@ -2,65 +2,61 @@ package ani.dantotsu.media
 
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.graphics.drawable.Drawable
 import android.text.Editable
 import android.text.TextWatcher
-import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.widget.PopupMenu
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.content.res.AppCompatResources
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.RecyclerView.HORIZONTAL
-import ani.dantotsu.App.Companion.context
-import ani.dantotsu.R
+import androidx.recyclerview.widget.GridLayoutManager
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.AnilistSearch.SearchType
-import ani.dantotsu.databinding.ItemChipBinding
 import ani.dantotsu.openLinkInBrowser
 import ani.dantotsu.others.imagesearch.ImageSearchActivity
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
-import com.google.android.material.checkbox.MaterialCheckBox.STATE_CHECKED
-import com.google.android.material.checkbox.MaterialCheckBox.STATE_INDETERMINATE
-import com.google.android.material.checkbox.MaterialCheckBox.STATE_UNCHECKED
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/** Header for anime and manga search: the bar, the filter chips, and the idle screen (recents + genre tiles). */
 class SearchAdapter(private val activity: SearchActivity, private val type: SearchType) :
     HeaderInterface() {
 
-    private fun updateFilterTextViewDrawable() {
-        val filterDrawable = when (activity.aniMangaResult.sort) {
-            Anilist.sortBy[0] -> R.drawable.ic_round_area_chart_24
-            Anilist.sortBy[1] -> R.drawable.ic_round_filter_peak_24
-            Anilist.sortBy[2] -> R.drawable.ic_round_star_graph_24
-            Anilist.sortBy[3] -> R.drawable.ic_round_new_releases_24
-            Anilist.sortBy[4] -> R.drawable.ic_round_filter_list_24
-            Anilist.sortBy[5] -> R.drawable.ic_round_filter_list_24_reverse
-            Anilist.sortBy[6] -> R.drawable.ic_round_assist_walker_24
-            else -> R.drawable.ic_round_filter_alt_24
+    private var chips: SearchFilterChips? = null
+
+    /** The idle screen's artwork tiles: one per genre, banner from a trending show in it. */
+    private fun bindGenres(onPick: (String) -> Unit) {
+        val adapter = GenreAdapter(activity.aniMangaResult.type, big = true, onPick = onPick)
+        val width = activity.resources.displayMetrics.run { widthPixels / density }
+        binding.searchGenreList.layoutManager =
+            GridLayoutManager(activity, (width / 180f).toInt().coerceAtLeast(2))
+        binding.searchGenreList.adapter = adapter
+        // the adult genre only for accounts that show adult content
+        fun shown(genre: String) = Anilist.adult || !genre.equals("hentai", true)
+        activity.loadGenres { if (shown(it.first)) adapter.addGenre(it) }?.let { known ->
+            val keep = known.filterKeys(::shown)
+            adapter.genres = keep.toMutableMap()
+            adapter.pos = ArrayList(keep.keys)
         }
-        binding.searchFilter.setIconResource(filterDrawable)
+    }
+
+    /** Any filter set besides the sort order: then an empty query still lists results. */
+    private fun filtered() = activity.aniMangaResult.run {
+        !genres.isNullOrEmpty() || !tags.isNullOrEmpty() || !excludedGenres.isNullOrEmpty() ||
+            !excludedTags.isNullOrEmpty() || format != null || status != null || source != null ||
+            countryOfOrigin != null || season != null || seasonYear != null || startYear != null || onList != null
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onBindViewHolder(holder: SearchHeaderViewHolder, position: Int) {
         binding = holder.binding
 
-        searchHistoryAdapter = SearchHistoryAdapter(type) {
+        bindChrome(activity, type) {
             binding.searchBarText.setText(it)
             binding.searchBarText.setSelection(it.length)
         }
-        binding.searchHistoryList.layoutManager = LinearLayoutManager(binding.root.context)
-        binding.searchHistoryList.adapter = searchHistoryAdapter
 
         val imm: InputMethodManager =
             activity.getSystemService(AppCompatActivity.INPUT_METHOD_SERVICE) as InputMethodManager
@@ -81,116 +77,31 @@ class SearchAdapter(private val activity: SearchActivity, private val type: Sear
             }
         }
 
-        binding.searchBar.hint = activity.aniMangaResult.type
-        if (PrefManager.getVal(PrefName.Incognito)) {
-            val startIconDrawableRes = R.drawable.ic_incognito_24
-            val startIconDrawable: Drawable? =
-                context?.let { AppCompatResources.getDrawable(it, startIconDrawableRes) }
-            binding.searchBar.startIconDrawable = startIconDrawable
-        }
-
-        var adult = activity.aniMangaResult.isAdult
-        var listOnly = activity.aniMangaResult.onList
-
         binding.searchBarText.removeTextChangedListener(textWatcher)
         binding.searchBarText.setText(activity.aniMangaResult.search)
 
-        binding.searchAdultCheck.isChecked = adult
-        binding.searchList.isChecked = listOnly == true
-
-        binding.searchChipRecycler.adapter = SearchChipAdapter(activity, this).also {
-            activity.updateChips = { it.update() }
-        }
-
-        binding.searchChipRecycler.layoutManager =
-            LinearLayoutManager(binding.root.context, HORIZONTAL, false)
-
-        binding.searchFilter.setOnClickListener {
-            SearchFilterBottomDialog.newInstance().show(activity.supportFragmentManager, "dialog")
-        }
-        binding.searchFilter.setOnLongClickListener {
-            val popupMenu = PopupMenu(activity, binding.searchFilter)
-            popupMenu.menuInflater.inflate(R.menu.sortby_filter_menu, popupMenu.menu)
-            popupMenu.setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    R.id.sort_by_score -> {
-                        activity.aniMangaResult.sort = Anilist.sortBy[0]
-                        activity.updateChips.invoke()
-                        activity.search()
-                        updateFilterTextViewDrawable()
-                    }
-
-                    R.id.sort_by_popular -> {
-                        activity.aniMangaResult.sort = Anilist.sortBy[1]
-                        activity.updateChips.invoke()
-                        activity.search()
-                        updateFilterTextViewDrawable()
-                    }
-
-                    R.id.sort_by_trending -> {
-                        activity.aniMangaResult.sort = Anilist.sortBy[2]
-                        activity.updateChips.invoke()
-                        activity.search()
-                        updateFilterTextViewDrawable()
-                    }
-
-                    R.id.sort_by_recent -> {
-                        activity.aniMangaResult.sort = Anilist.sortBy[3]
-                        activity.updateChips.invoke()
-                        activity.search()
-                        updateFilterTextViewDrawable()
-                    }
-
-                    R.id.sort_by_a_z -> {
-                        activity.aniMangaResult.sort = Anilist.sortBy[4]
-                        activity.updateChips.invoke()
-                        activity.search()
-                        updateFilterTextViewDrawable()
-                    }
-
-                    R.id.sort_by_z_a -> {
-                        activity.aniMangaResult.sort = Anilist.sortBy[5]
-                        activity.updateChips.invoke()
-                        activity.search()
-                        updateFilterTextViewDrawable()
-                    }
-
-                    R.id.sort_by_pure_pain -> {
-                        activity.aniMangaResult.sort = Anilist.sortBy[6]
-                        activity.updateChips.invoke()
-                        activity.search()
-                        updateFilterTextViewDrawable()
-                    }
-                }
-                true
+        fun searchTitle() {
+            activity.aniMangaResult.search =
+                binding.searchBarText.text.toString().takeIf { it.isNotEmpty() }
+            if (binding.searchBarText.text.toString().equals("hentai", true)) {
+                openLinkInBrowser("https://www.youtube.com/watch?v=GgJrEOo0QoA")
             }
-            popupMenu.show()
-            true
+            activity.search()
         }
+
+        chips = bindChips(activity, type, activity.aniMangaResult) {
+            chips?.build()
+            searchTitle()
+        }
+        activity.updateChips = { chips?.build() }
+
         if (activity.aniMangaResult.type != "ANIME") {
             binding.searchByImage.visibility = View.GONE
         }
         binding.searchByImage.setOnClickListener {
             activity.startActivity(Intent(activity, ImageSearchActivity::class.java))
         }
-        binding.clearHistory.setOnClickListener {
-            it.startAnimation(fadeOutAnimation())
-            it.visibility = View.GONE
-            searchHistoryAdapter.clearHistory()
-        }
         updateClearHistoryVisibility()
-        fun searchTitle() {
-            activity.aniMangaResult.apply {
-                search =
-                    if (binding.searchBarText.text.toString() != "") binding.searchBarText.text.toString() else null
-                onList = listOnly
-                isAdult = adult
-            }
-            if (binding.searchBarText.text.toString().equals("hentai", true)) {
-                openLinkInBrowser("https://www.youtube.com/watch?v=GgJrEOo0QoA")
-            }
-            activity.search()
-        }
 
         textWatcher = object : TextWatcher {
             override fun afterTextChanged(s: Editable) {}
@@ -198,7 +109,8 @@ class SearchAdapter(private val activity: SearchActivity, private val type: Sear
             override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {}
 
             override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {
-                if (s.toString().isBlank()) {
+                if (s.toString().isBlank() && !filtered()) {
+                    activity.aniMangaResult.search = null
                     activity.emptyMediaAdapter()
                     CoroutineScope(Dispatchers.IO).launch {
                         delay(200)
@@ -226,7 +138,6 @@ class SearchAdapter(private val activity: SearchActivity, private val type: Sear
                 else -> false
             }
         }
-        binding.searchBar.setEndIconOnClickListener { searchTitle() }
 
         binding.searchResultGrid.setOnClickListener {
             it.alpha = 1f
@@ -243,82 +154,14 @@ class SearchAdapter(private val activity: SearchActivity, private val type: Sear
             activity.recycler()
         }
 
-        if (Anilist.adult) {
-            binding.searchAdultCheck.visibility = View.VISIBLE
-            binding.searchAdultCheck.isChecked = adult
-            binding.searchAdultCheck.setOnCheckedChangeListener { _, b ->
-                adult = b
-                searchTitle()
-            }
-        } else binding.searchAdultCheck.visibility = View.GONE
-        binding.searchList.apply {
-            if (Anilist.userid != null) {
-                visibility = View.VISIBLE
-                checkedState = when (listOnly) {
-                    null -> STATE_UNCHECKED
-                    true -> STATE_CHECKED
-                    false -> STATE_INDETERMINATE
-                }
-
-                addOnCheckedStateChangedListener { _, state ->
-                    listOnly = when (state) {
-                        STATE_CHECKED -> true
-                        STATE_INDETERMINATE -> false
-                        STATE_UNCHECKED -> null
-                        else -> null
-                    }
-                }
-
-                setOnTouchListener { _, event ->
-                    (event.actionMasked == MotionEvent.ACTION_DOWN).also {
-                        if (it) checkedState = (checkedState + 1) % 3
-                        searchTitle()
-                    }
-                }
-            } else visibility = View.GONE
+        bindGenres { genre ->
+            activity.aniMangaResult.genres = mutableListOf(genre)
+            activity.aniMangaResult.sort = Anilist.sortBy[2]
+            chips?.build()
+            searchTitle()
         }
 
         search = Runnable { searchTitle() }
         requestFocus = Runnable { binding.searchBarText.requestFocus() }
-    }
-
-    class SearchChipAdapter(
-        val activity: SearchActivity,
-        private val searchAdapter: SearchAdapter
-    ) :
-        RecyclerView.Adapter<SearchChipAdapter.SearchChipViewHolder>() {
-        private var chips = activity.aniMangaResult.toChipList()
-
-        inner class SearchChipViewHolder(val binding: ItemChipBinding) :
-            RecyclerView.ViewHolder(binding.root)
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SearchChipViewHolder {
-            val binding =
-                ItemChipBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-            return SearchChipViewHolder(binding)
-        }
-
-
-        override fun onBindViewHolder(holder: SearchChipViewHolder, position: Int) {
-            val chip = chips[position]
-            holder.binding.root.apply {
-                text = chip.text.replace("_", " ")
-                setOnClickListener {
-                    activity.aniMangaResult.removeChip(chip)
-                    update()
-                    activity.search()
-                    searchAdapter.updateFilterTextViewDrawable()
-                }
-            }
-        }
-
-        @SuppressLint("NotifyDataSetChanged")
-        fun update() {
-            chips = activity.aniMangaResult.toChipList()
-            notifyDataSetChanged()
-            searchAdapter.updateFilterTextViewDrawable()
-        }
-
-        override fun getItemCount(): Int = chips.size
     }
 }

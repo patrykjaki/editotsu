@@ -108,16 +108,15 @@
                         tools:text="MyAnimeList" />
                 </LinearLayout>
 
-                <ImageView
+                <!-- M3 filled tonal icon button: a plain swap glyph, the container is the button -->
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/listSyncSwap"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:background="@drawable/icon_button_ripple"
+                    style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
                     android:contentDescription="@string/list_sync_swap"
-                    android:padding="12dp"
                     android:tooltipText="@string/list_sync_swap"
-                    app:srcCompat="@drawable/swap_horizontal_circle_24"
-                    app:tint="?attr/colorOnSurfaceVariant" />
+                    app:icon="@drawable/ic_round_swap_horiz_24" />
             </LinearLayout>
 
             <TextView

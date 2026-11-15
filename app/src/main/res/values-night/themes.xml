@@ -34,6 +34,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_dark_1_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_dark_1_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_dark_1_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#0F1112</item>
+        <item name="colorSurfaceContainerLow">#202426</item>
+        <item name="colorSurfaceContainer">#23272A</item>
+        <item name="colorSurfaceContainerHigh">#282D31</item>
+        <item name="colorSurfaceContainerHighest">#2D3337</item>
     </style>
 
     <style name="Theme.Dantotsu.Green" parent="Theme.Base">
@@ -63,6 +68,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_dark_2_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_dark_2_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_dark_2_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#10110E</item>
+        <item name="colorSurfaceContainerLow">#22241E</item>
+        <item name="colorSurfaceContainer">#262822</item>
+        <item name="colorSurfaceContainerHigh">#2B2D26</item>
+        <item name="colorSurfaceContainerHighest">#30332B</item>
     </style>
 
     <style name="Theme.Dantotsu.Purple" parent="Theme.Base">
@@ -92,6 +102,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_dark_3_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_dark_3_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_dark_3_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#111012</item>
+        <item name="colorSurfaceContainerLow">#252226</item>
+        <item name="colorSurfaceContainer">#29262A</item>
+        <item name="colorSurfaceContainerHigh">#2F2B31</item>
+        <item name="colorSurfaceContainerHighest">#353137</item>
     </style>
 
     <style name="Theme.Dantotsu.Pink" parent="Theme.Base">
@@ -121,6 +136,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_dark_4_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_dark_4_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_dark_4_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#131011</item>
+        <item name="colorSurfaceContainerLow">#272124</item>
+        <item name="colorSurfaceContainer">#2C2528</item>
+        <item name="colorSurfaceContainerHigh">#322A2E</item>
+        <item name="colorSurfaceContainerHighest">#383033</item>
     </style>
 
     <style name="Theme.Dantotsu.Saikou" parent="Theme.Base">
@@ -150,6 +170,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_dark_5_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_dark_5_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_dark_5_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#111013</item>
+        <item name="colorSurfaceContainerLow">#252127</item>
+        <item name="colorSurfaceContainer">#29242B</item>
+        <item name="colorSurfaceContainerHigh">#2F2930</item>
+        <item name="colorSurfaceContainerHighest">#362D35</item>
     </style>
 
     <style name="Theme.Dantotsu.Red" parent="Theme.Base">
@@ -179,6 +204,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_dark_6_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_dark_6_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_dark_6_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#13100F</item>
+        <item name="colorSurfaceContainerLow">#282120</item>
+        <item name="colorSurfaceContainer">#2D2524</item>
+        <item name="colorSurfaceContainerHigh">#332A29</item>
+        <item name="colorSurfaceContainerHighest">#39302E</item>
     </style>
 
     <style name="Theme.Dantotsu.Lavender" parent="Theme.Base">
@@ -208,6 +238,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_dark_7_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_dark_7_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_dark_7_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#111012</item>
+        <item name="colorSurfaceContainerLow">#242226</item>
+        <item name="colorSurfaceContainer">#28262B</item>
+        <item name="colorSurfaceContainerHigh">#2D2C31</item>
+        <item name="colorSurfaceContainerHighest">#333137</item>
     </style>
 
     <style name="Theme.Dantotsu.Ocean" parent="Theme.Base">
@@ -237,6 +272,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_dark_8_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_dark_8_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_dark_8_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#0F1111</item>
+        <item name="colorSurfaceContainerLow">#1F2424</item>
+        <item name="colorSurfaceContainer">#222828</item>
+        <item name="colorSurfaceContainerHigh">#262E2D</item>
+        <item name="colorSurfaceContainerHighest">#2B3433</item>
     </style>
 
     <style name="Theme.Dantotsu.Oriax" parent="Theme.Base">
@@ -266,6 +306,11 @@
         <item name="colorOnSurfaceInverse">@color/md_theme_dark_9_inverseOnSurface</item>
         <item name="colorSurfaceInverse">@color/md_theme_dark_9_inverseSurface</item>
         <item name="colorPrimaryInverse">@color/md_theme_dark_9_inversePrimary</item>
+        <item name="colorSurfaceContainerLowest">#13100F</item>
+        <item name="colorSurfaceContainerLow">#28211F</item>
+        <item name="colorSurfaceContainer">#2D2522</item>
+        <item name="colorSurfaceContainerHigh">#332A26</item>
+        <item name="colorSurfaceContainerHighest">#39302A</item>
     </style>
 
     <style name="Theme.Dantotsu.Monochrome" parent="Theme.Base">
@@ -275,8 +320,8 @@
         <item name="colorOnPrimaryContainer">@color/bg_black</item>
         <item name="colorSecondary">@color/bg_white</item>
         <item name="colorOnSecondary">@color/bg_black</item>
-        <item name="colorSecondaryContainer">@color/bg_white</item>
-        <item name="colorOnSecondaryContainer">@color/bg_black</item>
+        <item name="colorSecondaryContainer">#3B3B3B</item>
+        <item name="colorOnSecondaryContainer">@color/bg_white</item>
         <item name="colorTertiary">@color/bg_white</item>
         <item name="colorOnTertiary">@color/bg_black</item>
         <item name="colorTertiaryContainer">@color/bg_white</item>
@@ -289,72 +334,127 @@
         <item name="colorOnBackground">@color/bg_white</item>
         <item name="colorSurface">@color/bg_black</item>
         <item name="colorOnSurface">@color/bg_white</item>
-        <item name="colorSurfaceVariant">@color/bg_black</item>
+        <item name="colorSurfaceVariant">#262626</item>
         <item name="colorOnSurfaceVariant">@color/bg_white</item>
         <item name="colorOutline">@color/bg_white</item>
         <item name="colorOnSurfaceInverse">@color/bg_white</item>
         <item name="colorSurfaceInverse">@color/bg_black</item>
         <item name="colorPrimaryInverse">@color/bg_black</item>
+        <item name="colorSurfaceContainerLowest">#000000</item>
+        <item name="colorSurfaceContainerLow">#0E0E0E</item>
+        <item name="colorSurfaceContainer">#151515</item>
+        <item name="colorSurfaceContainerHigh">#1F1F1F</item>
+        <item name="colorSurfaceContainerHighest">#282828</item>
     </style>
 
     <style name="Theme.Dantotsu.BlueOLED" parent="Theme.Dantotsu.Blue">
         <item name="android:colorBackground">@color/darkest_Black</item>
         <item name="colorSurface">@color/darkest_Black</item>
         <item name="colorSurfaceVariant">@color/nav_bg</item>
+        <item name="colorSurfaceContainerLowest">#000000</item>
+        <item name="colorSurfaceContainerLow">#0C0D0E</item>
+        <item name="colorSurfaceContainer">#111415</item>
+        <item name="colorSurfaceContainerHigh">#191C1F</item>
+        <item name="colorSurfaceContainerHighest">#212528</item>
     </style>
 
     <style name="Theme.Dantotsu.GreenOLED" parent="Theme.Dantotsu.Green">
         <item name="android:colorBackground">@color/darkest_Black</item>
         <item name="colorSurface">@color/darkest_Black</item>
         <item name="colorSurfaceVariant">@color/nav_bg</item>
+        <item name="colorSurfaceContainerLowest">#000000</item>
+        <item name="colorSurfaceContainerLow">#0C0D0B</item>
+        <item name="colorSurfaceContainer">#131410</item>
+        <item name="colorSurfaceContainerHigh">#1B1D18</item>
+        <item name="colorSurfaceContainerHighest">#23261F</item>
     </style>
 
     <style name="Theme.Dantotsu.PurpleOLED" parent="Theme.Dantotsu.Purple">
         <item name="android:colorBackground">@color/darkest_Black</item>
         <item name="colorSurface">@color/darkest_Black</item>
         <item name="colorSurfaceVariant">@color/nav_bg</item>
+        <item name="colorSurfaceContainerLowest">#000000</item>
+        <item name="colorSurfaceContainerLow">#0E0C0E</item>
+        <item name="colorSurfaceContainer">#151315</item>
+        <item name="colorSurfaceContainerHigh">#1E1B1F</item>
+        <item name="colorSurfaceContainerHighest">#272328</item>
     </style>
 
     <style name="Theme.Dantotsu.PinkOLED" parent="Theme.Dantotsu.Pink">
         <item name="android:colorBackground">@color/darkest_Black</item>
         <item name="colorSurface">@color/darkest_Black</item>
         <item name="colorSurfaceVariant">@color/nav_bg</item>
+        <item name="colorSurfaceContainerLowest">#000000</item>
+        <item name="colorSurfaceContainerLow">#0F0C0D</item>
+        <item name="colorSurfaceContainer">#161314</item>
+        <item name="colorSurfaceContainerHigh">#1F1B1D</item>
+        <item name="colorSurfaceContainerHighest">#292326</item>
     </style>
 
     <style name="Theme.Dantotsu.MonochromeOLED" parent="Theme.Dantotsu.Monochrome">
         <item name="android:colorBackground">@color/darkest_Black</item>
         <item name="colorSurface">@color/darkest_Black</item>
         <item name="colorSurfaceVariant">@color/nav_bg</item>
+        <item name="colorSurfaceContainerLowest">#000000</item>
+        <item name="colorSurfaceContainerLow">#0E0E0E</item>
+        <item name="colorSurfaceContainer">#151515</item>
+        <item name="colorSurfaceContainerHigh">#1F1F1F</item>
+        <item name="colorSurfaceContainerHighest">#282828</item>
     </style>
 
     <style name="Theme.Dantotsu.RedOLED" parent="Theme.Dantotsu.Red">
         <item name="android:colorBackground">@color/darkest_Black</item>
         <item name="colorSurface">@color/darkest_Black</item>
         <item name="colorSurfaceVariant">@color/nav_bg</item>
+        <item name="colorSurfaceContainerLowest">#000000</item>
+        <item name="colorSurfaceContainerLow">#0F0D0C</item>
+        <item name="colorSurfaceContainer">#161312</item>
+        <item name="colorSurfaceContainerHigh">#201B1B</item>
+        <item name="colorSurfaceContainerHighest">#292423</item>
     </style>
 
     <style name="Theme.Dantotsu.OriaxOLED" parent="Theme.Dantotsu.Oriax">
         <item name="android:colorBackground">@color/darkest_Black</item>
         <item name="colorSurface">@color/darkest_Black</item>
         <item name="colorSurfaceVariant">@color/nav_bg</item>
+        <item name="colorSurfaceContainerLowest">#000000</item>
+        <item name="colorSurfaceContainerLow">#0F0C0A</item>
+        <item name="colorSurfaceContainer">#16130F</item>
+        <item name="colorSurfaceContainerHigh">#201B16</item>
+        <item name="colorSurfaceContainerHighest">#29231D</item>
     </style>
 
     <style name="Theme.Dantotsu.LavenderOLED" parent="Theme.Dantotsu.Lavender">
         <item name="android:colorBackground">@color/darkest_Black</item>
         <item name="colorSurface">@color/darkest_Black</item>
         <item name="colorSurfaceVariant">@color/nav_bg</item>
+        <item name="colorSurfaceContainerLowest">#000000</item>
+        <item name="colorSurfaceContainerLow">#0D0D0E</item>
+        <item name="colorSurfaceContainer">#141316</item>
+        <item name="colorSurfaceContainerHigh">#1D1C1F</item>
+        <item name="colorSurfaceContainerHighest">#262429</item>
     </style>
 
     <style name="Theme.Dantotsu.SaikouOLED" parent="Theme.Dantotsu.Saikou">
         <item name="android:colorBackground">@color/darkest_Black</item>
         <item name="colorSurface">@color/darkest_Black</item>
         <item name="colorSurfaceVariant">@color/nav_bg</item>
+        <item name="colorSurfaceContainerLowest">#000000</item>
+        <item name="colorSurfaceContainerLow">#0F0B0C</item>
+        <item name="colorSurfaceContainer">#161013</item>
+        <item name="colorSurfaceContainerHigh">#1F171B</item>
+        <item name="colorSurfaceContainerHighest">#291E23</item>
     </style>
 
     <style name="Theme.Dantotsu.OceanOLED" parent="Theme.Dantotsu.Ocean">
         <item name="android:colorBackground">@color/darkest_Black</item>
         <item name="colorSurface">@color/darkest_Black</item>
         <item name="colorSurfaceVariant">@color/nav_bg</item>
+        <item name="colorSurfaceContainerLowest">#000000</item>
+        <item name="colorSurfaceContainerLow">#0A0D0D</item>
+        <item name="colorSurfaceContainer">#101414</item>
+        <item name="colorSurfaceContainerHigh">#161D1D</item>
+        <item name="colorSurfaceContainerHighest">#1D2625</item>
     </style>
 
 </resources>

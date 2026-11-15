@@ -39,6 +39,7 @@ class SearchActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySearchBinding
     private val scope = lifecycleScope
     val model: AnilistSearch by viewModels()
+    private val genresModel: ani.dantotsu.connections.anilist.GenresViewModel by viewModels()
 
     var style: Int = 0
     lateinit var searchType: SearchType
@@ -353,6 +354,19 @@ class SearchActivity : AppCompatActivity() {
         binding.searchRecyclerView.post { runInitialSearchActions(notSet) }
     }
 
+    /**
+     * Genre tiles for the idle screen. Returns what's already loaded; [onEach] gets the rest as they arrive.
+     * Thumbnails are cached for days, so after the first visit this is instant.
+     */
+    fun loadGenres(onEach: (Pair<String, String>) -> Unit): Map<String, String>? {
+        genresModel.genres?.let { return it }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val names = Anilist.genres ?: PrefManager.getVal<Set<String>>(PrefName.GenresList).sorted().let { ArrayList(it) }
+            genresModel.loadGenres(names) { pair -> runOnUiThread { onEach(pair) } }
+        }
+        return null
+    }
+
     fun emptyMediaAdapter() {
         searchJob?.cancel()
         loading = false
@@ -449,7 +463,8 @@ class SearchActivity : AppCompatActivity() {
                 model.searched = true
                 headerAdaptor.search?.run()
             }
-        } else {
+        } else if (!intent.getBooleanExtra("search", false)) {
+            // opened with a query already running (type switch, genre): leave the keyboard down
             headerAdaptor.requestFocus?.run()
         }
 

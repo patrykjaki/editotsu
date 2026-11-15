@@ -665,7 +665,7 @@ class AnimeDownloaderService : Service() {
                     AnimeServiceDataSingleton.progress[task.getTaskName()] = p
                     builder.setProgress(100, p, false)
                     builder.setContentText(
-                        "${getTaskName(task.title, task.episode)} · $p%"
+                        "${getTaskName(task.title, task.episode)} ($p%)"
                     )
                     val sessionId = ffTask
                     val addonDownloaded =

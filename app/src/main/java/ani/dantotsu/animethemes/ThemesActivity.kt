@@ -183,8 +183,18 @@ class ThemesActivity : AppCompatActivity() {
             b.themesStatus.isVisible = status != null
             b.themesStatus.text = status
             b.themesEmpty.isVisible = favourites.isEmpty()
+            // the count trails the heading in the quieter colour, not glued on with a dot
             b.themesFavouritesLabel.text = if (favourites.isEmpty()) getString(R.string.themes_favourites)
-            else "${getString(R.string.themes_favourites)} · ${favourites.size}"
+            else getString(R.string.themes_favourites).let { name ->
+                android.text.SpannableString("$name  ${favourites.size}").apply {
+                    setSpan(
+                        android.text.style.ForegroundColorSpan(
+                            com.google.android.material.color.MaterialColors.getColor(b.themesFavouritesLabel, com.google.android.material.R.attr.colorOnSurfaceVariant)
+                        ),
+                        name.length, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                }
+            }
         }
     }
 

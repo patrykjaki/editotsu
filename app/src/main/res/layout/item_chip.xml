@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Info and page chips (synonyms, tags, rankings, links, episode ranges): 8dp corners, bold, outline in the theme colour. -->
 <com.google.android.material.chip.Chip xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="wrap_content"
@@ -8,9 +9,9 @@
     android:layout_marginEnd="4dp"
     android:layout_marginBottom="-4dp"
     android:elegantTextHeight="true"
-    android:textAppearance="@style/Suffix"
-    android:textSize="14sp"
+    android:textAppearance="@style/TextAppearance.Editotsu.Chip.Bold"
+    android:textColor="?attr/colorOnSurface"
     app:chipBackgroundColor="@color/chip_background_color"
-    app:chipStrokeColor="?attr/colorPrimaryContainer">
-
-</com.google.android.material.chip.Chip>
+    app:chipCornerRadius="8dp"
+    app:chipStrokeColor="?attr/colorPrimaryContainer"
+    app:chipStrokeWidth="1.5dp" />

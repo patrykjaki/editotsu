@@ -107,7 +107,38 @@
 
     <!-- filter chips (calendar, watch order): M3 label size in the app's font -->
     <style name="TextAppearance.Editotsu.Chip" parent="TextAppearance.Material3.LabelLarge">
-        <item name="android:fontFamily">@font/poppins_family</item>
-        <item name="fontFamily">@font/poppins_family</item>
+        <!-- M3 label-large is medium weight; semi-bold is the nearest Poppins we ship -->
+        <item name="android:fontFamily">@font/poppins_semi_bold</item>
+        <item name="fontFamily">@font/poppins_semi_bold</item>
+    </style>
+
+    <!-- info chips on media pages (tags, synonyms, links) keep the bold saikou weight -->
+    <style name="TextAppearance.Editotsu.Chip.Bold">
+        <item name="android:fontFamily">@font/poppins_bold</item>
+        <item name="fontFamily">@font/poppins_bold</item>
+    </style>
+
+    <!--
+      Filter chip with Google's compose metrics (FilterChip): 8dp to the 18dp check, 8dp to the label,
+      16dp edges without icons. A dropdown's arrow (24dp) is drawn in the label (see DropdownChip.kt), so the whole chip is one touch target with one ripple.
+    -->
+    <style name="Widget.Editotsu.Chip.Filter" parent="Widget.Material3.Chip.Filter">
+        <item name="android:textAppearance">@style/TextAppearance.Editotsu.Chip</item>
+        <item name="checkedIcon">@drawable/ic_chip_check</item>
+        <item name="checkedIconTint">?attr/colorOnSecondaryContainer</item>
+        <item name="chipIconSize">18dp</item>
+        <item name="closeIconVisible">false</item>
+        <item name="chipStartPadding">8dp</item>
+        <item name="iconStartPadding">0dp</item>
+        <item name="iconEndPadding">0dp</item>
+        <item name="textStartPadding">8dp</item>
+        <item name="textEndPadding">8dp</item>
+        <item name="chipEndPadding">8dp</item>
+    </style>
+
+    <!-- a dropdown chip: the arrow in the label already carries the 8dp gap -->
+    <style name="Widget.Editotsu.Chip.Dropdown" parent="Widget.Editotsu.Chip.Filter">
+        <item name="textEndPadding">0dp</item>
+        <item name="chipEndPadding">5dp</item>
     </style>
 </resources>

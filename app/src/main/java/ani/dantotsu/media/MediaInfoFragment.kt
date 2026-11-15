@@ -702,7 +702,17 @@ class MediaInfoFragment : Fragment() {
                                 chip.isChipIconVisible = true
                                 chip.alpha = 0.75f
                             } else {
-                                chip.text = media.tags[position]
+                                // the name reads first; the relevance % is quieter
+                                val tag = media.tags[position]
+                                val cut = tag.lastIndexOf(' ')
+                                chip.text = if (cut > 0 && tag.endsWith("%")) android.text.SpannableString(tag).apply {
+                                    setSpan(
+                                        android.text.style.ForegroundColorSpan(
+                                            com.google.android.material.color.MaterialColors.getColor(chip, com.google.android.material.R.attr.colorOnSurfaceVariant),
+                                        ),
+                                        cut + 1, tag.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+                                    )
+                                } else tag
                                 chip.isChipIconVisible = false
                                 chip.alpha = 1.0f
                             }
@@ -727,7 +737,7 @@ class MediaInfoFragment : Fragment() {
                                     Intent(chip.context, SearchActivity::class.java)
                                         .putExtra("type", type)
                                         .putExtra("sortBy", Anilist.sortBy[2])
-                                        .putExtra("tag", media.tags[position].substringBefore(" :"))
+                                        .putExtra("tag", media.tags[position].substringBeforeLast(" "))
                                         .putExtra("search", true)
                                         .also {
                                             if (media.isAdult) {

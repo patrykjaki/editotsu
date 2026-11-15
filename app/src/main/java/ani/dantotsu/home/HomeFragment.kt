@@ -162,11 +162,19 @@ class HomeFragment : Fragment() {
                 "dialog"
             )
         }
-        binding.searchImageContainer.setSafeOnClickListener {
-            SearchBottomSheet.newInstance().show(
-                (it.context as androidx.appcompat.app.AppCompatActivity).supportFragmentManager,
-                "search"
-            )
+        // home searches everything, so ask what to search first (the same sheet as the search type chip)
+        binding.searchImageContainer.setSafeOnClickListener { view ->
+            val ctx = view.context
+            val types = listOf("ANIME", "MANGA", "CHARACTER", "STAFF", "STUDIO", "USER")
+            val names = listOf(R.string.anime, R.string.manga, R.string.characters, R.string.staff, R.string.studios, R.string.users)
+                .map { ani.dantotsu.settings.rows.ChoiceOption(ctx.getString(it)) }
+            ani.dantotsu.settings.rows.ChoiceSheet.single(ctx, ctx.getString(R.string.search_type), names, -1) { picked ->
+                ContextCompat.startActivity(
+                    ctx,
+                    Intent(ctx, ani.dantotsu.media.SearchActivity::class.java).putExtra("type", types[picked]),
+                    null
+                )
+            }
         }
         binding.homeUserAvatarContainer.setOnLongClickListener {
             it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)

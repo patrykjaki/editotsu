@@ -1,5 +1,6 @@
 package ani.dantotsu.media
 
+import ani.dantotsu.others.setDropdownText
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -183,10 +184,9 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
         val order = orders[selected]
         binding.orderChip.visibility = if (orders.size > 1) View.VISIBLE else View.GONE
         // like the calendar filter: the chip names the choice and is filled when it isn't the first order
-        binding.orderChip.text = order.name
+        binding.orderChip.setDropdownText(order.name)
         binding.orderChip.isChecked = selected != 0
         binding.orderChip.contentDescription = getString(R.string.watch_order_pick_desc, order.name)
-        binding.orderChip.setOnCloseIconClickListener { binding.orderChip.performClick() }
         binding.orderChip.setOnClickListener {
             binding.orderChip.isChecked = selected != 0 // the chip toggles itself on a tap
 
@@ -287,17 +287,10 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
             holder.binding.watchOrderLineBelow.visibility = if (position == rows.lastIndex) View.INVISIBLE else View.VISIBLE
 
             // the numbers carry the order, so a row says only where you are or that it is optional
+            // finished: a check leads the label line; a row with no other label says "Completed"
+            val finished = watchOrderCompleted(item.listStatus)
             if (item.isCurrent) {
-                // "You are here" keeps the accent; a finished state after it is muted like on the other rows
-                val here = context.getString(R.string.watch_order_here)
-                holder.binding.watchOrderRelation.text = if (watchOrderCompleted(item.listStatus)) {
-                    android.text.SpannableString("$here · ${context.getString(R.string.watch_order_completed)}").apply {
-                        setSpan(
-                            android.text.style.ForegroundColorSpan(context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)),
-                            here.length, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
-                    }
-                } else here
+                holder.binding.watchOrderRelation.text = context.getString(R.string.watch_order_here)
                 holder.binding.watchOrderRelation.visibility = View.VISIBLE
                 holder.binding.watchOrderChevron.visibility = View.INVISIBLE
                 holder.binding.watchOrderCard.setCardBackgroundColor(ColorUtils.setAlphaComponent(primary, 40))
@@ -307,12 +300,16 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
                         ?.let { context.getString(R.string.watch_order_coming, it) }
                         ?: context.getString(R.string.watch_order_coming_soon)
                 } else null
-                val completed = if (watchOrderCompleted(item.listStatus)) context.getString(R.string.watch_order_completed) else null
-                holder.binding.watchOrderRelation.text = listOfNotNull(
-                    rows[position].alternativeOf?.let { context.getString(R.string.watch_order_alternative, it) }
-                        ?: if (isOptional) context.getString(R.string.watch_order_optional) else null,
-                    completed ?: coming,
-                ).joinToString(" · ")
+                val role = rows[position].alternativeOf?.let { context.getString(R.string.watch_order_alternative, it) }
+                    ?: if (isOptional) context.getString(R.string.watch_order_optional) else null
+                val upcoming = coming.takeUnless { finished }
+                holder.binding.watchOrderRelation.text = when {
+                    role != null && upcoming != null -> context.getString(R.string.watch_order_role_coming, role, upcoming.replaceFirstChar { it.lowercase() })
+                    role != null -> role
+                    upcoming != null -> upcoming
+                    finished -> context.getString(R.string.watch_order_completed)
+                    else -> ""
+                }
                 holder.binding.watchOrderRelation.visibility =
                     if (holder.binding.watchOrderRelation.text.isNullOrEmpty()) View.GONE else View.VISIBLE
                 holder.binding.watchOrderChevron.visibility = View.VISIBLE
@@ -325,6 +322,8 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
                     context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
                 } else primary,
             )
+            // after the colour: the check takes the label's colour
+            watchOrderFinishedMark(holder.binding.watchOrderRelation, finished)
             // seen already: the row steps back, the order stays readable
             holder.binding.watchOrderContent.alpha =
                 if (!item.isCurrent && watchOrderCompleted(item.listStatus)) 0.5f else 1f
@@ -497,6 +496,24 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
 /** "12ep × 24min." -> 12; unknown or zero counts ("0ep × ? min.", "") -> null. */
 internal fun watchOrderEpisodeCount(raw: String): Int? =
     Regex("""^\s*(\d+)\s*ep""", RegexOption.IGNORE_CASE).find(raw)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }
+
+/** A small check leading the row's label when the entry is finished; read out as "completed". */
+private fun watchOrderFinishedMark(label: android.widget.TextView, finished: Boolean) {
+    val ctx = label.context
+    val density = ctx.resources.displayMetrics.density
+    // a filled badge, not a bare tick: it reads as a status mark at small sizes
+    val icon = if (finished) androidx.core.content.ContextCompat.getDrawable(ctx, R.drawable.ic_round_check_circle_24)?.mutate()?.apply {
+        val size = (14 * density).toInt()
+        setBounds(0, 0, size, size)
+        setTint(label.currentTextColor)
+    } else null
+    label.setCompoundDrawablesRelative(icon, null, null, null)
+    label.compoundDrawablePadding = (4 * density).toInt()
+    val completed = ctx.getString(R.string.watch_order_completed)
+    label.contentDescription = if (finished && label.text.toString() != completed) {
+        ctx.getString(R.string.watch_order_finished_cd, label.text)
+    } else null
+}
 
 /** One line: format, the year or years it aired ("Apr 12 – Jun 28, 2023" -> "2023"), episode count. */
 internal fun watchOrderMeta(format: String, airDate: String, episodes: String?): String =

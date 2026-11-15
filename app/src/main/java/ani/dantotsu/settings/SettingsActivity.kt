@@ -159,17 +159,14 @@ class SettingsActivity : AppCompatActivity(), SettingsHost {
                             settingsEmptyLayout.visibility = View.VISIBLE
                         }
                         settingsFooterLayout.visibility = View.GONE
-                        settingsSearchBar.setEndIconDrawable(R.drawable.ic_round_close_24)
-                        settingsSearchBar.setEndIconOnClickListener {
-                            settingsSearchBarText.setText("")
-                        }
+                        settingsSearchClear.visibility = View.VISIBLE
+                        settingsSearchClear.setOnClickListener { settingsSearchBarText.setText("") }
                     } else {
                         settingsRecyclerView.adapter = mainAdapter
                         settingsRecyclerView.visibility = View.VISIBLE
                         settingsEmptyLayout.visibility = View.GONE
                         settingsFooterLayout.visibility = View.VISIBLE
-                        settingsSearchBar.setEndIconDrawable(R.drawable.ic_round_search_24)
-                        settingsSearchBar.setEndIconOnClickListener(null)
+                        settingsSearchClear.visibility = View.GONE
                     }
                 }
                 override fun afterTextChanged(s: android.text.Editable?) {}

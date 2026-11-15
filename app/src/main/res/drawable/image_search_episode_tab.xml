@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The episode number tab in the frame's top corner, like the episode cards' number. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="?attr/colorOnBackground" />
+    <corners android:bottomRightRadius="16dp" />
+</shape>

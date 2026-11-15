@@ -54,5 +54,5 @@ internal fun sourceChoiceLabels(names: List<String>, langs: List<String>): List<
     val languages = langs.map { LanguageMapper.getLanguageName(it) }
     if (languages.toSet().size == languages.size) return languages
     if (names.toSet().size == names.size) return names
-    return names.mapIndexed { i, name -> "$name · ${i + 1}" }
+    return names.mapIndexed { i, name -> "$name (${i + 1})" }
 }

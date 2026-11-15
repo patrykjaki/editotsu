@@ -209,7 +209,10 @@ class ListSyncSheet : BottomSheetDialogFragment() {
 
     private fun detail(change: MalListSync.Change): String {
         if (change.target == null) {
-            return getString(R.string.list_sync_missing, status(change.main.status, change.isAnime), change.progress)
+            val st = status(change.main.status, change.isAnime)
+            // a new entry carries its score too: say so, or it looks like the score is left behind
+            return if (change.main.score > 0) getString(R.string.list_sync_missing_scored, st, change.progress, change.main.score)
+            else getString(R.string.list_sync_missing, st, change.progress)
         }
         return change.fields.joinToString(" · ") { f ->
             val (from, to) = if (f.what == What.STATUS) status(f.from, change.isAnime) to status(f.to, change.isAnime)

@@ -29,14 +29,13 @@ class ImageSearchViewModel : ViewModel() {
         val res = try {
             client.post(url, requestBody = requestBody).parsed<SearchResult>()
         } catch (e: Exception) {
-            SearchResult(error = e.message)
+            SearchResult(error = e.message ?: e.javaClass.simpleName)
         }
         searchResultLiveData.postValue(res)
     }
 
-    fun clearResults() {
-        searchResultLiveData.postValue(SearchResult())
-    }
+    /** The picked image, kept here so it survives rotation. */
+    var picked: android.net.Uri? = null
 
     @Serializable
     data class SearchResult(

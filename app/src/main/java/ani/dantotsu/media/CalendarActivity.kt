@@ -1,5 +1,6 @@
 package ani.dantotsu.media
 
+import ani.dantotsu.others.setDropdownText
 import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -95,7 +96,6 @@ class CalendarActivity : AppCompatActivity() {
                 reload()
             }
         }
-        binding.calendarFilter.setOnCloseIconClickListener { binding.calendarFilter.performClick() }
         binding.calendarPager.registerOnPageChangeCallback(pageListener)
 
         model.getCalendar().observe(this) { week ->
@@ -130,7 +130,7 @@ class CalendarActivity : AppCompatActivity() {
 
     /** the chip names the current choice and is filled while something is filtered out */
     private fun showFilter() {
-        binding.calendarFilter.text = filterLabels[filter]
+        binding.calendarFilter.setDropdownText(filterLabels[filter])
         binding.calendarFilter.isChecked = filter != 0
     }
 

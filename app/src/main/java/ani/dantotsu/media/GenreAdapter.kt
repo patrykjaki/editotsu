@@ -16,7 +16,9 @@ import ani.dantotsu.px
 
 class GenreAdapter(
     private val type: String,
-    private val big: Boolean = false
+    private val big: Boolean = false,
+    // set when the tiles sit inside search: filter in place instead of opening another search
+    private val onPick: ((String) -> Unit)? = null,
 ) : RecyclerView.Adapter<GenreAdapter.GenreViewHolder>() {
     var genres = mutableMapOf<String, String>()
     var pos = arrayListOf<String>()
@@ -41,6 +43,8 @@ class GenreAdapter(
         RecyclerView.ViewHolder(binding.root) {
         init {
             itemView.setOnClickListener {
+                val picked = pos.getOrNull(bindingAdapterPosition) ?: return@setOnClickListener
+                onPick?.let { return@setOnClickListener it(picked) }
                 ContextCompat.startActivity(
                     itemView.context,
                     Intent(itemView.context, SearchActivity::class.java)

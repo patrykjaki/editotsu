@@ -85,18 +85,12 @@ class AnimePageAdapter : RecyclerView.Adapter<AnimePageAdapter.AnimePageViewHold
         trendingBinding.searchBar.hint = binding.root.context.getString(R.string.search)
         trendingBinding.searchBarText.setOnClickListener {
             val context = binding.root.context
-            if (PrefManager.getVal(PrefName.AniMangaSearchDirect) && Anilist.token != null) {
-                ContextCompat.startActivity(
-                    context,
-                    Intent(context, SearchActivity::class.java).putExtra("type", "ANIME"),
-                    null
-                )
-            } else {
-                SearchBottomSheet.newInstance().show(
-                    (context as AppCompatActivity).supportFragmentManager,
-                    "search"
-                )
-            }
+            // search opens straight away; its chips switch to manga, characters, staff, studios or users
+            ContextCompat.startActivity(
+                context,
+                Intent(context, SearchActivity::class.java).putExtra("type", "ANIME"),
+                null
+            )
         }
 
         trendingBinding.userAvatar.setSafeOnClickListener {
