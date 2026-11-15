@@ -186,6 +186,7 @@ internal fun watchOrderWikiItems(order: WikiOrder, currentId: Int): List<MediaDe
             airDate = m.seasonYear?.toString() ?: "",
             mediaType = watchOrderFormat(m.format),
             episodes = m.episodes?.let { "$it eps" } ?: "",
+            placed = !useChain || watchOrderWikiKey(step.title) in chain,
             mainStory = when {
                 "(optional" in step.title.lowercase() -> false
                 useChain -> chain[watchOrderWikiKey(step.title)] == false

@@ -148,4 +148,19 @@ class WatchOrderWikiTest {
         assertEquals(mapOf(10 to 1, 11 to 1, 14 to 3), added)
         assertTrue(watchOrderMissingAlternatives(listOf(1), mapOf(1 to "TV"), mapOf(1 to listOf(Triple("SUMMARY", 9, "MOVIE"))), replaced = setOf(1)).isEmpty())
     }
+
+    @Test fun notesExtrasGoWithWhatTheyRanWith() {
+        // Made in Abyss: Marulk (special) is only in the notes; its PARENT is Dawn of the Deep Soul
+        val sides = watchOrderSides(
+            order = listOf(1, 2, 3, 4, 5, 6),
+            unplaced = setOf(5, 6),
+            format = mapOf(1 to "TV", 2 to "MOVIE", 3 to "TV", 4 to "MOVIE", 5 to "SPECIAL", 6 to "TV"),
+            edges = mapOf(5 to listOf("PARENT" to 2), 6 to listOf("PARENT" to 1)),
+        )
+        assertEquals(mapOf(5 to 2), sides)
+        fun row(id: String, alt: String? = null, side: String? = null) =
+            MediaDetailsViewModel.WatchOrderItem(id, id, "", id, "", alternativeTo = alt, sideOf = side)
+        val placed = watchOrderPlaceAlternatives(listOf(row("1"), row("2"), row("3"), row("r", alt = "1"), row("m", side = "2")))
+        assertEquals(listOf("1", "r", "2", "m", "3"), placed.map { it.anilistId })
+    }
 }

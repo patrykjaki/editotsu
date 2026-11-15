@@ -1341,6 +1341,10 @@ class MediaDetailsViewModel : ViewModel() {
         val mainStory: Boolean? = null,
         /** AniList id of the main entry this one replaces (a recap movie of a season); placed right after it */
         val alternativeTo: String? = null,
+        /** false when the order only names it in its notes, so its place there means nothing */
+        val placed: Boolean = true,
+        /** AniList id of the entry it belongs with (a short or OVA that ran with a film); placed after it */
+        val sideOf: String? = null,
     ) : java.io.Serializable
 
     data class NewsItem(
@@ -1556,6 +1560,18 @@ class MediaDetailsViewModel : ViewModel() {
                 listStatus = m.mediaListEntry?.status?.name,
             )
         }
+        // extras the order only names in its notes go next to what AniList ties them to
+        val sides = watchOrderSides(
+            order = ids,
+            unplaced = items.filter { !it.placed && it.mainStory != true }.mapNotNull { it.anilistId.trim().toIntOrNull() }.toSet() - alternatives.keys,
+            format = byId.mapValues { it.value.format?.name },
+            edges = byId.mapValues { (_, m) ->
+                m.relations?.edges.orEmpty().mapNotNull { e ->
+                    val to = e.node?.id ?: return@mapNotNull null
+                    (e.relationType?.name ?: return@mapNotNull null) to to
+                }
+            },
+        )
         val start = items.firstOrNull { it.isCurrent }?.anilistId?.trim()?.toIntOrNull()
         val story = if (start != null && start in byId) watchOrderStory(start, links) else null
         return items.map { item ->
@@ -1568,6 +1584,7 @@ class MediaDetailsViewModel : ViewModel() {
                 // a hand-written order's own optional mark wins over the prequel/sequel chain
                 mainStory = if (id in alternatives) false else item.mainStory ?: story?.contains(id),
                 alternativeTo = alternatives[id]?.toString(),
+                sideOf = sides[id]?.toString(),
                 upcoming = upcoming,
                 startYear = if (upcoming) m.startDate?.year else null,
                 startMonth = if (upcoming) m.startDate?.month else null,
@@ -1786,16 +1803,22 @@ internal fun watchOrderStory(start: Int, links: Map<Int, List<Int>>): Set<Int> {
     return seen
 }
 
-/** Each alternative moves to right after the entry it replaces, keeping their order; the rest stay put. */
+/**
+ * Each alternative moves to right after the entry it replaces, then each side entry after the entry it
+ * belongs with, keeping their order; the rest stay put.
+ */
 internal fun watchOrderPlaceAlternatives(items: List<MediaDetailsViewModel.WatchOrderItem>): List<MediaDetailsViewModel.WatchOrderItem> {
     val ids = items.map { it.anilistId.trim() }.toSet()
-    val moving = items.filter { it.alternativeTo != null && it.alternativeTo in ids && it.alternativeTo != it.anilistId.trim() }
+    fun anchor(it: MediaDetailsViewModel.WatchOrderItem) = (it.alternativeTo ?: it.sideOf)
+        ?.takeIf { a -> a in ids && a != it.anilistId.trim() }
+    val moving = items.filter { anchor(it) != null }
     if (moving.isEmpty()) return items
     val rest = items.filter { it !in moving }
     val out = ArrayList<MediaDetailsViewModel.WatchOrderItem>(items.size)
     for (item in rest) {
         out += item
-        out += moving.filter { it.alternativeTo == item.anilistId.trim() }
+        val here = moving.filter { anchor(it) == item.anilistId.trim() }
+        out += here.filter { it.alternativeTo != null } + here.filter { it.alternativeTo == null }
     }
     // an alternative of an alternative (or of a row that moved) lands at the end rather than vanishing
     out += moving.filter { it !in out }
@@ -1861,4 +1884,26 @@ internal fun watchOrderMissingAlternatives(
         }
     }
     return found
+}
+
+/**
+ * Extras the order names only in its notes (Made in Abyss's Marulk shorts): id -> the listed entry they
+ * belong with, from their own PARENT link or a listed entry's SIDE_STORY link to them. Whole TV/ONA
+ * series stay where they are; they are shows of their own, not companions.
+ */
+internal fun watchOrderSides(
+    order: List<Int>,
+    unplaced: Set<Int>,
+    format: Map<Int, String?>,
+    edges: Map<Int, List<Pair<String, Int>>>,
+): Map<Int, Int> {
+    val listed = order.toSet()
+    val out = LinkedHashMap<Int, Int>()
+    for (id in order) {
+        if (id !in unplaced || format[id] in setOf("TV", "ONA")) continue
+        val anchor = edges[id].orEmpty().firstOrNull { (t, to) -> t == "PARENT" && to in listed && to != id }?.second
+            ?: order.firstOrNull { o -> o != id && edges[o].orEmpty().any { (t, to) -> t == "SIDE_STORY" && to == id } }
+        if (anchor != null && anchor !in unplaced) out[id] = anchor
+    }
+    return out
 }
