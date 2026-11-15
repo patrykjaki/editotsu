@@ -265,6 +265,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                         binding.selectorFilters.visibility = View.GONE
                         binding.selectorNotice.visibility = View.GONE
                         binding.selectorEmpty.visibility = View.VISIBLE
+                        binding.selectorHeaderMeta.text = getString(R.string.picker_meta_servers, sourceName, 0)
                         binding.selectorEmptyTitle.text = getString(R.string.picker_empty_title, ep.number)
                         binding.selectorEmptyMessage.text = getString(R.string.picker_empty_message, sourceName)
                         binding.selectorEmptyRetry.setOnClickListener {

@@ -294,11 +294,11 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
         // of a Video object is not success; see isPlayableForPicker.
         val hosters = runCatching {
             source.getHosterList(episode)
-        }.getOrElse { emptyList() }
+        }.getOrElse { logStreamFailure("hoster list", source, it); emptyList() }
 
         suspend fun fetchDirectVideos(): List<Video> = runCatching {
             source.getVideoList(episode)
-        }.getOrElse { emptyList() }
+        }.getOrElse { logStreamFailure("video list", source, it); emptyList() }
 
         val sortedHosters = runCatching {
             if (source is AnimeHttpSource) source.run { hosters.sortHosters() } else hosters
@@ -312,7 +312,7 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
                             !hoster.videoList.isNullOrEmpty() -> hoster.videoList
                             else -> runCatching {
                                 source.getVideoList(hoster)
-                            }.getOrElse { emptyList() }
+                            }.getOrElse { logStreamFailure("hoster videos", source, it); emptyList() }
                         }
 
                         videos.map { video ->
@@ -352,13 +352,27 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
             }.awaitAll()
         }
 
+        // Some extensions put the playable link only in url and leave videoUrl empty after
+        // resolving; Dantotsu plays url then, so do the same instead of dropping the stream.
         val allVideos = (resolvedDirect + hosterVideos)
+            .map { v ->
+                if (v.videoUrl.isNotBlank() && v.videoUrl != "null") v
+                else if (v.url.isNotBlank() && v.url != "null") v.copy(videoUrl = v.url)
+                else v
+            }
             .distinctBy { if (it.videoUrl.isNotBlank() && it.videoUrl != "null") it.videoUrl else it.videoTitle }
             .filter { it.videoUrl.isNotBlank() && it.videoUrl != "null" }
 
         return runCatching {
             if (source is AnimeHttpSource) source.run { allVideos.sortVideos() } else allVideos
         }.getOrElse { allVideos }
+    }
+
+    // Each step above falls back quietly; without a log line "no streams" can't be told apart
+    // from a network or extension error on a user's phone.
+    private fun logStreamFailure(step: String, source: AnimeSource, e: Throwable) {
+        if (e is kotlinx.coroutines.CancellationException) throw e
+        Logger.log("Streams: ${source.name} $step failed: ${e.javaClass.simpleName}: ${e.message}")
     }
 
     private suspend fun resolveVideo(
@@ -377,13 +391,13 @@ class DynamicAnimeParser(extension: AnimeExtension.Installed) : AnimeParser() {
 
         val modern = runCatching {
             if (source is AnimeHttpSource) source.resolveVideo(video) else null
-        }.getOrNull()
+        }.getOrElse { logStreamFailure("resolve video", source, it); null }
         if (isUsable(modern)) return modern!!
 
         if (video.videoUrl == "null" || video.videoUrl.isEmpty()) {
             val newUrl = runCatching {
                 if (source is AnimeHttpSource) source.getVideoUrl(video) else null
-            }.getOrNull()
+            }.getOrElse { logStreamFailure("video url", source, it); null }
 
             if (!newUrl.isNullOrEmpty() && newUrl != "null") {
                 return video.copy(videoUrl = newUrl, initialized = true)
