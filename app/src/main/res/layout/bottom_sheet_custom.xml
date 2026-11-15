@@ -12,6 +12,15 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
+        <View
+            android:layout_width="32dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="14dp"
+            android:layout_marginBottom="6dp"
+            android:background="@drawable/shape_choice_handle"
+            android:importantForAccessibility="no" />
+
         <TextView
             android:id="@+id/bottomSheerCustomTitle"
             android:layout_width="match_parent"
@@ -77,9 +86,9 @@
                 tools:ignore="SpeakableTextPresentCheck"
                 tools:visibility="visible" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/bottomDialogCustomPositive"
-                style="@style/Widget.Material3.Button.OutlinedButton"
+                style="@style/Widget.Material3.Button"
                 android:layout_width="0dp"
                 android:layout_height="56dp"
                 android:layout_margin="8dp"
@@ -91,7 +100,6 @@
                 android:textSize="16sp"
                 android:visibility="gone"
                 app:cornerRadius="16dp"
-                app:strokeColor="?attr/colorPrimaryContainer"
                 tools:ignore="SpeakableTextPresentCheck"
                 tools:visibility="visible" />
         </LinearLayout>

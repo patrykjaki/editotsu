@@ -7,8 +7,16 @@
     android:background="@drawable/bottom_sheet_background"
     android:orientation="vertical"
     android:paddingHorizontal="16dp"
-    android:paddingTop="20dp"
     android:paddingBottom="16dp">
+
+    <View
+        android:layout_width="32dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="14dp"
+        android:layout_marginBottom="6dp"
+        android:background="@drawable/shape_choice_handle"
+        android:importantForAccessibility="no" />
 
     <TextView
         android:id="@+id/addRepositoryText"

@@ -81,6 +81,7 @@ class CalendarActivity : AppCompatActivity() {
         }
         setContentView(binding.root)
 
+        binding.calendarBack.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         showWeekPlaceholder()
         filter = (savedInstanceState?.getInt(STATE_FILTER) ?: 0).coerceIn(0, 2)
         selectedKey = savedInstanceState?.getString(STATE_DAY)

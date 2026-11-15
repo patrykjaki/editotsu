@@ -13,16 +13,35 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/calendarTitle"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:fontFamily="@font/poppins_bold"
+            android:layout_height="64dp"
             android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:text="@string/release_calendar"
-            android:textColor="?attr/colorOnSurface"
-            android:textSize="22sp" />
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="16dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/calendarBack"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/back"
+                app:icon="@drawable/ic_round_arrow_back_ios_new_24"
+                app:iconTint="?attr/colorOnSurface" />
+
+            <TextView
+                android:id="@+id/calendarTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:accessibilityHeading="true"
+                android:fontFamily="@font/poppins_bold"
+                android:text="@string/release_calendar"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="20sp" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
