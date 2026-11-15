@@ -57,7 +57,7 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
 
     override val activity get() = SettingsAccountActivity::class.java
 
-    /** Everything below the account cards needs an AniList login, as before. */
+    /** Everything below the account cards needs an AniList login, except Discord presence. */
     private val loggedIn = { Anilist.token != null }
 
     private var isImportingLists = false
@@ -85,7 +85,8 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                     ani.dantotsu.settings.ListSyncSheet().show(host.activity.supportFragmentManager, "list_sync")
                 }),
             switchRow(PrefName.DiscordRichPresenceEnabled, R.string.discord_rich_presence,
-                R.string.discord_rich_presence_desc, R.drawable.interests_24, visible = loggedIn,
+                // Presence needs no AniList account, so the switch shows signed out too.
+                R.string.discord_rich_presence_desc, R.drawable.interests_24,
                 // Off: clear the presence and unbind now, no restart needed.
                 onChange = { _, on -> if (!on) DiscordRpcPublisher.teardown() }),
             actionRow("anilist_settings", R.string.anilist_settings, R.string.alsettings_desc, R.drawable.ic_anilist,

@@ -1496,7 +1496,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 val watchThreshold = PrefManager.getVal<Float>(PrefName.WatchPercentage)
 
                 val watchThresholdMet = dur > 0L && (pos >= (dur - 5000L) || (pos.toFloat() / dur.toFloat()) >= watchThreshold)
-                val nearPhysicalEnd = dur > 0L && pos >= (dur - 5000L)
+                // HLS playlists often report a duration longer than the media, so the file can
+                // end short of it; within 5 s or the last 5 % still counts as the real end.
+                val nearPhysicalEnd = dur > 0L && (pos >= (dur - 5000L) || pos.toFloat() / dur.toFloat() >= 0.95f)
+                Logger.log("autoplay end: pos=$pos dur=$dur near=$nearPhysicalEnd interacted=$interacted")
 
                 if (watchThresholdMet) {
                     progressManager.updateAniProgress(forceComplete = true)
@@ -2112,6 +2115,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         // Entering PiP pauses the activity, but playback goes on in the small window.
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
         if (inPip) return
+        // Leaving the player: stop the sound now, not after the exit animation (onStop).
+        if (isFinishing && !themeMode && this::playerManager.isInitialized && playerManager.isInitialized) {
+            playerManager.playbackEngine?.pause()
+        }
         if (this::aniSkipManager.isInitialized) {
             aniSkipManager.stopTracking()
         }
