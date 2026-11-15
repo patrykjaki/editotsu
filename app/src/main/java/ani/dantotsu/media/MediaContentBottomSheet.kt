@@ -258,15 +258,21 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
             // an optional entry is a small dot on the line, without a number
             val isOptional = row.optional
             holder.binding.watchOrderNumber.text = row.number?.toString().orEmpty()
-            holder.binding.watchOrderNumber.scaleX = if (isOptional) 0.4f else 1f
-            holder.binding.watchOrderNumber.scaleY = if (isOptional) 0.4f else 1f
+            // a real 10dp dot, not a scaled-down circle: the line has to run into it with no gap
+            holder.binding.watchOrderNumber.layoutParams = holder.binding.watchOrderNumber.layoutParams.apply {
+                val size = ((if (isOptional) 10 else 28) * density).toInt()
+                width = size
+                height = size
+            }
             val primary = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
             val line = context.getThemeColor(com.google.android.material.R.attr.colorOutlineVariant)
             val surfaceVariant = context.getThemeColor(com.google.android.material.R.attr.colorSurfaceVariant)
             val place = watchOrderPlace(position, currentIndex)
 
-            // the stop on the line: filled up to the open title, plain after it
-            val (stop, onStop) = when (place) {
+            // the stop on the line: filled up to the open title, plain after it; a dot takes the line's own colour
+            val (stop, onStop) = if (isOptional) {
+                (if (place == WatchOrderPlace.EARLIER) primary else line) to line
+            } else when (place) {
                 WatchOrderPlace.CURRENT -> primary to context.getThemeColor(com.google.android.material.R.attr.colorOnPrimary)
                 WatchOrderPlace.EARLIER -> context.getThemeColor(com.google.android.material.R.attr.colorSecondaryContainer) to
                     context.getThemeColor(com.google.android.material.R.attr.colorOnSecondaryContainer)
@@ -282,10 +288,16 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
 
             // the numbers carry the order, so a row says only where you are or that it is optional
             if (item.isCurrent) {
-                holder.binding.watchOrderRelation.text = listOfNotNull(
-                    context.getString(R.string.watch_order_here),
-                    if (watchOrderCompleted(item.listStatus)) context.getString(R.string.watch_order_completed) else null,
-                ).joinToString(" · ")
+                // "You are here" keeps the accent; a finished state after it is muted like on the other rows
+                val here = context.getString(R.string.watch_order_here)
+                holder.binding.watchOrderRelation.text = if (watchOrderCompleted(item.listStatus)) {
+                    android.text.SpannableString("$here · ${context.getString(R.string.watch_order_completed)}").apply {
+                        setSpan(
+                            android.text.style.ForegroundColorSpan(context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)),
+                            here.length, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                        )
+                    }
+                } else here
                 holder.binding.watchOrderRelation.visibility = View.VISIBLE
                 holder.binding.watchOrderChevron.visibility = View.INVISIBLE
                 holder.binding.watchOrderCard.setCardBackgroundColor(ColorUtils.setAlphaComponent(primary, 40))
@@ -309,7 +321,7 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
                 )
             }
             holder.binding.watchOrderRelation.setTextColor(
-                if (isOptional || watchOrderCompleted(item.listStatus)) {
+                if (!item.isCurrent && (isOptional || watchOrderCompleted(item.listStatus))) {
                     context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
                 } else primary,
             )
