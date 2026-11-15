@@ -78,6 +78,8 @@ enum class PrefName(val data: Pref) {
     /** list sync: which list is the main one (0 = AniList, 1 = MyAnimeList) and whether it runs daily */
     ListSyncMain(Pref(Location.General, Int::class, 0)),
     ListSyncAuto(Pref(Location.General, Boolean::class, false)),
+    /** watch order sheet: leave out optional entries (music videos, OVAs, side stories) */
+    WatchOrderHideOptional(Pref(Location.General, Boolean::class, false)),
     IncludeAnimeList(Pref(Location.General, Boolean::class, true)),
     IncludeMangaList(Pref(Location.General, Boolean::class, true)),
     AdultOnly(Pref(Location.General, Boolean::class, false)),

@@ -26,6 +26,8 @@ import kotlin.math.ceil
  *  - "lines": label and value bars, for a details page
  *  - "tabs": a strip of tab labels
  *  - "agenda": calendar rows, a time, a cover and two text bars each
+ *  - "form": the list editor, a title then outlined fields (status, progress, score, two dates)
+ *  - "order": the watch order, a line with stops, big main rows and small optional rows
  */
 class SkeletonView @JvmOverloads constructor(
     context: Context,
@@ -37,7 +39,7 @@ class SkeletonView @JvmOverloads constructor(
     private val ink = context.getThemeColor(com.google.android.material.R.attr.colorOnSurface)
 
     /** Blocks on a card are a tone darker than the card; blocks on the page are the card tone. */
-    private val onCard get() = tag == null || tag == PAGE
+    private val onCard get() = tag == null || tag == PAGE || tag == ORDER
 
     // On the bare page the tone comes from the text colour over the surface, which reads in
     // every theme; a card keeps the card colour the real rows use.
@@ -66,6 +68,8 @@ class SkeletonView @JvmOverloads constructor(
         ROWS -> ROW_COUNT * ROW_DP
         TABS -> 48
         AGENDA -> ROW_COUNT * AGENDA_ROW_DP
+        FORM -> FORM_DP
+        ORDER -> ORDER_PATTERN.sumOf { if (it) ORDER_BIG_DP else ORDER_SMALL_DP }
         PAGE -> HEAD_DP + CARDS * CARD_DP + (CARDS - 1) * GAP_DP
         else -> CARDS * CARD_DP + (CARDS - 1) * GAP_DP
     }
@@ -102,6 +106,8 @@ class SkeletonView @JvmOverloads constructor(
             LINES -> drawLines(canvas)
             TABS -> drawTabs(canvas)
             AGENDA -> drawAgenda(canvas)
+            FORM -> drawForm(canvas)
+            ORDER -> drawOrder(canvas)
             else -> drawCards(canvas)
         }
         if (shown) postInvalidateOnAnimation()
@@ -256,6 +262,90 @@ class SkeletonView @JvmOverloads constructor(
         }
     }
 
+    /** bottom_sheet_media_list: 32dp margins, 54dp title row, 56dp outlined fields 16dp apart */
+    private fun drawForm(canvas: Canvas) {
+        val side = 32 * dp
+        val end = width - side
+        val field = 56 * dp
+        val gap = 16 * dp
+        val radius = 12 * dp
+        blockPaint.alpha = 255
+        pill(canvas, side, side + 18 * dp, side + (end - side) * 0.6f, 18 * dp)
+        var top = side + 54 * dp + 8 * dp
+        fun box(left: Float, right: Float, fade: Int) {
+            outline.shader = shader
+            outline.alpha = fade
+            outline.strokeWidth = 1.5f * dp
+            canvas.drawRoundRect(left, top, right, top + field, radius, radius, outline)
+            blockPaint.alpha = fade
+            pill(canvas, left + 16 * dp, top + field / 2 - 6 * dp, left + (right - left) * 0.4f, 12 * dp)
+        }
+        box(side, end, 255)
+        top += field + gap
+        // progress: the field and the +1 box beside it
+        val button = 72 * dp
+        box(side, end - button - 12 * dp, 220)
+        outline.alpha = 220
+        canvas.drawRoundRect(end - button, top - 4 * dp, end, top + field + 4 * dp, radius, radius, outline)
+        top += field + gap
+        box(side, end, 180)
+        top += field + gap
+        val half = (end - side - 12 * dp) / 2
+        box(side, side + half, 140)
+        box(end - half, end, 140)
+        // delete and save
+        top += field + 72 * dp
+        outline.alpha = 100
+        val delete = (end - side) * 0.38f
+        canvas.drawRoundRect(side, top, side + delete, top + 64 * dp, 20 * dp, 20 * dp, outline)
+        canvas.drawRoundRect(side + delete + 16 * dp, top, end, top + 64 * dp, 20 * dp, 20 * dp, outline)
+    }
+
+    /**
+     * item_watch_order: a 56dp column with the line, then the row. Main rows sit on a 16dp-round
+     * card with a 56x80dp cover and a numbered stop; optional rows have no card, a 40x56dp cover
+     * and a small dot.
+     */
+    private fun drawOrder(canvas: Canvas) {
+        val lineX = 28 * dp
+        val left = 56 * dp
+        val right = width - 16 * dp
+        var top = 0f
+        ORDER_PATTERN.forEachIndexed { i, big ->
+            val rowH = (if (big) ORDER_BIG_DP else ORDER_SMALL_DP) * dp
+            val middle = top + rowH / 2
+            val fade = (255 - i * 36).coerceAtLeast(60)
+            blockPaint.alpha = fade
+            // the line through the row, broken around the stop
+            val stop = if (big) 14 * dp else 6 * dp
+            canvas.drawRect(lineX - dp, top, lineX + dp, middle - stop - 4 * dp, blockPaint)
+            canvas.drawRect(lineX - dp, middle + stop + 4 * dp, lineX + dp, top + rowH, blockPaint)
+            canvas.drawCircle(lineX, middle, stop, blockPaint)
+            val coverW = (if (big) 56 else 40) * dp
+            val coverH = (if (big) 80 else 56) * dp
+            if (big) {
+                cardPaint.alpha = fade
+                canvas.drawRoundRect(left, top + 4 * dp, right, top + rowH - 4 * dp, 16 * dp, 16 * dp, cardPaint)
+            }
+            val coverLeft = left + 10 * dp
+            canvas.drawRoundRect(coverLeft, middle - coverH / 2, coverLeft + coverW, middle + coverH / 2, 12 * dp, 12 * dp, blockPaint)
+            val textStart = coverLeft + coverW + 12 * dp
+            val textWidth = right - 12 * dp - textStart
+            if (big) {
+                pill(canvas, textStart, middle - 16 * dp, textStart + textWidth * 0.75f, 14 * dp)
+                pill(canvas, textStart, middle + 6 * dp, textStart + textWidth * 0.5f, 12 * dp)
+            } else {
+                pill(canvas, textStart, middle - 18 * dp, textStart + textWidth * 0.25f, 10 * dp)
+                pill(canvas, textStart, middle - 2 * dp, textStart + textWidth * 0.55f, 12 * dp)
+                pill(canvas, textStart, middle + 16 * dp, textStart + textWidth * 0.4f, 10 * dp)
+            }
+            top += rowH
+        }
+        cardPaint.alpha = 255
+    }
+
+    private val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+
     private fun pill(canvas: Canvas, left: Float, top: Float, right: Float, height: Float) {
         canvas.drawRoundRect(left, top, right, top + height, height / 2, height / 2, blockPaint)
     }
@@ -275,6 +365,12 @@ class SkeletonView @JvmOverloads constructor(
         const val LINES = "lines"
         const val TABS = "tabs"
         const val AGENDA = "agenda"
+        const val FORM = "form"
+        const val FORM_DP = 560
+        const val ORDER = "order"
+        const val ORDER_BIG_DP = 108
+        const val ORDER_SMALL_DP = 80
+        val ORDER_PATTERN = listOf(false, true, true, false, true, true)
         const val AGENDA_ROW_DP = 108
         const val GRID_ROW_DP = 236
         const val GRID_TEXT_DP = 92

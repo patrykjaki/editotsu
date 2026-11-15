@@ -337,7 +337,7 @@
     <string name="prequel">Prequel</string>
     <string name="sequel">Sequel</string>
 
-    <string name="anilist_settings">Anilist Settings</string>
+    <string name="anilist_settings">AniList Settings</string>
     <string name="extension_settings">Extensions</string>
     <string name="downloads">Downloads</string>
     <string name="offline_mode">Offline Mode</string>
@@ -1138,7 +1138,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="share_profile">Share Profile</string>
     <string name="copy_user_id" >Copy user ID</string>
     <string name="anilist_notification_filters">Filter Notifications</string>
-    <string name="anilist_notifications_checking_time">Anilist notifications update frequency : %1$s</string>
+    <string name="anilist_notifications_checking_time">AniList notifications update frequency: %1$s</string>
     <string name="comment_notification_checking_time">Comment notifications update frequency : %1$s</string>
     <string name="activities">Activities &amp; Forums</string>
     <string name="discord_rich_presence_desc">Show what you\'re watching or reading on your Discord profile.</string>
@@ -1246,7 +1246,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="disabled_track">Disabled</string>
     <string name="invalid_track">Invalid</string>
     <string name="unknown_track">\[%1$s\] Unknown</string>
-    <string name="accounts_desc">Anilist, MAL and Discord.\nWhat more could you need?</string>
+    <string name="accounts_desc">AniList, MyAnimeList and Discord</string>
     <string name="theme_desc">Change the vibe of your app</string>
     <string name="common_desc">UI and other mischievous stuff</string>
     <string name="anime_desc">Choose how you watch</string>
@@ -1373,7 +1373,16 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="watch_order">Watch Order</string>
     <string name="watch_order_here">You are here</string>
     <string name="watch_order_optional">Optional</string>
+    <string name="watch_order_coming_soon">Coming soon</string>
+    <string name="watch_order_completed">Completed</string>
+    <string name="watch_order_coming">Coming %1$s</string>
+    <string name="watch_order_hide_optional">Hide optional entries</string>
+    <string name="watch_order_show_optional">Show optional entries</string>
     <string name="no_watch_order_found">No Watch Order Found</string>
+    <string name="watch_order_failed">Couldn\'t load the watch order. Try again in a while.</string>
+    <string name="watch_order_pick">Watch order</string>
+    <string name="watch_order_alternative">Alternative to %1$d</string>
+    <string name="watch_order_pick_desc">Watch order: %1$s. Change</string>
     <string name="read_article">Read Article</string>
     <string name="current">Current</string>
 
@@ -1874,15 +1883,6 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="player_filters_not_available_drm">Audio night mode, color filters, debanding and upscaler: not available for DRM playback</string>
     <string name="player_mode_not_available_drm">%1$s: not available for DRM playback</string>
     <string name="screenshot_not_ready">Player not ready</string>
-    <string name="player_shortcuts_title">Hidden controls</string>
-    <string name="player_shortcuts_seek">Double-tap left or right: seek %1$d s</string>
-    <string name="player_shortcuts_seek_off">Double-tap seek is off in settings; the arrow buttons seek instead</string>
-    <string name="player_shortcuts_hold">Hold left or right: 2x speed while held. Drag sideways to go 0.25x to 4x</string>
-    <string name="player_shortcuts_swipe">Swipe up or down: left half brightness, right half volume</string>
-    <string name="player_shortcuts_skip">Long-press the skip button: change how far it jumps</string>
-    <string name="player_shortcuts_title_tap">Tap the episode name at the top: episode list</string>
-    <string name="player_shortcuts_lock">Lock: blocks every touch until you unlock</string>
-    <string name="player_shortcuts_settings">You found the secret menu. That was it. Long-press the gear again any time</string>
     <string name="source_link_checking">Checking for a direct link…</string>
     <string name="list_sync">Sync lists</string>
     <string name="list_sync_desc">Make your AniList and MyAnimeList lists match</string>
@@ -1895,16 +1895,12 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="list_sync_group_missing">Not on %1$s · %2$d</string>
     <string name="list_sync_group_changed">Different · %1$d</string>
     <string name="list_sync_select_all">Select all</string>
-    <string name="list_sync_select_none">Select none</string>
-    <string name="list_sync_update_count">Update %1$d on %2$s</string>
+    <string name="list_sync_selected">%1$d of %2$d selected</string>
+    <string name="list_sync_update">Update %1$s</string>
     <string name="list_sync_nothing_selected">Nothing selected</string>
     <string name="list_sync_comparing">Comparing your lists…</string>
     <string name="list_sync_read_failed">Couldn\'t read both lists. Nothing was changed.</string>
     <string name="list_sync_same">%1$s already matches %2$s.</string>
-    <plurals name="list_sync_found">
-        <item quantity="one">%1$d entry to update on %2$s</item>
-        <item quantity="other">%1$d entries to update on %2$s</item>
-    </plurals>
     <string name="list_sync_retry">Try these again</string>
     <string name="list_sync_progress">Updating %1$d of %2$d…</string>
     <string name="list_sync_done">Updated %1$d entries on %2$s.</string>

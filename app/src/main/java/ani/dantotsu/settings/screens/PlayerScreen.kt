@@ -160,7 +160,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
         val speeds = PlaybackSpeedSelection.values(PrefManager.getVal(PrefName.CursedSpeeds))
         return stepsRow(
             PrefName.DefaultSpeed.name, R.string.default_speed, speeds.size,
-            label = { _, i -> "${speeds[i]}x" },
+            label = { _, i -> ani.dantotsu.media.anime.player.PlayerDisplayFormat.speed(speeds[i]) },
             get = { PrefManager.getVal(PrefName.DefaultSpeed) },
             icon = R.drawable.ic_round_slow_motion_video_24, keys = listOf(PrefName.DefaultSpeed),
         ) { _, i -> PrefManager.setVal(PrefName.DefaultSpeed, i) }

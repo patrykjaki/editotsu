@@ -9,7 +9,9 @@ object PlayerDisplayFormat {
     fun episodeNumber(number: String): String =
         wholeEpisode.matchEntire(number)?.groupValues?.get(1) ?: number
 
-    fun speed(speed: Float): String = String.format(Locale.US, "%.2fx", speed)
+    /** 2x, 1.5x, 1.25x: no trailing zeros. */
+    fun speed(speed: Float): String =
+        java.math.BigDecimal(String.format(Locale.US, "%.2f", speed)).stripTrailingZeros().toPlainString() + "x"
 }
 
 /** The preference stores an index; only this boundary converts it to an absolute speed. */

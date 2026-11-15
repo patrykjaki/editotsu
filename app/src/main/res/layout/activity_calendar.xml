@@ -33,6 +33,7 @@
             <com.google.android.material.chip.Chip
                 android:id="@+id/calendarFilter"
                 style="@style/Widget.Material3.Chip.Filter"
+                android:textAppearance="@style/TextAppearance.Editotsu.Chip"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/calendar_everything"

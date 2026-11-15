@@ -15,6 +15,7 @@ import ani.dantotsu.connections.mal.MalListSync.Side
 import ani.dantotsu.connections.mal.MalListSync.What
 import ani.dantotsu.databinding.BottomSheetListSyncBinding
 import ani.dantotsu.databinding.ItemListSyncChangeBinding
+import com.google.android.material.checkbox.MaterialCheckBox
 import ani.dantotsu.loadImage
 import android.widget.TextView
 import androidx.core.view.ViewCompat
@@ -121,8 +122,6 @@ class ListSyncSheet : BottomSheetDialogFragment() {
             if (loaded.isEmpty()) {
                 binding.listSyncStatus.text = getString(R.string.list_sync_same, name(other), name(main))
             } else {
-                binding.listSyncStatus.text =
-                    resources.getQuantityString(R.plurals.list_sync_found, loaded.size, loaded.size, name(other))
                 binding.listSyncSelect.visibility = View.VISIBLE
                 binding.listSyncApply.visibility = View.VISIBLE
                 showSelection()
@@ -130,15 +129,21 @@ class ListSyncSheet : BottomSheetDialogFragment() {
         }
     }
 
-    /** the button says how many entries it will write; the text button offers the opposite of what is ticked */
+    /** the count lives on the selection line; the header checkbox is all, none or some of the rows */
     private fun showSelection() {
         val count = selected.size
-        binding.listSyncSelect.setText(if (skipped.isEmpty()) R.string.list_sync_select_none else R.string.list_sync_select_all)
+        val total = changes.size
+        if (!retrying) binding.listSyncStatus.text = getString(R.string.list_sync_selected, count, total)
+        binding.listSyncSelect.checkedState = when {
+            skipped.isEmpty() -> MaterialCheckBox.STATE_CHECKED
+            count == 0 -> MaterialCheckBox.STATE_UNCHECKED
+            else -> MaterialCheckBox.STATE_INDETERMINATE
+        }
         binding.listSyncApply.isEnabled = count > 0 && !writing
         binding.listSyncApply.text = when {
             count == 0 -> getString(R.string.list_sync_nothing_selected)
             retrying -> getString(R.string.list_sync_retry)
-            else -> getString(R.string.list_sync_update_count, count, name(other))
+            else -> getString(R.string.list_sync_update, name(other))
         }
     }
 

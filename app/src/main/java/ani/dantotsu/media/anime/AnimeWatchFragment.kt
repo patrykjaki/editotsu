@@ -364,7 +364,8 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
         val parsedNumber = MediaNameAdapter.findEpisodeNumber(currentEpisode.number)
             ?: MediaNameAdapter.findEpisodeNumber(index)
             ?: currentEpisode.number
-        return "Episode $parsedNumber"
+        // whole numbers without ".0": "Episode 1", not "Episode 1.0"
+        return "Episode ${ani.dantotsu.media.anime.player.PlayerDisplayFormat.episodeNumber(parsedNumber.toString())}"
     }
 
     override fun onScanlatorsSelected() {

@@ -19,6 +19,8 @@ import ani.dantotsu.databinding.ItemWatchOrderBinding
 import ani.dantotsu.getThemeColor
 import ani.dantotsu.loadImage
 import ani.dantotsu.others.getSerialized
+import ani.dantotsu.settings.saving.PrefManager
+import ani.dantotsu.settings.saving.PrefName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -76,7 +78,8 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
             return
         }
 
-        // Show loading spinner and fetch in background
+        // the watch order loads behind a skeleton shaped like its own rows
+        if (mode == MODE_WATCH_ORDER) binding.repliesRefresh.tag = "order"
         binding.repliesRefresh.visibility = View.VISIBLE
         binding.repliesRecyclerView.visibility = View.GONE
         binding.repliesEmpty.visibility = View.GONE
@@ -89,15 +92,15 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             if (mode == MODE_WATCH_ORDER) {
-                val items = withContext(Dispatchers.IO) {
-                    model.getWatchOrder(media)
+                val orders = withContext(Dispatchers.IO) {
+                    model.getWatchOrders(media)
                 }
                 if (_binding == null) return@launch
                 binding.repliesRefresh.visibility = View.GONE
-                if (items.isEmpty()) {
-                    showEmptyState(mode)
-                } else {
-                    displayWatchOrder(items, media)
+                when {
+                    orders == null -> showEmptyState(mode, failed = true)
+                    orders.isEmpty() -> showEmptyState(mode)
+                    else -> showOrders(orders, 0, media)
                 }
             } else {
                 val isAnime = media.anime != null || media.format in listOf("TV", "TV_SHORT", "MOVIE", "SPECIAL", "OVA", "ONA", "MUSIC")
@@ -125,9 +128,45 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
     ) {
         binding.repliesEmpty.visibility = View.GONE
         binding.repliesRecyclerView.visibility = View.VISIBLE
-        val adapter = WatchOrderAdapter(items, media)
-        binding.repliesRecyclerView.adapter = adapter
-        val currentIndex = items.indexOfFirst { it.isCurrent }
+        // AniList's prequel/sequel chain decides when it could be read; the format guess otherwise
+        val optional = items.map {
+            !it.isCurrent && (it.mainStory?.not() ?: watchOrderOptional(it.mediaType, it.relationType))
+        }
+        val numbers = watchOrderNumbers(optional)
+        val numberById = items.indices.mapNotNull { i -> numbers[i]?.let { items[i].anilistId.trim() to it } }.toMap()
+        val hide = PrefManager.getVal<Boolean>(PrefName.WatchOrderHideOptional)
+        val rows = items.indices
+            .filter { !(hide && optional[it]) }
+            .map { WatchOrderRow(items[it], optional[it], numbers[it], items[it].alternativeTo?.let(numberById::get)) }
+        binding.repliesRecyclerView.adapter = WatchOrderAdapter(rows, media)
+
+        // header toggle: the icon shows what a tap does
+        binding.subscribeButton.visibility = if (optional.any { it }) View.VISIBLE else View.GONE
+        binding.subscribeButton.setBackgroundResource(R.drawable.icon_button_ripple)
+        binding.subscribeButton.imageTintList = android.content.res.ColorStateList.valueOf(
+            requireContext().getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant),
+        )
+        // a standard 48dp icon button, 16dp from the edge (the shared header's 36dp one sat too close)
+        val dp = resources.displayMetrics.density
+        binding.subscribeButton.setPadding((12 * dp).toInt(), (12 * dp).toInt(), (12 * dp).toInt(), (12 * dp).toInt())
+        binding.subscribeButton.layoutParams = (binding.subscribeButton.layoutParams as ViewGroup.MarginLayoutParams)
+            .apply {
+                width = (48 * dp).toInt()
+                height = (48 * dp).toInt()
+                marginEnd = (16 * dp).toInt()
+            }
+        binding.subscribeButton.setImageResource(
+            if (hide) R.drawable.ic_round_remove_red_eye_24 else R.drawable.ic_round_visibility_off_24,
+        )
+        binding.subscribeButton.contentDescription = getString(
+            if (hide) R.string.watch_order_show_optional else R.string.watch_order_hide_optional,
+        )
+        binding.subscribeButton.setOnClickListener {
+            PrefManager.setVal(PrefName.WatchOrderHideOptional, !hide)
+            displayWatchOrder(items, media)
+        }
+
+        val currentIndex = rows.indexOfFirst { it.item.isCurrent }
         if (currentIndex != -1) {
             val layoutManager = binding.repliesRecyclerView.layoutManager as? LinearLayoutManager
             layoutManager?.scrollToPositionWithOffset(currentIndex, 0)
@@ -139,17 +178,37 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
         }
     }
 
+    /** A franchise with several orders (airing, novel, chronological) gets a picker under the title. */
+    private fun showOrders(orders: List<MediaDetailsViewModel.WatchOrder>, selected: Int, media: Media?) {
+        val order = orders[selected]
+        binding.orderChip.visibility = if (orders.size > 1) View.VISIBLE else View.GONE
+        // like the calendar filter: the chip names the choice and is filled when it isn't the first order
+        binding.orderChip.text = order.name
+        binding.orderChip.isChecked = selected != 0
+        binding.orderChip.contentDescription = getString(R.string.watch_order_pick_desc, order.name)
+        binding.orderChip.setOnCloseIconClickListener { binding.orderChip.performClick() }
+        binding.orderChip.setOnClickListener {
+            binding.orderChip.isChecked = selected != 0 // the chip toggles itself on a tap
+
+            ani.dantotsu.settings.rows.ChoiceSheet.single(
+                requireContext(), getString(R.string.watch_order_pick),
+                orders.map { ani.dantotsu.settings.rows.ChoiceOption(it.name) }, selected,
+            ) { i -> if (_binding != null) showOrders(orders, i, media) }
+        }
+        displayWatchOrder(order.items, media)
+    }
+
     private fun displayNews(items: List<MediaDetailsViewModel.NewsItem>) {
         binding.repliesEmpty.visibility = View.GONE
         binding.repliesRecyclerView.visibility = View.VISIBLE
         binding.repliesRecyclerView.adapter = NewsAdapter(items)
     }
 
-    private fun showEmptyState(mode: String) {
+    private fun showEmptyState(mode: String, failed: Boolean = false) {
         binding.repliesRecyclerView.visibility = View.GONE
         binding.repliesEmpty.visibility = View.VISIBLE
         binding.repliesEmptyText.text = if (mode == MODE_WATCH_ORDER) {
-            getString(R.string.no_watch_order_found)
+            getString(if (failed) R.string.watch_order_failed else R.string.no_watch_order_found)
         } else {
             getString(R.string.no_news_found)
         }
@@ -160,13 +219,19 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
         _binding = null
     }
 
+    private class WatchOrderRow(
+        val item: MediaDetailsViewModel.WatchOrderItem,
+        val optional: Boolean,
+        val number: Int?,
+        /** the number of the entry this one can replace (a recap movie of a season) */
+        val alternativeOf: Int? = null,
+    )
+
     private inner class WatchOrderAdapter(
-        private val items: List<MediaDetailsViewModel.WatchOrderItem>,
+        private val rows: List<WatchOrderRow>,
         private val currentMedia: Media?
     ) : RecyclerView.Adapter<WatchOrderAdapter.ViewHolder>() {
-        private val currentIndex = items.indexOfFirst { it.isCurrent }
-        private val optional = items.map { !it.isCurrent && watchOrderOptional(it.mediaType, it.relationType) }
-        private val numbers = watchOrderNumbers(optional)
+        private val currentIndex = rows.indexOfFirst { it.item.isCurrent }
 
         inner class ViewHolder(val binding: ItemWatchOrderBinding) :
             RecyclerView.ViewHolder(binding.root)
@@ -178,8 +243,10 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
         }
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            val item = items[position]
+            val row = rows[position]
+            val item = row.item
             val context = holder.binding.root.context
+            val density = context.resources.displayMetrics.density
 
             // Title
             holder.binding.watchOrderTitle.text = item.name
@@ -189,8 +256,8 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
             holder.binding.watchOrderImage.loadImage(imageUrl)
 
             // an optional entry is a small dot on the line, without a number
-            val isOptional = optional[position]
-            holder.binding.watchOrderNumber.text = numbers[position]?.toString().orEmpty()
+            val isOptional = row.optional
+            holder.binding.watchOrderNumber.text = row.number?.toString().orEmpty()
             holder.binding.watchOrderNumber.scaleX = if (isOptional) 0.4f else 1f
             holder.binding.watchOrderNumber.scaleY = if (isOptional) 0.4f else 1f
             val primary = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary)
@@ -211,38 +278,64 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
             holder.binding.watchOrderLineAbove.setBackgroundColor(if (place == WatchOrderPlace.LATER) line else primary)
             holder.binding.watchOrderLineBelow.setBackgroundColor(if (place == WatchOrderPlace.EARLIER) primary else line)
             holder.binding.watchOrderLineAbove.visibility = if (position == 0) View.INVISIBLE else View.VISIBLE
-            holder.binding.watchOrderLineBelow.visibility = if (position == items.lastIndex) View.INVISIBLE else View.VISIBLE
+            holder.binding.watchOrderLineBelow.visibility = if (position == rows.lastIndex) View.INVISIBLE else View.VISIBLE
 
-            // one label per row: where you are, or how the entry relates when AniList says
+            // the numbers carry the order, so a row says only where you are or that it is optional
             if (item.isCurrent) {
                 holder.binding.watchOrderRelation.setText(R.string.watch_order_here)
                 holder.binding.watchOrderRelation.visibility = View.VISIBLE
                 holder.binding.watchOrderChevron.visibility = View.INVISIBLE
                 holder.binding.watchOrderCard.setCardBackgroundColor(ColorUtils.setAlphaComponent(primary, 40))
             } else {
-                val optionalWord = context.getString(R.string.watch_order_optional)
-                holder.binding.watchOrderRelation.text = when {
-                    !isOptional -> item.relationType
-                    item.relationType.isBlank() -> optionalWord
-                    else -> "$optionalWord · ${item.relationType}"
-                }
+                val coming = if (item.upcoming) {
+                    watchOrderComingDate(item.startYear, item.startMonth, item.startDay)
+                        ?.let { context.getString(R.string.watch_order_coming, it) }
+                        ?: context.getString(R.string.watch_order_coming_soon)
+                } else null
+                val completed = if (watchOrderCompleted(item.listStatus)) context.getString(R.string.watch_order_completed) else null
+                holder.binding.watchOrderRelation.text = listOfNotNull(
+                    rows[position].alternativeOf?.let { context.getString(R.string.watch_order_alternative, it) }
+                        ?: if (isOptional) context.getString(R.string.watch_order_optional) else null,
+                    completed ?: coming,
+                ).joinToString(" · ")
                 holder.binding.watchOrderRelation.visibility =
-                    if (holder.binding.watchOrderRelation.text.isNullOrBlank()) View.GONE else View.VISIBLE
+                    if (holder.binding.watchOrderRelation.text.isNullOrEmpty()) View.GONE else View.VISIBLE
                 holder.binding.watchOrderChevron.visibility = View.VISIBLE
                 holder.binding.watchOrderCard.setCardBackgroundColor(
                     if (isOptional) android.graphics.Color.TRANSPARENT else surfaceVariant,
                 )
             }
             holder.binding.watchOrderRelation.setTextColor(
-                if (isOptional) context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant) else primary,
+                if (isOptional || watchOrderCompleted(item.listStatus)) {
+                    context.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
+                } else primary,
             )
-            holder.binding.watchOrderCard.strokeWidth = if (isOptional) (1 * context.resources.displayMetrics.density).toInt().coerceAtLeast(1) else 0
-            holder.binding.watchOrderCard.strokeColor = line
+            // seen already: the row steps back, the order stays readable
+            holder.binding.watchOrderContent.alpha =
+                if (!item.isCurrent && watchOrderCompleted(item.listStatus)) 0.5f else 1f
+            holder.binding.watchOrderCard.strokeWidth = 0
+
+            // optional rows stay quieter than the order: smaller cover, shorter row, muted title
+            holder.binding.watchOrderCover.layoutParams = holder.binding.watchOrderCover.layoutParams.apply {
+                width = ((if (isOptional) 40 else 56) * density).toInt()
+                height = ((if (isOptional) 56 else 80) * density).toInt()
+            }
+            holder.binding.watchOrderContent.minimumHeight = ((if (isOptional) 72 else 100) * density).toInt()
+            holder.binding.watchOrderTitle.typeface = androidx.core.content.res.ResourcesCompat.getFont(
+                context, if (isOptional) R.font.poppins else R.font.poppins_semi_bold,
+            )
+            holder.binding.watchOrderTitle.setTextColor(
+                context.getThemeColor(
+                    if (isOptional) com.google.android.material.R.attr.colorOnSurfaceVariant
+                    else com.google.android.material.R.attr.colorOnSurface,
+                ),
+            )
 
             val episodes = watchOrderEpisodeCount(item.episodes)
             holder.binding.watchOrderMeta.text = watchOrderMeta(
                 item.mediaType,
-                item.airDate,
+                // an unreleased entry carries its date in the label
+                if (item.upcoming) "" else item.airDate,
                 episodes?.let { context.resources.getQuantityString(R.plurals.watch_order_episodes, it, it) },
             )
             holder.binding.watchOrderMeta.visibility =
@@ -273,7 +366,7 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
             }
         }
 
-        override fun getItemCount() = items.size
+        override fun getItemCount() = rows.size
     }
 
     private inner class NewsAdapter(
@@ -390,13 +483,46 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
 internal fun watchOrderEpisodeCount(raw: String): Int? =
     Regex("""^\s*(\d+)\s*ep""", RegexOption.IGNORE_CASE).find(raw)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }
 
-/** One line: format, air dates without an unknown end ("Oct 9, 2026 – ?" -> "Oct 9, 2026"), episode count. */
+/** One line: format, the year or years it aired ("Apr 12 – Jun 28, 2023" -> "2023"), episode count. */
 internal fun watchOrderMeta(format: String, airDate: String, episodes: String?): String =
-    listOf(
-        format.trim(),
-        airDate.replace(Regex("""\s*[–-]\s*\?\s*$"""), "").trim().takeUnless { it == "?" }.orEmpty(),
-        episodes.orEmpty(),
-    ).filter { it.isNotEmpty() }.joinToString(" · ")
+    listOf(format.trim(), watchOrderYears(airDate), episodes.orEmpty())
+        .filter { it.isNotEmpty() }.joinToString(" · ")
+
+/**
+ * AniList's start date as precise as it is known: "Jul 8, 2027", "Jul 2027", "2027";
+ * null when there is no year (the row then says "Coming soon").
+ */
+internal fun watchOrderComingDate(
+    year: Int?,
+    month: Int?,
+    day: Int?,
+    locale: java.util.Locale = java.util.Locale.getDefault(),
+): String? {
+    if (year == null) return null
+    if (month == null || month !in 1..12) return year.toString()
+    val date = runCatching { java.time.LocalDate.of(year, month, day ?: 1) }.getOrNull()
+        ?: return year.toString()
+    val formatter = if (day == null) {
+        java.time.format.DateTimeFormatter.ofPattern("MMM yyyy", locale)
+    } else {
+        java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM).withLocale(locale)
+    }
+    return date.format(formatter)
+}
+
+/** on the user's list as seen: completed, or completed and being rewatched */
+internal fun watchOrderCompleted(listStatus: String?): Boolean =
+    listStatus == "COMPLETED" || listStatus == "REPEATING"
+
+/** "Jul 3 – Oct 6, 2024" -> "2024", "Oct 2025 – Mar 2026" -> "2025–2026"; nothing when no year is known. */
+internal fun watchOrderYears(airDate: String): String {
+    val years = Regex("""\b(19|20)\d{2}\b""").findAll(airDate).map { it.value }.distinct().toList()
+    return when (years.size) {
+        0 -> ""
+        1 -> years[0]
+        else -> "${years.first()}–${years.last()}"
+    }
+}
 
 /** AniList's relation as a label: "SIDE_STORY" -> "Side story"; nothing when there is none. */
 internal fun watchOrderRelation(raw: String?): String =

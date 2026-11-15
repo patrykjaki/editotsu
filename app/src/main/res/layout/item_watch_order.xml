@@ -60,6 +60,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
+            android:id="@+id/watchOrderContent"
             android:minHeight="100dp"
             android:orientation="horizontal"
             android:paddingVertical="10dp"
@@ -67,6 +68,7 @@
             android:paddingEnd="12dp">
 
             <androidx.cardview.widget.CardView
+                android:id="@+id/watchOrderCover"
                 android:layout_width="56dp"
                 android:layout_height="80dp"
                 app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"

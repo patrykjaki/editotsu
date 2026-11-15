@@ -104,4 +104,10 @@
 
 
     <style name="ThemeOverlay_Dantotsu_MediaRouter" parent="ThemeOverlay.AppCompat" />
+
+    <!-- filter chips (calendar, watch order): M3 label size in the app's font -->
+    <style name="TextAppearance.Editotsu.Chip" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:fontFamily">@font/poppins_family</item>
+        <item name="fontFamily">@font/poppins_family</item>
+    </style>
 </resources>

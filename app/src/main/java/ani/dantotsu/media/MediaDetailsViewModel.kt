@@ -1326,7 +1326,21 @@ class MediaDetailsViewModel : ViewModel() {
         val airDate: String = "",
         val mediaType: String = "",
         val episodes: String = "",
-        val rating: String = ""
+        val rating: String = "",
+        /** AniList says it has not started; the start date parts are AniList's, any of them may be missing */
+        val upcoming: Boolean = false,
+        val startYear: Int? = null,
+        val startMonth: Int? = null,
+        val startDay: Int? = null,
+        /** the user's AniList list status for this entry ("COMPLETED", "CURRENT", ...), when on their list */
+        val listStatus: String? = null,
+        /**
+         * true when AniList joins this entry to the open title through prequel/sequel links only,
+         * false when it doesn't; null when that couldn't be checked (the format/relation guess is used)
+         */
+        val mainStory: Boolean? = null,
+        /** AniList id of the main entry this one replaces (a recap movie of a season); placed right after it */
+        val alternativeTo: String? = null,
     ) : java.io.Serializable
 
     data class NewsItem(
@@ -1335,8 +1349,38 @@ class MediaDetailsViewModel : ViewModel() {
         val date: java.util.Date?
     ) : java.io.Serializable
 
-    suspend fun getWatchOrder(media: Media): List<WatchOrderItem> {
-        return tryWithSuspend {
+    /** One named order of a franchise ("Airing Order", "Novel Release Order"); the name is empty for a single order. */
+    data class WatchOrder(val name: String, val items: List<WatchOrderItem>) : java.io.Serializable
+
+    /**
+     * Hand-written orders first (AniList ids, optional entries marked by people),
+     * the order site for anything the wiki doesn't cover. Empty: no order exists. Null: nothing could be loaded.
+     */
+    suspend fun getWatchOrders(media: Media): List<WatchOrder>? {
+        val wiki = try {
+            WatchOrderWiki.ordersFor(media.id, ani.dantotsu.currContext()?.cacheDir ?: java.io.File(System.getProperty("java.io.tmpdir") ?: "/tmp"))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.log("watch order wiki failed: ${e.message}")
+            null
+        }
+        if (!wiki.isNullOrEmpty()) {
+            val orders = wiki.map { WatchOrder(it.name, watchOrderWikiItems(it, media.id)) }.filter { it.items.isNotEmpty() }
+            if (orders.isNotEmpty()) {
+                // one AniList request for every entry in every order
+                val all = withAnilistState(orders.flatMap { it.items })
+                var at = 0
+                return orders.map { o -> o.copy(items = all.subList(at, at + o.items.size).also { at += o.items.size }) }
+            }
+        }
+        val site = getWatchOrder(media) ?: return null
+        return if (site.isEmpty()) emptyList() else listOf(WatchOrder("", site))
+    }
+
+    /** The order site's order; null when it didn't answer (rate limit, network). */
+    suspend fun getWatchOrder(media: Media): List<WatchOrderItem>? {
+        return tryWithSuspend(snackbar = false) {
             val headers = mapOf(
                 "Referer" to "https://chiaki.site/?/tools/watch_order",
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -1363,7 +1407,10 @@ class MediaDetailsViewModel : ViewModel() {
             if (targetId == null) return@tryWithSuspend emptyList()
 
             val orderUrl = "https://chiaki.site/?/tools/watch_order/id/$targetId"
-            val html = client.get(orderUrl, headers = headers).text
+            val response = client.get(orderUrl, headers = headers)
+            // a rate limit answers 429 with a page that has no rows: that is "couldn't load", not "no order"
+            if (response.code !in 200..299) throw java.io.IOException("watch order site: HTTP ${response.code}")
+            val html = response.text
             val doc = org.jsoup.Jsoup.parse(html)
 
             val rows = doc.select("tr[data-id]")
@@ -1422,6 +1469,7 @@ class MediaDetailsViewModel : ViewModel() {
                 // ("Sequel" for any TV entry) was wrong more often than right.
                 val relationType = if (isCurrent) "" else watchOrderRelation(relationsMap[anilistId]?.relation)
 
+
                 WatchOrderItem(
                     id = id,
                     anilistId = anilistId,
@@ -1432,10 +1480,69 @@ class MediaDetailsViewModel : ViewModel() {
                     airDate = airDate,
                     mediaType = format,
                     episodes = eps,
-                    rating = rating
+                    rating = rating,
                 )
+            }.let { withAnilistState(it) }
+        }
+    }
+
+    /**
+     * One AniList request for every row: release status, start date and the user's list entry.
+     * Raw API values (the app's Media.status is a translated label). Rows stay as they are when
+     * it fails.
+     */
+    private suspend fun withAnilistState(items: List<WatchOrderItem>): List<WatchOrderItem> {
+        val ids = items.mapNotNull { it.anilistId.trim().toIntOrNull()?.takeIf { id -> id > 0 } }.distinct()
+        if (ids.isEmpty()) return items
+        val byId = try {
+            ids.chunked(50).flatMap { chunk ->
+                Anilist.executeQuery<ani.dantotsu.connections.anilist.api.Query.MediaList>(
+                    "{Page(page:1,perPage:50){media(id_in:[${chunk.joinToString(",")}]){id format title{romaji english native userPreferred} status(version:2) startDate{year month day} mediaListEntry{status} relations{edges{relationType(version:2) node{id format}}}}}}",
+                    force = true,
+                )?.data?.page?.media.orEmpty()
+            }.associateBy { it.id }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.log("watch order state lookup failed: ${e.message}")
+            return items
+        }
+        val links = byId.mapValues { (_, m) ->
+            m.relations?.edges.orEmpty().mapNotNull { edge ->
+                val type = edge.relationType?.name
+                if (type == "PREQUEL" || type == "SEQUEL") edge.node?.id else null
             }
-        } ?: emptyList()
+        }
+        // recaps and alternate versions of an entry in the list (see watchOrderAlternatives)
+        val alternatives = watchOrderAlternatives(
+            order = ids,
+            format = byId.mapValues { it.value.format?.name },
+            edges = byId.mapValues { (_, m) ->
+                m.relations?.edges.orEmpty().mapNotNull { e ->
+                    val to = e.node?.id ?: return@mapNotNull null
+                    (e.relationType?.name ?: return@mapNotNull null) to to
+                }
+            },
+        )
+        val start = items.firstOrNull { it.isCurrent }?.anilistId?.trim()?.toIntOrNull()
+        val story = if (start != null && start in byId) watchOrderStory(start, links) else null
+        return items.map { item ->
+            val id = item.anilistId.trim().toIntOrNull()
+            val m = byId[id] ?: return@map item
+            val upcoming = m.status?.name == "NOT_YET_RELEASED"
+            item.copy(
+                // the title in the user's AniList title language, not the order site's romaji
+                name = m.title?.userPreferred?.takeIf { it.isNotBlank() } ?: item.name,
+                // a hand-written order's own optional mark wins over the prequel/sequel chain
+                mainStory = if (id in alternatives) false else item.mainStory ?: story?.contains(id),
+                alternativeTo = alternatives[id]?.toString(),
+                upcoming = upcoming,
+                startYear = if (upcoming) m.startDate?.year else null,
+                startMonth = if (upcoming) m.startDate?.month else null,
+                startDay = if (upcoming) m.startDate?.day else null,
+                listStatus = m.mediaListEntry?.status?.name,
+            )
+        }.let { watchOrderPlaceAlternatives(it) }
     }
 
 
@@ -1633,4 +1740,68 @@ class MediaDetailsViewModel : ViewModel() {
             result
         } ?: emptyList()
     }
+}
+
+/** every entry reachable from [start] through prequel/sequel links: the story itself */
+internal fun watchOrderStory(start: Int, links: Map<Int, List<Int>>): Set<Int> {
+    val seen = mutableSetOf(start)
+    val queue = ArrayDeque(listOf(start))
+    while (queue.isNotEmpty()) {
+        for (next in links[queue.removeFirst()].orEmpty()) {
+            if (next in links && seen.add(next)) queue.addLast(next)
+        }
+    }
+    return seen
+}
+
+/** Each alternative moves to right after the entry it replaces, keeping their order; the rest stay put. */
+internal fun watchOrderPlaceAlternatives(items: List<MediaDetailsViewModel.WatchOrderItem>): List<MediaDetailsViewModel.WatchOrderItem> {
+    val ids = items.map { it.anilistId.trim() }.toSet()
+    val moving = items.filter { it.alternativeTo != null && it.alternativeTo in ids && it.alternativeTo != it.anilistId.trim() }
+    if (moving.isEmpty()) return items
+    val rest = items.filter { it !in moving }
+    val out = ArrayList<MediaDetailsViewModel.WatchOrderItem>(items.size)
+    for (item in rest) {
+        out += item
+        out += moving.filter { it.alternativeTo == item.anilistId.trim() }
+    }
+    // an alternative of an alternative (or of a row that moved) lands at the end rather than vanishing
+    out += moving.filter { it !in out }
+    return out
+}
+
+/**
+ * Which listed entry is a recap or alternate version of which (id -> the id it can replace).
+ * AniList links them both ways, so the direction is decided here:
+ *  - a season lists its recap as SUMMARY: the recap replaces the season
+ *  - a movie whose PARENT is a TV season (how recap films are often linked) replaces that season
+ *  - ALTERNATIVE goes both ways: a movie/special/OVA replaces the TV series; between two of a kind,
+ *    the later one in the order replaces the earlier
+ * An entry that is replaced is never itself an alternative, so there are no cycles.
+ */
+internal fun watchOrderAlternatives(
+    order: List<Int>,
+    format: Map<Int, String?>,
+    edges: Map<Int, List<Pair<String, Int>>>,
+): Map<Int, Int> {
+    val listed = order.toSet()
+    val position = order.withIndex().associate { it.value to it.index }
+    fun series(id: Int) = format[id] in setOf("TV", "TV_SHORT", "ONA")
+    val found = LinkedHashMap<Int, Int>()
+    fun claim(alt: Int, of: Int) {
+        if (alt == of || alt !in listed || of !in listed) return
+        found.putIfAbsent(alt, of)
+    }
+    for (id in order) for ((type, to) in edges[id].orEmpty()) when (type) {
+        "SUMMARY" -> claim(to, id)
+        "PARENT" -> if (format[id] == "MOVIE" && series(to)) claim(id, to)
+        "ALTERNATIVE" -> when {
+            series(to) && !series(id) -> claim(id, to)
+            series(id) && !series(to) -> claim(to, id)
+            (position[id] ?: 0) > (position[to] ?: 0) -> claim(id, to)
+            else -> claim(to, id)
+        }
+    }
+    val targets = found.values.toSet()
+    return found.filterKeys { it !in targets }
 }

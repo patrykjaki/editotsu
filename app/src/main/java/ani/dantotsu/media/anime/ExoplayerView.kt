@@ -856,15 +856,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             beginChildScreen()
             onChangeSettings.launch(intent)
         }
-        // Long-press on the gear: the "secret menu" listing gestures that have no button.
-        exoSettings.setOnLongClickListener {
-            showPlayerShortcuts()
-            true
-        }
 
         // Speed Dialog
         val speeds = PlaybackSpeedSelection.values(PrefManager.getVal(PrefName.CursedSpeeds))
-        val speedsName = speeds.map { "${it}x" }.toTypedArray()
+        val speedsName = speeds.map { PlayerDisplayFormat.speed(it) }.toTypedArray()
         val savedIndex = PrefManager.getCustomVal("${media.id}_speed", PrefManager.getVal<Int>(PrefName.DefaultSpeed))
         var curSpeed = savedIndex.coerceIn(0, speeds.size - 1)
 
@@ -1987,8 +1982,6 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     /** Lists only the gestures that are switched on in player settings. */
-    private fun showPlayerShortcuts() = ani.dantotsu.media.anime.player.PlayerShortcuts.show(this)
-
     private fun enterPipMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
@@ -2304,7 +2297,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         exoSpeed.setOnClickListener {
             customAlertDialog().apply {
                 setTitle(R.string.speed)
-                singleChoiceItems(speeds.map { "${it}x" }.toTypedArray(), themeSpeed) { i ->
+                singleChoiceItems(speeds.map { PlayerDisplayFormat.speed(it) }.toTypedArray(), themeSpeed) { i ->
                     themeSpeed = i
                     playerManager.playbackEngine?.setPlaybackSpeed(speeds.getOrNull(i) ?: 1f)
                     hideSystemBars()

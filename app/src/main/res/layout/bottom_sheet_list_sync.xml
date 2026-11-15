@@ -197,13 +197,12 @@
             android:textColor="?attr/colorOnSurface"
             android:textSize="15sp" />
 
-        <Button
+        <!-- select all / none, in the same column as the row checkboxes -->
+        <com.google.android.material.checkbox.MaterialCheckBox
             android:id="@+id/listSyncSelect"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="@font/poppins_semi_bold"
-            android:text="@string/list_sync_select_none"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/list_sync_select_all"
             android:visibility="gone" />
     </LinearLayout>
 
@@ -223,6 +222,7 @@
 
     <Button
         android:id="@+id/listSyncApply"
+        style="@style/Widget.Material3.Button"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:layout_marginHorizontal="16dp"
