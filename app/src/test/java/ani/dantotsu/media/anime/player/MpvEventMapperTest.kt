@@ -78,4 +78,98 @@ class MpvEventMapperTest {
         assertTrue(error.state is PlaybackState.Error)
         assertEquals(ErrorCategory.SOURCE, (error.state as PlaybackState.Error).error.category)
     }
+
+    @Test
+    fun testShouldMarkPlaybackStarted() {
+        // Not loaded yet: never ready
+        assertFalse(
+            MpvEventMapper.shouldMarkPlaybackStarted(
+                isLoaded = false,
+                firstFrameShown = false,
+                coreIdle = false,
+                isPaused = false,
+                pausedForCache = false,
+                initialLoadedPositionMs = 0L,
+                currentPositionMs = 1000L
+            )
+        )
+
+        // Already shown first frame: do not re-trigger
+        assertFalse(
+            MpvEventMapper.shouldMarkPlaybackStarted(
+                isLoaded = true,
+                firstFrameShown = true,
+                coreIdle = false,
+                isPaused = false,
+                pausedForCache = false,
+                initialLoadedPositionMs = 0L,
+                currentPositionMs = 1000L
+            )
+        )
+
+        // Paused for cache: do not mark ready
+        assertFalse(
+            MpvEventMapper.shouldMarkPlaybackStarted(
+                isLoaded = true,
+                firstFrameShown = false,
+                coreIdle = false,
+                isPaused = false,
+                pausedForCache = true,
+                initialLoadedPositionMs = 0L,
+                currentPositionMs = 1000L
+            )
+        )
+
+        // core-idle becomes false while not paused -> ready
+        assertTrue(
+            MpvEventMapper.shouldMarkPlaybackStarted(
+                isLoaded = true,
+                firstFrameShown = false,
+                coreIdle = false,
+                isPaused = false,
+                pausedForCache = false,
+                initialLoadedPositionMs = null,
+                currentPositionMs = 0L
+            )
+        )
+
+        // core-idle false while paused -> not ready unless time-pos advanced > 500ms
+        assertFalse(
+            MpvEventMapper.shouldMarkPlaybackStarted(
+                isLoaded = true,
+                firstFrameShown = false,
+                coreIdle = false,
+                isPaused = true,
+                pausedForCache = false,
+                initialLoadedPositionMs = 0L,
+                currentPositionMs = 500L
+            )
+        )
+
+        // time-pos advances by <= 500ms after load while core-idle is still true -> not ready
+        assertFalse(
+            MpvEventMapper.shouldMarkPlaybackStarted(
+                isLoaded = true,
+                firstFrameShown = false,
+                coreIdle = true,
+                isPaused = false,
+                pausedForCache = false,
+                initialLoadedPositionMs = 10_000L,
+                currentPositionMs = 10_500L
+            )
+        )
+
+        // time-pos advances by > 500ms after load -> ready
+        assertTrue(
+            MpvEventMapper.shouldMarkPlaybackStarted(
+                isLoaded = true,
+                firstFrameShown = false,
+                coreIdle = true,
+                isPaused = false,
+                pausedForCache = false,
+                initialLoadedPositionMs = 10_000L,
+                currentPositionMs = 10_501L
+            )
+        )
+    }
 }

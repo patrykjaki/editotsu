@@ -138,9 +138,11 @@ class MpvPlaybackEngine(
         var externalSubtitlesAttached: Boolean = false,
         var externalAudioAttached: Boolean = false,
         var durationKnown: Boolean = false,
-        // Set at the first MPV_EVENT_PLAYBACK_RESTART of this load (first frame ready).
+        // Set at the first MPV_EVENT_PLAYBACK_RESTART of this load (first frame ready),
+        // or when core-idle becomes false while unpaused / time-pos advances after load.
         // Until then the state stays Buffering, even after FILE_LOADED.
         var firstFrameShown: Boolean = false,
+        var initialLoadedPositionMs: Long? = null,
         var pendingSeekMs: Long? = null,
         var pendingAudioTrackId: Int? = null,
         var pendingSubtitleTrackId: Int? = null,
@@ -256,6 +258,7 @@ class MpvPlaybackEngine(
 
     private var pausedForCache = false
     private var isPausedInternal = true
+    private var coreIdleInternal = true
     private var sessionSubtitleStyle: SubtitleStyle = SubtitleStyle()
     private var sessionVideoPipelineConfig: VideoPipelineConfig? = null
 
@@ -383,6 +386,7 @@ class MpvPlaybackEngine(
             mpvClient.observeProperty("time-pos", MPV_FORMAT_DOUBLE)
             mpvClient.observeProperty("duration", MPV_FORMAT_DOUBLE)
             mpvClient.observeProperty("pause", MPV_FORMAT_FLAG)
+            mpvClient.observeProperty("core-idle", MPV_FORMAT_FLAG)
             mpvClient.observeProperty("paused-for-cache", MPV_FORMAT_FLAG)
             mpvClient.observeProperty("speed", MPV_FORMAT_DOUBLE)
             mpvClient.observeProperty("track-list", MPV_FORMAT_NODE)
@@ -1490,10 +1494,14 @@ class MpvPlaybackEngine(
             "time-pos" -> {
                 val sec = mpvClient.getPropertyDouble("time-pos") ?: 0.0
                 val posMs = TimeConverter.secondsToMs(sec)
+                if (activeOp.state == LoadOperationState.LOADED && activeOp.initialLoadedPositionMs == null) {
+                    activeOp.initialLoadedPositionMs = posMs
+                }
                 if (currentSnapshot.positionMs != posMs) {
                     updateSnapshot(currentSnapshot.copy(positionMs = posMs))
                     notifyPositionChanged(posMs, currentSnapshot.durationMs)
                 }
+                maybeMarkPlaybackStarted(activeOp)
                 sampleAutoUpscaler()
             }
             "duration" -> {
@@ -1511,7 +1519,13 @@ class MpvPlaybackEngine(
             "pause" -> {
                 val paused = mpvClient.getPropertyBoolean("pause") ?: true
                 isPausedInternal = paused
+                maybeMarkPlaybackStarted(activeOp)
                 computeAndPublishPlayingState()
+            }
+            "core-idle" -> {
+                val idle = mpvClient.getPropertyBoolean("core-idle") ?: true
+                coreIdleInternal = idle
+                maybeMarkPlaybackStarted(activeOp)
             }
             "paused-for-cache" -> {
                 val pausedCache = mpvClient.getPropertyBoolean("paused-for-cache") ?: false
@@ -1756,6 +1770,11 @@ class MpvPlaybackEngine(
                     val op = if (playingId != null) operationsByEntryId[playingId] else activeOperation
                     if (op != null && (playingId == null || op.playlistEntryId == playingId)) {
                         op.state = LoadOperationState.LOADED
+                        if (op.pendingSeekMs != null) {
+                            op.initialLoadedPositionMs = op.pendingSeekMs
+                        } else if (op.request.startPositionMs > 0L) {
+                            op.initialLoadedPositionMs = op.request.startPositionMs
+                        }
 
                         // Attach external subtitles for this operation once.
                         // Beta03: apply the track's source transport context first
@@ -1832,7 +1851,9 @@ class MpvPlaybackEngine(
 
                         // Not Ready yet: mpv may still be reading cues/seeking to the first
                         // cluster (torrent streams: seconds of black). PLAYBACK_RESTART marks
-                        // the first frame and flips to Ready.
+                        // the first frame and flips to Ready, or core-idle=false / time-pos
+                        // advancing does if PLAYBACK_RESTART never arrives.
+                        maybeMarkPlaybackStarted(op)
                         computeAndPublishPlayingState()
                     }
                 }
@@ -1847,13 +1868,7 @@ class MpvPlaybackEngine(
                                 "sinceLoadMs=${if (loadIssuedAtMs > 0) now - loadIssuedAtMs else -1} " +
                                 "sinceSeekMs=${if (seekIssuedAtMs > 0) now - seekIssuedAtMs else -1}"
                         )
-                        seekIssuedAtMs = 0L
-                        op.firstFrameShown = true
-                        updateSnapshot(currentSnapshot.copy(
-                            playbackState = PlaybackState.Ready
-                        ))
-                        notifyPlaybackStateChanged(PlaybackState.Ready)
-                        computeAndPublishPlayingState()
+                        markOperationReady(op)
                     }
                 }
 
@@ -1905,6 +1920,31 @@ class MpvPlaybackEngine(
                     computeAndPublishPlayingState()
                 }
             }
+        }
+    }
+
+    private fun markOperationReady(op: LoadOperation) {
+        seekIssuedAtMs = 0L
+        op.firstFrameShown = true
+        updateSnapshot(currentSnapshot.copy(
+            playbackState = PlaybackState.Ready
+        ))
+        notifyPlaybackStateChanged(PlaybackState.Ready)
+        computeAndPublishPlayingState()
+    }
+
+    private fun maybeMarkPlaybackStarted(op: LoadOperation) {
+        if (MpvEventMapper.shouldMarkPlaybackStarted(
+                isLoaded = op.state == LoadOperationState.LOADED,
+                firstFrameShown = op.firstFrameShown,
+                coreIdle = coreIdleInternal,
+                isPaused = isPausedInternal,
+                pausedForCache = pausedForCache,
+                initialLoadedPositionMs = op.initialLoadedPositionMs,
+                currentPositionMs = currentSnapshot.positionMs
+            )
+        ) {
+            markOperationReady(op)
         }
     }
 

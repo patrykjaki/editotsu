@@ -2,6 +2,23 @@ package ani.dantotsu.media.anime.player
 
 object MpvEventMapper {
 
+    const val PLAYBACK_STARTED_ADVANCE_MS = 500L
+
+    fun shouldMarkPlaybackStarted(
+        isLoaded: Boolean,
+        firstFrameShown: Boolean,
+        coreIdle: Boolean,
+        isPaused: Boolean,
+        pausedForCache: Boolean,
+        initialLoadedPositionMs: Long?,
+        currentPositionMs: Long
+    ): Boolean {
+        if (!isLoaded || firstFrameShown || pausedForCache) return false
+        if (!coreIdle && !isPaused) return true
+        val baseline = initialLoadedPositionMs ?: return false
+        return currentPositionMs - baseline > PLAYBACK_STARTED_ADVANCE_MS
+    }
+
     data class EndFileResult(
         val state: PlaybackState,
         val isStale: Boolean,

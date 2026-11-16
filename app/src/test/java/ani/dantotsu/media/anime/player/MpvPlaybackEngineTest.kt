@@ -275,6 +275,54 @@ class MpvPlaybackEngineTest {
     }
 
     @Test
+    fun testReadyReportedOnceWhenCoreIdleFalseOrTimePosAdvancesWithoutPlaybackRestart() {
+        val stateTransitions = mutableListOf<PlaybackState>()
+        engine.addListener(object : PlaybackListener {
+            override fun onPlaybackStateChanged(state: PlaybackState) {
+                stateTransitions.add(state)
+            }
+        })
+
+        // Case 1: core-idle becomes false while unpaused
+        engine.play()
+        engine.loadMedia(PlaybackRequest(uri = "https://cdn.anime.com/stream_a.m3u8"))
+        Thread.sleep(50)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_START_FILE, playlistEntryId = 31L)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_FILE_LOADED)
+        fakeClient.emitProperty("pause", false)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Buffering, engine.playbackState)
+
+        fakeClient.emitProperty("core-idle", false)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Ready, engine.playbackState)
+        assertTrue(engine.isPlaying)
+        assertEquals(1, stateTransitions.count { it is PlaybackState.Ready })
+
+        // Subsequent time-pos updates do not re-emit Ready
+        fakeClient.emitProperty("time-pos", 1.0)
+        fakeClient.emitProperty("time-pos", 2.0)
+        Thread.sleep(50)
+        assertEquals(1, stateTransitions.count { it is PlaybackState.Ready })
+
+        // Case 2: time-pos advances by > 0.5s after load without PLAYBACK_RESTART or core-idle=false
+        stateTransitions.clear()
+        fakeClient.emitProperty("core-idle", true)
+        engine.loadMedia(PlaybackRequest(uri = "https://cdn.anime.com/stream_b.m3u8", startPositionMs = 10_000L))
+        Thread.sleep(50)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_START_FILE, playlistEntryId = 32L)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_FILE_LOADED)
+        fakeClient.emitProperty("time-pos", 10.2)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Buffering, engine.playbackState)
+
+        fakeClient.emitProperty("time-pos", 10.6)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Ready, engine.playbackState)
+        assertEquals(1, stateTransitions.count { it is PlaybackState.Ready })
+    }
+
+    @Test
     fun testExternalSubtitlesAttachedOnFileLoaded() {
         val extSub = ExternalSubtitle(
             url = "https://cdn.anime.com/sub_en.vtt",
