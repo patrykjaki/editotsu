@@ -128,7 +128,10 @@ class SettingsDialogFragment : BottomSheetDialogFragment() {
             }
         }
 
-        binding.settingsRescueMode.isChecked = PrefManager.getVal(PrefName.RescueMode)
+        val rescueModeOn: Boolean = PrefManager.getVal(PrefName.RescueMode)
+        binding.settingsRescueMode.isChecked = rescueModeOn
+        binding.settingsRescueMode.isEnabled = rescueSwitchEnabled(MAL.isLoggedIn(), rescueModeOn)
+        binding.settingsRescueMode.alpha = if (binding.settingsRescueMode.isEnabled) 1f else 0.38f
         binding.settingsRescueMode.setOnCheckedChangeListener { _, isChecked ->
             PrefManager.setVal(PrefName.RescueMode, isChecked)
             val main = activity as? MainActivity

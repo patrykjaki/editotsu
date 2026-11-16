@@ -625,7 +625,9 @@ class HomeFragment : Fragment() {
                         model.loaded = true
                     }
 
-                    if (Anilist.anilistDisabledSignal && !PrefManager.getVal<Boolean>(PrefName.RescueMode)) {
+                    if (Anilist.anilistDisabledSignal && !PrefManager.getVal<Boolean>(PrefName.RescueMode)
+                        && MAL.isLoggedIn()
+                    ) {
                         withContext(Dispatchers.Main) {
                             if (isAdded && _binding != null) {
                                 requireContext().customAlertDialog().apply {
