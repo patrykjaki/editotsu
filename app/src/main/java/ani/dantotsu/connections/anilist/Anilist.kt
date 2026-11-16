@@ -270,9 +270,8 @@ object Anilist {
         AnilistLoginGate.start()
         ani.dantotsu.LoginReturn.remember(context)
         val url = "https://anilist.co/api/v2/oauth/authorize?client_id=$clientID&response_type=token"
-        // In the browser, not the in-app page: AniList's login has a Cloudflare check that
-        // does not load inside embedded pages on some phones. Its return link is our own
-        // scheme, so no app chooser appears.
+        if (ani.dantotsu.connections.LoginWebActivity.open(context, url)) return
+        // No WebView on this device: the browser, as before.
         try {
             CustomTabsIntent.Builder().build().launchUrl(
                 context,

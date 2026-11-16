@@ -30,7 +30,8 @@ class Login : AppCompatActivity() {
 
 /** Finishes a MAL login from its redirect, then returns to the screen that started it. */
 internal object MalCallback {
-    fun handle(activity: AppCompatActivity, uri: Uri?) {
+    /** [quiet]: the caller shows its own loading state, so no progress snackbars. */
+    fun handle(activity: AppCompatActivity, uri: Uri?, quiet: Boolean = false) {
         with(activity) {
         val callbackResult = MALOAuth.parseCallback(uri)
 
@@ -63,12 +64,12 @@ internal object MalCallback {
                     return@with
                 }
 
-                snackString(getString(R.string.logging_in_mal))
+                if (!quiet) snackString(getString(R.string.logging_in_mal))
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
                         val exchangeSuccess = MAL.exchangeAuthorizationCode(callbackResult.code, verifier)
                         if (exchangeSuccess) {
-                            snackString(getString(R.string.getting_user_data))
+                            if (!quiet) snackString(getString(R.string.getting_user_data))
                             MAL.query.getUserData()
                         } else {
                             snackString(getString(R.string.mal_login_failed))

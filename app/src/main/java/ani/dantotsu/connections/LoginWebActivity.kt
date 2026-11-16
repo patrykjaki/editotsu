@@ -17,6 +17,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import ani.dantotsu.connections.anilist.AnilistCallback
 import ani.dantotsu.connections.mal.MalCallback
+import ani.dantotsu.R
 import ani.dantotsu.themes.ThemeManager
 import com.google.android.material.progressindicator.LinearProgressIndicator
 
@@ -29,6 +30,7 @@ class LoginWebActivity : AppCompatActivity() {
     private lateinit var web: WebView
     private lateinit var progress: LinearProgressIndicator
     private var finishing = false
+    private lateinit var signingIn: View
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,6 +46,11 @@ class LoginWebActivity : AppCompatActivity() {
             settings.domStorageEnabled = true
             settings.allowFileAccess = false
             settings.allowContentAccess = false
+            // Present as the phone's Chrome (drop the WebView markers) and keep Cloudflare's
+            // cookies: AniList's login check otherwise refuses to load in the page.
+            settings.userAgentString = settings.userAgentString
+                .replace("; wv)", ")")
+                .replace(Regex("""Version/\d+(\.\d+)* """), "")
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
                     catchRedirect(request.url)
@@ -57,10 +64,53 @@ class LoginWebActivity : AppCompatActivity() {
                 }
             }
         }
+        android.webkit.CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(web, true)
+        }
         progress = LinearProgressIndicator(this).apply { isIndeterminate = true }
-        val root = FrameLayout(this).apply {
+        val dp = resources.displayMetrics.density
+        fun iconButton(icon: Int, label: Int, onClick: () -> Unit) = android.widget.ImageButton(this).apply {
+            setImageResource(icon)
+            contentDescription = getString(label)
+            val outValue = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
+            setBackgroundResource(outValue.resourceId)
+            setOnClickListener { onClick() }
+        }
+        val bar = FrameLayout(this).apply {
+            val size = (48 * dp).toInt()
+            addView(iconButton(R.drawable.ic_round_close_24, R.string.close) { finish() },
+                FrameLayout.LayoutParams(size, size, android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL)
+                    .apply { marginStart = (4 * dp).toInt() })
+            // If the page will not load here, finish the login in the browser instead.
+            addView(iconButton(R.drawable.ic_round_open_in_new_24, R.string.open_in_browser) { openInBrowser(url) },
+                FrameLayout.LayoutParams(size, size, android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL)
+                    .apply { marginEnd = (4 * dp).toInt() })
+        }
+        // Shown once the service answers, while the account loads: the service's logo over a
+        // spinner instead of an empty page.
+        signingIn = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            visibility = View.GONE
+            val logo = if (url.contains("myanimelist")) R.drawable.ic_myanimelist else R.drawable.ic_anilist
+            addView(android.widget.ImageView(context).apply { setImageResource(logo) },
+                android.widget.LinearLayout.LayoutParams((56 * dp).toInt(), (56 * dp).toInt()))
+            addView(com.google.android.material.progressindicator.CircularProgressIndicator(context).apply {
+                isIndeterminate = true
+            }, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = (24 * dp).toInt() })
+        }
+        val page = FrameLayout(this).apply {
             addView(web, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             addView(progress, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(signingIn, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        }
+        val root = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            addView(bar, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (56 * dp).toInt()))
+            addView(page, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
@@ -74,6 +124,15 @@ class LoginWebActivity : AppCompatActivity() {
         web.loadUrl(url)
     }
 
+    private fun openInBrowser(url: String) {
+        try {
+            androidx.browser.customtabs.CustomTabsIntent.Builder().build().launchUrl(this, Uri.parse(url))
+        } catch (_: android.content.ActivityNotFoundException) {
+            ani.dantotsu.openLinkInBrowser(url)
+        }
+        finish()
+    }
+
     private fun catchRedirect(uri: Uri): Boolean {
         val scheme = uri.scheme?.lowercase()
         if (scheme != "editotsu" && scheme != "dantotsu") return false
@@ -82,8 +141,9 @@ class LoginWebActivity : AppCompatActivity() {
         if (finishing) return true
         finishing = true
         web.visibility = View.INVISIBLE
-        progress.visibility = View.VISIBLE
-        if (host == "mal") MalCallback.handle(this, uri) else AnilistCallback.handle(this, uri.toString())
+        progress.visibility = View.GONE
+        signingIn.visibility = View.VISIBLE
+        if (host == "mal") MalCallback.handle(this, uri, quiet = true) else AnilistCallback.handle(this, uri.toString())
         return true
     }
 

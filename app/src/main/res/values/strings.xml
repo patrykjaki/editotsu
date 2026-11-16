@@ -858,6 +858,7 @@
     <string name="ok">OK</string>
     <string name="reset">Reset</string>
     <string name="close">Close</string>
+    <string name="open_in_browser">Open in browser</string>
     <string name="no_chapter">No Chapter</string>
     <string name="content_18">Turn on 18+ content from your Anilist settings</string>
     <string name="available">Available</string>
