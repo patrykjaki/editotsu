@@ -124,7 +124,11 @@ class MALQueries {
         return lastResponse ?: throw (lastException ?: Exception("Request failed after $maxAttempts attempts"))
     }
 
-    suspend fun getUserData(): Boolean {
+    /**
+     * [quick]: only the profile request itself, so a login can return at once; the avatar
+     * lookup and the list-based stat estimates (many requests) run in a later full call.
+     */
+    suspend fun getUserData(quick: Boolean = false): Boolean {
         val generationAtStart = MAL.currentAuthGeneration
         if (authHeader == null) return false
         val res = try {
@@ -150,6 +154,16 @@ class MALQueries {
         kotlin.coroutines.coroutineContext.ensureActive()
 
         var avatarUrl = res.picture
+        if (quick) {
+            return MAL.commitProfile(
+                userId = res.id,
+                username = res.name,
+                avatar = avatarUrl,
+                episodesWatched = res.animeStatistics?.numEpisodes,
+                chaptersRead = res.mangaStatistics?.numChaptersRead,
+                generation = generationAtStart
+            )
+        }
         if (avatarUrl.isNullOrBlank() && res.name.isNotBlank()) {
             try {
                 val jikanProfile = MAL.jikan.getUserProfile(res.name)

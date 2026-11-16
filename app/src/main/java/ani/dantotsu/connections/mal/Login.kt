@@ -70,7 +70,13 @@ internal object MalCallback {
                         val exchangeSuccess = MAL.exchangeAuthorizationCode(callbackResult.code, verifier)
                         if (exchangeSuccess) {
                             if (!quiet) snackString(getString(R.string.getting_user_data))
-                            MAL.query.getUserData()
+                            // Name first so the login returns at once; avatar and stats after.
+                            MAL.query.getUserData(quick = true)
+                            @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+                            kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+                                ani.dantotsu.tryWithSuspend { MAL.query.getUserData() }
+                                ani.dantotsu.MainActivity.accountChanged()
+                            }
                         } else {
                             snackString(getString(R.string.mal_login_failed))
                         }
