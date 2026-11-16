@@ -279,8 +279,12 @@ class RowAdapter(
                     // Equal segments across the row, as in the Material 3 segmented button.
                     b.rowSegments.addView(button, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     if (i == kind.get()) b.rowSegments.check(button.id)
+                    markSegment(button, option.icon, button.isChecked)
                 }
                 b.rowSegments.addOnButtonCheckedListener { group, checkedId, isChecked ->
+                    val checkedButton = group.findViewById<MaterialButton>(checkedId)
+                    val option = (checkedButton?.tag as? Int)?.let { kind.options.getOrNull(it) }
+                    if (checkedButton != null && option != null) markSegment(checkedButton, option.icon, isChecked)
                     if (!isChecked) return@addOnButtonCheckedListener
                     val index = group.findViewById<View>(checkedId)?.tag as? Int ?: return@addOnButtonCheckedListener
                     if (index != kind.get()) {
@@ -407,4 +411,25 @@ private fun repeatOnHold(button: View, action: () -> Unit) {
         ) stop()
         false
     }
+}
+
+/**
+ * Material 3 segmented button: the selected segment leads with an 18dp check. A text
+ * segment gains the check; an icon segment shows the check in place of its icon.
+ */
+private fun markSegment(button: MaterialButton, icon: Int?, checked: Boolean) {
+    val size = (18 * button.resources.displayMetrics.density).roundToInt()
+    when {
+        checked -> {
+            button.setIconResource(R.drawable.ic_chip_check)
+            button.iconSize = size
+            button.iconPadding = if (icon == null) (8 * button.resources.displayMetrics.density).roundToInt() else 0
+        }
+        icon != null -> {
+            button.setIconResource(icon)
+            button.iconPadding = 0
+        }
+        else -> button.icon = null
+    }
+    button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
 }

@@ -158,7 +158,7 @@
                 android:fontFamily="@font/poppins_semi_bold"
                 android:text="@string/list_sync_auto"
                 android:textColor="?attr/colorOnSurface"
-                android:textSize="15sp" />
+                android:textSize="16sp" />
 
             <TextView
                 android:layout_width="match_parent"
@@ -199,7 +199,7 @@
             android:fontFamily="@font/poppins_semi_bold"
             android:paddingVertical="12dp"
             android:textColor="?attr/colorOnSurface"
-            android:textSize="15sp" />
+            android:textSize="16sp" />
 
         <!-- select all / none, in the same column as the row checkboxes -->
         <com.google.android.material.checkbox.MaterialCheckBox
@@ -232,6 +232,6 @@
         android:layout_marginHorizontal="16dp"
         android:layout_marginTop="8dp"
         android:fontFamily="@font/poppins_bold"
-        android:textSize="15sp"
+        android:textSize="16sp"
         android:visibility="gone" />
 </LinearLayout>

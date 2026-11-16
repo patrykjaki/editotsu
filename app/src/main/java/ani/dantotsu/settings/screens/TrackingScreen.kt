@@ -221,7 +221,7 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
 
     private fun bindAccounts(host: SettingsHost, b: ItemSettingAccountsBinding) {
         val activity = host.activity
-        val restart = { (activity as? SettingsAccountActivity)?.restartMainOnBack() }
+        val restart = { ani.dantotsu.MainActivity.accountChanged() }
         SettingsCards.applyToCard(b.settingsAnilistCard)
         SettingsCards.applyToCard(b.settingsMalCard)
         b.settingsMalLogo.alpha = 1f
@@ -245,6 +245,9 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
             b.settingsAnilistScrim.visibility = View.GONE
             b.settingsAnilistLogin.setText(R.string.account_login)
             b.settingsAnilistLogin.setOnClickListener { Anilist.loginIntent(activity) }
+            b.settingsAnilistLogin.visibility = View.VISIBLE
+            b.settingsAnilistLogout.visibility = View.GONE
+            b.settingsMALLogout.visibility = View.GONE
             // MAL needs an AniList login first: same card, dimmed, nothing to tap but help.
             b.settingsMALLoginRequired.visibility = View.VISIBLE
             b.settingsMALLogin.visibility = View.GONE
@@ -256,11 +259,15 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
             return
         }
 
-        b.settingsAnilistLogin.setText(R.string.logout)
-        b.settingsAnilistLogin.setOnClickListener {
-            Anilist.removeSavedToken()
-            restart()
-            host.refresh()
+        // Signed in: the account card shows who you are; logging out is an icon, after a confirm.
+        b.settingsAnilistLogin.visibility = View.GONE
+        b.settingsAnilistLogout.visibility = View.VISIBLE
+        b.settingsAnilistLogout.setOnClickListener {
+            confirmLogout(activity) {
+                Anilist.removeSavedToken()
+                restart()
+                host.refresh()
+            }
         }
         b.settingsAnilistUsername.visibility = View.VISIBLE
         b.settingsAnilistUsername.text = Anilist.username
@@ -291,15 +298,19 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
 
         b.settingsMALLoginRequired.visibility = View.GONE
         b.settingsMALLogin.visibility = View.VISIBLE
+        b.settingsMALLogout.visibility = View.GONE
         b.settingsMALUsername.visibility = View.VISIBLE
         b.settingsMALLogin.isEnabled = true
         when {
             MAL.isLoggedIn() -> {
-                b.settingsMALLogin.setText(R.string.logout)
-                b.settingsMALLogin.setOnClickListener {
-                    MAL.removeSavedToken()
-                    restart()
-                    host.refresh()
+                b.settingsMALLogin.visibility = View.GONE
+                b.settingsMALLogout.visibility = View.VISIBLE
+                b.settingsMALLogout.setOnClickListener {
+                    confirmLogout(activity) {
+                        MAL.removeSavedToken()
+                        restart()
+                        host.refresh()
+                    }
                 }
                 b.settingsMALUsername.text = MAL.username
                 if (!MAL.avatar.isNullOrBlank()) b.settingsMALAvatar.loadImage(MAL.avatar)
@@ -317,6 +328,7 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                 b.settingsMALAvatar.setImageResource(R.drawable.ic_round_person_24)
                 b.settingsMALAvatar.setOnClickListener(null)
                 b.settingsMALUsername.visibility = View.GONE
+                b.settingsMALLogout.visibility = View.GONE
                 b.settingsMALLogin.setText(R.string.mal_login_unavailable)
                 b.settingsMALLogin.isEnabled = false
                 b.settingsMALLogin.setOnClickListener(null)
@@ -325,6 +337,7 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                 b.settingsMALAvatar.setImageResource(R.drawable.ic_round_person_24)
                 b.settingsMALAvatar.setOnClickListener { MAL.loginIntent(activity) }
                 b.settingsMALUsername.visibility = View.GONE
+                b.settingsMALLogout.visibility = View.GONE
                 b.settingsMALLogin.setText(R.string.account_login)
                 b.settingsMALLogin.setOnClickListener { MAL.loginIntent(activity) }
             }
@@ -497,6 +510,16 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { isImportingStatuses = false }
             }
+        }
+    }
+
+    private fun confirmLogout(activity: android.app.Activity, logout: () -> Unit) {
+        activity.customAlertDialog().apply {
+            setTitle(R.string.logout)
+            setMessage(R.string.logout_confirm)
+            setPosButton(R.string.logout) { logout() }
+            setNegButton(R.string.cancel)
+            show()
         }
     }
 }

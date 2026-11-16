@@ -150,7 +150,7 @@ class CalendarActivity : AppCompatActivity() {
             val cell = ItemCalendarDayBinding.inflate(LayoutInflater.from(this), binding.calendarWeek, true)
             cell.calendarDayWeekday.text = day.weekday
             cell.calendarDayNumber.text = day.number
-            cell.calendarDayCount.text = if (day.count > 0) day.count.toString() else ""
+            cell.calendarDayCount.text = if (day.count > 0) getString(R.string.calendar_day_count, day.count) else ""
             cell.root.contentDescription =
                 resources.getQuantityString(R.plurals.calendar_day_description, day.count, day.key, day.count)
             cell.root.setOnClickListener { binding.calendarPager.setCurrentItem(i, true) }

@@ -89,6 +89,18 @@
 
                 </LinearLayout>
 
+            <ImageButton
+                android:id="@+id/settingsAnilistLogout"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center_vertical"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/logout"
+                android:src="@drawable/ic_round_logout_24"
+                android:visibility="gone"
+                app:tint="?attr/colorOnSurfaceVariant"
+                tools:visibility="visible" />
+
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/settingsAnilistAvatarContainer"
                 android:layout_width="51dp"
@@ -185,6 +197,18 @@
                     android:contentDescription="@string/account_help"
                     android:src="@drawable/ic_round_help_24"
                     app:tint="?attr/colorPrimary" />
+
+                <ImageButton
+                    android:id="@+id/settingsMALLogout"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_gravity="center_vertical"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/logout"
+                    android:src="@drawable/ic_round_logout_24"
+                    android:visibility="gone"
+                    app:tint="?attr/colorOnSurfaceVariant"
+                    tools:visibility="visible" />
 
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/settingsMALAvatarContainer"

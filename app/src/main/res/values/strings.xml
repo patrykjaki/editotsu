@@ -196,6 +196,8 @@
     <string name="picker_best_same_group">Same release group as last played</string>
     <string name="picker_best_preferred">Preferred by the source</string>
     <string name="picker_family_missing">No release from the saved group for this episode</string>
+    <!-- Under a date in the calendar week: how many episodes air that day. -->
+    <string name="calendar_day_count">%1$d ep</string>
     <plurals name="watch_order_episodes">
         <item quantity="one">%d episode</item>
         <item quantity="other">%d episodes</item>
