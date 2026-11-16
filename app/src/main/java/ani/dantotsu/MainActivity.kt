@@ -230,12 +230,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.rescueModeIcon.setOnClickListener {
             PrefManager.setVal(PrefName.RescueMode, false)
-            val intent = Intent(this, MainActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-            startActivity(intent)
-            overridePendingTransition(0, 0)
-            finish()
-            overridePendingTransition(0, 0)
+            serviceChanged()
         }
         incognitoNotification(this)
 
@@ -459,6 +454,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Swaps the three tabs for fresh ones after a login or logout, without restarting the app. */
+    /** The tracking service changed (AniList / MyAnimeList): rebuild the tabs in place. */
+    fun serviceChanged() {
+        accountChanged()
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) reloadTabs()
+    }
+
     private fun reloadTabs() {
         seenAccountVersion = accountVersion
         if (!::binding.isInitialized || binding.viewpager.adapter == null) return
