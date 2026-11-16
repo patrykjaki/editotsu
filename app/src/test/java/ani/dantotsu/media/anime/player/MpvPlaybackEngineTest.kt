@@ -323,6 +323,40 @@ class MpvPlaybackEngineTest {
     }
 
     @Test
+    fun `seek before first frame does not mark ready`() {
+        fakeClient.emitProperty("core-idle", true)
+        engine.loadMedia(PlaybackRequest(uri = "https://cdn.anime.com/stream_seek.m3u8"))
+        Thread.sleep(50)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_START_FILE, playlistEntryId = 33L)
+        // Seek queued before FILE_LOADED (pendingSeekMs) -> executed on FILE_LOADED
+        engine.seekTo(30_000L)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_FILE_LOADED)
+        Thread.sleep(50)
+
+        // time-pos jumps to seek target while seek is still pending (before PLAYBACK_RESTART)
+        fakeClient.emitProperty("time-pos", 31.0)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Buffering, engine.playbackState)
+
+        // Direct seek after FILE_LOADED but before first frame also keeps Buffering on time-pos jump
+        engine.loadMedia(PlaybackRequest(uri = "https://cdn.anime.com/stream_seek2.m3u8"))
+        Thread.sleep(50)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_START_FILE, playlistEntryId = 34L)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_FILE_LOADED)
+        fakeClient.emitProperty("time-pos", 0.0)
+        engine.seekTo(45_000L)
+        Thread.sleep(50)
+
+        fakeClient.emitProperty("time-pos", 45.8)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Buffering, engine.playbackState)
+
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_PLAYBACK_RESTART)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Ready, engine.playbackState)
+    }
+
+    @Test
     fun testExternalSubtitlesAttachedOnFileLoaded() {
         val extSub = ExternalSubtitle(
             url = "https://cdn.anime.com/sub_en.vtt",

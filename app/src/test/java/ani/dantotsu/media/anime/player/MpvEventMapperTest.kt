@@ -171,5 +171,19 @@ class MpvEventMapperTest {
                 currentPositionMs = 10_501L
             )
         )
+
+        // time-pos rule ignored while a seek is pending
+        assertFalse(
+            MpvEventMapper.shouldMarkPlaybackStarted(
+                isLoaded = true,
+                firstFrameShown = false,
+                coreIdle = true,
+                isPaused = false,
+                pausedForCache = false,
+                seekPending = true,
+                initialLoadedPositionMs = 0L,
+                currentPositionMs = 30_000L
+            )
+        )
     }
 }

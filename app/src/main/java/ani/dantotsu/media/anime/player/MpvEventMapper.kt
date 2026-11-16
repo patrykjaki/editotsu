@@ -10,11 +10,13 @@ object MpvEventMapper {
         coreIdle: Boolean,
         isPaused: Boolean,
         pausedForCache: Boolean,
+        seekPending: Boolean = false,
         initialLoadedPositionMs: Long?,
         currentPositionMs: Long
     ): Boolean {
         if (!isLoaded || firstFrameShown || pausedForCache) return false
         if (!coreIdle && !isPaused) return true
+        if (seekPending) return false
         val baseline = initialLoadedPositionMs ?: return false
         return currentPositionMs - baseline > PLAYBACK_STARTED_ADVANCE_MS
     }

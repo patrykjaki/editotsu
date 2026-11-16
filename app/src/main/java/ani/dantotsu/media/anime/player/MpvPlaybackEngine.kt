@@ -527,7 +527,7 @@ class MpvPlaybackEngine(
             } else {
                 val sec = TimeConverter.msToSeconds(positionMs)
                 try {
-                    seekIssuedAtMs = android.os.SystemClock.elapsedRealtime()
+                    seekIssuedAtMs = android.os.SystemClock.elapsedRealtime().coerceAtLeast(1L)
                     mpvClient.command("seek", sec.toString(), "absolute+keyframes")
                     releaseTorrentReadIfUncached(op, positionMs / 1000.0)
                 } catch (e: Exception) {
@@ -559,7 +559,7 @@ class MpvPlaybackEngine(
                 ani.dantotsu.util.Logger.log("MpvPlaybackEngine: seekRelative offsetMs=$offsetMs -> ${sec}s")
                 try {
                     val fromSec = mpvClient.getPropertyDouble("time-pos")
-                    seekIssuedAtMs = android.os.SystemClock.elapsedRealtime()
+                    seekIssuedAtMs = android.os.SystemClock.elapsedRealtime().coerceAtLeast(1L)
                     mpvClient.command("seek", sec.toString(), "relative+keyframes")
                     if (fromSec != null) releaseTorrentReadIfUncached(op, fromSec + offsetMs / 1000.0)
                 } catch (e: Exception) {
@@ -1822,6 +1822,7 @@ class MpvPlaybackEngine(
                             op.pendingSeekMs = null
                             try {
                                 val sec = TimeConverter.msToSeconds(seekPos)
+                                seekIssuedAtMs = android.os.SystemClock.elapsedRealtime().coerceAtLeast(1L)
                                 mpvClient.command("seek", sec.toString(), "absolute+keyframes")
                             } catch (_: Exception) {}
                         }
@@ -1940,6 +1941,7 @@ class MpvPlaybackEngine(
                 coreIdle = coreIdleInternal,
                 isPaused = isPausedInternal,
                 pausedForCache = pausedForCache,
+                seekPending = seekIssuedAtMs > 0L || op.pendingSeekMs != null,
                 initialLoadedPositionMs = op.initialLoadedPositionMs,
                 currentPositionMs = currentSnapshot.positionMs
             )
