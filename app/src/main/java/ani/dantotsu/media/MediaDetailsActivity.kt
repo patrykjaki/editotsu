@@ -560,7 +560,7 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
             ) {
                 selected = MediaTabs.windowAt(newIndex, tabWindows)
                 binding.commentInputLayout.isVisible = selected == MediaTabs.COMMENTS
-                viewPager.setCurrentItem(newIndex, true)
+                viewPager.setCurrentItem(newIndex, false)
                 val sel = model.loadSelected(media, isDownload)
                 sel.window = selected
                 model.saveSelected(media.id, sel)

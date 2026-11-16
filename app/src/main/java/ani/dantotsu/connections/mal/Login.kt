@@ -1,6 +1,7 @@
 package ani.dantotsu.connections.mal
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -17,17 +18,20 @@ class Login : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ThemeManager(this).applyTheme()
-        handleAuthCallback(intent)
+        MalCallback.handle(this, intent?.data)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleAuthCallback(intent)
+        MalCallback.handle(this, intent.data)
     }
+}
 
-    private fun handleAuthCallback(intent: Intent?) {
-        val uri = intent?.data
+/** Finishes a MAL login from its redirect, then returns to the screen that started it. */
+internal object MalCallback {
+    fun handle(activity: AppCompatActivity, uri: Uri?) {
+        with(activity) {
         val callbackResult = MALOAuth.parseCallback(uri)
 
         when (callbackResult) {
@@ -41,13 +45,13 @@ class Login : AppCompatActivity() {
                     Logger.log("MAL Login: Access denied or cancelled by user (${callbackResult.errorReason.name})")
                     snackString(getString(R.string.mal_login_cancelled))
                 }
-                returnFromLogin(this)
+                returnFromLogin(activity)
             }
 
             is MALOAuth.CallbackResult.Invalid -> {
                 Logger.log("MAL Login: Invalid callback URI reason: ${callbackResult.reason.name}")
                 snackString(getString(R.string.mal_login_uri_not_found))
-                returnFromLogin(this)
+                returnFromLogin(activity)
             }
 
             is MALOAuth.CallbackResult.Success -> {
@@ -55,8 +59,8 @@ class Login : AppCompatActivity() {
                 if (verifier == null) {
                     Logger.log("MAL Login: State mismatch, expired session, or replayed callback")
                     snackString(getString(R.string.mal_login_session_invalid))
-                    returnFromLogin(this)
-                    return
+                    returnFromLogin(activity)
+                    return@with
                 }
 
                 snackString(getString(R.string.logging_in_mal))
@@ -76,11 +80,12 @@ class Login : AppCompatActivity() {
                         snackString(getString(R.string.mal_login_failed))
                     } finally {
                         withContext(Dispatchers.Main) {
-                            returnFromLogin(this@Login)
+                            returnFromLogin(activity)
                         }
                     }
                 }
             }
         }
     }
+}
 }

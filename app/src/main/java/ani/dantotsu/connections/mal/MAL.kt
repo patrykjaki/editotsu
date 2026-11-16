@@ -84,12 +84,11 @@ object MAL {
             state = session.state
         )
 
+        if (ani.dantotsu.connections.LoginWebActivity.open(context, request)) return
+        // No WebView on this device: the browser, as before.
         try {
-            CustomTabsIntent.Builder().build().launchUrl(
-                context,
-                Uri.parse(request)
-            )
-        } catch (e: ActivityNotFoundException) {
+            CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(request))
+        } catch (_: ActivityNotFoundException) {
             openLinkInBrowser(request)
         }
     }

@@ -31,7 +31,14 @@ class Login : AppCompatActivity() {
 
     private fun handleAuthIntent() {
         ThemeManager(this).applyTheme()
-        val token = AnilistLoginGate.parseToken(intent?.data?.toString())
+        AnilistCallback.handle(this, intent?.data?.toString())
+    }
+}
+
+/** Finishes an AniList login from its redirect, then returns to the screen that started it. */
+internal object AnilistCallback {
+    fun handle(activity: AppCompatActivity, link: String?) {
+        val token = AnilistLoginGate.parseToken(link)
         // Consume the pending login even when the link carries no token: one login, one callback.
         val pending = AnilistLoginGate.consume()
         when {
@@ -39,20 +46,19 @@ class Login : AppCompatActivity() {
             !pending -> {
                 // Not started from this app, or started too long ago: keep the current login.
                 Logger.log("AniList login callback ignored: no login pending")
-                toast(getString(R.string.anilist_login_not_started))
+                toast(activity.getString(R.string.anilist_login_not_started))
             }
             else -> {
                 accept(token)
-                // The screen we return to shows the account: load it first (the app used to
-                // restart here, which loaded it).
-                lifecycleScope.launch(Dispatchers.IO) {
+                // The screen we return to shows the account: load it first.
+                activity.lifecycleScope.launch(Dispatchers.IO) {
                     tryWithSuspend { Anilist.query.getUserData() }
-                    withContext(Dispatchers.Main) { returnFromLogin(this@Login) }
+                    withContext(Dispatchers.Main) { returnFromLogin(activity) }
                 }
                 return
             }
         }
-        returnFromLogin(this)
+        returnFromLogin(activity)
     }
 
     private fun accept(token: String) {

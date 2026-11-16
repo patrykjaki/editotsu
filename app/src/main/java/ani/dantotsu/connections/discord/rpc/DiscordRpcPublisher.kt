@@ -114,11 +114,11 @@ object DiscordRpcPublisher {
             return
         }
         val ctx = context.applicationContext
+        val number = DiscordProgressText.number(episode.number)
         val details = episode.title?.takeIf { it.isNotEmpty() }
-            ?: ctx.getString(R.string.episode_num, episode.number)
-        val total = media.anime?.totalEpisodes ?: "??"
-        val episodeState = "Episode : ${episode.number}/$total"
-        val state = if (!isPlaying) "Paused - $episodeState" else episodeState
+            ?: ctx.getString(R.string.episode_num, number)
+        val episodeState = DiscordProgressText.progress("Episode", number, media.anime?.totalEpisodes)
+        val state = if (!isPlaying) "Paused · $episodeState" else episodeState
 
         val (start, end) = if (isPlaying && durationMs > 0) {
             val now = System.currentTimeMillis()
@@ -171,10 +171,10 @@ object DiscordRpcPublisher {
             return
         }
         val ctx = context.applicationContext
+        val number = DiscordProgressText.number(chapter.number)
         val details = chapter.title?.takeIf { it.isNotEmpty() }
-            ?: ctx.getString(R.string.chapter_num, chapter.number)
-        val total = media.manga?.totalChapters ?: "??"
-        val state = "Chapter : ${chapter.number}/$total"
+            ?: ctx.getString(R.string.chapter_num, number)
+        val state = DiscordProgressText.progress("Chapter", number, media.manga?.totalChapters)
 
         val presence = DiscordPresenceMapper.mangaPresence(
             name = media.userPreferredName,

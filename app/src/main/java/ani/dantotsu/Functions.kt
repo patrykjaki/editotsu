@@ -634,7 +634,11 @@ object LoginReturn {
 
     fun remember(context: android.content.Context) {
         origin = (context as? Activity)?.javaClass
+        // Kept on disk too: the app can be killed while the browser is open.
+        PrefManager.setCustomVal(TAB_KEY, selectedOption)
     }
+
+    const val TAB_KEY = "login_return_tab"
 }
 
 /**
@@ -644,14 +648,24 @@ object LoginReturn {
  */
 fun returnFromLogin(activity: Activity) {
     MainActivity.accountChanged()
-    val origin = LoginReturn.origin
+    // Without a remembered screen (the app was killed during login) the main screen opens fresh,
+    // on the tab the login started from.
+    val origin = LoginReturn.origin ?: MainActivity::class.java
     LoginReturn.origin = null
-    if (origin == null || activity.isTaskRoot) {
-        startMainActivity(activity)
-        return
-    }
+    val tab = PrefManager.getCustomVal(LoginReturn.TAB_KEY, selectedOption)
+    // NEW_TASK + CLEAR_TOP brings the app's own task forward and returns to the open screen even
+    // when the callback arrived from an outside browser, instead of restarting the app.
     activity.startActivity(
-        Intent(activity, origin).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        Intent(activity, origin).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            if (origin == MainActivity::class.java) putExtra(
+                "FRAGMENT_CLASS_NAME", when (tab) {
+                    0 -> "ani.dantotsu.home.AnimeFragment"
+                    2 -> "ani.dantotsu.home.MangaFragment"
+                    else -> "ani.dantotsu.home.HomeFragment"
+                }
+            )
+        }
     )
     activity.finish()
 }

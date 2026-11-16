@@ -249,6 +249,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     private var themeTracks: List<ThemeTrack> = emptyList()
     private var themeIndex = 0
     private var themeLastPositionMs = 0L
+
+    // mpv clears time-pos and duration when the file unloads, often before it reports the end,
+    // so the end handler falls back to the last values the episode actually reached.
+    private var lastPositionMs = 0L
+    private var lastDurationMs = 0L
     private var themeAnime = ""
     /** Every attempt for the current theme (saved copy, audio, video, other videos). */
     private var themePlan: List<ThemeQueue.Attempt> = emptyList()
@@ -964,6 +969,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         val targetEpisode = episodes[newEpKey] ?: return
         val prevEpKey = playbackSession.binding?.episodeKey ?: selectedEpisodeKey()
         changingServer = false
+        lastPositionMs = 0L
+        lastDurationMs = 0L
         discordThrottle.onOwnershipChange()
         // Publish/save A while A still owns the engine, then retire it BEFORE selecting B.
         progressManager.updateAniProgress()
@@ -1368,6 +1375,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     // PlaybackListener callbacks
     override fun onPositionChanged(positionMs: Long, durationMs: Long) {
+        if (positionMs > 0L) lastPositionMs = positionMs
+        if (durationMs > 0L) lastDurationMs = durationMs
         timeline.setPosition(positionMs)
         timeline.setDuration(durationMs)
         exoPositionText.text = formatTime(positionMs)
@@ -1491,8 +1500,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 exoBufferingIndicator.visibility = View.GONE
                 isBuffering = false
                 val engine = playerManager.playbackEngine
-                val dur = state.durationMs.takeIf { it > 0L } ?: (engine?.durationMs ?: 0L)
-                val pos = state.positionMs.takeIf { it > 0L } ?: (engine?.positionMs ?: 0L)
+                val dur = state.durationMs.takeIf { it > 0L }
+                    ?: engine?.durationMs?.takeIf { it > 0L } ?: lastDurationMs
+                val pos = maxOf(state.positionMs, engine?.positionMs ?: 0L, lastPositionMs)
+                lastPositionMs = 0L
+                lastDurationMs = 0L
                 val watchThreshold = PrefManager.getVal<Float>(PrefName.WatchPercentage)
 
                 val watchThresholdMet = dur > 0L && (pos >= (dur - 5000L) || (pos.toFloat() / dur.toFloat()) >= watchThreshold)
@@ -1527,6 +1539,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             is PlaybackState.Error -> {
                 exoBufferingIndicator.visibility = View.GONE
                 isBuffering = false
+                lastPositionMs = 0L
+                lastDurationMs = 0L
                 onPlayerError(state.error)
             }
             is PlaybackState.Idle -> {

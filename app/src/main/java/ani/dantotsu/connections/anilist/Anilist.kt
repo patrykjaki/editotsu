@@ -269,10 +269,13 @@ object Anilist {
         // The callback is accepted only while this login is pending (see AnilistLoginGate).
         AnilistLoginGate.start()
         ani.dantotsu.LoginReturn.remember(context)
+        val url = "https://anilist.co/api/v2/oauth/authorize?client_id=$clientID&response_type=token"
+        if (ani.dantotsu.connections.LoginWebActivity.open(context, url)) return
+        // No WebView on this device: the browser, as before.
         try {
             CustomTabsIntent.Builder().build().launchUrl(
                 context,
-                "https://anilist.co/api/v2/oauth/authorize?client_id=$clientID&response_type=token".toUri()
+                url.toUri()
             )
         } catch (_: ActivityNotFoundException) {
             openLinkInBrowser("https://anilist.co/api/v2/oauth/authorize?client_id=$clientID&response_type=token")
