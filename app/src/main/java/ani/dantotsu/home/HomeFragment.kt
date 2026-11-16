@@ -260,26 +260,6 @@ class HomeFragment : Fragment() {
             }
         }
 
-        fun getSkeletonMediaList(count: Int = 7): ArrayList<Media> {
-            val list = ArrayList<Media>()
-            for (i in 0 until count) {
-                list.add(
-                    Media(
-                        anime = ani.dantotsu.media.anime.Anime(),
-                        manga = null,
-                        id = -100 - i,
-                        name = "•••",
-                        nameRomaji = "•••",
-                        userPreferredName = "••••••••••••",
-                        cover = null,
-                        isAdult = false,
-                        meanScore = 0,
-                        userProgress = 0
-                    )
-                )
-            }
-            return list
-        }
 
         //Function For Recycler Views
         fun initRecyclerView(
@@ -293,13 +273,14 @@ class HomeFragment : Fragment() {
             string: String
         ) {
             container.visibility = View.VISIBLE
-            progress.visibility = View.GONE
+            // Until the row loads: the drawn skeleton with its sweep, like every other loading
+            // row, instead of placeholder cards that don't move.
+            progress.visibility = View.VISIBLE
             empty.visibility = View.GONE
             title.visibility = View.VISIBLE
             more.visibility = View.VISIBLE
-            recyclerView.visibility = View.VISIBLE
+            recyclerView.visibility = View.GONE
 
-            recyclerView.adapter = MediaAdaptor(0, getSkeletonMediaList(), requireActivity())
             recyclerView.layoutManager = LinearLayoutManager(
                 requireContext(),
                 LinearLayoutManager.HORIZONTAL,
@@ -325,8 +306,10 @@ class HomeFragment : Fragment() {
 
             mode.observe(viewLifecycleOwner) {
                 if (it != null) {
+                    progress.visibility = View.GONE
                     if (it.isNotEmpty()) {
                         empty.visibility = View.GONE
+                        recyclerView.visibility = View.VISIBLE
                         val currentAdapter = recyclerView.adapter as? MediaAdaptor
                         if (currentAdapter != null && currentAdapter.type == 0 && currentAdapter.mediaList === it && recyclerView.tag == "loaded") {
                             currentAdapter.notifyDataSetChanged()
