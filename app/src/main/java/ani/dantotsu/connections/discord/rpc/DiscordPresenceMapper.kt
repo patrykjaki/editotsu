@@ -7,7 +7,7 @@ package ani.dantotsu.connections.discord.rpc
  * All string formatting and context resolution is the caller's responsibility — this object only
  * assembles the model and pins the Phase 2 invariants:
  *  - activity type is always [DiscordActivityType.WATCHING] (never [DiscordActivityType.CUSTOM_STATUS]);
- *  - anime uses the play/video small-image asset, manga uses the book small-image asset;
+ *  - anime uses the logo small image (a pause variant while paused), manga the open-book variant;
  *  - the semantic small-text distinguishes "Watching anime" vs "Reading manga".
  *
  * The small-image asset keys are the keys expected to be pre-registered in the Editotsu Discord
@@ -16,9 +16,9 @@ package ani.dantotsu.connections.discord.rpc
  */
 object DiscordPresenceMapper {
 
-    const val ANIME_SMALL_IMAGE_KEY = "anime"
-    const val ANIME_PAUSED_SMALL_IMAGE_KEY = "anime_paused"
-    const val MANGA_SMALL_IMAGE_KEY = "manga"
+    const val ANIME_SMALL_IMAGE_KEY = "logo"
+    const val ANIME_PAUSED_SMALL_IMAGE_KEY = "logo_paused"
+    const val MANGA_SMALL_IMAGE_KEY = "logo_manga"
     const val ANIME_SMALL_TEXT = "Watching on Editotsu"
     const val ANIME_PAUSED_SMALL_TEXT = "Paused on Editotsu"
     const val MANGA_SMALL_TEXT = "Reading on Editotsu"
@@ -27,11 +27,11 @@ object DiscordPresenceMapper {
     // in headless Binder sessions. These are the Discord Developer Portal CDN URLs for
     // the exact Application Assets uploaded under app 1540568327712153743.
     const val ANIME_SMALL_IMAGE_URL =
-        "https://cdn.discordapp.com/app-assets/1540568327712153743/1543452174455930981.png"
+        "https://cdn.discordapp.com/app-assets/1540568327712153743/1571675865857794200.png"
     const val ANIME_PAUSED_SMALL_IMAGE_URL =
-        "https://cdn.discordapp.com/app-assets/1540568327712153743/1543452174695141426.png"
+        "https://cdn.discordapp.com/app-assets/1540568327712153743/1571675865639559200.png"
     const val MANGA_SMALL_IMAGE_URL =
-        "https://cdn.discordapp.com/app-assets/1540568327712153743/1543452174363795466.png"
+        "https://cdn.discordapp.com/app-assets/1540568327712153743/1571675865903796284.png"
 
     fun animePresence(
         name: String,

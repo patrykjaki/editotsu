@@ -45,7 +45,7 @@ class DiscordPresenceMapperTest {
             DiscordPresenceMapper.ANIME_SMALL_IMAGE_KEY,
             DiscordPresenceMapper.ANIME_SMALL_TEXT, null, null, emptyList(),
         )
-        assertEquals("anime", a.smallImageKey)
+        assertEquals("logo", a.smallImageKey)
         assertEquals("Watching on Editotsu", a.smallImageText)
 
         val m = DiscordPresenceMapper.mangaPresence(
@@ -53,7 +53,7 @@ class DiscordPresenceMapperTest {
             DiscordPresenceMapper.MANGA_SMALL_IMAGE_KEY,
             DiscordPresenceMapper.MANGA_SMALL_TEXT, emptyList(),
         )
-        assertEquals("manga", m.smallImageKey)
+        assertEquals("logo_manga", m.smallImageKey)
         assertEquals("Reading on Editotsu", m.smallImageText)
     }
 
@@ -75,7 +75,7 @@ class DiscordPresenceMapperTest {
             DiscordPresenceMapper.ANIME_PAUSED_SMALL_IMAGE_KEY,
             DiscordPresenceMapper.ANIME_PAUSED_SMALL_TEXT, null, null, emptyList(),
         )
-        assertEquals("anime_paused", p.smallImageKey)
+        assertEquals("logo_paused", p.smallImageKey)
         assertEquals("Paused on Editotsu", p.smallImageText)
     }
 
