@@ -627,6 +627,35 @@ fun isWifiConnected(context: Context): Boolean {
     } ?: false
 }
 
+/** Screens that started an AniList or MAL login, so the callback can return there. */
+object LoginReturn {
+    @Volatile
+    var origin: Class<out Activity>? = null
+
+    fun remember(context: android.content.Context) {
+        origin = (context as? Activity)?.javaClass
+    }
+}
+
+/**
+ * Ends an AniList or MAL login callback. Goes back to the screen that started the login
+ * (closing the browser tab above it) and has the main screen reload its tabs, instead of
+ * restarting the app. Falls back to a fresh main screen when the app was not running.
+ */
+fun returnFromLogin(activity: Activity) {
+    MainActivity.accountChanged()
+    val origin = LoginReturn.origin
+    LoginReturn.origin = null
+    if (origin == null || activity.isTaskRoot) {
+        startMainActivity(activity)
+        return
+    }
+    activity.startActivity(
+        Intent(activity, origin).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    )
+    activity.finish()
+}
+
 fun startMainActivity(activity: Activity, bundle: Bundle? = null) {
     activity.finishAffinity()
     activity.startActivity(
@@ -704,13 +733,19 @@ class InputFilterMinMax(
 
 class ZoomOutPageTransformer :
     ViewPager2.PageTransformer {
+    // The pager calls this again with position 0 on every relayout of the shown page (e.g. when
+    // its content loads). Fading on each call restarted the fade from invisible, so the page blinked.
+    private var shown: java.lang.ref.WeakReference<View>? = null
+
     override fun transformPage(view: View, position: Float) {
-        if (position == 0.0f && PrefManager.getVal(PrefName.LayoutAnimations)) {
-            // the pager already slides the page in; a short fade is enough on top of it
-            ObjectAnimator.ofFloat(view, "alpha", 0f, 1.0f)
-                .setDuration((200 * (PrefManager.getVal(PrefName.AnimationSpeed) as Float)).toLong())
-                .start()
-        }
+        if (position != 0.0f || shown?.get() === view) return
+        val first = shown == null
+        shown = java.lang.ref.WeakReference(view)
+        if (first || !PrefManager.getVal<Boolean>(PrefName.LayoutAnimations)) return
+        // Tabs switch without a slide; a short fade from partly visible, once per switch.
+        ObjectAnimator.ofFloat(view, "alpha", 0.4f, 1.0f)
+            .setDuration((150 * (PrefManager.getVal(PrefName.AnimationSpeed) as Float)).toLong())
+            .start()
     }
 }
 

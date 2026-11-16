@@ -90,6 +90,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var incognitoLiveData: SharedPreferenceBooleanLiveData
     private val scope = lifecycleScope
     private var load = false
+    private var seenAccountVersion = accountVersion
 
 
     @kotlin.OptIn(DelicateCoroutinesApi::class)
@@ -331,6 +332,10 @@ class MainActivity : AppCompatActivity() {
             mainViewPager.adapter =
                 ViewPagerAdapter(supportFragmentManager, lifecycle)
             mainViewPager.setPageTransformer(ZoomOutPageTransformer())
+            // Build the other two tabs after the first has had time to load, and keep all three,
+            // so switching tabs shows a ready page instead of an empty one while it is created.
+            // Not at once: the first tab's start-up loading goes first.
+            mainViewPager.postDelayed({ mainViewPager.offscreenPageLimit = 2 }, 1500)
             navbar.selectTabAt(selectedOption)
             navbar.setOnTabSelectListener(object :
                 AnimatedBottomBar.OnTabSelectListener {
@@ -445,6 +450,39 @@ class MainActivity : AppCompatActivity() {
     override fun onRestart() {
         super.onRestart()
         window.navigationBarColor = ContextCompat.getColor(this, android.R.color.transparent)
+    }
+
+    override fun onStart() {
+        // After super: fragments can only be swapped once the activity has started again.
+        super.onStart()
+        if (seenAccountVersion != accountVersion) reloadTabs()
+    }
+
+    /** Swaps the three tabs for fresh ones after a login or logout, without restarting the app. */
+    private fun reloadTabs() {
+        seenAccountVersion = accountVersion
+        if (!::binding.isInitialized || binding.viewpager.adapter == null) return
+        val pager = binding.viewpager
+        val current = pager.currentItem
+        pager.adapter = null
+        val tabs = supportFragmentManager.fragments.filter { it.tag?.matches(Regex("f\\d+")) == true }
+        if (tabs.isNotEmpty()) {
+            supportFragmentManager.beginTransaction().apply { tabs.forEach { remove(it) } }.commitNow()
+        }
+        // The tabs keep their lists in activity-scoped models; drop them so the new tabs load again.
+        viewModelStore.clear()
+        pager.adapter = ViewPagerAdapter(supportFragmentManager, lifecycle)
+        pager.setCurrentItem(current, false)
+    }
+
+    companion object {
+        @Volatile
+        private var accountVersion = 0
+
+        /** Called after a login or logout; the main screen reloads its tabs when it is shown again. */
+        fun accountChanged() {
+            accountVersion++
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

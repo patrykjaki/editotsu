@@ -6,7 +6,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import ani.dantotsu.R
 import ani.dantotsu.snackString
-import ani.dantotsu.startMainActivity
+import ani.dantotsu.returnFromLogin
 import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.util.Logger
 import kotlinx.coroutines.Dispatchers
@@ -41,15 +41,13 @@ class Login : AppCompatActivity() {
                     Logger.log("MAL Login: Access denied or cancelled by user (${callbackResult.errorReason.name})")
                     snackString(getString(R.string.mal_login_cancelled))
                 }
-                startMainActivity(this)
-                finish()
+                returnFromLogin(this)
             }
 
             is MALOAuth.CallbackResult.Invalid -> {
                 Logger.log("MAL Login: Invalid callback URI reason: ${callbackResult.reason.name}")
                 snackString(getString(R.string.mal_login_uri_not_found))
-                startMainActivity(this)
-                finish()
+                returnFromLogin(this)
             }
 
             is MALOAuth.CallbackResult.Success -> {
@@ -57,8 +55,7 @@ class Login : AppCompatActivity() {
                 if (verifier == null) {
                     Logger.log("MAL Login: State mismatch, expired session, or replayed callback")
                     snackString(getString(R.string.mal_login_session_invalid))
-                    startMainActivity(this)
-                    finish()
+                    returnFromLogin(this)
                     return
                 }
 
@@ -79,8 +76,7 @@ class Login : AppCompatActivity() {
                         snackString(getString(R.string.mal_login_failed))
                     } finally {
                         withContext(Dispatchers.Main) {
-                            startMainActivity(this@Login)
-                            finish()
+                            returnFromLogin(this@Login)
                         }
                     }
                 }

@@ -3,14 +3,19 @@ package ani.dantotsu.connections.anilist
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import ani.dantotsu.R
 import ani.dantotsu.connections.comments.CommentsAPI
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
-import ani.dantotsu.startMainActivity
+import ani.dantotsu.returnFromLogin
 import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.toast
+import ani.dantotsu.tryWithSuspend
 import ani.dantotsu.util.Logger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class Login : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,9 +41,18 @@ class Login : AppCompatActivity() {
                 Logger.log("AniList login callback ignored: no login pending")
                 toast(getString(R.string.anilist_login_not_started))
             }
-            else -> accept(token)
+            else -> {
+                accept(token)
+                // The screen we return to shows the account: load it first (the app used to
+                // restart here, which loaded it).
+                lifecycleScope.launch(Dispatchers.IO) {
+                    tryWithSuspend { Anilist.query.getUserData() }
+                    withContext(Dispatchers.Main) { returnFromLogin(this@Login) }
+                }
+                return
+            }
         }
-        startMainActivity(this)
+        returnFromLogin(this)
     }
 
     private fun accept(token: String) {

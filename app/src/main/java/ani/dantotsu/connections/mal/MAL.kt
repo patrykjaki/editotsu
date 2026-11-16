@@ -77,6 +77,7 @@ object MAL {
             snackString(context.getString(R.string.mal_login_failed))
             return
         }
+        ani.dantotsu.LoginReturn.remember(context)
         val request = MALOAuth.buildAuthorizeUrl(
             clientId = clientId,
             codeChallenge = session.codeVerifier,
