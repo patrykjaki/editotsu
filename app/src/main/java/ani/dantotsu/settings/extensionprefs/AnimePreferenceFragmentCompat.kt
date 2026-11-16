@@ -60,7 +60,6 @@ class AnimeSourcePreferencesFragment : PreferenceFragmentCompat() {
             listOf(
                 actionRow(
                     "ext:pref_download_resolution_priority", R.string.custom_extension_resolution_priority,
-                    icon = R.drawable.ic_round_high_quality_24,
                     current = { PrefManager.getPreferredDownloadResolutions(name).joinToString(", ") },
                 ) { host, _ -> ResolutionPriorityDialog.show(host.activity, name) { host.refresh() } },
             )

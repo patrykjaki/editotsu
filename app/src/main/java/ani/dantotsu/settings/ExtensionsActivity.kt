@@ -25,6 +25,7 @@ import ani.dantotsu.navBarHeight
 import ani.dantotsu.others.AndroidBug5497Workaround
 import ani.dantotsu.others.LanguageMapper
 import ani.dantotsu.parsers.ParserTestActivity
+import ani.dantotsu.settings.rows.markSegment
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.statusBarHeight
@@ -114,7 +115,11 @@ class ExtensionsActivity : AppCompatActivity() {
         }
         viewPager.setCurrentItem(startPage, false)
         binding.searchView.hint = getString(searchHint(ExtensionPages.typeOf(startPage)))
-        binding.extensionsTypeToggle.addOnButtonCheckedListener { _, _, isChecked ->
+        typeButtons.values.forEach { id ->
+            findViewById<com.google.android.material.button.MaterialButton>(id).let { markSegment(it, null, it.isChecked) }
+        }
+        binding.extensionsTypeToggle.addOnButtonCheckedListener { group, id, isChecked ->
+            markSegment(group.findViewById(id), null, isChecked)
             if (isChecked) selectPage()
         }
         binding.extensionsStatusChips.setOnCheckedStateChangeListener { _, _ -> selectPage() }

@@ -48,7 +48,7 @@
             android:lineSpacingExtra="2dp"
             android:maxLines="2"
             android:textColor="?attr/colorOnSurface"
-            android:textSize="15sp"
+            android:textSize="16sp"
             tools:text="Korogaru Iwa, Kimi ni Asa ga Furu" />
 
         <TextView
@@ -61,7 +61,7 @@
             android:includeFontPadding="false"
             android:maxLines="2"
             android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="13sp"
+            android:textSize="14sp"
             tools:text="Bocchi the Rock! · Kessoku Band" />
 
         <TextView

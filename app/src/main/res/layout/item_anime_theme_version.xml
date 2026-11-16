@@ -21,7 +21,7 @@
         android:fontFamily="@font/poppins_bold"
         android:includeFontPadding="false"
         android:textColor="?attr/colorPrimary"
-        android:textSize="13sp"
+        android:textSize="14sp"
         tools:text="v2" />
 
     <TextView
@@ -32,7 +32,7 @@
         android:fontFamily="@font/poppins"
         android:includeFontPadding="false"
         android:textColor="?attr/colorOnSurface"
-        android:textSize="13sp"
+        android:textSize="14sp"
         tools:text="Eps 2–5, 8–11" />
 
     <TextView

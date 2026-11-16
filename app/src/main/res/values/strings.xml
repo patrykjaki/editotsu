@@ -306,7 +306,6 @@
     <string name="theme_state_on">On</string>
     <string name="theme_state_off">Off</string>
     <string name="theme_no_audio">No audio file for %1$s, playing the video</string>
-    <string name="themes_screen">Themes</string>
     <string name="themes_back">Back</string>
     <string name="themes_favourites">Favourites</string>
     <string name="themes_shuffle_completed">Shuffle completed shows</string>

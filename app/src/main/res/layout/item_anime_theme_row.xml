@@ -35,7 +35,7 @@
             android:fontFamily="@font/poppins_bold"
             android:includeFontPadding="false"
             android:textColor="?attr/colorPrimary"
-            android:textSize="13sp"
+            android:textSize="14sp"
             tools:text="ED 4" />
 
         <LinearLayout
@@ -55,7 +55,7 @@
                 android:lineSpacingExtra="2dp"
                 android:maxLines="2"
                 android:textColor="?attr/colorOnSurface"
-                android:textSize="15sp"
+                android:textSize="16sp"
                 tools:text="Korogaru Iwa, Kimi ni Asa ga Furu" />
 
             <TextView
@@ -68,7 +68,7 @@
                 android:includeFontPadding="false"
                 android:maxLines="2"
                 android:textColor="?attr/colorOnSurfaceVariant"
-                android:textSize="13sp"
+                android:textSize="14sp"
                 tools:text="Kessoku Band · Ep 12 · Spoiler" />
         </LinearLayout>
 
@@ -134,7 +134,7 @@
         android:paddingStart="8dp"
         android:paddingEnd="4dp"
         android:textColor="?attr/colorPrimary"
-        android:textSize="13sp"
+        android:textSize="14sp"
         android:visibility="gone"
         app:drawableEndCompat="@drawable/ic_round_arrow_drop_down_24"
         app:drawableTint="?attr/colorPrimary"

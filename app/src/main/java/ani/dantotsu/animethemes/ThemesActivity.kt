@@ -20,6 +20,7 @@ import ani.dantotsu.databinding.ItemThemesHeaderBinding
 import ani.dantotsu.initActivity
 import ani.dantotsu.media.anime.ExoplayerView
 import ani.dantotsu.navBarHeight
+import ani.dantotsu.settings.rows.markSegment
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.statusBarHeight
@@ -155,7 +156,9 @@ class ThemesActivity : AppCompatActivity() {
                     ThemeKinds.BOTH -> R.id.kindBoth
                 }
             )
-            b.themesKinds.addOnButtonCheckedListener { _, id, checked ->
+            listOf(b.kindBoth, b.kindOpenings, b.kindEndings).forEach { markSegment(it, null, it.isChecked) }
+            b.themesKinds.addOnButtonCheckedListener { group, id, checked ->
+                markSegment(group.findViewById(id), null, checked)
                 if (!checked) return@addOnButtonCheckedListener
                 val k = when (id) {
                     R.id.kindOpenings -> ThemeKinds.OPENINGS
@@ -183,6 +186,13 @@ class ThemesActivity : AppCompatActivity() {
             b.themesStatus.isVisible = status != null
             b.themesStatus.text = status
             b.themesEmpty.isVisible = favourites.isEmpty()
+            // Nothing to play or save without favourites: those actions look and act disabled.
+            listOf(b.actionPlayFavourites, b.actionShuffleFavourites, b.actionDownloadAll).forEach { a ->
+                val on = favourites.isNotEmpty()
+                a.root.isEnabled = on
+                a.actionIcon.isEnabled = on
+                a.root.alpha = if (on) 1f else 0.38f
+            }
             // the count trails the heading in the quieter colour, not glued on with a dot
             b.themesFavouritesLabel.text = if (favourites.isEmpty()) getString(R.string.themes_favourites)
             else getString(R.string.themes_favourites).let { name ->

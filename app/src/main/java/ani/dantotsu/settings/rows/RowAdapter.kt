@@ -417,7 +417,7 @@ private fun repeatOnHold(button: View, action: () -> Unit) {
  * Material 3 segmented button: the selected segment leads with an 18dp check. A text
  * segment gains the check; an icon segment shows the check in place of its icon.
  */
-private fun markSegment(button: MaterialButton, icon: Int?, checked: Boolean) {
+internal fun markSegment(button: MaterialButton, icon: Int?, checked: Boolean) {
     val size = (18 * button.resources.displayMetrics.density).roundToInt()
     when {
         checked -> {
