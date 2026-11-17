@@ -149,4 +149,71 @@ class SettingsBehaviourTest : ScreenshotTest() {
     @Test fun backup_then_restore_brings_reading_settings_back() {
         assertEquals(emptyList<String>(), roundTrip(rowKeys(reader = true)))
     }
+
+    /** Icon-only segments keep their own icon when selected; text segments show a check icon when selected. */
+    @Test fun segmented_toggles_keep_icon_on_icon_only_segments_and_show_check_on_text_segments() {
+        val intent = SettingsScreenActivity.intent(context, ani.dantotsu.settings.screens.ReaderScreen)
+        ActivityScenario.launch<SettingsScreenActivity>(intent).use { scenario ->
+            scenario.onActivity { activity ->
+                val list = activity.findViewById<RecyclerView>(R.id.settingScreenList)
+                idle()
+                // LayoutReader: icon-only segments
+                val layoutIdx = list.rowAdapterKeys().indexOf(PrefName.LayoutReader.name)
+                assertTrue(layoutIdx >= 0)
+                list.scrollToPosition(layoutIdx + 1)
+                idle()
+                val layoutHolder = list.findViewHolderForAdapterPosition(layoutIdx + 1)!!
+                val layoutGroup = layoutHolder.itemView.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.rowSegments)
+                val firstIconBtn = layoutGroup.getChildAt(0) as com.google.android.material.button.MaterialButton
+                val secondIconBtn = layoutGroup.getChildAt(1) as com.google.android.material.button.MaterialButton
+                val iconResBefore = org.robolectric.Shadows.shadowOf(secondIconBtn.icon).createdFromResId
+                layoutGroup.check(secondIconBtn.id)
+                assertTrue(secondIconBtn.isChecked)
+                assertEquals(R.drawable.ic_round_view_array_24, iconResBefore)
+                assertEquals(iconResBefore, org.robolectric.Shadows.shadowOf(secondIconBtn.icon).createdFromResId)
+                assertTrue(firstIconBtn.text.isNullOrBlank())
+
+                // MangaDefaultView: text segments
+                val viewIdx = list.rowAdapterKeys().indexOf(PrefName.MangaDefaultView.name)
+                assertTrue(viewIdx >= 0)
+                list.scrollToPosition(viewIdx + 1)
+                idle()
+                val viewHolder = list.findViewHolderForAdapterPosition(viewIdx + 1)!!
+                val viewGroup = viewHolder.itemView.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(R.id.rowSegments)
+                val firstTextBtn = viewGroup.getChildAt(0) as com.google.android.material.button.MaterialButton
+                val secondTextBtn = viewGroup.getChildAt(1) as com.google.android.material.button.MaterialButton
+                viewGroup.check(firstTextBtn.id)
+                assertNotNull("selected text segment must show check icon", firstTextBtn.icon)
+                assertEquals(R.drawable.ic_chip_check, org.robolectric.Shadows.shadowOf(firstTextBtn.icon).createdFromResId)
+                assertEquals("unselected text segment must have no icon", null, secondTextBtn.icon)
+            }
+        }
+    }
+
+    @Test fun narrow_text_segment_drops_the_check_instead_of_cutting_the_label() {
+        val d = context.resources.displayMetrics.density
+        fun laidOut(widthDp: Int) = com.google.android.material.button.MaterialButton(
+            androidx.appcompat.view.ContextThemeWrapper(context, R.style.Theme_Dantotsu_NoActionBar),
+            null, com.google.android.material.R.attr.materialButtonOutlinedStyle,
+        ).apply {
+            text = "Original"
+            isAllCaps = false
+            isCheckable = true
+            val pad = (12 * d).toInt()
+            setPadding(pad, paddingTop, pad, paddingBottom)
+            measure(
+                android.view.View.MeasureSpec.makeMeasureSpec((widthDp * d).toInt(), android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED),
+            )
+            layout(0, 0, measuredWidth, measuredHeight)
+        }
+        val narrow = laidOut(80)
+        narrow.isChecked = true
+        ani.dantotsu.settings.rows.markSegment(narrow, null, true)
+        assertEquals("narrow segment: selection by fill only", null, narrow.icon)
+        val wide = laidOut(200)
+        wide.isChecked = true
+        ani.dantotsu.settings.rows.markSegment(wide, null, true)
+        assertEquals(R.drawable.ic_chip_check, org.robolectric.Shadows.shadowOf(wide.icon).createdFromResId)
+    }
 }

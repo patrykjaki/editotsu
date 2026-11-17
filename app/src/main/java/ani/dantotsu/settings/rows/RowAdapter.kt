@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -414,16 +415,38 @@ private fun repeatOnHold(button: View, action: () -> Unit) {
 }
 
 /**
- * Material 3 segmented button: the selected segment leads with an 18dp check. A text
- * segment gains the check; an icon segment shows the check in place of its icon.
+ * Material 3 segmented button: a text segment leads with an 18dp check when selected;
+ * an icon-only segment keeps its own icon and shows selection by the fill only.
  */
 internal fun markSegment(button: MaterialButton, icon: Int?, checked: Boolean) {
     val size = (18 * button.resources.displayMetrics.density).roundToInt()
+    val hasText = !button.text.isNullOrBlank()
     when {
+        icon != null && !hasText -> {
+            button.setIconResource(icon)
+            button.iconPadding = 0
+        }
         checked -> {
-            button.setIconResource(R.drawable.ic_chip_check)
-            button.iconSize = size
-            button.iconPadding = if (icon == null) (8 * button.resources.displayMetrics.density).roundToInt() else 0
+            // the check only when the label still fits beside it; a narrow segment ("Original" in
+            // a three-way row) shows selection by the fill alone instead of cutting the label
+            val gap = (8 * button.resources.displayMetrics.density).roundToInt()
+            fun apply() {
+                if (!button.isChecked) return
+                if (segmentCheckFits(button, size + gap)) {
+                    button.setIconResource(R.drawable.ic_chip_check)
+                    button.iconSize = size
+                    button.iconPadding = gap
+                } else {
+                    button.icon = null
+                }
+                // MaterialButton places a TEXT_START icon only when its gravity changes or on layout;
+                // after layout neither happens, so the check would sit at the padding edge
+                button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_END
+                button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+                button.requestLayout()
+            }
+            // after the first layout, not inside it: a change made during layout is not re-placed
+            if (button.width > 0) apply() else button.doOnLayout { button.post { apply() } }
         }
         icon != null -> {
             button.setIconResource(icon)
@@ -432,4 +455,10 @@ internal fun markSegment(button: MaterialButton, icon: Int?, checked: Boolean) {
         else -> button.icon = null
     }
     button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+}
+
+/** Whether [button]'s label fits next to an icon taking [iconSpace] px inside its padding. */
+internal fun segmentCheckFits(button: MaterialButton, iconSpace: Int): Boolean {
+    val inner = button.width - button.paddingStart - button.paddingEnd
+    return button.paint.measureText(button.text.toString()) + iconSpace <= inner
 }
