@@ -22,6 +22,7 @@ import ani.dantotsu.logError
 import ani.dantotsu.home.status.sortUserStatusList
 import ani.dantotsu.media.Author
 import ani.dantotsu.media.Character
+import ani.dantotsu.media.GenreTagGroups
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.Studio
 import ani.dantotsu.others.MalScraper
@@ -1147,9 +1148,11 @@ class AnilistQueries {
                 PrefManager.setVal(PrefName.GenresList, genres?.toSet())
             }
         }
-        if (tags == null) {
+        var categories = GenreTagGroups.decodeCategories(PrefManager.getVal<Set<String>>(PrefName.TagCategories))
+        // caches from before the genres & tags sheet have no categories: fetch the list once more
+        if (tags == null || categories.isEmpty()) {
             executeQuery<Query.MediaTagCollection>(
-                """{ MediaTagCollection { name isAdult } }""",
+                """{ MediaTagCollection { name isAdult category } }""",
                 force = true
             )?.data?.mediaTagCollection?.apply {
                 val adult = mutableListOf<String>()
@@ -1162,13 +1165,16 @@ class AnilistQueries {
                     true to adult,
                     false to good
                 )
+                categories = associate { it.name to it.category.orEmpty() }.filterValues { it.isNotBlank() }
                 PrefManager.setVal(PrefName.TagsListIsAdult, adult.toSet())
                 PrefManager.setVal(PrefName.TagsListNonAdult, good.toSet())
+                PrefManager.setVal(PrefName.TagCategories, GenreTagGroups.encodeCategories(categories))
             }
         }
         return if (!genres.isNullOrEmpty() && tags != null) {
             Anilist.genres = genres?.sortedBy { it }?.toMutableList() as ArrayList<String>
             Anilist.tags = tags
+            Anilist.tagCategories = categories
             true
         } else false
     }
