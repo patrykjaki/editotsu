@@ -277,6 +277,7 @@ enum class PrefName(val data: Pref) {
     GenresList(Pref(Location.Irrelevant, Set::class, setOf<String>())),
     TagsListIsAdult(Pref(Location.Irrelevant, Set::class, setOf<String>())),
     TagsListNonAdult(Pref(Location.Irrelevant, Set::class, setOf<String>())),
+    TagCategories(Pref(Location.Irrelevant, Set::class, setOf<String>())),
     MakeDefault(Pref(Location.Irrelevant, Boolean::class, true)),
     FirstComment(Pref(Location.Irrelevant, Boolean::class, true)),
     CommentAuthResponse(Pref(Location.Irrelevant, AuthResponse::class, "")),

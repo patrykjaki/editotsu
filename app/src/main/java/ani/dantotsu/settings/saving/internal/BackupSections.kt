@@ -88,6 +88,7 @@ object BackupSections {
         "GenresList",
         "TagsListIsAdult",
         "TagsListNonAdult",
+        "TagCategories",
         "FirstComment",
         "CommentAuthResponse",
         "CommentTokenExpiry",

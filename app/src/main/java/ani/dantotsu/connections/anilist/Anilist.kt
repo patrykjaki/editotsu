@@ -45,6 +45,8 @@ object Anilist {
 
     var genres: ArrayList<String>? = null
     var tags: Map<Boolean, List<String>>? = null
+    /** Tag name -> AniList category ("Theme-Action", "Cast-Traits"); empty until fetched. */
+    var tagCategories: Map<String, String> = emptyMap()
 
     var rateLimitReset: Long = 0
 
