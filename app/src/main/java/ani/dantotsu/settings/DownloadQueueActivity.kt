@@ -1,5 +1,6 @@
 package ani.dantotsu.settings
 
+import ani.dantotsu.themes.followThemeStatusBarIcons
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -62,6 +63,7 @@ class DownloadQueueActivity : AppCompatActivity() {
         ThemeManager(this).applyTheme()
         binding = ActivityDownloadQueueBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
 
         initActivity(this)
         binding.downloadQueueContainer.updateLayoutParams<ViewGroup.MarginLayoutParams> {

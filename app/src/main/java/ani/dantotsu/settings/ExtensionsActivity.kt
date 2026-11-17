@@ -1,5 +1,6 @@
 package ani.dantotsu.settings
 
+import ani.dantotsu.themes.followThemeStatusBarIcons
 import ani.dantotsu.settings.rows.ChoiceSheet
 import ani.dantotsu.settings.rows.ChoiceOption
 import android.content.Intent
@@ -42,6 +43,7 @@ class ExtensionsActivity : AppCompatActivity() {
         ThemeManager(this).applyTheme()
         binding = ActivityExtensionsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         initActivity(this)
         AndroidBug5497Workaround.assistActivity(this) {
             if (it) {

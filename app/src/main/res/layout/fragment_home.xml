@@ -104,7 +104,7 @@
                                         android:layout_height="wrap_content"
                                         android:layout_marginStart="4dp"
                                         android:fontFamily="@font/poppins_bold"
-                                        android:textColor="?attr/colorPrimaryVariant"
+                                        android:textColor="?attr/colorPrimary"
                                         android:textSize="12sp" />
                                 </LinearLayout>
 
@@ -128,7 +128,7 @@
                                         android:layout_height="wrap_content"
                                         android:layout_marginStart="4dp"
                                         android:fontFamily="@font/poppins_bold"
-                                        android:textColor="?attr/colorPrimaryVariant"
+                                        android:textColor="?attr/colorPrimary"
                                         android:textSize="12sp" />
                                 </LinearLayout>
 

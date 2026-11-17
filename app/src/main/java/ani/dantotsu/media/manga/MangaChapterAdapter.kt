@@ -212,12 +212,14 @@ class MangaChapterAdapter(
             if (activeDownloads.contains(chapterNumber)) {
                 // Show spinner
                 binding.itemDownload.setImageResource(R.drawable.ic_sync)
+                binding.itemDownload.contentDescription = binding.root.context.getString(R.string.cancel)
                 startOrContinueRotation(chapterNumber) {
                     binding.itemDownload.rotation = 0f
                 }
             } else if (downloadedChapters.contains(chapterNumber)) {
                 // Show checkmark
                 binding.itemDownload.setImageResource(R.drawable.ic_circle_check)
+                binding.itemDownload.contentDescription = binding.root.context.getString(R.string.delete)
                 binding.itemDownload.postDelayed({
                     binding.itemDownload.setImageResource(R.drawable.ic_round_delete_24)
                     binding.itemDownload.rotation = 0f
@@ -225,6 +227,7 @@ class MangaChapterAdapter(
             } else {
                 // Show download icon
                 binding.itemDownload.setImageResource(R.drawable.ic_download_24)
+                binding.itemDownload.contentDescription = binding.root.context.getString(R.string.download)
                 binding.itemDownload.rotation = 0f
             }
 

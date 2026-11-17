@@ -1,5 +1,6 @@
 package ani.dantotsu.settings.rows
 
+import ani.dantotsu.themes.followThemeStatusBarIcons
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -42,6 +43,7 @@ abstract class SettingsScreenActivity : AppCompatActivity(), SettingsHost {
         initActivity(this)
         binding = ActivitySettingScreenBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         onScreenCreate(savedInstanceState)
 
         val list = binding.settingScreenList

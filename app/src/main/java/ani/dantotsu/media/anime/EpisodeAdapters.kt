@@ -574,6 +574,7 @@ class EpisodeAdapter(
                 if (AnimeDownloader.isDownloading(media.id, episodeNumber)) {
                     stopDownloadAnimation()
                     binding.itemDownload.setImageResource(R.drawable.ic_sync)
+                    binding.itemDownload.contentDescription = itemView.context.getString(R.string.cancel)
                     startOrContinueRotation(episodeNumber)
                     binding.itemEpisodeDesc.visibility = View.GONE
                 } else if (downloadedEpisodes.contains(episodeNumber)) {
@@ -582,6 +583,7 @@ class EpisodeAdapter(
                     binding.itemDownloadStatus.visibility = View.VISIBLE
 
                     binding.itemDownload.setImageResource(R.drawable.ic_circle_check)
+                    binding.itemDownload.contentDescription = itemView.context.getString(R.string.delete)
                     binding.itemDownload.postDelayed({
                         binding.itemDownload.setImageResource(R.drawable.ic_round_delete_24)
                         stopDownloadAnimation()
@@ -593,6 +595,7 @@ class EpisodeAdapter(
                         if (desc != null && desc.trim(' ') != "") View.VISIBLE else View.GONE
 
                     binding.itemDownload.setImageResource(R.drawable.ic_download_24)
+                    binding.itemDownload.contentDescription = itemView.context.getString(R.string.download)
                 }
             }
         }

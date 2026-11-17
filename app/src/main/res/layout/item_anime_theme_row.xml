@@ -111,11 +111,11 @@
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:layout_marginStart="4dp"
-            android:background="@drawable/theme_play_circle"
+            android:background="@drawable/theme_action_tonal"
             android:importantForAccessibility="no"
             android:padding="7dp"
             android:src="@drawable/ic_round_play_arrow_24"
-            app:tint="?attr/colorOnPrimary" />
+            app:tint="?attr/colorOnSecondaryContainer" />
     </LinearLayout>
 
     <!-- Only for themes with several versions; opens the list below. -->

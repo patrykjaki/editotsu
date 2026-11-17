@@ -1,5 +1,6 @@
 package ani.dantotsu.media
 
+import ani.dantotsu.themes.followThemeStatusBarIcons
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.Parcelable
@@ -69,6 +70,7 @@ class SearchActivity : AppCompatActivity() {
         ThemeManager(this).applyTheme()
         binding = ActivitySearchBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         initActivity(this)
         screenWidth = resources.displayMetrics.run { widthPixels / density }
 

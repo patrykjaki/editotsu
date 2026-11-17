@@ -1,5 +1,6 @@
 package ani.dantotsu.settings
 
+import ani.dantotsu.themes.followThemeStatusBarIcons
 import android.graphics.drawable.Animatable
 import android.os.Build.BRAND
 import android.os.Build.DEVICE
@@ -63,6 +64,7 @@ class SettingsActivity : AppCompatActivity(), SettingsHost {
 
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
 
         val context = this
         binding.apply {

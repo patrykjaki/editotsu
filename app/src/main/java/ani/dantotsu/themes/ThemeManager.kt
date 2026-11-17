@@ -9,6 +9,7 @@ import android.view.View
 import android.view.Window
 import android.view.WindowManager
 import ani.dantotsu.R
+import ani.dantotsu.getThemeColor
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import com.google.android.material.color.DynamicColors
@@ -153,4 +154,14 @@ class ThemeManager(private val context: Activity) {
             }
         }
     }
+}
+
+/**
+ * Status bar icons that follow the theme: dark icons on a light background. For screens with a plain
+ * background under the status bar; screens with artwork there keep the white icons the theme sets.
+ */
+fun Activity.followThemeStatusBarIcons() {
+    val background = getThemeColor(android.R.attr.colorBackground)
+    androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars =
+        androidx.core.graphics.ColorUtils.calculateLuminance(background) > 0.5
 }

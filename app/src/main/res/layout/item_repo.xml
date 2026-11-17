@@ -26,7 +26,7 @@
             android:layout_height="wrap_content"
             android:fontFamily="@font/poppins_semi_bold"
             android:text="@string/placeholder"
-            android:textSize="15sp"
+            android:textSize="16sp"
             android:textColor="?attr/colorOnBackground"
             android:singleLine="true"
             android:ellipsize="end" />
@@ -37,8 +37,7 @@
             android:layout_height="wrap_content"
             android:fontFamily="@font/poppins"
             android:textSize="12sp"
-            android:alpha="0.7"
-            android:textColor="?attr/colorPrimary"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:singleLine="true"
             android:ellipsize="end"
             tools:text="https://github.com/keiyoushi/extensions" />
@@ -54,9 +53,9 @@
 
         <ImageView
             android:id="@+id/repoMoreImageView"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:padding="9dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="12dp"
             android:scaleType="fitCenter"
             android:background="@drawable/icon_button_ripple"
             android:contentDescription="@string/repo_links"
@@ -65,9 +64,9 @@
 
         <ImageView
             android:id="@+id/repoDeleteImageView"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:padding="9dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="12dp"
             android:scaleType="fitCenter"
             android:background="@drawable/icon_button_ripple"
             android:contentDescription="@string/remove"

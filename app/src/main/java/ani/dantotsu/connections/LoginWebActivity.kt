@@ -1,5 +1,7 @@
 package ani.dantotsu.connections
 
+import ani.dantotsu.getThemeColor
+import ani.dantotsu.themes.followThemeStatusBarIcons
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
@@ -72,6 +74,9 @@ class LoginWebActivity : AppCompatActivity() {
         val dp = resources.displayMetrics.density
         fun iconButton(icon: Int, label: Int, onClick: () -> Unit) = android.widget.ImageButton(this).apply {
             setImageResource(icon)
+            imageTintList = android.content.res.ColorStateList.valueOf(
+                getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
+            )
             contentDescription = getString(label)
             val outValue = android.util.TypedValue()
             context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
@@ -109,7 +114,7 @@ class LoginWebActivity : AppCompatActivity() {
         }
         val root = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            addView(bar, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (56 * dp).toInt()))
+            addView(bar, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (64 * dp).toInt()))
             addView(page, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
@@ -118,6 +123,7 @@ class LoginWebActivity : AppCompatActivity() {
             insets
         }
         setContentView(root)
+        followThemeStatusBarIcons()
         onBackPressedDispatcher.addCallback(this) {
             if (web.canGoBack()) web.goBack() else finish()
         }

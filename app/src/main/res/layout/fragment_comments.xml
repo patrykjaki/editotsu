@@ -49,33 +49,33 @@
 
                 <ImageView
                     android:id="@+id/openRules"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:layout_marginEnd="12dp"
-                    android:background="?android:attr/selectableItemBackground"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:padding="12dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/open_rules"
                     app:srcCompat="@drawable/ic_round_info_24"
-                    app:tint="?attr/colorOnBackground" />
+                    app:tint="?attr/colorOnSurfaceVariant" />
 
                 <ImageView
                     android:id="@+id/commentFilter"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:layout_marginEnd="12dp"
-                    android:background="?android:attr/selectableItemBackground"
-                    android:contentDescription="@string/sort_by"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:padding="12dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/filter"
                     app:srcCompat="@drawable/ic_round_filter_alt_24"
-                    app:tint="?attr/colorOnBackground" />
+                    app:tint="?attr/colorOnSurfaceVariant" />
 
                 <ImageView
                     android:id="@+id/commentSort"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:layout_marginEnd="12dp"
-                    android:background="?android:attr/selectableItemBackground"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:padding="12dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/sort_by"
                     app:srcCompat="@drawable/ic_round_sort_24"
-                    app:tint="?attr/colorOnBackground" />
+                    app:tint="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
 
             <ani.dantotsu.others.SkeletonView

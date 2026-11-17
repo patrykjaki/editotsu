@@ -19,6 +19,7 @@
         android:id="@+id/sourceCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        app:cardBackgroundColor="?attr/colorSurfaceVariant"
         android:foreground="?attr/selectableItemBackground"
         app:cardCornerRadius="16dp"
         app:cardElevation="0dp">
@@ -134,12 +135,12 @@
 
                 <ImageButton
                     android:id="@+id/sourceExpand"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/source_details"
                     android:src="@drawable/ic_round_info_24"
-                    app:tint="?attr/colorOnBackground" />
+                    app:tint="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
 
             <!-- The card plays its best quality; the others of the same release

@@ -1,5 +1,6 @@
 package ani.dantotsu.media
 
+import ani.dantotsu.themes.followThemeStatusBarIcons
 import ani.dantotsu.others.setDropdownText
 import android.content.res.ColorStateList
 import android.os.Bundle
@@ -9,7 +10,6 @@ import android.view.ViewGroup
 import android.view.Window
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.MutableLiveData
@@ -69,7 +69,6 @@ class CalendarActivity : AppCompatActivity() {
         window.statusBarColor = surface
         window.navigationBarColor = surface
         if (!(PrefManager.getVal(PrefName.ImmersiveMode) as Boolean)) {
-            window.statusBarColor = ContextCompat.getColor(this, R.color.nav_bg_inv)
             binding.root.fitsSystemWindows = true
         } else {
             binding.root.fitsSystemWindows = false
@@ -80,6 +79,7 @@ class CalendarActivity : AppCompatActivity() {
             }
         }
         setContentView(binding.root)
+        followThemeStatusBarIcons()
 
         binding.calendarBack.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         showWeekPlaceholder()

@@ -65,7 +65,20 @@ class CalendarDayFragment : Fragment() {
             val slot = CalendarWeek.slot(media.relation)
             val b = holder.b
             // "1:30 AM" goes on two lines ("1:30" over "AM") so every row's time is the same shape
-            b.calendarEntryTime.text = slot.time.replace(Regex("[\\s\u00a0\u202f]+"), "\n")
+            // the day period ("AM") is a smaller, quieter second line under the time
+            val time = slot.time.replace(Regex("[\\s\u00a0\u202f]+"), "\n")
+            val cut = time.indexOf('\n')
+            b.calendarEntryTime.text = if (cut < 0) time else android.text.SpannableString(time).apply {
+                setSpan(android.text.style.RelativeSizeSpan(12f / 14f), cut + 1, length, 0)
+                setSpan(
+                    android.text.style.ForegroundColorSpan(
+                        com.google.android.material.color.MaterialColors.getColor(
+                            b.calendarEntryTime, com.google.android.material.R.attr.colorOnSurfaceVariant
+                        )
+                    ),
+                    cut + 1, length, 0,
+                )
+            }
             b.calendarEntryTitle.text = media.userPreferredName
             b.calendarEntryEpisode.text = slot.episode
             b.calendarEntryCover.loadImage(media.cover)

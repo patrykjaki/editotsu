@@ -182,10 +182,10 @@
                 android:id="@+id/itemDownload"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="@android:color/transparent"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/download"
                 app:srcCompat="@drawable/ic_download_24"
-                app:tint="?attr/colorOnBackground"
-                tools:ignore="ContentDescription" />
+                app:tint="?attr/colorOnSurfaceVariant" />
 
         </LinearLayout>
 

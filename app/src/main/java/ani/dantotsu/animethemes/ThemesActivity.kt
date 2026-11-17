@@ -1,5 +1,6 @@
 package ani.dantotsu.animethemes
 
+import ani.dantotsu.themes.followThemeStatusBarIcons
 import android.os.Bundle
 import android.text.format.Formatter
 import android.view.LayoutInflater
@@ -50,6 +51,7 @@ class ThemesActivity : AppCompatActivity() {
         ThemeManager(this).applyTheme()
         binding = ActivityThemesBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         initActivity(this)
         controls = ThemeDownloadControls(this) { adapter.notifyDataSetChanged() }
         binding.themesList.updatePadding(top = statusBarHeight, bottom = navBarHeight + binding.themesList.paddingBottom)
