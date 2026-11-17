@@ -414,16 +414,21 @@ private fun repeatOnHold(button: View, action: () -> Unit) {
 }
 
 /**
- * Material 3 segmented button: the selected segment leads with an 18dp check. A text
- * segment gains the check; an icon segment shows the check in place of its icon.
+ * Material 3 segmented button: a text segment leads with an 18dp check when selected;
+ * an icon-only segment keeps its own icon and shows selection by the fill only.
  */
 internal fun markSegment(button: MaterialButton, icon: Int?, checked: Boolean) {
     val size = (18 * button.resources.displayMetrics.density).roundToInt()
+    val hasText = !button.text.isNullOrBlank()
     when {
+        icon != null && !hasText -> {
+            button.setIconResource(icon)
+            button.iconPadding = 0
+        }
         checked -> {
             button.setIconResource(R.drawable.ic_chip_check)
             button.iconSize = size
-            button.iconPadding = if (icon == null) (8 * button.resources.displayMetrics.density).roundToInt() else 0
+            button.iconPadding = (8 * button.resources.displayMetrics.density).roundToInt()
         }
         icon != null -> {
             button.setIconResource(icon)
