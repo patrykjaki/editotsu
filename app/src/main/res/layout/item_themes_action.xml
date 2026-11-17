@@ -6,17 +6,18 @@
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:gravity="center_horizontal"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:paddingHorizontal="2dp">
 
     <ImageButton
         android:id="@+id/actionIcon"
         android:layout_width="56dp"
         android:layout_height="56dp"
-        android:background="@drawable/theme_play_circle"
+        android:background="@drawable/theme_action_tonal"
         android:importantForAccessibility="no"
         android:padding="15dp"
         android:scaleType="fitCenter"
-        app:tint="?attr/colorOnPrimary"
+        app:tint="?attr/colorOnSecondaryContainer"
         tools:src="@drawable/ic_shuffle_24" />
 
     <TextView
@@ -30,5 +31,5 @@
         android:maxLines="2"
         android:textColor="?attr/colorOnSurface"
         android:textSize="12sp"
-        tools:text="Shuffle completed shows" />
+        tools:text="Shuffle completed" />
 </LinearLayout>

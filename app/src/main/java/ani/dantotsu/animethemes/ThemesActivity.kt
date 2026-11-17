@@ -145,7 +145,7 @@ class ThemesActivity : AppCompatActivity() {
         init {
             b.themesBack.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
             ThemeAudioToggle.bind(b.themesAudioOnly)
-            action(b.actionShuffleCompleted, R.drawable.ic_shuffle_24, R.string.themes_shuffle_completed) { shuffleCompleted() }
+            action(b.actionShuffleCompleted, R.drawable.ic_shuffle_24, R.string.themes_shuffle_completed, primary = true) { shuffleCompleted() }
             action(b.actionPlayFavourites, R.drawable.ic_round_playlist_play_24, R.string.themes_play_favourites) { playFavourites(false) }
             action(b.actionShuffleFavourites, R.drawable.ic_round_favorite_24, R.string.themes_shuffle_favourites) { playFavourites(true) }
             action(b.actionDownloadAll, R.drawable.ic_download_24, R.string.themes_download_all) { downloadAll() }
@@ -169,8 +169,19 @@ class ThemesActivity : AppCompatActivity() {
             }
         }
 
-        private fun action(a: ItemThemesActionBinding, icon: Int, label: Int, onClick: () -> Unit) {
+        private fun action(a: ItemThemesActionBinding, icon: Int, label: Int, primary: Boolean = false, onClick: () -> Unit) {
             a.actionIcon.setImageResource(icon)
+            a.actionIcon.setBackgroundResource(if (primary) R.drawable.theme_action_primary else R.drawable.theme_action_tonal)
+            androidx.core.widget.ImageViewCompat.setImageTintList(
+                a.actionIcon,
+                android.content.res.ColorStateList.valueOf(
+                    com.google.android.material.color.MaterialColors.getColor(
+                        a.actionIcon,
+                        if (primary) com.google.android.material.R.attr.colorOnPrimary
+                        else com.google.android.material.R.attr.colorOnSecondaryContainer,
+                    )
+                ),
+            )
             a.actionLabel.setText(label)
             a.root.contentDescription = getString(label)
             a.root.isClickable = true

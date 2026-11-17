@@ -72,6 +72,27 @@ class ThemesScreenshotTest : ScreenshotTest() {
         favourites(1, 2, 4, 11, 12)
         themesScreen("themes/screen_favourites_font130")
     }
+
+    @Test @Config(qualifiers = "+night")
+    fun screen_favourites_monochrome() {
+        PrefManager.setVal(PrefName.Theme, "MONOCHROME (BETA)")
+        favourites(1, 2, 4, 11, 12)
+        themesScreen("themes/screen_favourites_monochrome")
+    }
+
+    @Test @Config(qualifiers = "+night")
+    fun screen_favourites_oled() {
+        PrefManager.setVal(PrefName.UseOLED, true)
+        favourites(1, 2, 4, 11, 12)
+        themesScreen("themes/screen_favourites_oled")
+    }
+
+    @Test @Config(qualifiers = "+notnight")
+    fun screen_favourites_pink_light() {
+        PrefManager.setVal(PrefName.Theme, "PINK")
+        favourites(1, 2, 4, 11, 12)
+        themesScreen("themes/screen_favourites_pink_light")
+    }
 }
 
 /** Objects that cache prefs between tests. */
