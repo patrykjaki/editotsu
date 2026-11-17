@@ -275,6 +275,88 @@ class MpvPlaybackEngineTest {
     }
 
     @Test
+    fun testReadyReportedOnceWhenCoreIdleFalseOrTimePosAdvancesWithoutPlaybackRestart() {
+        val stateTransitions = mutableListOf<PlaybackState>()
+        engine.addListener(object : PlaybackListener {
+            override fun onPlaybackStateChanged(state: PlaybackState) {
+                stateTransitions.add(state)
+            }
+        })
+
+        // Case 1: core-idle becomes false while unpaused
+        engine.play()
+        engine.loadMedia(PlaybackRequest(uri = "https://cdn.anime.com/stream_a.m3u8"))
+        Thread.sleep(50)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_START_FILE, playlistEntryId = 31L)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_FILE_LOADED)
+        fakeClient.emitProperty("pause", false)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Buffering, engine.playbackState)
+
+        fakeClient.emitProperty("core-idle", false)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Ready, engine.playbackState)
+        assertTrue(engine.isPlaying)
+        assertEquals(1, stateTransitions.count { it is PlaybackState.Ready })
+
+        // Subsequent time-pos updates do not re-emit Ready
+        fakeClient.emitProperty("time-pos", 1.0)
+        fakeClient.emitProperty("time-pos", 2.0)
+        Thread.sleep(50)
+        assertEquals(1, stateTransitions.count { it is PlaybackState.Ready })
+
+        // Case 2: time-pos advances by > 0.5s after load without PLAYBACK_RESTART or core-idle=false
+        stateTransitions.clear()
+        fakeClient.emitProperty("core-idle", true)
+        engine.loadMedia(PlaybackRequest(uri = "https://cdn.anime.com/stream_b.m3u8", startPositionMs = 10_000L))
+        Thread.sleep(50)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_START_FILE, playlistEntryId = 32L)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_FILE_LOADED)
+        fakeClient.emitProperty("time-pos", 10.2)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Buffering, engine.playbackState)
+
+        fakeClient.emitProperty("time-pos", 10.6)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Ready, engine.playbackState)
+        assertEquals(1, stateTransitions.count { it is PlaybackState.Ready })
+    }
+
+    @Test
+    fun `seek before first frame does not mark ready`() {
+        fakeClient.emitProperty("core-idle", true)
+        engine.loadMedia(PlaybackRequest(uri = "https://cdn.anime.com/stream_seek.m3u8"))
+        Thread.sleep(50)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_START_FILE, playlistEntryId = 33L)
+        // Seek queued before FILE_LOADED (pendingSeekMs) -> executed on FILE_LOADED
+        engine.seekTo(30_000L)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_FILE_LOADED)
+        Thread.sleep(50)
+
+        // time-pos jumps to seek target while seek is still pending (before PLAYBACK_RESTART)
+        fakeClient.emitProperty("time-pos", 31.0)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Buffering, engine.playbackState)
+
+        // Direct seek after FILE_LOADED but before first frame also keeps Buffering on time-pos jump
+        engine.loadMedia(PlaybackRequest(uri = "https://cdn.anime.com/stream_seek2.m3u8"))
+        Thread.sleep(50)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_START_FILE, playlistEntryId = 34L)
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_FILE_LOADED)
+        fakeClient.emitProperty("time-pos", 0.0)
+        engine.seekTo(45_000L)
+        Thread.sleep(50)
+
+        fakeClient.emitProperty("time-pos", 45.8)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Buffering, engine.playbackState)
+
+        fakeClient.emitEvent(MpvPlaybackEngine.MPV_EVENT_PLAYBACK_RESTART)
+        Thread.sleep(50)
+        assertEquals(PlaybackState.Ready, engine.playbackState)
+    }
+
+    @Test
     fun testExternalSubtitlesAttachedOnFileLoaded() {
         val extSub = ExternalSubtitle(
             url = "https://cdn.anime.com/sub_en.vtt",
