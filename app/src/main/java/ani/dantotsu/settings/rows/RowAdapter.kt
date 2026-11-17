@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -426,9 +427,20 @@ internal fun markSegment(button: MaterialButton, icon: Int?, checked: Boolean) {
             button.iconPadding = 0
         }
         checked -> {
-            button.setIconResource(R.drawable.ic_chip_check)
-            button.iconSize = size
-            button.iconPadding = (8 * button.resources.displayMetrics.density).roundToInt()
+            // the check only when the label still fits beside it; a narrow segment ("Original" in
+            // a three-way row) shows selection by the fill alone instead of cutting the label
+            val gap = (8 * button.resources.displayMetrics.density).roundToInt()
+            fun apply() {
+                if (!button.isChecked) return
+                if (segmentCheckFits(button, size + gap)) {
+                    button.setIconResource(R.drawable.ic_chip_check)
+                    button.iconSize = size
+                    button.iconPadding = gap
+                } else {
+                    button.icon = null
+                }
+            }
+            if (button.width > 0) apply() else button.doOnLayout { apply() }
         }
         icon != null -> {
             button.setIconResource(icon)
@@ -437,4 +449,10 @@ internal fun markSegment(button: MaterialButton, icon: Int?, checked: Boolean) {
         else -> button.icon = null
     }
     button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+}
+
+/** Whether [button]'s label fits next to an icon taking [iconSpace] px inside its padding. */
+internal fun segmentCheckFits(button: MaterialButton, iconSpace: Int): Boolean {
+    val inner = button.width - button.paddingStart - button.paddingEnd
+    return button.paint.measureText(button.text.toString()) + iconSpace <= inner
 }
