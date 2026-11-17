@@ -6,7 +6,7 @@
     android:id="@+id/favRoot"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginHorizontal="24dp"
+    android:layout_marginHorizontal="16dp"
     android:layout_marginBottom="2dp"
     android:background="?attr/selectableItemBackground"
     android:clickable="true"
@@ -121,9 +121,9 @@
         android:layout_width="36dp"
         android:layout_height="36dp"
         android:layout_marginStart="4dp"
-        android:background="@drawable/theme_play_circle"
+        android:background="@drawable/theme_action_tonal"
         android:importantForAccessibility="no"
         android:padding="7dp"
         android:src="@drawable/ic_round_play_arrow_24"
-        app:tint="?attr/colorOnPrimary" />
+        app:tint="?attr/colorOnSecondaryContainer" />
 </LinearLayout>
