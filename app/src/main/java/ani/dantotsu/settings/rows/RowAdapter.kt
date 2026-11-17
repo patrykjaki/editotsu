@@ -439,6 +439,10 @@ internal fun markSegment(button: MaterialButton, icon: Int?, checked: Boolean) {
                 } else {
                     button.icon = null
                 }
+                // MaterialButton places a TEXT_START icon only when its gravity changes or on layout;
+                // after layout neither happens, so the check would sit at the padding edge
+                button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_END
+                button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
             }
             if (button.width > 0) apply() else button.doOnLayout { apply() }
         }
