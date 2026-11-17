@@ -89,11 +89,24 @@ class SearchAdapter(private val activity: SearchActivity, private val type: Sear
             activity.search()
         }
 
-        chips = bindChips(activity, type, activity.aniMangaResult) {
+        fun applyFiltersChanged() {
             chips?.build()
-            searchTitle()
+            if (binding.searchBarText.text.toString().isBlank() && !filtered()) {
+                activity.aniMangaResult.search = null
+                activity.emptyMediaAdapter()
+                setHistoryVisibility(true)
+            } else {
+                setHistoryVisibility(false)
+                searchTitle()
+            }
         }
+
+        chips = bindChips(activity, type, activity.aniMangaResult) { applyFiltersChanged() }
         activity.updateChips = { chips?.build() }
+
+        binding.searchFilter.setOnClickListener {
+            GenreTagSheet.show(activity, activity.aniMangaResult) { applyFiltersChanged() }
+        }
 
         if (activity.aniMangaResult.type != "ANIME") {
             binding.searchByImage.visibility = View.GONE

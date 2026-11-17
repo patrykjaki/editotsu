@@ -41,8 +41,7 @@ class SearchFilterChips(
         val sortLabels = activity.resources.getStringArray(R.array.sort_by).toList()
         single(R.string.chip_sort, Anilist.sortBy.indices.map { sortLabels.getOrElse(it) { Anilist.sortBy[it] } },
             Anilist.sortBy.indexOf(f.sort)) { f.sort = Anilist.sortBy.getOrNull(it) }
-        multi(R.string.genres, Anilist.genres.orEmpty().filter { Anilist.adult || !it.equals("hentai", true) },
-            { f.genres.orEmpty() }) { f.genres = it.toMutableList() }
+        genreTagChip(f)
         val formats = if (anime) Anilist.animeFormats else Anilist.mangaFormats
         single(R.string.format, formats.map(::pretty), formats.indexOf(f.format)) { f.format = formats.getOrNull(it) }
         val statuses = if (anime) Anilist.animeStatus else Anilist.mangaStatus
@@ -67,10 +66,6 @@ class SearchFilterChips(
                 f.onList = when (it) { 0 -> true; 1 -> false; else -> null }
             }
         }
-        if (!rescue) {
-            multi(R.string.tags, Anilist.tags?.get(f.isAdult).orEmpty(), { f.tags.orEmpty() }) { f.tags = it.toMutableList() }
-        }
-        excludeChip(f)
         if (!rescue) {
             single(R.string.source, Anilist.source.map(::pretty), Anilist.source.indexOf(f.source?.replace("_", " "))) {
                 f.source = Anilist.source.getOrNull(it)?.replace(" ", "_")
@@ -148,55 +143,22 @@ class SearchFilterChips(
         }
     }
 
-    /** Several-of-N filter; applies on every toggle, like the settings multi choices. */
-    private fun multi(title: Int, options: List<String>, current: () -> List<String>, set: (List<String>) -> Unit) {
-        if (options.isEmpty()) return
-        val name = activity.getString(title)
-        val now = current()
-        val c = chip(summary(name, now))
-        c.isChecked = now.isNotEmpty()
-        c.contentDescription = if (now.isEmpty()) name else "$name: ${now.joinToString()}"
-        c.setOnClickListener {
-            c.isChecked = now.isNotEmpty()
-            val checked = BooleanArray(options.size) { options[it] in current() }
-            ChoiceSheet.multi(activity, name, options.map { ChoiceOption(it) }, checked,
-                onReset = { set(emptyList()); onChanged() }) { state ->
-                set(options.filterIndexed { i, _ -> state[i] })
-                onChanged()
-            }
-        }
-    }
-
-    /** Leave out genres and tags: one sheet, grouped, so excluding is a visible choice, not a long-press. */
-    private fun excludeChip(f: AniMangaSearchResults) {
+    /** Unified genres & tags chip: shows while something is included or excluded, or opens the sheet when tapped. */
+    private fun genreTagChip(f: AniMangaSearchResults) {
         val genres = Anilist.genres.orEmpty()
         val tags = if (rescue) emptyList() else Anilist.tags?.get(f.isAdult).orEmpty()
-        if (genres.isEmpty() && tags.isEmpty()) return
-        val name = activity.getString(R.string.chip_exclude)
-        val now = f.excludedGenres.orEmpty() + f.excludedTags.orEmpty()
-        val c = chip(summary(name, now))
-        c.isChecked = now.isNotEmpty()
+        val inc = f.genres.orEmpty() + f.tags.orEmpty()
+        val exc = f.excludedGenres.orEmpty() + f.excludedTags.orEmpty()
+        if (genres.isEmpty() && tags.isEmpty() && inc.isEmpty() && exc.isEmpty()) return
+        val name = activity.getString(R.string.genres_and_tags)
+        val sum = GenreTagGroups.summary(inc, exc)
+        val c = chip(sum ?: name)
+        c.isChecked = sum != null
+        c.contentDescription = if (sum == null) name else "$name: $sum"
         c.setOnClickListener {
-            c.isChecked = now.isNotEmpty()
-            val gName = activity.getString(R.string.genres)
-            val tName = activity.getString(R.string.tags)
-            val options = genres.map { ChoiceOption(it, group = gName) } + tags.map { ChoiceOption(it, group = tName) }
-            val checked = BooleanArray(options.size) {
-                if (it < genres.size) genres[it] in f.excludedGenres.orEmpty() else tags[it - genres.size] in f.excludedTags.orEmpty()
-            }
-            ChoiceSheet.multi(activity, name, options, checked,
-                onReset = { f.excludedGenres = mutableListOf(); f.excludedTags = mutableListOf(); onChanged() }) { state ->
-                f.excludedGenres = genres.filterIndexed { i, _ -> state[i] }.toMutableList()
-                f.excludedTags = tags.filterIndexed { i, _ -> state[genres.size + i] }.toMutableList()
-                onChanged()
-            }
+            c.isChecked = sum != null
+            GenreTagSheet.show(activity, f, rescue, onChanged)
         }
-    }
-
-    private fun summary(name: String, picked: List<String>) = when (picked.size) {
-        0 -> name
-        1 -> picked[0]
-        else -> "${picked[0]} +${picked.size - 1}"
     }
 
     companion object {

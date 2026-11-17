@@ -85,6 +85,15 @@
                     app:tint="?attr/colorOnSurfaceVariant" />
 
                 <ImageButton
+                    android:id="@+id/searchFilter"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/filter_genres_and_tags"
+                    android:src="@drawable/ic_round_filter_list_24"
+                    app:tint="?attr/colorOnSurfaceVariant" />
+
+                <ImageButton
                     android:id="@+id/searchByImage"
                     android:layout_width="48dp"
                     android:layout_height="48dp"

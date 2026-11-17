@@ -1962,6 +1962,11 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="chip_status">Status</string>
     <string name="chip_any">Any</string>
     <string name="chip_exclude">Exclude</string>
+    <string name="genres_and_tags">Genres &amp; tags</string>
+    <string name="filter_genres_and_tags">Filter genres and tags</string>
+    <string name="search_genres_and_tags">Search genres and tags</string>
+    <string name="genre_tag_included">%1$s, included</string>
+    <string name="genre_tag_excluded">%1$s, excluded</string>
     <string name="chip_country">Country</string>
     <string name="country_japan">Japan</string>
     <string name="country_korea">South Korea</string>

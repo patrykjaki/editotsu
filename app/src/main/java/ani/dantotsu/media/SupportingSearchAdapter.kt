@@ -33,6 +33,7 @@ class SupportingSearchAdapter(private val activity: SearchActivity, private val 
             throw IllegalArgumentException("Invalid search type (wrong adapter)")
         }
 
+        binding.searchFilter.visibility = View.GONE
         binding.searchByImage.visibility = View.GONE
         binding.searchResultGrid.visibility = View.GONE
         binding.searchResultList.visibility = View.GONE

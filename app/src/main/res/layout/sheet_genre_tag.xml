@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Unified Genres & tags bottom sheet: primary handle, title + reset icon, pill search field, and grouped tri-state rows. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingBottom="16dp">
+
+    <View
+        android:id="@+id/genreTagHandle"
+        android:layout_width="32dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="14dp"
+        android:background="@drawable/shape_choice_handle"
+        android:importantForAccessibility="no" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:minHeight="48dp"
+        android:orientation="horizontal"
+        android:paddingStart="32dp"
+        android:paddingEnd="16dp">
+
+        <TextView
+            android:id="@+id/genreTagTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:accessibilityHeading="true"
+            android:fontFamily="@font/poppins_bold"
+            android:text="@string/genres_and_tags"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="20sp"
+            tools:ignore="UnusedAttribute" />
+
+        <ImageButton
+            android:id="@+id/genreTagReset"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/reset"
+            android:visibility="gone"
+            app:srcCompat="@drawable/ic_round_refresh_24"
+            app:tint="?attr/colorOnSurfaceVariant"
+            tools:visibility="visible" />
+    </LinearLayout>
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/genreTagSearchBar"
+        style="@style/Widget.Material3.CardView.Filled"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="4dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_round_search_24"
+                app:tint="?attr/colorOnSurfaceVariant" />
+
+            <EditText
+                android:id="@+id/genreTagSearchText"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:background="@null"
+                android:fontFamily="@font/poppins_family"
+                android:hint="@string/search_genres_and_tags"
+                android:imeOptions="actionSearch"
+                android:importantForAutofill="no"
+                android:inputType="text"
+                android:singleLine="true"
+                android:textColor="?attr/colorOnSurface"
+                android:textColorHint="?attr/colorOnSurfaceVariant"
+                android:textSize="16sp" />
+
+            <ImageButton
+                android:id="@+id/genreTagSearchClear"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/clear"
+                android:src="@drawable/ic_round_close_24"
+                android:visibility="gone"
+                app:tint="?attr/colorOnSurfaceVariant" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/genreTagList"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:scrollbars="vertical"
+        tools:listitem="@layout/item_genre_tag_option" />
+</LinearLayout>
