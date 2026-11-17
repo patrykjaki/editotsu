@@ -443,8 +443,10 @@ internal fun markSegment(button: MaterialButton, icon: Int?, checked: Boolean) {
                 // after layout neither happens, so the check would sit at the padding edge
                 button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_END
                 button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+                button.requestLayout()
             }
-            if (button.width > 0) apply() else button.doOnLayout { apply() }
+            // after the first layout, not inside it: a change made during layout is not re-placed
+            if (button.width > 0) apply() else button.doOnLayout { button.post { apply() } }
         }
         icon != null -> {
             button.setIconResource(icon)
