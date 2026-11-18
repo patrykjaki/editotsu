@@ -9,7 +9,7 @@ import org.junit.Test
  * default trackers; the local set must remain a strict superset after the
  * merge (25 + internetwarriors + openbts = 27), duplicate-free, all valid
  * announce URLs. Peer-discovery effect itself is device-only OPEN debt.
- * torrent-stream-speed r5: + 5 anime trackers (anidex, anirena, nekoBT, acgnx,
+ * torrent-stream-speed r5: + 5 anime trackers (four anime indexers,
  * exodus) = 32.
  */
 class TorrentTrackersTest {
@@ -48,7 +48,7 @@ class TorrentTrackersTest {
 
     @Test
     fun `all entries are valid announce urls`() {
-        // nekoBT announces on a longer path (/api/tracker/public/announce)
+        // one anime tracker announces on a longer path (/api/tracker/public/announce)
         val pattern = Regex("^(udp|https?)://[^/\\s]+(/[^\\s]*)?/announce$")
         TORRENT_DEFAULT_TRACKERS.forEach { tracker ->
             assertTrue("invalid tracker URL: $tracker", pattern.matches(tracker))

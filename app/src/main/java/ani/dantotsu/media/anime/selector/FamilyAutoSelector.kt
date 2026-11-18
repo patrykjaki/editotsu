@@ -148,8 +148,8 @@ object FamilyAutoSelector {
      * This guarantees that the chosen representative is independent
      * of the order in which the candidates appeared in the input.
      *
-     * Example: stored [nyaasi, 1080p, ...]
-     *   rep good [nyaasi, 720p, ...] beats rep bad [nekobt, 1080p, ...]
+     * Example: stored [indexa, 1080p, ...]
+     *   rep good [indexa, 720p, ...] beats rep bad [indexb, 1080p, ...]
      *   because compareLex finds the first differing priority
      *   (position 0) and rep good matches it.
      */

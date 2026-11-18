@@ -7,7 +7,7 @@ import org.junit.Test
 class SourceSearchOrderTest {
     @Test
     fun nextSourceSkipsLocal() {
-        val names = listOf("AllAnime", "Local", "AnimePahe", "Torrentio")
+        val names = listOf("SiteAye", "Local", "SiteBeeee", "Relayaddon")
         assertEquals(2, SourceSearchOrder.next(names, 0))
         assertEquals(3, SourceSearchOrder.next(names, 2))
         assertNull(SourceSearchOrder.next(names, 3))
@@ -15,9 +15,9 @@ class SourceSearchOrderTest {
 
     @Test
     fun nameShownIsTheSourceLoaded() {
-        // the dropdown list leaves out Local, so its index 2 is "Torrentio", not "AnimePahe"
-        val names = listOf("AllAnime", "Local", "AnimePahe", "Torrentio")
+        // the dropdown list leaves out Local, so its index 2 is "Relayaddon", not "SiteBeeee"
+        val names = listOf("SiteAye", "Local", "SiteBeeee", "Relayaddon")
         val next = SourceSearchOrder.next(names, 0)!!
-        assertEquals("AnimePahe", names[next])
+        assertEquals("SiteBeeee", names[next])
     }
 }

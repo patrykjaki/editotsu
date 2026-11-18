@@ -87,12 +87,12 @@ object SourceRowClassifier {
         "AT-X" to "AT-X",
         "ATX" to "AT-X",
         "ATVP" to "Apple TV+",
-        // v3.3 finding 1 (Feibanyama device row): iQiyi emits raw
+        // v3.3 finding 1 (Grpbanyama device row): iQiyi emits raw
         // `[IQIYI ...]` blocks. Additive alias only; the delimited
         // clean-title strip reuses the existing alias-key path.
         "IQIYI" to "iQIYI",
-        // Anime simulcast services seen in nekoBT/Nyaa titles (owner
-        // screenshot 2026-11-01: ToonsHub ADN/BILI/AMZN/CR variants).
+        // Anime simulcast services seen in anime torrent titles (owner
+        // screenshot 2026-11-01: ADN/BILI/AMZN/CR variants of one release).
         "ADN" to "ADN",
         "BILI" to "Bilibili",
         "B-GLOBAL" to "Bilibili",
@@ -175,7 +175,7 @@ object SourceRowClassifier {
     // `Dolby` alone matches nothing (Vision/Atmos/Digital?).
     // The DTS tail repeats a bounded `separator + known token` group
     // (standards-gap v2.1 correction): `DTS-HD MA 5.1` keeps `MA` and
-    // channels, while `DTS-HD.X265-IAHD` still stops before codec/group
+    // channels, while `DTS-HD.X265-IQHD` still stops before codec/group
     // text. The lone `X` token carries an end-guard (same lesson as
     // `DD+`: a bare `\b`-style boundary fails at dots, so extension
     // dots like `DTS:X.mkv` are explicitly allowed while `.X265`
@@ -196,7 +196,7 @@ object SourceRowClassifier {
     /**
      * Generalized quality-prefix token (provider-dataset v1): uncommon
      * heights such as 800p/528p/540p/360p occur in real provider rows
-     * (`800p [IceBlue]`, `528p [EvilMini]`).
+     * (`800p [GrpBlue]`, `528p [GrplMini]`).
      */
     private val REGEX_QUALITY_PREFIX_TOKEN =
         Regex("""(?i)^(\d{3,4}p|4k|2k|8k)$""")
@@ -216,7 +216,7 @@ object SourceRowClassifier {
         """(?i)\b(subs?|subtitles?|multi[\s\-]*subs?|multiple\s*subtitles?|vostfr?|napisy|legendad[oa]s?|subtitulad[oa]s?)\b""",
     )
 
-    // Audio context markers. The 🎬 emoji is the Torrentio audio-line
+    // Audio context markers. The 🎬 emoji is the audio-line
     // marker and indicates an audio context. Provider-dataset v1 adds
     // the French (`french`), Spanish (`castellano`, `latino`) and
     // Portuguese (`dublado`) scene markers so flags on those lines
@@ -266,7 +266,7 @@ object SourceRowClassifier {
     /**
      * Provider-dataset v1 dub vocabulary (French / Spanish / Portuguese
      * scenes). All word-boundary matched against the release title
-     * only, never the provider/tracker name (`HorribleSubs`,
+     * only, never the provider/tracker name (`PlumbingSubs`,
      * `MicoLeaoDublado` do not match: no boundary inside the word).
      */
     private val REGEX_FRENCH_DUB = Regex("""(?i)\bfrench\b""")
@@ -317,7 +317,7 @@ object SourceRowClassifier {
      * cannot enumerate.
      *
      * Real groups survive: the audio continuation set is bounded, so
-     * `Dubs-Empire`, `SubsPlease`, `DualAudio`, `Subzero`, `Multicast`
+     * `Dubs-Grpire`, `SubsPlume`, `DualAudio`, `Subzone`, `Multicolor`
      * and `Dubious` do not match.
      */
     private val REGEX_AUDIO_SUB_WHOLE_BRACKET = Regex(
@@ -352,22 +352,22 @@ object SourceRowClassifier {
 
     /**
      * URL-shaped bracket tokens are provenance links, never release
-     * groups (`[www.descargas2020.org]`).
+     * groups (`[www.example2020.org]`).
      */
     private val REGEX_URL_LIKE_BRACKET = Regex(
         """(?i)(?:^www\.|\.(org|com|net|info|tv|io|me|to|cc|ru|pl|es|fr|it|de|nl|se)$)""",
     )
 
     // Suffix-style release group: a trailing `-GROUP` on the filename
-    // (nyaa-style `...-VARYG`, `...-Rapta`) when no authoritative
+    // (scene-style `...-GRPA`, `...-Grpb`) when no authoritative
     // `[Group]` tag exists. The media extension is stripped first so
-    // `Title-VARYG.mkv` still resolves.
+    // `Title-GRPVY.mkv` still resolves.
     private val REGEX_STRIP_MEDIA_EXTENSION =
         Regex("""\.(mkv|mp4|avi|webm|ts|m4v|m2ts|mov|flv|rmvb)$""", RegexOption.IGNORE_CASE)
     private val REGEX_TRAILING_SUFFIX_GROUP =
         Regex("""-([A-Za-z][A-Za-z0-9-]{1,29})\s*$""")
 
-    /** notes after a scene group: "H.264-VARYG (Show, Multi-Subs)", "x265-GRP[rartv]" */
+    /** notes after a scene group: "H.264-GRPVY (Show, Multi-Subs)", "x265-GRP[site]" */
     private val REGEX_TRAILING_NOTES = Regex("""(?:\s*[\[(][^\[\]()]*[\])])+\s*$""")
 
     /**
@@ -432,7 +432,7 @@ object SourceRowClassifier {
         if (isLikelyLanguageTag(token)) return false
         // Audio/sub-led bracket tokens are content signals, never
         // groups (follow-ups v1, refined by provider-dataset v1 so real
-        // hyphenated groups such as Dubs-Empire survive).
+        // hyphenated groups such as Dubs-Grpire survive).
         if (REGEX_AUDIO_SUB_WHOLE_BRACKET.matches(token)) return false
         if (REGEX_AUDIO_SUB_LED_BRACKET.containsMatchIn(token)) return false
         if (REGEX_AUDIO_FORMAT_LED_BRACKET.containsMatchIn(token)) return false
@@ -441,7 +441,7 @@ object SourceRowClassifier {
         if (REGEX_SEASON_EPISODE_BRACKET.matches(token)) return false
         if (REGEX_URL_LIKE_BRACKET.containsMatchIn(token)) return false
         // A real release group is one or more word-chars (allows dashes for
-        // groups like Tenrai-Sensei) but does not contain only digits.
+        // groups like Grpai-Sensei) but does not contain only digits.
         if (token.all { it.isDigit() }) return false
         return true
     }
@@ -521,7 +521,7 @@ object SourceRowClassifier {
 
     /**
      * File-name line of a multi-file (pack) row: a non-metadata line after
-     * the release name that ends in a video extension. Torrentio adds it
+     * the release name that ends in a video extension. Sources add it
      * only for packs. Returned as written (a path inside the torrent is
      * kept; [parseRelease] drops it before parsing). Null when absent.
      */
@@ -532,8 +532,16 @@ object SourceRowClassifier {
         return titleLines[idx]
     }
 
-    private fun titleLines(qualityText: String): List<String> =
-        qualityText.lines().map { it.trim() }.filter { it.isNotEmpty() && !isMetadataMarkerLine(it) }
+    private fun titleLines(qualityText: String): List<String> {
+        val lines = qualityText.lines().map { it.trim() }.filter { it.isNotEmpty() && !isMetadataMarkerLine(it) }
+        // A source may print its own name as the first line of a release row
+        // ("<Name>\n<release>\n👤 ..."): a single word of letters, never a release name.
+        return if (lines.size >= 2 && lines[0].matches(REGEX_SOURCE_NAME_LINE) &&
+            classifyPresentation(qualityText) == SourcePresentationKind.RELEASE
+        ) lines.drop(1) else lines
+    }
+
+    private val REGEX_SOURCE_NAME_LINE = Regex("""\p{L}{3,30}""")
 
     private fun fileNameLineIndex(titleLines: List<String>): Int {
         if (titleLines.size < 2) return -1
@@ -546,14 +554,13 @@ object SourceRowClassifier {
     private val REGEX_VIDEO_FILE_LINE = Regex("""(?i)\.(mkv|mp4|avi|m2ts|ts|webm|m4v|mov)\s*$""")
 
     private fun isMetadataMarkerLine(line: String): Boolean {
-        if (line == "Torrentio") return true
-        // Torrentio Anime prepends "<tracker> - <quality>" (its hoster
-        // name + Torrentio's quality label) as a line of its own, e.g.
-        // "nekoBT - 1080p" or "NyaaSi - 4k DV | HDR". It is provenance:
+        // Some sources prepend "<tracker> - <quality>" (the hoster name and
+        // a quality label) as a line of its own, e.g. "IndexA - 1080p" or
+        // "IndexA - 4k DV | HDR". It is provenance:
         // the tracker is parsed from the ⚙ line, the resolution from the
         // title, so it must not become part of the release name.
         if (line.matches(REGEX_PROVIDER_QUALITY_LINE)) return true
-        if (isTorrentioLanguageLine(line)) return true
+        if (isLanguageLine(line)) return true
         if (line.firstOrNull()?.let { MARKER_EMOJIS.any { e -> line.startsWith(e) } } == true) return true
         if (line.matches(REGEX_METADATA_MARKER_LINE)) return true
         return false
@@ -734,7 +741,7 @@ object SourceRowClassifier {
         for (c in candidates) {
             if (releaseName.contains(c, ignoreCase = true)) return c.uppercase()
         }
-        // v3.3 finding 2 (Salieri device row): bare `BD` is a real
+        // v3.3 finding 2 (Grpsali device row): bare `BD` is a real
         // source-type token, but `contains` would overmatch ordinary
         // words (`Abducted`, `Bdubs`), so it needs strict delimited
         // matching. Ordered AFTER `BDRip` so `BDRip` keeps its precise
@@ -750,7 +757,7 @@ object SourceRowClassifier {
      * Release-group rule (v2.2 current-format compatibility).
      *
      * The returned 784-row corpus contains zero `📂` rows: current
-     * Torrentio/TorrentioAnime payloads carry the provider/indexer in
+     * torrent-source payloads carry the provider/indexer in
      * `⚙️`, so a lone `⚙️` value is provenance — never a group.
      *
      * Precedence (strongest first; a weaker guess never overwrites a
@@ -764,7 +771,7 @@ object SourceRowClassifier {
      *   4. null (correct when no group is present; never fabricate
      *      from a provider name)
      *
-     * The `⚙` value and the title bracket can disagree in real Torrentio
+     * The `⚙` value and the title bracket can disagree in real source
      * output. Per the v3.3 feedback: prefer the title bracket; the `⚙`
      * value is corroborating only. If both are present and disagree,
      * return the title bracket and record the discrepancy.
@@ -801,7 +808,7 @@ object SourceRowClassifier {
         // 2b. File-name bracket: `[Group] Title - 01 (...).mkv`. Covers
         //     releases whose title starts with free text before the
         //     first bracket (phone case, Frieren S2 2026-10-31:
-        //     "4k Frieren: U kresu drogi / ... [Shiniori-Raws] ...").
+        //     "4k Frieren: U kresu drogi / ... [Grpiori-Raws] ...").
         fileNameBracketGroup(qualityText)?.let { return it }
 
         // 3. Trailing `-GROUP` filename suffix (weak guess), scanned
@@ -849,9 +856,9 @@ object SourceRowClassifier {
      * `extractReleaseName()` flattens title/file lines for display, so
      * scanning the flattened release name loses the filename line
      * whenever a non-marker language/audio line follows it
-     * (`...-Psaro.mkv` + `Dubbed / Multi Audio`). This scans the
+     * (`...-Grpro.mkv` + `Dubbed / Multi Audio`). This scans the
      * ORIGINAL line structure instead, skipping marker lines
-     * (`👤`/`💾`/`⚙️`/`📂`/emoji-led and `Torrentio` header lines —
+     * (`👤`/`💾`/`⚙️`/`📂`/emoji-led and source-name header lines —
      * same filter as the display name), and returns the first valid
      * trailing `-GROUP`. Display `releaseName` behavior is unchanged.
      * Guards unchanged (fail conservative -> null).
@@ -872,7 +879,7 @@ object SourceRowClassifier {
     }
 
     private fun isSuffixGroupCandidate(token: String): Boolean {
-        // hyphenated groups ("Tsundere-Raws") may be longer than plain ones
+        // hyphenated groups ("Grpdere-Raws") may be longer than plain ones
         if (token.length !in 2..(if ('-' in token) 30 else 12)) return false
         // Episode/version shaped: S01E01, E01, S1, 01, v2.
         if (token.matches(REGEX_EPISODE_SHAPE_TOKEN)) return false
@@ -898,7 +905,7 @@ object SourceRowClassifier {
      * Allowed prefix shapes:
      *   - "" (no prefix; the first bracket is the group)
      *   - "<quality> [...]":           e.g. "1080p [...]"
-     *   - "<parsed-tracker> [...]":     e.g. "NyaaSi [...]"
+     *   - "<parsed-tracker> [...]":     e.g. "IndexA [...]"
      *   - "<quality> <parsed-tracker> [...]" or vice-versa
      *
      * If `parsedTracker` is non-null, the prefix's tracker-shaped token
@@ -923,11 +930,11 @@ object SourceRowClassifier {
             if (!isGroupCandidate(token)) continue
             if ('.' in token) {
                 // Dotted scene compounds: resolve the trailing group
-                // when the head is technical (`HDTV.x264-zyl` -> `zyl`);
+                // when the head is technical (`HDTV.x264-zql` -> `zql`);
                 // reject the line when the head is technical but the
                 // tail is not a group (`SD.H265.JAP.AC3.SUB.ITA`);
                 // accept whole dotted names that are not technical
-                // compounds (`anime4life.`).
+                // compounds (`grpe4life.`).
                 val compound = dottedCompoundGroup(token)
                 if (compound != null) return compound
                 if (hasTechnicalDotHead(token)) continue
@@ -963,7 +970,7 @@ object SourceRowClassifier {
             isTrackerLikeToken(tokens[1])
         // A technical second token (HDR / codec / bit-depth / ...) is
         // metadata already shown elsewhere, not a tracker or title word
-        // (`1080p HDR [Salieri]` must accept Salieri). Bounded by the
+        // (`1080p HDR [Grpsali]` must accept Grpsali). Bounded by the
         // same deny-list that rejects technical brackets as groups.
         val secondIsTechnical = tokens.size == 2 &&
             KNOWN_NON_GROUP_BRACKETS.any { it.equals(tokens[1], ignoreCase = true) }
@@ -1013,7 +1020,7 @@ object SourceRowClassifier {
 
     /**
      * Technical dot-segments for dotted-compound brackets
-     * (`HDTV.x264-zyl`, `SD.H265.JAP.AC3.SUB.ITA`): resolution, codec,
+     * (`HDTV.x264-zql`, `SD.H265.JAP.AC3.SUB.ITA`): resolution, codec,
      * source-class, audio, bit-depth, HDR, subtitle/audio words,
      * language codes and SD/HD/VFR markers.
      */
@@ -1042,8 +1049,8 @@ object SourceRowClassifier {
 
     /**
      * Dotted-compound bracket groups (provider-dataset v1): scene-style
-     * `[HDTV.x264-zyl]` carries the group after the technical head, so
-     * it resolves to `zyl`. Returns null when the compound is
+     * `[HDTV.x264-zql]` carries the group after the technical head, so
+     * it resolves to `zql`. Returns null when the compound is
      * undecidable or the tail is itself technical
      * (`[SD.H265.JAP.AC3.SUB.ITA]` -> tail `ITA` is a language code).
      */
@@ -1066,7 +1073,7 @@ object SourceRowClassifier {
 
     private fun isTrackerLikeToken(token: String): Boolean {
         // Trackers are short alpha tokens (sometimes alphanumeric like
-        // 1337x), without dot/colon/path markers.
+        // 2448x), without dot/colon/path markers.
         if (token.length !in 1..30) return false
         if (token.any { it == '.' || it == '/' || it == '\\' || it == ':' }) return false
         return token.any { it.isLetter() }
@@ -1078,7 +1085,7 @@ object SourceRowClassifier {
      *
      * Note: this is retained for any caller that needs to filter, but
      * the current [titleBracketGroup] implementation does not require
-     * the prefix to be bounded — Torrentio's actual format uses both
+     * the prefix to be bounded — the real source format uses both
      * `tracker [GROUP]` and `quality [GROUP]` patterns.
      */
     @Suppress("unused")
@@ -1334,7 +1341,7 @@ object SourceRowClassifier {
         } else {
             null
         }
-        // Known group subtitle defaults (SubsPlease / HorribleSubs
+        // Known group subtitle defaults (groups that
         // always ship English subs): last resort only, filling both
         // the summary and the language list.
         val impliedLangs = if (!hasExplicitSubs && markedSubs == null) {
@@ -1411,7 +1418,7 @@ object SourceRowClassifier {
      * Dub / Eng Dub / English Audio / FRENCH / Castellano / Latino /
      * Dublado, else null. Neutral `espanol` resolves through nearby
      * sub/dub context words. Word-boundary matched, so `individual`,
-     * `gradual`, `redubbed`, `Japanese`, `HorribleSubs` or
+     * `gradual`, `redubbed`, `Japanese`, `PlumbingSubs` or
      * `MicoLeaoDublado` never fire. Matched against the release title
      * only, never the provider or tracker name.
      *
@@ -1421,7 +1428,7 @@ object SourceRowClassifier {
     private fun detectAudioTrackKind(releaseName: String, allowBareMulti: Boolean = true): String? {
         if (REGEX_DUAL_WORD.containsMatchIn(releaseName)) return "Dual"
         if (REGEX_DUAL_AUDIO_SEP.containsMatchIn(releaseName)) return "Dual"
-        // Torrentio's language line says "Dubbed / Multi Audio" for
+        // The language line says "Dubbed / Multi Audio" for
         // multi-audio releases: that is dual audio, not a dub-only file.
         if (REGEX_MULTI_AUDIO.containsMatchIn(releaseName)) return "Dual"
         if (REGEX_LANG_PAIR_DUAL.containsMatchIn(releaseName)) return "Dual"
@@ -1458,8 +1465,8 @@ object SourceRowClassifier {
     /**
      * Groups whose releases carry known subtitle defaults even when the
      * title says nothing (user-confirmed: the info is real release
-     * metadata, just not printed in the title). `SubsPlease` and
-     * `HorribleSubs` always ship English subtitles. Applied LAST, so
+     * metadata, just not printed in the title): these groups always
+     * ship English subtitles. Applied LAST, so
      * every explicit signal (flags, codes, markers) wins.
      */
     private val IMPLIED_SUBTITLE_LANGUAGES: Map<String, List<String>> = mapOf(
@@ -1694,7 +1701,7 @@ object SourceRowClassifier {
      * technical token counts as standalone when bounded by
      * start/end, whitespace, dots, underscores, hyphens, brackets,
      * parens or commas. Letters/digits on either side protect real
-     * words (`AVC1`, `SAV1`, `2160p60`, `HorribleSubs` never match).
+     * words (`AVC1`, `SAV1`, `2160p60`, `PlumbingSubs` never match).
      */
     private const val CLEAN_DELIM_CLASS = """[\s._\-()\[\],]"""
 
@@ -1720,12 +1727,12 @@ object SourceRowClassifier {
     private val REGEX_WS_DOT = Regex("""[\s.]""")
     private val REGEX_WS_SINGLE = Regex("""\s""")
     /**
-     * Torrentio's language line: " / "-separated audio/sub words and flag
+     * A source's language line: " / "-separated audio/sub words and flag
      * emoji, e.g. "Dubbed / Multi Subs / Dual Audio / 🇬🇧 / 🇷🇺". Its flags are
      * read from the whole text and its audio words are fed to audio
      * detection separately, so it is never part of the release name.
      */
-    fun isTorrentioLanguageLine(line: String): Boolean {
+    fun isLanguageLine(line: String): Boolean {
         val parts = line.split(" / ").map { it.trim() }.filter { it.isNotEmpty() }
         if (parts.isEmpty()) return false
         return parts.all { p -> p.matches(REGEX_LANG_LINE_WORD) || p.all { c -> !c.isLetterOrDigit() } }
@@ -1733,9 +1740,9 @@ object SourceRowClassifier {
     private val REGEX_LANG_LINE_WORD = Regex(
         """(?i)(dubbed|dual audio|multi audio|multi subs?|subbed|subs?|raw)"""
     )
-    /** Audio/sub words of the Torrentio language line(s), or "" when there is none. */
+    /** Audio/sub words of the language line(s), or "" when there is none. */
     fun languageLineText(qualityText: String): String =
-        qualityText.lines().map { it.trim() }.filter { it.isNotEmpty() && isTorrentioLanguageLine(it) }
+        qualityText.lines().map { it.trim() }.filter { it.isNotEmpty() && isLanguageLine(it) }
             .joinToString(" ")
     private val REGEX_PROVIDER_QUALITY_LINE =
         Regex("""^[A-Za-z0-9][\w.+-]{1,24} - (?:4k|\d{3,4}p|sd|hd|unknown)\b[^\[\]]*$""", RegexOption.IGNORE_CASE)
@@ -2176,8 +2183,8 @@ object SourceRowClassifier {
             removableBrackets.add("COMPLETE")
         }
         // Use the source-service ALIAS KEY (NF, AMZN, CR) when matching
-        // the raw title, because that is the form Torrentio actually
-        // emits in the title. The expanded form ("Netflix") is what the
+        // the raw title, because that is the form sources actually
+        // emit in the title. The expanded form ("Netflix") is what the
         // caller passes in for display purposes.
         sourceService?.let { service ->
             val alias = SOURCE_SERVICE_ALIASES.entries.firstOrNull { it.value == service }?.key
@@ -2249,7 +2256,7 @@ object SourceRowClassifier {
                 }
             }
             // Remove leading technical tokens like "1080p", "4k" or
-            // "HDR" before the title (the Salieri duplication: a leading
+            // "HDR" before the title (the Grpsali duplication: a leading
             // HDR already shown as a chip must not repeat in the title).
             if (CLEAN_LEADING_TECH.containsMatchIn(cleaned)) {
                 cleaned = CLEAN_LEADING_TECH.replace(cleaned, "")
@@ -2272,7 +2279,7 @@ object SourceRowClassifier {
             // details; the compact title is UI-only.
             if (sourceService != null) {
                 // The pattern uses the ALIAS KEY (NF / AMZN / CR) since
-                // that's what Torrentio actually emits. sourceService is
+                // that's what sources actually emit. sourceService is
                 // the expanded form (Netflix / Amazon / Crunchyroll).
                 val alias = SOURCE_SERVICE_ALIASES.entries.firstOrNull {
                     it.value == sourceService
@@ -2298,7 +2305,7 @@ object SourceRowClassifier {
             // Codec spellings: the parsed value plus raw alternates AND
             // the whole known universe (`H.264` in an HEVC row is still
             // codec metadata, never title content). Each spelling also
-            // strips a glued alpha scene suffix (`x264-PCW`); the
+            // strips a glued alpha scene suffix (`x264-PQW`); the
             // suffix is letters-only so `S01E01`/`10bit` can never be
             // eaten (`HEVC-S01E01` is impossible input anyway, but the
             // shape guard makes it structurally safe).
@@ -2476,7 +2483,7 @@ object SourceRowClassifier {
                     cleaned = bareWeb
                     changed = true
                 }
-                // Trailing group-shape bracket (`[Kira-Fansub]`) when NO
+                // Trailing group-shape bracket (`[Gira-Fansub]`) when NO
                 // group was parsed: the parser only considers the first
                 // bracket per line, so a trailing fansub tag can be left
                 // unknown. Shape-restricted (1-2 word/hyphen tokens) and
@@ -2533,7 +2540,7 @@ object SourceRowClassifier {
             // Trailing `-GROUP` matching the header group (suffix
             // groups are shown in the header, not repeated).
             if (releaseGroup != null) {
-                // also before trailing notes: "x264-Tsundere-Raws (VOSTFR, ...)"
+                // also before trailing notes: "x264-Grpdere-Raws (VOSTFR, ...)"
                 val suffixGroup = Regex(
                     """[\s._\-]+""" + Regex.escape(releaseGroup) +
                         """(?=\s*(?:[\[(][^\[\]()]*[\])]\s*)*${'$'})""",

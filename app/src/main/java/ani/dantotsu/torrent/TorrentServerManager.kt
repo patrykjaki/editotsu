@@ -257,7 +257,7 @@ data class PrebufferProgress(
  */
 val TORRENT_DEFAULT_TRACKERS = listOf(
     "http://nyaa.tracker.wf:7777/announce",
-    // Anime trackers (nyaa's sister sites and anime indexers); same set other anime
+    // Anime trackers; same set other anime
     // streaming clients announce to.
     "http://anidex.moe:6969/announce",
     "http://tracker.anirena.com:80/announce",

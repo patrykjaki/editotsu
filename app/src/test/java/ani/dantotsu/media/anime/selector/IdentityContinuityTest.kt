@@ -99,49 +99,49 @@ class IdentityContinuityTest {
     @Test
     fun url_query_and_fragment_collapsed() {
         val c = UrlCanonicaliser.canonicalise(
-            "https://NYAA.SI:443/a.torrent?x=1#z"
+            "https://IDXONE.TEST:443/a.torrent?x=1#z"
         )
         assertNotNull(c)
-        assertEquals("https://nyaa.si/a.torrent", c!!.canonicalUrlString())
+        assertEquals("https://idxone.test/a.torrent", c!!.canonicalUrlString())
     }
 
     @Test
     fun url_no_slash_query_preserves_path() {
-        val c = UrlCanonicaliser.canonicalise("https://nyaa.si?token=a")
+        val c = UrlCanonicaliser.canonicalise("https://idxone.test?token=a")
         assertNotNull(c)
-        assertEquals("https://nyaa.si", c!!.canonicalUrlString())
+        assertEquals("https://idxone.test", c!!.canonicalUrlString())
     }
 
     @Test
     fun url_case_only_host_equality() {
-        val a = UrlCanonicaliser.canonicalise("https://NYAA.si/a.torrent")
-        val b = UrlCanonicaliser.canonicalise("https://nyaa.SI/a.torrent")
+        val a = UrlCanonicaliser.canonicalise("https://IDXONE.test/a.torrent")
+        val b = UrlCanonicaliser.canonicalise("https://idxone.TEST/a.torrent")
         assertEquals(a?.canonicalUrlString(), b?.canonicalUrlString())
     }
 
     @Test
     fun url_default_port_stripped() {
-        val https443 = UrlCanonicaliser.canonicalise("https://nyaa.si:443/a.torrent")
-        val http80 = UrlCanonicaliser.canonicalise("http://nyaa.si:80/a.torrent")
-        assertEquals("https://nyaa.si/a.torrent", https443?.canonicalUrlString())
-        assertEquals("http://nyaa.si/a.torrent", http80?.canonicalUrlString())
+        val https443 = UrlCanonicaliser.canonicalise("https://idxone.test:443/a.torrent")
+        val http80 = UrlCanonicaliser.canonicalise("http://idxone.test:80/a.torrent")
+        assertEquals("https://idxone.test/a.torrent", https443?.canonicalUrlString())
+        assertEquals("http://idxone.test/a.torrent", http80?.canonicalUrlString())
     }
 
     @Test
     fun url_nondefault_port_preserved() {
-        val a = UrlCanonicaliser.canonicalise("https://nyaa.si:8443/a.torrent")
-        assertEquals("https://nyaa.si:8443/a.torrent", a?.canonicalUrlString())
+        val a = UrlCanonicaliser.canonicalise("https://idxone.test:8443/a.torrent")
+        assertEquals("https://idxone.test:8443/a.torrent", a?.canonicalUrlString())
     }
 
     @Test
     fun url_user_info_rejected() {
-        assertNull(UrlCanonicaliser.canonicalise("https://user:pass@nyaa.si/a.torrent"))
+        assertNull(UrlCanonicaliser.canonicalise("https://user:pass@idxone.test/a.torrent"))
     }
 
     @Test
     fun url_malformed_port_rejected() {
-        assertNull(UrlCanonicaliser.canonicalise("https://nyaa.si:0/a.torrent"))
-        assertNull(UrlCanonicaliser.canonicalise("https://nyaa.si:65536/a.torrent"))
+        assertNull(UrlCanonicaliser.canonicalise("https://idxone.test:0/a.torrent"))
+        assertNull(UrlCanonicaliser.canonicalise("https://idxone.test:65536/a.torrent"))
     }
 
     // ===== Provider hash =====
@@ -150,8 +150,8 @@ class IdentityContinuityTest {
     fun provider_exact_case_preserved() {
         // Two providers differing only in case should yield different
         // hashes.
-        val a = ProviderHash.provider8("com.nyaa.Sub")
-        val b = ProviderHash.provider8("com.nyaa.SUB")
+        val a = ProviderHash.provider8("com.idxone.Sub")
+        val b = ProviderHash.provider8("com.idxone.SUB")
         assertNotNull(a); assertNotNull(b)
         assertTrue(a != b)
     }
@@ -170,7 +170,7 @@ class IdentityContinuityTest {
         // 40-hex BTIH (first 40 hex of SHA-256("foo")).
         val hex = "0000000000000000000000000000000000000000"
         val magnet = "magnet:?xt=urn:btih:$hex&dn=foo"
-        val k = MagnetKeyBuilder.build("com.nyaa.sub", magnet)
+        val k = MagnetKeyBuilder.build("com.idxone.sub", magnet)
         assertNotNull(k)
         assertEquals(77, k!!.length)
     }
@@ -179,7 +179,7 @@ class IdentityContinuityTest {
     fun magnet_key_length_81_at_index_99999() {
         val hex = "0000000000000000000000000000000000000000"
         val magnet = "magnet:?xt=urn:btih:$hex&index=99999&dn=foo"
-        val k = MagnetKeyBuilder.build("com.nyaa.sub", magnet)
+        val k = MagnetKeyBuilder.build("com.idxone.sub", magnet)
         assertNotNull(k)
         assertEquals(81, k!!.length)
     }
@@ -195,8 +195,8 @@ class IdentityContinuityTest {
         //   + :                               (1)
         //   + url                             (url.length)
         //   = 32+8+1+url = 41+url. Match.
-        val url = "https://nyaa.si/a.torrent"
-        val k = HttpTorrentKeyBuilder.build("com.nyaa.sub", url)
+        val url = "https://idxone.test/a.torrent"
+        val k = HttpTorrentKeyBuilder.build("com.idxone.sub", url)
         assertNotNull(k)
         val expected = "editotsu-source:v1:http-torrent:".length +
             8 + 1 + url.length
@@ -214,13 +214,13 @@ class IdentityContinuityTest {
         //   + releaseStableId16          (16)
         //   = 26+8+1+16 = 51. Match.
         val k = DirectReleaseKeyBuilder.build(
-            "com.nyaa.sub",
-            group = "SubsPlease",
+            "com.idxone.sub",
+            group = "SubsPlume",
             resolution = "1080p",
             audioFormat = "AAC",
             audioMode = null,
             sourceService = null,
-            rawTitle = "[SubsPlease] Some Anime - 01 [1080p].mkv",
+            rawTitle = "[SubsPlume] Some Anime - 01 [1080p].mkv",
         )
         assertNotNull(k)
         assertEquals(51, k!!.length)
@@ -230,14 +230,16 @@ class IdentityContinuityTest {
 
     @Test
     fun group_canonical_lowercase_and_trim() {
-        assertEquals("subsplease", StableGroupCanonicalizer.canonicalKey("  SubsPlease  "))
+        assertEquals("subsplume", StableGroupCanonicalizer.canonicalKey("  SubsPlume  "))
     }
 
     @Test
-    fun group_nyaasi_not_treated_as_group() {
-        assertNull(StableGroupCanonicalizer.canonicalKey("NyaaSi"))
-        assertNull(StableGroupCanonicalizer.canonicalKey("1337x"))
-        assertNull(StableGroupCanonicalizer.canonicalKey("nekoBT"))
+    fun group_equal_to_row_tracker_not_treated_as_group() {
+        assertNull(StableGroupCanonicalizer.canonicalKey("IdxOne", tracker = "IdxOne"))
+        assertNull(StableGroupCanonicalizer.canonicalKey("idxone", tracker = "IdxOne"))
+        assertNull(StableGroupCanonicalizer.canonicalKey("2448x", tracker = "2448x"))
+        assertNull(StableGroupCanonicalizer.canonicalKey("idxTW", tracker = " idxtw "))
+        assertEquals("subsplume", StableGroupCanonicalizer.canonicalKey("SubsPlume", tracker = "IdxOne"))
     }
 
     @Test
@@ -256,10 +258,10 @@ class IdentityContinuityTest {
 
     @Test
     fun tracker_separate_from_group() {
-        val g = StableGroupCanonicalizer.canonicalKey("NyaaSi")
-        val t = TrackerCanonicalizer.canonicalKey("NyaaSi")
+        val g = StableGroupCanonicalizer.canonicalKey("IdxOne", tracker = "IdxOne")
+        val t = TrackerCanonicalizer.canonicalKey("IdxOne")
         assertNull(g)
-        assertEquals("nyaasi", t)
+        assertEquals("idxone", t)
     }
 
     // ===== Source service canonicalizer =====
@@ -286,10 +288,10 @@ class IdentityContinuityTest {
     @Test
     fun family_codec_round_trip() {
         val p = FamilyPayload(
-            providerPkg = "com.nyaa.sub",
-            groupKey = "subsplease",
+            providerPkg = "com.idxone.sub",
+            groupKey = "subsplume",
             soft = mapOf(
-                "trackerKey" to "nyaasi",
+                "trackerKey" to "idxone",
                 "resolution" to "1080p",
             ),
         )
@@ -339,7 +341,7 @@ class IdentityContinuityTest {
     @Test
     fun stable_release_canonical_part_order() {
         val s = StableReleaseCanonicalizer.canonicalize(
-            group = "SubsPlease",
+            group = "SubsPlume",
             resolution = "1080p",
             audioFormat = "AAC",
             audioMode = null,
@@ -348,7 +350,7 @@ class IdentityContinuityTest {
         )
         assertNotNull(s)
         assertEquals(
-            "group=subsplease|res=1080p|afmt=aac|svc=netflix|raw=Title Here",
+            "group=subsplume|res=1080p|afmt=aac|svc=netflix|raw=Title Here",
             s,
         )
     }
@@ -356,7 +358,7 @@ class IdentityContinuityTest {
     @Test
     fun stable_release_canonical_afmt_absent_uses_audio() {
         val s = StableReleaseCanonicalizer.canonicalize(
-            group = "SubsPlease", resolution = "1080p",
+            group = "SubsPlume", resolution = "1080p",
             audioFormat = null, audioMode = "Dual",
             sourceService = null, rawTitle = "X",
         )
@@ -368,7 +370,7 @@ class IdentityContinuityTest {
     @Test
     fun stable_release_id_16_hex() {
         val id = StableReleaseCanonicalizer.releaseStableId16(
-            "SubsPlease", "1080p", "AAC", null, "NF", "raw",
+            "SubsPlume", "1080p", "AAC", null, "NF", "raw",
         )
         assertNotNull(id)
         assertEquals(16, id!!.length)
@@ -379,9 +381,9 @@ class IdentityContinuityTest {
 
     @Test
     fun family_chooses_single_hard_anchor() {
-        val stored = FamilyPayload("com.nyaa.sub", "subsplease")
+        val stored = FamilyPayload("com.idxone.sub", "subsplume")
         val cands = listOf(
-            FamilyCandidate("k1", "com.nyaa.sub", "subsplease"),
+            FamilyCandidate("k1", "com.idxone.sub", "subsplume"),
         )
         val r = FamilyAutoSelector.select(stored, cands)
         assertTrue(r is FamilyAutoResult.Chosen)
@@ -391,17 +393,17 @@ class IdentityContinuityTest {
     @Test
     fun family_absent_returns_none() {
         val cands = listOf(
-            FamilyCandidate("k1", "com.nyaa.sub", "subsplease"),
+            FamilyCandidate("k1", "com.idxone.sub", "subsplume"),
         )
         assertTrue(FamilyAutoSelector.select(null, cands) is FamilyAutoResult.None)
     }
 
     @Test
     fun family_tied_returns_ambiguous() {
-        val stored = FamilyPayload("com.nyaa.sub", "subsplease")
+        val stored = FamilyPayload("com.idxone.sub", "subsplume")
         val cands = listOf(
-            FamilyCandidate("k1", "com.nyaa.sub", "subsplease", mapOf("trackerKey" to "nyaasi")),
-            FamilyCandidate("k2", "com.nyaa.sub", "subsplease", mapOf("trackerKey" to "1337x")),
+            FamilyCandidate("k1", "com.idxone.sub", "subsplume", mapOf("trackerKey" to "idxone")),
+            FamilyCandidate("k2", "com.idxone.sub", "subsplume", mapOf("trackerKey" to "2448x")),
         )
         val r = FamilyAutoSelector.select(stored, cands)
         assertTrue(r is FamilyAutoResult.Ambiguous)
@@ -412,10 +414,10 @@ class IdentityContinuityTest {
         // Two candidates identical on stored soft fields -> both
         // equally good. Selector returns Ambiguous, not "the seeders
         // win" path.
-        val stored = FamilyPayload("com.nyaa.sub", "subsplease")
+        val stored = FamilyPayload("com.idxone.sub", "subsplume")
         val cands = listOf(
-            FamilyCandidate("k1", "com.nyaa.sub", "subsplease", mapOf("trackerKey" to "nyaasi")),
-            FamilyCandidate("k2", "com.nyaa.sub", "subsplease", mapOf("trackerKey" to "nyaasi")),
+            FamilyCandidate("k1", "com.idxone.sub", "subsplume", mapOf("trackerKey" to "idxone")),
+            FamilyCandidate("k2", "com.idxone.sub", "subsplume", mapOf("trackerKey" to "idxone")),
         )
         assertTrue(FamilyAutoSelector.select(stored, cands) is FamilyAutoResult.Ambiguous)
     }
@@ -423,14 +425,14 @@ class IdentityContinuityTest {
     @Test
     fun family_soft_match_picks_unique() {
         val stored = FamilyPayload(
-            "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi", "resolution" to "1080p"),
+            "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone", "resolution" to "1080p"),
         )
         val cands = listOf(
-            FamilyCandidate("k1", "com.nyaa.sub", "subsplease",
-                mapOf("trackerKey" to "nyaasi", "resolution" to "1080p")),
-            FamilyCandidate("k2", "com.nyaa.sub", "subsplease",
-                mapOf("trackerKey" to "nyaasi", "resolution" to "720p")),
+            FamilyCandidate("k1", "com.idxone.sub", "subsplume",
+                mapOf("trackerKey" to "idxone", "resolution" to "1080p")),
+            FamilyCandidate("k2", "com.idxone.sub", "subsplume",
+                mapOf("trackerKey" to "idxone", "resolution" to "720p")),
         )
         val r = FamilyAutoSelector.select(stored, cands)
         assertTrue(r is FamilyAutoResult.Chosen)
@@ -446,16 +448,16 @@ class IdentityContinuityTest {
     @Test
     fun family_lex_first_priority_dominates() {
         val stored = FamilyPayload(
-            "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi", "resolution" to "1080p"),
+            "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone", "resolution" to "1080p"),
         )
         val cands = listOf(
             // A: tracker matches (priority 1), resolution mismatches (priority 0).
-            FamilyCandidate("A", "com.nyaa.sub", "subsplease",
-                mapOf("trackerKey" to "nyaasi", "resolution" to "720p")),
+            FamilyCandidate("A", "com.idxone.sub", "subsplume",
+                mapOf("trackerKey" to "idxone", "resolution" to "720p")),
             // B: tracker mismatches, resolution matches (priority 0).
-            FamilyCandidate("B", "com.nyaa.sub", "subsplease",
-                mapOf("trackerKey" to "nekobt", "resolution" to "1080p")),
+            FamilyCandidate("B", "com.idxone.sub", "subsplume",
+                mapOf("trackerKey" to "idxtw", "resolution" to "1080p")),
         )
         val r = FamilyAutoSelector.select(stored, cands)
         assertTrue(r is FamilyAutoResult.Chosen)
@@ -472,16 +474,16 @@ class IdentityContinuityTest {
     @Test
     fun family_duplicate_representations_use_best_strict_lex_match() {
         val stored = FamilyPayload(
-            "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi", "resolution" to "1080p"),
+            "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone", "resolution" to "1080p"),
         )
         // Resolution is priority 0, tracker priority 1.
-        val xBad = FamilyCandidate("X", "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi", "resolution" to "720p"))
-        val xGood = FamilyCandidate("X", "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nekobt", "resolution" to "1080p"))
-        val y = FamilyCandidate("Y", "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi", "resolution" to "720p"))
+        val xBad = FamilyCandidate("X", "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone", "resolution" to "720p"))
+        val xGood = FamilyCandidate("X", "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxtw", "resolution" to "1080p"))
+        val y = FamilyCandidate("Y", "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone", "resolution" to "720p"))
         val forward = FamilyAutoSelector.select(stored, listOf(xBad, xGood, y))
         val reversed = FamilyAutoSelector.select(stored, listOf(xGood, xBad, y))
         assertTrue(forward is FamilyAutoResult.Chosen)
@@ -493,24 +495,24 @@ class IdentityContinuityTest {
     // ===== StableReleaseMetadataExtractor (no cleanDisplayTitle) =====
 
     @Test
-    fun metadata_extract_subsplease_with_nyaasi() {
+    fun metadata_extract_subsplume_with_idxone() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 NyaaSi | [SubsPlease] Some Anime - 01 [1080p AAC]"
+            "📂 IdxOne | [SubsPlume] Some Anime - 01 [1080p AAC]"
         )
-        assertEquals("SubsPlease", m.group)
-        assertEquals("NyaaSi", m.tracker)
+        assertEquals("SubsPlume", m.group)
+        assertEquals("IdxOne", m.tracker)
         assertEquals("1080p", m.resolution)
         assertEquals("AAC", m.audioFormat)
         assertTrue(m.isReleaseShaped)
     }
 
     @Test
-    fun metadata_extract_varyg_with_nekobt() {
+    fun metadata_extract_grpvy_with_idxtw() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 nekoBT | [VARYG] Other Anime - 02 [1080p HEVC]"
+            "📂 idxTW | [GRPVY] Other Anime - 02 [1080p HEVC]"
         )
-        assertEquals("VARYG", m.group)
-        assertEquals("nekoBT", m.tracker)
+        assertEquals("GRPVY", m.group)
+        assertEquals("idxTW", m.tracker)
         assertEquals("HEVC", m.codec)
         assertTrue(m.isReleaseShaped)
     }
@@ -518,36 +520,36 @@ class IdentityContinuityTest {
     // ===== Required positives (reviewer v1.1 correction 3) =====
 
     @Test
-    fun metadata_positive_subsplease_bare() {
-        val m = StableReleaseMetadataExtractor.extract("[SubsPlease] Title")
-        assertEquals("SubsPlease", m.group)
+    fun metadata_positive_subsplume_bare() {
+        val m = StableReleaseMetadataExtractor.extract("[SubsPlume] Title")
+        assertEquals("SubsPlume", m.group)
         assertTrue(m.isReleaseShaped)
     }
 
     @Test
-    fun metadata_positive_subsplease_with_quality() {
-        val m = StableReleaseMetadataExtractor.extract("1080p [SubsPlease] Title")
-        assertEquals("SubsPlease", m.group)
+    fun metadata_positive_subsplume_with_quality() {
+        val m = StableReleaseMetadataExtractor.extract("1080p [SubsPlume] Title")
+        assertEquals("SubsPlume", m.group)
         assertTrue(m.isReleaseShaped)
     }
 
     @Test
-    fun metadata_positive_ironclad_with_tracker_in_prefix() {
+    fun metadata_positive_grpclad_with_tracker_in_prefix() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 NyaaSi | NyaaSi 1080p [Ironclad] Title"
+            "📂 IdxOne | IdxOne 1080p [Grpclad] Title"
         )
-        assertEquals("Ironclad", m.group)
-        assertEquals("nyaasi", TrackerCanonicalizer.canonicalKey(m.tracker))
+        assertEquals("Grpclad", m.group)
+        assertEquals("idxone", TrackerCanonicalizer.canonicalKey(m.tracker))
         assertTrue(m.isReleaseShaped)
     }
 
     @Test
-    fun metadata_positive_varyg_with_nekobt() {
+    fun metadata_positive_grpvy_with_idxtw() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 nekoBT | nekoBT 1080p [VARYG] Title"
+            "📂 idxTW | idxTW 1080p [GRPVY] Title"
         )
-        assertEquals("VARYG", m.group)
-        assertEquals("nekobt", TrackerCanonicalizer.canonicalKey(m.tracker))
+        assertEquals("GRPVY", m.group)
+        assertEquals("idxtw", TrackerCanonicalizer.canonicalKey(m.tracker))
         assertTrue(m.isReleaseShaped)
     }
 
@@ -570,9 +572,9 @@ class IdentityContinuityTest {
     @Test
     fun metadata_negative_other_word_in_prefix_with_tracker() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 NyaaSi | Other 1080p [Ironclad] Title"
+            "📂 IdxOne | Other 1080p [Grpclad] Title"
         )
-        // "Other" is not the parsed tracker (NyaaSi), so the prefix
+        // "Other" is not the parsed tracker (IdxOne), so the prefix
         // has a non-tracker word AND a quality token. With tracker
         // present, that combination is rejected.
         assertNull(m.group)
@@ -584,37 +586,37 @@ class IdentityContinuityTest {
     @Test
     fun corroboration_tracker_prefix_case_insensitive() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 NyaaSi\nnyaasi 1080p [Ironclad] Title"
+            "📂 IdxOne\nidxone 1080p [Grpclad] Title"
         )
-        assertEquals("Ironclad", m.group)
+        assertEquals("Grpclad", m.group)
         assertTrue(m.isReleaseShaped)
     }
 
     @Test
     fun corroboration_parsed_tracker_case_insensitive() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 NYAASI\nNyaaSi 1080p [Ironclad] Title"
+            "📂 IDXONE\nIdxOne 1080p [Grpclad] Title"
         )
-        assertEquals("Ironclad", m.group)
+        assertEquals("Grpclad", m.group)
         assertTrue(m.isReleaseShaped)
     }
 
     @Test
-    fun corroboration_nekobt_prefix_case_insensitive() {
+    fun corroboration_idxtw_prefix_case_insensitive() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 nekoBT\nNEKOBT 1080p [VARYG] Title"
+            "📂 idxTW\nIDXTW 1080p [GRPVY] Title"
         )
-        assertEquals("VARYG", m.group)
+        assertEquals("GRPVY", m.group)
         assertTrue(m.isReleaseShaped)
     }
 
     @Test
     fun corroboration_different_tracker_token_still_rejected() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 NyaaSi\nnekoBT 1080p [Ironclad] Title"
+            "📂 IdxOne\nidxTW 1080p [Grpclad] Title"
         )
-        // "nekoBT" canonicalizes to "nekobt", which differs from
-        // the parsed tracker "nyaasi": no corroboration.
+        // "idxTW" canonicalizes to "idxtw", which differs from
+        // the parsed tracker "idxone": no corroboration.
         assertNull(m.group)
         assertFalse(m.isReleaseShaped)
     }
@@ -625,75 +627,75 @@ class IdentityContinuityTest {
     fun direct_generic_1080p_no_release_identity() {
         val s = makeServer("1080p")
         assertNull(StableCandidateBuilder.exactKey(
-            "com.nyaa.sub", s,
+            "com.idxone.sub", s,
         ))
     }
 
     @Test
     fun direct_release_shaped_acquires_stable_identity() {
-        val s = makeServer("1080p [SubsPlease] Title")
-        val k = StableCandidateBuilder.exactKey("com.nyaa.sub", s)
+        val s = makeServer("1080p [SubsPlume] Title")
+        val k = StableCandidateBuilder.exactKey("com.idxone.sub", s)
         assertNotNull(k)
     }
 
     // ===== Regression fixtures =====
 
     @Test
-    fun regression_ironclad_nyaasi() {
+    fun regression_grpclad_idxone() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 NyaaSi | NyaaSi 1080p [Ironclad] Anime - 01"
+            "📂 IdxOne | IdxOne 1080p [Grpclad] Anime - 01"
         )
-        assertEquals("Ironclad", m.group)
-        assertEquals("NyaaSi", m.tracker)
+        assertEquals("Grpclad", m.group)
+        assertEquals("IdxOne", m.tracker)
     }
 
     @Test
-    fun regression_toonshub_nyaasi() {
+    fun regression_grpshubb_idxone() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 NyaaSi | NyaaSi 1080p [ToonsHub] Anime - 01"
+            "📂 IdxOne | IdxOne 1080p [GrpsHubb] Anime - 01"
         )
-        assertEquals("ToonsHub", m.group)
+        assertEquals("GrpsHubb", m.group)
     }
 
     @Test
-    fun regression_dkb_nyaasi() {
+    fun regression_dqb_idxone() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 NyaaSi | NyaaSi 1080p [DKB] Anime - 01"
+            "📂 IdxOne | IdxOne 1080p [DQB] Anime - 01"
         )
-        assertEquals("DKB", m.group)
+        assertEquals("DQB", m.group)
     }
 
     @Test
-    fun regression_tenrai_sensei_1337x() {
+    fun regression_grpai_sensei_2448x() {
         val m = StableReleaseMetadataExtractor.extract(
-            "📂 1337x | 1337x 1080p [Tenrai-Sensei] Anime - 01"
+            "📂 2448x | 2448x 1080p [Grpai-Sensei] Anime - 01"
         )
-        assertEquals("Tenrai-Sensei", m.group)
+        assertEquals("Grpai-Sensei", m.group)
     }
 
     // ===== RecoveryCoordinator =====
 
     @Test
     fun recovery_exact_name_first() {
-        val stored = FamilyPayload("com.nyaa.sub", "subsplease")
-        val s1 = makeServer("[SubsPlease] Anime - 01")
+        val stored = FamilyPayload("com.idxone.sub", "subsplume")
+        val s1 = makeServer("[SubsPlume] Anime - 01")
         val s2 = makeServer("[Other] Anime - 01")
         val r = RecoveryCoordinator.resolve(
             storedExactKey = null,
             storedFamily = stored,
-            selectedName = "[SubsPlease] Anime - 01",
+            selectedName = "[SubsPlume] Anime - 01",
             servers = listOf(s1, s2),
         )
         assertTrue(r is RecoveryResult.Resolved)
-        assertEquals("[SubsPlease] Anime - 01", (r as RecoveryResult.Resolved).server.name)
+        assertEquals("[SubsPlume] Anime - 01", (r as RecoveryResult.Resolved).server.name)
     }
 
     @Test
     fun recovery_family_unique_wins() {
-        val stored = FamilyPayload("com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi"))
-        val s1 = makeServer("📂 NyaaSi | [SubsPlease] Anime - 02 [1080p]")
-        val s2 = makeServer("📂 1337x | [Other] Anime - 02 [1080p]")
+        val stored = FamilyPayload("com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone"))
+        val s1 = makeServer("📂 IdxOne | [SubsPlume] Anime - 02 [1080p]")
+        val s2 = makeServer("📂 2448x | [Other] Anime - 02 [1080p]")
         val r = RecoveryCoordinator.resolve(
             storedExactKey = null,
             storedFamily = stored,
@@ -701,25 +703,25 @@ class IdentityContinuityTest {
             servers = listOf(s1, s2),
         )
         assertTrue(r is RecoveryResult.Resolved)
-        assertEquals("📂 NyaaSi | [SubsPlease] Anime - 02 [1080p]",
+        assertEquals("📂 IdxOne | [SubsPlume] Anime - 02 [1080p]",
             (r as RecoveryResult.Resolved).server.name)
     }
 
     @Test
     fun recovery_family_tied_returns_ambiguous() {
-        val stored = FamilyPayload("com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi"))
+        val stored = FamilyPayload("com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone"))
         // Two distinct magnet URLs (different BTIHs) with the same
         // soft fields => different exact keys => Ambiguous.
         val s1 = VideoServer(
-            "📂 NyaaSi | [SubsPlease] Anime - 02 [1080p]",
+            "📂 IdxOne | [SubsPlume] Anime - 02 [1080p]",
             "magnet:?xt=urn:btih:0000000000000000000000000000000000000001&dn=a",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
         val s2 = VideoServer(
-            "📂 NyaaSi | [SubsPlease] Anime - 02 [1080p]",
+            "📂 IdxOne | [SubsPlume] Anime - 02 [1080p]",
             "magnet:?xt=urn:btih:0000000000000000000000000000000000000002&dn=b",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
         val r = RecoveryCoordinator.resolve(
             storedExactKey = null, storedFamily = stored,
@@ -731,7 +733,7 @@ class IdentityContinuityTest {
     @Test
     fun recovery_family_absent_returns_no_match() {
         val stored = null
-        val s1 = makeServer("[SubsPlease] Anime")
+        val s1 = makeServer("[SubsPlume] Anime")
         val r = RecoveryCoordinator.resolve(
             storedExactKey = null, storedFamily = stored,
             selectedName = null, servers = listOf(s1),
@@ -747,7 +749,7 @@ class IdentityContinuityTest {
         // (accepted).
         val hex = "0000000000000000000000000000000000000000"
         val magnet = "magnet:?xt=urn:btih:abc&xt=urn:btih:$hex&dn=x"
-        val k = MagnetKeyBuilder.build("com.nyaa.sub", magnet)
+        val k = MagnetKeyBuilder.build("com.idxone.sub", magnet)
         assertNotNull(k)
         assertTrue(k!!.endsWith(":$hex:0"))
     }
@@ -783,16 +785,16 @@ class IdentityContinuityTest {
         // StableCandidateBuilder (not raw endsWith).
         val s1 = VideoServer(
             "Torrent 1",
-            "https://nyaa.si/a.torrent?token=a#x",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            "https://idxone.test/a.torrent?token=a#x",
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
         val s2 = VideoServer(
             "Torrent 2",
-            "https://NYAA.SI:443/a.torrent?token=b#y",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            "https://IDXONE.TEST:443/a.torrent?token=b#y",
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
-        val k1 = StableCandidateBuilder.exactKey("com.nyaa.sub", s1)
-        val k2 = StableCandidateBuilder.exactKey("com.nyaa.sub", s2)
+        val k1 = StableCandidateBuilder.exactKey("com.idxone.sub", s1)
+        val k2 = StableCandidateBuilder.exactKey("com.idxone.sub", s2)
         assertNotNull(k1); assertNotNull(k2)
         assertEquals(k1, k2)
     }
@@ -800,11 +802,11 @@ class IdentityContinuityTest {
     @Test
     fun exact_key_recovery_works_when_family_null() {
         val s1 = VideoServer(
-            "1080p [SubsPlease] Title",
+            "1080p [SubsPlume] Title",
             "https://example.com/abc",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
-        val storedKey = StableCandidateBuilder.exactKey("com.nyaa.sub", s1)
+        val storedKey = StableCandidateBuilder.exactKey("com.idxone.sub", s1)
         assertNotNull(storedKey)
         val r = RecoveryCoordinator.resolve(
             storedExactKey = storedKey,
@@ -818,14 +820,14 @@ class IdentityContinuityTest {
     @Test
     fun family_tied_at_complete_vector_returns_ambiguous() {
         val stored = FamilyPayload(
-            "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi", "resolution" to "1080p"),
+            "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone", "resolution" to "1080p"),
         )
         val cands = listOf(
-            FamilyCandidate("A", "com.nyaa.sub", "subsplease",
-                mapOf("trackerKey" to "nyaasi", "resolution" to "1080p")),
-            FamilyCandidate("B", "com.nyaa.sub", "subsplease",
-                mapOf("trackerKey" to "nyaasi", "resolution" to "1080p")),
+            FamilyCandidate("A", "com.idxone.sub", "subsplume",
+                mapOf("trackerKey" to "idxone", "resolution" to "1080p")),
+            FamilyCandidate("B", "com.idxone.sub", "subsplume",
+                mapOf("trackerKey" to "idxone", "resolution" to "1080p")),
         )
         val r = FamilyAutoSelector.select(stored, cands)
         assertTrue(r is FamilyAutoResult.Ambiguous)
@@ -845,16 +847,16 @@ class IdentityContinuityTest {
         //   - the soft-vector tie is correctly reported as
         //     Ambiguous (no fabricated winner).
         val s1 = VideoServer(
-            "1080p [SubsPlease] Title - 01",
+            "1080p [SubsPlume] Title - 01",
             "magnet:?xt=urn:btih:0000000000000000000000000000000000000001&index=0&dn=a",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
         val s2 = VideoServer(
-            "1080p [SubsPlease] Title - 02",
+            "1080p [SubsPlume] Title - 02",
             "magnet:?xt=urn:btih:0000000000000000000000000000000000000002&index=1&dn=b",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
-        val family = FamilyPayload("com.nyaa.sub", "subsplease")
+        val family = FamilyPayload("com.idxone.sub", "subsplume")
         val r1 = RecoveryCoordinator.resolve(
             storedExactKey = null, storedFamily = family,
             selectedName = null, servers = listOf(s1, s2),
@@ -878,13 +880,13 @@ class IdentityContinuityTest {
         // All optional fields blank AND raw title empty -> no direct
         // key. Never SHA-256("") as a fallback identity.
         val k1 = DirectReleaseKeyBuilder.build(
-            "com.nyaa.sub", null, null, null, null, null, "",
+            "com.idxone.sub", null, null, null, null, null, "",
         )
         assertNull(k1)
         // Two distinct invalid fixtures must NOT collapse to the
         // same key (no SHA-256("") fallback).
         val k2 = DirectReleaseKeyBuilder.build(
-            "com.nyaa.sub", "    ", "  ", null, null, null, "   ",
+            "com.idxone.sub", "    ", "  ", null, null, null, "   ",
         )
         assertNull(k2)
     }
@@ -908,7 +910,7 @@ class IdentityContinuityTest {
     @Test
     fun provider_absent_dormant_family() {
         val s = VideoServer(
-            "1080p [SubsPlease] Title",
+            "1080p [SubsPlume] Title",
             "https://example.com/abc",
             null, // no provider extraData
         )
@@ -924,15 +926,15 @@ class IdentityContinuityTest {
         // MakeDefault gating is in SelectorDialogFragment. The test
         // here asserts that the candidate builder does not auto-save
         // anywhere (no shared mutable state involved).
-        val s = makeServer("1080p [SubsPlease] Title")
-        val k1 = StableCandidateBuilder.exactKey("com.nyaa.sub", s)
-        val k2 = StableCandidateBuilder.exactKey("com.nyaa.sub", s)
+        val s = makeServer("1080p [SubsPlume] Title")
+        val k1 = StableCandidateBuilder.exactKey("com.idxone.sub", s)
+        val k2 = StableCandidateBuilder.exactKey("com.idxone.sub", s)
         assertEquals(k1, k2)
     }
 
     @Test
     fun recovery_returns_NoMatch_when_no_stored_preference() {
-        val s = makeServer("1080p [SubsPlease] Title")
+        val s = makeServer("1080p [SubsPlume] Title")
         val r = RecoveryCoordinator.resolve(
             storedExactKey = null, storedFamily = null,
             selectedName = null, servers = listOf(s),
@@ -942,17 +944,17 @@ class IdentityContinuityTest {
 
     @Test
     fun recovery_returns_Ambiguous_when_two_distinct_exact_keys_tied() {
-        val stored = FamilyPayload("com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi"))
+        val stored = FamilyPayload("com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone"))
         val s1 = VideoServer(
-            "📂 NyaaSi | NyaaSi 1080p [SubsPlease] Title",
+            "📂 IdxOne | IdxOne 1080p [SubsPlume] Title",
             "magnet:?xt=urn:btih:0000000000000000000000000000000000000001&dn=a",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
         val s2 = VideoServer(
-            "📂 NyaaSi | NyaaSi 1080p [SubsPlease] Title",
+            "📂 IdxOne | IdxOne 1080p [SubsPlume] Title",
             "magnet:?xt=urn:btih:0000000000000000000000000000000000000002&dn=b",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
         val r = RecoveryCoordinator.resolve(
             storedExactKey = null, storedFamily = stored,
@@ -983,12 +985,12 @@ class IdentityContinuityTest {
         // store contract here: passing null to encode returns the
         // saved-null branch and does NOT mutate the existing
         // preference.
-        val existing = FamilyPayload("com.nyaa.sub", "subsplease")
+        val existing = FamilyPayload("com.idxone.sub", "subsplume")
         val encoded = SelectedFamilyCodec.encode(existing)
         assertNotNull(encoded)
         val decoded = SelectedFamilyCodec.decode(encoded)
         assertNotNull(decoded)
-        assertEquals("subsplease", decoded!!.groupKey)
+        assertEquals("subsplume", decoded!!.groupKey)
     }
 
     // ===== v1.2 regressions =====
@@ -1002,17 +1004,17 @@ class IdentityContinuityTest {
     @Test
     fun family_collapse_representations_independent_of_arrival_order() {
         val stored = FamilyPayload(
-            "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi", "resolution" to "1080p"),
+            "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone", "resolution" to "1080p"),
         )
         // Two distinct representations of the SAME exact key, each
         // with a different soft vector. The representative that
-        // matches the stored vector better (nyaasi+1080p) should
+        // matches the stored vector better (idxone+1080p) should
         // win.
-        val rep1 = FamilyCandidate("k1", "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nekobt", "resolution" to "1080p"))
-        val rep2 = FamilyCandidate("k1", "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi", "resolution" to "1080p"))
+        val rep1 = FamilyCandidate("k1", "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxtw", "resolution" to "1080p"))
+        val rep2 = FamilyCandidate("k1", "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone", "resolution" to "1080p"))
         val a = FamilyAutoSelector.select(stored, listOf(rep1, rep2))
         val b = FamilyAutoSelector.select(stored, listOf(rep2, rep1))
         assertTrue(a is FamilyAutoResult.Chosen)
@@ -1033,19 +1035,19 @@ class IdentityContinuityTest {
     @Test
     fun recovery_duplicate_exact_key_collapses_to_resolved() {
         val s1 = VideoServer(
-            "1080p [SubsPlease] Title",
+            "1080p [SubsPlume] Title",
             "https://example.com/a",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
         val s2 = VideoServer(
             // Identical raw title so the direct key matches.
-            "1080p [SubsPlease] Title",
+            "1080p [SubsPlume] Title",
             "https://example.com/b",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
         // Both rows produce the same exact key.
-        val k1 = StableCandidateBuilder.exactKey("com.nyaa.sub", s1)
-        val k2 = StableCandidateBuilder.exactKey("com.nyaa.sub", s2)
+        val k1 = StableCandidateBuilder.exactKey("com.idxone.sub", s1)
+        val k2 = StableCandidateBuilder.exactKey("com.idxone.sub", s2)
         assertEquals(k1, k2)
         val r = RecoveryCoordinator.resolve(
             storedExactKey = k1,
@@ -1065,22 +1067,22 @@ class IdentityContinuityTest {
     @Test
     fun direct_stable_key_independent_of_volatile_metadata() {
         val a = DirectReleaseKeyBuilder.build(
-            "com.nyaa.sub",
-            group = "SubsPlease",
+            "com.idxone.sub",
+            group = "SubsPlume",
             resolution = "1080p",
             audioFormat = "AAC",
             audioMode = null,
             sourceService = null,
-            rawTitle = "📂 NyaaSi | 👤 10 | 💾 1.4 GiB | [SubsPlease] Title [1080p AAC]",
+            rawTitle = "📂 IdxOne | 👤 10 | 💾 1.4 GiB | [SubsPlume] Title [1080p AAC]",
         )
         val b = DirectReleaseKeyBuilder.build(
-            "com.nyaa.sub",
-            group = "SubsPlease",
+            "com.idxone.sub",
+            group = "SubsPlume",
             resolution = "1080p",
             audioFormat = "AAC",
             audioMode = null,
             sourceService = null,
-            rawTitle = "📂 nekoBT | 👤 999 | 💾 1.4 GiB | [SubsPlease] Title [1080p AAC]",
+            rawTitle = "📂 idxTW | 👤 999 | 💾 1.4 GiB | [SubsPlume] Title [1080p AAC]",
         )
         assertNotNull(a); assertNotNull(b)
         assertEquals(a, b)
@@ -1089,22 +1091,22 @@ class IdentityContinuityTest {
     @Test
     fun direct_stable_key_changes_when_release_title_changes() {
         val a = DirectReleaseKeyBuilder.build(
-            "com.nyaa.sub",
-            group = "SubsPlease",
+            "com.idxone.sub",
+            group = "SubsPlume",
             resolution = "1080p",
             audioFormat = "AAC",
             audioMode = null,
             sourceService = null,
-            rawTitle = "[SubsPlease] Anime A - 01 [1080p AAC]",
+            rawTitle = "[SubsPlume] Anime A - 01 [1080p AAC]",
         )
         val b = DirectReleaseKeyBuilder.build(
-            "com.nyaa.sub",
-            group = "SubsPlease",
+            "com.idxone.sub",
+            group = "SubsPlume",
             resolution = "1080p",
             audioFormat = "AAC",
             audioMode = null,
             sourceService = null,
-            rawTitle = "[SubsPlease] Anime B - 01 [1080p AAC]",
+            rawTitle = "[SubsPlume] Anime B - 01 [1080p AAC]",
         )
         assertNotNull(a); assertNotNull(b)
         assertTrue(a != b)
@@ -1118,18 +1120,18 @@ class IdentityContinuityTest {
      */
     @Test
     fun stable_raw_title_retains_release_title_through_metadata() {
-        val a = "📂 NyaaSi | 👤 10 | 💾 1.4 GiB | [SubsPlease] Anime A - 01 [1080p AAC]"
+        val a = "📂 IdxOne | 👤 10 | 💾 1.4 GiB | [SubsPlume] Anime A - 01 [1080p AAC]"
         val stable = StableRawTitleExtractor.extract(a)
         assertNotNull(stable)
         assertTrue(stable!!.contains("Anime A - 01"))
-        assertTrue(stable.contains("[SubsPlease]"))
+        assertTrue(stable.contains("[SubsPlume]"))
     }
 
     @Test
     fun direct_key_metadata_rich_same_title_equal_changed_title_differs() {
         fun directFor(raw: String) = DirectReleaseKeyBuilder.build(
-            "com.nyaa.sub",
-            group = "SubsPlease",
+            "com.idxone.sub",
+            group = "SubsPlume",
             resolution = "1080p",
             audioFormat = "AAC",
             audioMode = null,
@@ -1137,13 +1139,13 @@ class IdentityContinuityTest {
             rawTitle = raw,
         )
         val a = directFor(
-            "📂 NyaaSi | 👤 10 | 💾 1.4 GiB | [SubsPlease] Anime A - 01 [1080p AAC]",
+            "📂 IdxOne | 👤 10 | 💾 1.4 GiB | [SubsPlume] Anime A - 01 [1080p AAC]",
         )
         val b = directFor(
-            "📂 nekoBT | 👤 999 | 💾 2.0 GiB | [SubsPlease] Anime A - 01 [1080p AAC]",
+            "📂 idxTW | 👤 999 | 💾 2.0 GiB | [SubsPlume] Anime A - 01 [1080p AAC]",
         )
         val c = directFor(
-            "📂 NyaaSi | 👤 10 | 💾 1.4 GiB | [SubsPlease] Anime B - 01 [1080p AAC]",
+            "📂 IdxOne | 👤 10 | 💾 1.4 GiB | [SubsPlume] Anime B - 01 [1080p AAC]",
         )
         assertNotNull(a); assertNotNull(b); assertNotNull(c)
         assertEquals(a, b)
@@ -1152,10 +1154,10 @@ class IdentityContinuityTest {
 
     @Test
     fun stable_raw_title_multiline_metadata_block_preserves_title() {
-        val raw = "📂 NyaaSi\n" +
+        val raw = "📂 IdxOne\n" +
             "👤 10 seeders\n" +
             "💾 1.4 GiB\n" +
-            "[SubsPlease] Anime A - 01 [1080p AAC]"
+            "[SubsPlume] Anime A - 01 [1080p AAC]"
         val stable = StableRawTitleExtractor.extract(raw)
         assertNotNull(stable)
         assertTrue(stable!!.contains("Anime A - 01"))
@@ -1165,11 +1167,11 @@ class IdentityContinuityTest {
 
     @Test
     fun stable_raw_title_metadata_only_returns_null_and_no_direct_key() {
-        val metaOnly = "📂 NyaaSi | 👤 10 | 💾 1.4 GiB"
+        val metaOnly = "📂 IdxOne | 👤 10 | 💾 1.4 GiB"
         assertNull(StableRawTitleExtractor.extract(metaOnly))
         assertNull(DirectReleaseKeyBuilder.build(
-            "com.nyaa.sub",
-            group = "SubsPlease",
+            "com.idxone.sub",
+            group = "SubsPlume",
             resolution = "1080p",
             audioFormat = "AAC",
             audioMode = null,
@@ -1178,13 +1180,13 @@ class IdentityContinuityTest {
         ))
         // Metadata-only multiline form likewise yields no key.
         assertNull(DirectReleaseKeyBuilder.build(
-            "com.nyaa.sub",
-            group = "SubsPlease",
+            "com.idxone.sub",
+            group = "SubsPlume",
             resolution = "1080p",
             audioFormat = "AAC",
             audioMode = null,
             sourceService = null,
-            rawTitle = "📂 NyaaSi\n👤 10\n💾 1.4 GiB",
+            rawTitle = "📂 IdxOne\n👤 10\n💾 1.4 GiB",
         ))
     }
 
@@ -1247,27 +1249,26 @@ class IdentityContinuityTest {
 
     @Test
     fun family_codec_canonical_groupKey_accepted() {
-        val raw = "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplease\"}"
+        val raw = "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplume\"}"
         val p = SelectedFamilyCodec.decode(raw)
         assertNotNull(p)
-        assertEquals("subsplease", p!!.groupKey)
+        assertEquals("subsplume", p!!.groupKey)
     }
 
     @Test
     fun family_codec_uppercase_groupKey_rejected() {
-        val raw = "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"SUBSPLEASE\"}"
+        val raw = "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"SUBSPLUME\"}"
         assertNull(SelectedFamilyCodec.decode(raw))
         assertNull(SelectedFamilyCodec.encode(
-            FamilyPayload("p", "SUBSPLEASE"),
+            FamilyPayload("p", "SUBSPLUME"),
         ))
     }
 
     @Test
-    fun family_codec_tracker_groupKey_rejected() {
-        val raw = "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"nyaasi\"}"
-        assertNull(SelectedFamilyCodec.decode(raw))
-        assertNull(SelectedFamilyCodec.encode(
-            FamilyPayload("p", "nyaasi"),
+    fun direct_key_tracker_as_group_rejected() {
+        // The row's own indexer is never the group anchor of a stored key.
+        assertNull(StableReleaseCanonicalizer.canonicalize(
+            "IdxOne", "1080p", null, null, null, "[IdxOne] Show - 05 (1080p)", tracker = "IdxOne",
         ))
     }
 
@@ -1286,20 +1287,20 @@ class IdentityContinuityTest {
     fun family_codec_unescaped_control_char_rejected() {
         // Raw U+0001 inside a JSON string is malformed; the family
         // preference must fail closed.
-        val raw = "{\"version\":1,\"providerPkg\":\"p\u0001\",\"groupKey\":\"subsplease\"}"
+        val raw = "{\"version\":1,\"providerPkg\":\"p\u0001\",\"groupKey\":\"subsplume\"}"
         assertNull(SelectedFamilyCodec.decode(raw))
     }
 
     @Test
     fun family_codec_unescaped_newline_in_string_rejected() {
-        val raw = "{\"version\":1,\"providerPkg\":\"p\n\",\"groupKey\":\"subsplease\"}"
+        val raw = "{\"version\":1,\"providerPkg\":\"p\n\",\"groupKey\":\"subsplume\"}"
         assertNull(SelectedFamilyCodec.decode(raw))
     }
 
     @Test
     fun family_codec_duplicate_soft_key_rejected() {
-        val raw = "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplease\"," +
-            "\"soft\":{\"trackerKey\":\"nyaasi\",\"trackerKey\":\"nekobt\"}}"
+        val raw = "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplume\"," +
+            "\"soft\":{\"trackerKey\":\"idxone\",\"trackerKey\":\"idxtw\"}}"
         assertNull(SelectedFamilyCodec.decode(raw))
     }
 
@@ -1307,7 +1308,7 @@ class IdentityContinuityTest {
     fun family_codec_unknown_soft_name_still_accepted() {
         // Unknown soft field NAMES stay forward-compatible after
         // bounds validation.
-        val raw = "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplease\"," +
+        val raw = "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplume\"," +
             "\"soft\":{\"futureField\":\"v\"}}"
         val p = SelectedFamilyCodec.decode(raw)
         assertNotNull(p)
@@ -1319,7 +1320,7 @@ class IdentityContinuityTest {
     @Test
     fun family_codec_soft_omitted_is_valid() {
         val p = SelectedFamilyCodec.decode(
-            "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplease\"}"
+            "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplume\"}"
         )
         assertNotNull(p)
         assertTrue(p!!.soft.isEmpty())
@@ -1328,7 +1329,7 @@ class IdentityContinuityTest {
     @Test
     fun family_codec_soft_empty_object_is_valid() {
         val p = SelectedFamilyCodec.decode(
-            "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplease\",\"soft\":{}}"
+            "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplume\",\"soft\":{}}"
         )
         assertNotNull(p)
         assertTrue(p!!.soft.isEmpty())
@@ -1337,17 +1338,17 @@ class IdentityContinuityTest {
     @Test
     fun family_codec_soft_wrong_type_rejected() {
         assertNull(SelectedFamilyCodec.decode(
-            "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplease\",\"soft\":\"oops\"}"
+            "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplume\",\"soft\":\"oops\"}"
         ))
         assertNull(SelectedFamilyCodec.decode(
-            "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplease\",\"soft\":1}"
+            "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplume\",\"soft\":1}"
         ))
     }
 
     @Test
     fun family_codec_duplicate_top_level_soft_rejected() {
         assertNull(SelectedFamilyCodec.decode(
-            "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplease\"," +
+            "{\"version\":1,\"providerPkg\":\"p\",\"groupKey\":\"subsplume\"," +
                 "\"soft\":{},\"soft\":{}}"
         ))
     }
@@ -1355,13 +1356,13 @@ class IdentityContinuityTest {
     @Test
     fun family_codec_malformed_version_syntax_rejected() {
         assertNull(SelectedFamilyCodec.decode(
-            "{\"version\":01,\"providerPkg\":\"p\",\"groupKey\":\"subsplease\"}"
+            "{\"version\":01,\"providerPkg\":\"p\",\"groupKey\":\"subsplume\"}"
         ))
         assertNull(SelectedFamilyCodec.decode(
-            "{\"version\":+1,\"providerPkg\":\"p\",\"groupKey\":\"subsplease\"}"
+            "{\"version\":+1,\"providerPkg\":\"p\",\"groupKey\":\"subsplume\"}"
         ))
         assertNull(SelectedFamilyCodec.decode(
-            "{\"version\":-,\"providerPkg\":\"p\",\"groupKey\":\"subsplease\"}"
+            "{\"version\":-,\"providerPkg\":\"p\",\"groupKey\":\"subsplume\"}"
         ))
     }
 
@@ -1371,8 +1372,8 @@ class IdentityContinuityTest {
     @Test
     fun remembered_policy_OFF_writes_neither() {
         val exact = "editotsu-source:v1:direct:0b6efc08:abcdef0123456789"
-        val cand = FamilyCandidate("k1", "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi"))
+        val cand = FamilyCandidate("k1", "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone"))
         assertFalse(RememberedSelectionPolicy.shouldWriteExactKey(false, exact))
         assertFalse(RememberedSelectionPolicy.shouldReplaceFamily(false, cand))
         assertFalse(RememberedSelectionPolicy.shouldPreserveExistingFamily(
@@ -1383,8 +1384,8 @@ class IdentityContinuityTest {
     @Test
     fun remembered_policy_ON_exact_and_family_persists_both() {
         val exact = "editotsu-source:v1:direct:0b6efc08:abcdef0123456789"
-        val cand = FamilyCandidate("k1", "com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi"))
+        val cand = FamilyCandidate("k1", "com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone"))
         assertTrue(RememberedSelectionPolicy.shouldWriteExactKey(true, exact))
         assertTrue(RememberedSelectionPolicy.shouldReplaceFamily(true, cand))
         assertFalse(RememberedSelectionPolicy.shouldPreserveExistingFamily(
@@ -1575,13 +1576,13 @@ class IdentityContinuityTest {
         // Stored family built from "Dual   Audio" + "4K" must rank
         // identically to a candidate built from "Dual Audio" +
         // "2160p": canonical soft values compare equal.
-        val stored = FamilyPayload("com.nyaa.sub", "subsplease", mapOf(
-            "trackerKey" to "nyaasi",
+        val stored = FamilyPayload("com.idxone.sub", "subsplume", mapOf(
+            "trackerKey" to "idxone",
             "resolution" to StableSoftCanonicalizer.canonicalResolution("4K")!!,
             "audioMode" to StableSoftCanonicalizer.canonicalText("Dual   Audio")!!,
         ))
-        val cand = FamilyCandidate("k1", "com.nyaa.sub", "subsplease", mapOf(
-            "trackerKey" to "nyaasi",
+        val cand = FamilyCandidate("k1", "com.idxone.sub", "subsplume", mapOf(
+            "trackerKey" to "idxone",
             "resolution" to StableSoftCanonicalizer.canonicalResolution("2160p")!!,
             "audioMode" to StableSoftCanonicalizer.canonicalText("Dual Audio")!!,
         ))
@@ -1593,12 +1594,12 @@ class IdentityContinuityTest {
     @Test
     fun family_candidate_soft_values_are_canonical() {
         val cand = StableCandidateBuilder.familyCandidate(
-            makeServer("📂 NyaaSi | NyaaSi 4K [SubsPlease] Title Dual   Audio"),
+            makeServer("📂 IdxOne | IdxOne 4K [SubsPlume] Title Dual   Audio"),
         )
         assertNotNull(cand)
         assertEquals("2160p", cand!!.soft["resolution"])
         assertEquals("dual audio", cand.soft["audioMode"])
-        assertEquals("nyaasi", cand.soft["trackerKey"])
+        assertEquals("idxone", cand.soft["trackerKey"])
     }
 
     // ===== Deterministic family runtime representative (v1.5 blocker 2) =====
@@ -1607,22 +1608,22 @@ class IdentityContinuityTest {
     fun recovery_family_chosen_key_picks_same_server_both_orders() {
         val hex = "0000000000000000000000000000000000000001"
         val s1 = VideoServer(
-            "📂 NyaaSi | NyaaSi 1080p [SubsPlease] Title A",
+            "📂 IdxOne | IdxOne 1080p [SubsPlume] Title A",
             "magnet:?xt=urn:btih:$hex&dn=a",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
         val s2 = VideoServer(
-            "📂 NyaaSi | NyaaSi 1080p [SubsPlease] Title B",
+            "📂 IdxOne | IdxOne 1080p [SubsPlume] Title B",
             "magnet:?xt=urn:btih:$hex&dn=b",
-            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub"),
+            mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub"),
         )
         // Same BTIH/index/provider -> same exact key from both rows.
-        val k1 = StableCandidateBuilder.exactKey("com.nyaa.sub", s1)
-        val k2 = StableCandidateBuilder.exactKey("com.nyaa.sub", s2)
+        val k1 = StableCandidateBuilder.exactKey("com.idxone.sub", s1)
+        val k2 = StableCandidateBuilder.exactKey("com.idxone.sub", s2)
         assertNotNull(k1)
         assertEquals(k1, k2)
-        val stored = FamilyPayload("com.nyaa.sub", "subsplease",
-            mapOf("trackerKey" to "nyaasi"))
+        val stored = FamilyPayload("com.idxone.sub", "subsplume",
+            mapOf("trackerKey" to "idxone"))
         val forward = RecoveryCoordinator.resolve(
             storedExactKey = null, storedFamily = stored,
             selectedName = null, servers = listOf(s1, s2),
@@ -1643,7 +1644,7 @@ class IdentityContinuityTest {
 
     @Test
     fun family_slot_action_off_is_no_change() {
-        val cand = FamilyCandidate("k1", "com.nyaa.sub", "subsplease")
+        val cand = FamilyCandidate("k1", "com.idxone.sub", "subsplume")
         assertEquals(
             RememberedSelectionPolicy.FamilySlotAction.NO_CHANGE,
             RememberedSelectionPolicy.familySlotAction(false, cand),
@@ -1656,7 +1657,7 @@ class IdentityContinuityTest {
 
     @Test
     fun family_slot_action_on_confident_is_replace() {
-        val cand = FamilyCandidate("k1", "com.nyaa.sub", "subsplease")
+        val cand = FamilyCandidate("k1", "com.idxone.sub", "subsplume")
         assertEquals(
             RememberedSelectionPolicy.FamilySlotAction.REPLACE,
             RememberedSelectionPolicy.familySlotAction(true, cand),
@@ -1707,7 +1708,7 @@ class IdentityContinuityTest {
     @Test
     fun group_hard_anchor_keeps_real_groups() {
         for (good in listOf(
-            "subsplease", "ironclad", "toonshub", "dkb", "varyg", "tenrai-sensei",
+            "subsplume", "grpclad", "grpshubb", "dqb", "grpvy", "grpai-sensei",
         )) {
             assertEquals(good, StableGroupCanonicalizer.canonicalKey(good))
         }
@@ -1718,20 +1719,20 @@ class IdentityContinuityTest {
     @Test
     fun direct_canonical_structured_fields_use_persistence_canonicalizers() {
         val a = StableReleaseCanonicalizer.canonicalize(
-            group = "SubsPlease",
+            group = "SubsPlume",
             resolution = "4K",
             audioFormat = null,
             audioMode = "Dual   Audio",
             sourceService = null,
-            rawTitle = "[SubsPlease] Anime - 01",
+            rawTitle = "[SubsPlume] Anime - 01",
         )
         val b = StableReleaseCanonicalizer.canonicalize(
-            group = "SubsPlease",
+            group = "SubsPlume",
             resolution = "2160p",
             audioFormat = null,
             audioMode = "Dual Audio",
             sourceService = null,
-            rawTitle = "[SubsPlease] Anime - 01",
+            rawTitle = "[SubsPlume] Anime - 01",
         )
         assertNotNull(a)
         assertNotNull(b)
@@ -1743,12 +1744,12 @@ class IdentityContinuityTest {
     @Test
     fun direct_canonical_resolution_1440p_stays_1440p() {
         val c = StableReleaseCanonicalizer.canonicalize(
-            group = "SubsPlease",
+            group = "SubsPlume",
             resolution = "1440p",
             audioFormat = null,
             audioMode = "Dual Audio",
             sourceService = null,
-            rawTitle = "[SubsPlease] Anime - 01",
+            rawTitle = "[SubsPlume] Anime - 01",
         )
         assertNotNull(c)
         assertTrue(c!!.contains("res=1440p"))
@@ -1773,7 +1774,7 @@ class IdentityContinuityTest {
         // is false, so no stable exact key exists — but the
         // exact-name fast path still resolves the runtime handle.
         val s = makeServer("1080p")
-        assertNull(StableCandidateBuilder.exactKey("com.nyaa.sub", s))
+        assertNull(StableCandidateBuilder.exactKey("com.idxone.sub", s))
         val r = RecoveryCoordinator.resolve(
             storedExactKey = null,
             storedFamily = null,
@@ -1793,8 +1794,8 @@ class IdentityContinuityTest {
         // a null exact key, never a synthetic sentinel.
         val s1 = makeServer("Stream A")
         val s2 = makeServer("Stream B")
-        assertNull(StableCandidateBuilder.exactKey("com.nyaa.sub", s1))
-        assertNull(StableCandidateBuilder.exactKey("com.nyaa.sub", s2))
+        assertNull(StableCandidateBuilder.exactKey("com.idxone.sub", s1))
+        assertNull(StableCandidateBuilder.exactKey("com.idxone.sub", s2))
         val r = RecoveryCoordinator.resolve(
             storedExactKey = null,
             storedFamily = null,
@@ -1837,7 +1838,7 @@ class IdentityContinuityTest {
         // already present on the candidate.
         return VideoServer(
             name, "https://example.com/x", mapOf(
-                StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.nyaa.sub",
+                StableCandidateBuilder.PROVIDER_EXTRA_KEY to "com.idxone.sub",
             ),
         )
     }

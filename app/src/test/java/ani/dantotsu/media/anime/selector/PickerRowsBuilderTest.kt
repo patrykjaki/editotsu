@@ -16,7 +16,7 @@ import kotlin.random.Random
 class PickerRowsBuilderTest {
 
     private val rows: List<String> by lazy {
-        val text = javaClass.classLoader!!.getResource("picker/torrentio_rows_2026-11-01.json")!!.readText()
+        val text = javaClass.classLoader!!.getResource("picker/addon_rows_2026-11-01.json")!!.readText()
         Json.parseToJsonElement(text).jsonArray.map { it.jsonPrimitive.content }
     }
 
@@ -28,7 +28,7 @@ class PickerRowsBuilderTest {
     private fun ext(i: Int, name: String = rows[i % rows.size]): VideoExtractor {
         val magnet = "magnet:?xt=urn:btih:%040x".format(i + 1)
         return Ext(
-            VideoServer(name, FileUrl(magnet), mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "torrentio")),
+            VideoServer(name, FileUrl(magnet), mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "relayaddon")),
             listOf(Video(null, VideoType.CONTAINER, FileUrl(magnet))),
         )
     }
@@ -40,11 +40,11 @@ class PickerRowsBuilderTest {
     }
 
     private fun fullList(b: PickerRowsBuilder, links: List<VideoExtractor>, stored: FamilyPayload?) =
-        PickerListBuilder.build(b.build(links, null, stored, "Torrentio"), hasRememberedFamily = stored != null)
+        PickerListBuilder.build(b.build(links, null, stored, "Relayaddon"), hasRememberedFamily = stored != null)
 
     @Test
     fun cached_list_equals_fresh_list_for_random_callback_orders() {
-        val stored = FamilyPayload("torrentio", "toonshub", mapOf("resolution" to "1080p"))
+        val stored = FamilyPayload("relayaddon", "grpshubb", mapOf("resolution" to "1080p"))
         val random = Random(20261101)
         repeat(20) { seq ->
             val cached = PickerRowsBuilder()
@@ -80,12 +80,12 @@ class PickerRowsBuilderTest {
         val links = mutableListOf<VideoExtractor>()
         rows.indices.forEach { i ->
             add(links, ext(i))
-            counting.build(links, null, null, "Torrentio")
+            counting.build(links, null, null, "Relayaddon")
             assertEquals("after callback $i", i + 1, counting.summarizeCalls)
         }
         // Moving rows (preferred inserted at the top) costs nothing.
         links.add(0, links.removeAt(links.size - 1))
-        counting.build(links, null, null, "Torrentio")
+        counting.build(links, null, null, "Relayaddon")
         assertEquals(rows.size, counting.summarizeCalls)
     }
 
@@ -96,9 +96,9 @@ class PickerRowsBuilderTest {
             PickerRowsBuilder.defaultSummarize(e, v)
         })
         val links = listOf(ext(1), ext(99, name = "BAD row\nsecond line"), ext(2))
-        val built = failing.build(links, null, null, "Torrentio")
+        val built = failing.build(links, null, null, "Relayaddon")
         assertEquals(3, built.size)
         assertEquals("BAD row", built[1].header)
-        assertEquals("ToonsHub", built[0].header)
+        assertEquals("GrpsHubb", built[0].header)
     }
 }

@@ -153,11 +153,11 @@ class UpscalerPipelineTest {
     }
 
     /**
-     * CP2-04: the EDITOTSU REVISION POLICY matrix, exercised against a real install dir.
+     * CP2-04: the EDITOTSU REVISION POLICY magrptx, exercised against a real install dir.
      * Sentinel content distinguishes "kept existing" from "replaced".
      */
     @Test
-    fun testCpV402RevisionPolicyMatrix() {
+    fun testCpV402RevisionPolicyMagrptx() {
         // 1) no install + rev1 → installs
         val dir = File(tempDir, "upscaler/cunny")
         val (mf1, f1) = stageBundle(revision = 1)

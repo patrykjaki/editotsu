@@ -99,7 +99,7 @@
                 android:gravity="end"
                 android:singleLine="true"
                 android:textSize="13sp"
-                tools:text="Torrentio · 23 releases" />
+                tools:text="Source · 23 releases" />
         </LinearLayout>
 
         <!-- one scrollable row: a single-line ChipGroup alone clips chips past the edge -->

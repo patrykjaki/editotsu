@@ -74,11 +74,11 @@ object Fixtures {
         val hash = "%040x".format(n)
         val width = height * 16 / 9
         val name = "[$group] Andon Yakkyoku Nisshi - 06 (${width}x$height ${if (bitDepth == 10) "10bit " else ""}$codec) [${hash.takeLast(8).uppercase()}].mkv"
-        val title = "$name\n👤 $seeders 💾 $sizeMb MB ⚙️ Nyaa"
+        val title = "$name\n👤 $seeders 💾 $sizeMb MB ⚙️ Idxone"
         val magnet = "magnet:?xt=urn:btih:$hash&dn=x&index=0"
         val internal = """{"editotsu":1,"infoHash":"$hash","fileIdx":0,"torrentName":"$name",""" +
-            """"sizeBytes":${sizeMb * 1_048_576L},"seeders":$seeders,"leechers":2,"tracker":"nyaa",""" +
-            """"numFiles":1,"trusted":false,"remake":false,"source":"nyaa","tags":{"from":"name","group":"$group"},""" +
+            """"sizeBytes":${sizeMb * 1_048_576L},"seeders":$seeders,"leechers":2,"tracker":"idxone",""" +
+            """"numFiles":1,"trusted":false,"remake":false,"source":"idxone","tags":{"from":"name","group":"$group"},""" +
             """"media":{"from":"mediainfo","codec":"$codec","bitDepth":$bitDepth,"width":$width,"height":$height,""" +
             """"durationSec":1420,"audio":[$audio],"subtitles":[{"lang":"en","codec":"ASS","forced":false}]}}"""
         val aniVideo = eu.kanade.tachiyomi.animesource.model.Video(
@@ -92,17 +92,17 @@ object Fixtures {
 
     /** 9 groups (6 shown + "+3 more" in the filter sheet), 3 resolutions, 2 codecs, sub and dual audio. */
     val releases: List<VideoExtractor> get() = listOf(
-        release("SubsPlease", 1080, "AVC", 8, 412, 1390, 1),
-        release("SubsPlease", 720, "AVC", 8, 188, 702, 2),
-        release("SubsPlease", 480, "AVC", 8, 41, 352, 3),
-        release("Erai-raws", 1080, "HEVC", 10, 160, 1210, 4),
-        release("ASW", 1080, "HEVC", 10, 96, 380, 5),
-        release("Judas", 1080, "HEVC", 10, 52, 290, 6),
-        release("DameDesuYo", 720, "HEVC", 10, 15, 350, 7),
-        release("EMBER", 1080, "HEVC", 10, 33, 420, 8, audio = DUAL),
-        release("Yameii", 1080, "AVC", 8, 21, 1450, 9, audio = DUAL),
+        release("SubsPlume", 1080, "AVC", 8, 412, 1390, 1),
+        release("SubsPlume", 720, "AVC", 8, 188, 702, 2),
+        release("SubsPlume", 480, "AVC", 8, 41, 352, 3),
+        release("Grpa-raws", 1080, "HEVC", 10, 160, 1210, 4),
+        release("GRW", 1080, "HEVC", 10, 96, 380, 5),
+        release("Grpjd", 1080, "HEVC", 10, 52, 290, 6),
+        release("GrpDameYoo", 720, "HEVC", 10, 15, 350, 7),
+        release("GRPEM", 1080, "HEVC", 10, 33, 420, 8, audio = DUAL),
+        release("Grpeii", 1080, "AVC", 8, 21, 1450, 9, audio = DUAL),
         release("Anime Time", 1080, "HEVC", 10, 9, 310, 10),
-        release("Tsundere-Raws", 1080, "AVC", 8, 6, 1380, 11),
+        release("Grpdere-Raws", 1080, "AVC", 8, 6, 1380, 11),
     )
 
     /** A streaming source: servers with HLS and MP4 links (stream cards, no torrent data). */

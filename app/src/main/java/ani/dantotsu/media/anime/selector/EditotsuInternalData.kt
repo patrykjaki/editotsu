@@ -110,7 +110,7 @@ data class EditotsuInternalData(
     /** true for a file picked out of a multi-file torrent */
     val isPack: Boolean get() = (numFiles ?: 1) > 1
 
-    /** "1.39 GB" / "350.2 MB" (binary units, Torrentio's labels); "~" when the source rounded it */
+    /** "1.39 GB" / "350.2 MB" (binary units, as torrent sources label them); "~" when the source rounded it */
     fun sizeText(): String? {
         val bytes = sizeBytes?.takeIf { it > 0 } ?: return null
         val units = listOf("KB" to (1L shl 10), "MB" to (1L shl 20), "GB" to (1L shl 30), "TB" to (1L shl 40))

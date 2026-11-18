@@ -3,7 +3,7 @@ package ani.dantotsu.media.anime.selector
 /**
  * How Editotsu will deliver bytes to the player.
  *
- * Decoupled from presentation: a torrentio debrid HTTP result is
+ * Decoupled from presentation: a debrid HTTP result is
  * `RELEASE` presentation + `DIRECT_HTTP` transport. A magnet result is
  * `RELEASE` presentation + `TORRENT` transport.
  *

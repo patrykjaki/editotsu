@@ -134,7 +134,7 @@ class DrmSubtitleIntentHold11Test {
     }
 
     @Test
-    fun `append-growth verification matrix`() {
+    fun `append-growth verification magrptx`() {
         val m = DrmSubtitleIntentMachine()
         val k = { id: Int, s: String -> id to s }
         // Strict prefix-preserved superset only; an empty previous

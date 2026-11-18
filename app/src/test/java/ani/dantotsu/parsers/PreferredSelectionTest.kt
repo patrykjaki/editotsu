@@ -10,7 +10,7 @@ import org.junit.Test
 
 /**
  * MAX MERGE FINAL-PORT C4 (upstream 6f77ea20): preferred-flag model
- * matrix. Flags default false (existing behavior preserved); explicit
+ * magrptx. Flags default false (existing behavior preserved); explicit
  * user selection paths are untouched — only auto-resolution consults
  * these getters (covered in DownloadResolutionTest).
  */
@@ -58,7 +58,7 @@ class PreferredSelectionTest {
         assertEquals(1, manual.videos.size)
     }
 
-    // ---- HOLD1-A/B: gating regression matrix (pure helpers) ----
+    // ---- HOLD1-A/B: gating regression magrptx (pure helpers) ----
 
     private fun extractor(
         name: String,
@@ -85,7 +85,7 @@ class PreferredSelectionTest {
     }
 
     @Test
-    fun `gate matrix nulls and empties`() {
+    fun `gate magrptx nulls and empties`() {
         val list = listOf(extractor("PreferredB", preferred = true))
         assertFalse(hasExplicitServer(list, null))
         assertFalse(hasExplicitServer(null, "UserServerA"))

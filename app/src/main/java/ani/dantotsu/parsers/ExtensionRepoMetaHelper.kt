@@ -173,7 +173,6 @@ object ExtensionRepoMetaHelper {
             )
             if (genericRepos.contains(repo.lowercase())) {
                 return when (owner.lowercase()) {
-                    "keiyoushi" -> "Keiyoushi"
                     "aniyomiorg" -> "Aniyomi"
                     else -> owner
                 }

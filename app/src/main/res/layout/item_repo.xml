@@ -40,7 +40,7 @@
             android:textColor="?attr/colorOnSurfaceVariant"
             android:singleLine="true"
             android:ellipsize="end"
-            tools:text="https://github.com/keiyoushi/extensions" />
+            tools:text="https://github.com/owner/repo" />
 
     </LinearLayout>
 

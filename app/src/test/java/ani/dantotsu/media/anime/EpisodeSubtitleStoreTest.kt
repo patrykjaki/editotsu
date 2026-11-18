@@ -8,7 +8,7 @@ import java.io.File
 import java.nio.file.Files
 
 /**
- * LANE-B P1 (#72 EpisodeSubtitleStore): pure seam matrix — key/filename
+ * LANE-B P1 (#72 EpisodeSubtitleStore): pure seam magrptx — key/filename
  * shaping and tolerant decode. Android-coupled persistence (prefs,
  * filesDir staging, cleanup) is covered by compile + device validation;
  * ownership/cleanup semantics are asserted here through the helpers.

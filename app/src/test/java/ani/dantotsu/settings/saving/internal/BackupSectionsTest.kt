@@ -46,7 +46,7 @@ class BackupSectionsTest {
     @Test
     fun missingExtensionsUsesNamesAndSkipsInstalled() {
         val backedUp = mapOf(
-            "pkg.a" to BackupSections.extensionEntry("anime", "Torrentio", "1.0"),
+            "pkg.a" to BackupSections.extensionEntry("anime", "Relayaddon", "1.0"),
             "pkg.b" to BackupSections.extensionEntry("manga", "MangaDex", "2.0"),
             "pkg.c" to "anime||1.0",
         )

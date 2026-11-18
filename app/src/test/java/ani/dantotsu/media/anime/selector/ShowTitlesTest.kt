@@ -36,18 +36,18 @@ class ShowTitlesTest {
     }
 
     @Test
-    fun tsundere_raws_card_title() {
+    fun grpdere_raws_card_title() {
         // feed name, 2026-11-02 (animetosho aid 19308)
-        val raw = "Even the Student Council Has Its Holes S01E03 UNCENSORED SUBFRENCH 1080p ADN WEB-DL AAC2.0 x264-Tsundere-Raws " +
+        val raw = "Even the Student Council Has Its Holes S01E03 UNCENSORED SUBFRENCH 1080p ADN WEB-DL AAC2.0 x264-Grpdere-Raws " +
             "(VOSTFR, Multi Subs, Seitokai ni mo Ana wa Aru, There Is Also a Hole in the Student Organization)"
-        val text = "$raw\n👤 94 💾 572.1 MB ⚙️ nekoBT"
+        val text = "$raw\n👤 94 💾 572.1 MB ⚙️ idxTW"
         val vm = SourceRowSummarizer.build(
             displayLabel = text, qualityText = text, format = ani.dantotsu.parsers.VideoType.CONTAINER,
             url = "magnet:?xt=urn:btih:" + "a".repeat(40),
         )
-        assertEquals("Tsundere-Raws", vm.header)
+        assertEquals("Grpdere-Raws", vm.header)
         val clean = vm.cleanSubtitle!!
-        assertEquals(false, clean.contains("Tsundere"))
+        assertEquals(false, clean.contains("Grpdere"))
         assertEquals(false, clean.contains("SUBFRENCH"))
         assertEquals(false, clean.contains("VOSTFR"))
         val titles = listOf("Even the Student Council Has Its Holes!", "Seitokai ni mo Ana wa Aru!", "NamaAnaru")
@@ -74,7 +74,7 @@ class ShowTitlesTest {
         b.showTitles = en
         val ext = object : ani.dantotsu.parsers.VideoExtractor() {
             override val server = ani.dantotsu.parsers.VideoServer(
-                "[ASW] Kusuriya no Hitorigoto - 49v2 [1080p HEVC x265 10Bit][AAC]\n👤 174 💾 219.6 MB ⚙️ Nyaa",
+                "[GRW] Kusuriya no Hitorigoto - 49v2 [1080p HEVC x265 10Bit][AAC]\n👤 174 💾 219.6 MB ⚙️ Idxone",
                 ani.dantotsu.FileUrl("magnet:?xt=urn:btih:" + "a".repeat(40)),
                 mapOf(StableCandidateBuilder.PROVIDER_EXTRA_KEY to "p"),
             )
@@ -83,8 +83,8 @@ class ShowTitlesTest {
         }
         val built = b.buildWithViews(listOf(ext), null, null, "x")
         val vm = built.views.values.single()
-        assertEquals("ASW", vm.header)
+        assertEquals("GRW", vm.header)
         assertEquals("The Apothecary Diaries - 49v2", vm.cleanSubtitle)
-        assertEquals("ASW", built.rows.single().header)
+        assertEquals("GRW", built.rows.single().header)
     }
 }

@@ -23,8 +23,8 @@ import java.util.Locale
      *            1440p / 4k / 2k)
      *         c. a single tracker-shaped token whose canonical
      *            tracker key equals the parsed tracker's canonical
-     *            key (e.g. prefix "nyaasi" corroborates parsed
-     *            tracker "NyaaSi")
+     *            key (e.g. prefix "indexa" corroborates parsed
+     *            tracker "IndexA")
      *         d. a `[quality] [tracker]` or `[tracker] [quality]` pair
      *            where the tracker token's canonical key equals the
      *            parsed tracker's canonical key
@@ -36,8 +36,8 @@ import java.util.Locale
  *
  *   4. Without a parsed tracker, prefixes other than empty or
  *      single-quality are rejected. This rules out `Other 1080p
- *      [Ironclad] Title` while still accepting `[SubsPlease] Title`,
- *      `1080p [SubsPlease] Title`, and the explicit-tracker cases.
+ *      [GroupB] Title` while still accepting `[GroupA] Title`,
+ *      `1080p [GroupA] Title`, and the explicit-tracker cases.
  */
 data class StableReleaseMetadata(
     val rawTitle: String,
@@ -70,7 +70,7 @@ data class StableReleaseMetadata(
 object StableReleaseMetadataExtractor {
     private val BRACKETED = Regex("""\[([^\[\]]+)]""")
     private val TRACKER_FOLD = Regex("""📂\s*([A-Za-z0-9 .+\-]+)""")
-    /** Torrentio's "👤 … 💾 … ⚙ <tracker>" marker (used when no 📂 marker exists). */
+    /** The "👤 … 💾 … ⚙ <tracker>" marker (used when no 📂 marker exists). */
     private val TRACKER_COG = Regex("""⚙\uFE0F?\s*([A-Za-z0-9 .+\-]+)""")
     // Exact-key spellings (unchanged, so stored direct-release keys stay valid).
     private val AFMT_KEY = Regex(
@@ -161,10 +161,6 @@ object StableReleaseMetadataExtractor {
         "AMZN", "NF", "CR", "DSNP", "HULU", "AT-X", "ATX",
     )
 
-    private val KNOWN_TRACKER_BARE = setOf(
-        "nyaasi", "1337x", "nekobt", "hon3yhoneyp",
-    )
-
     fun extract(rawDescription: String?): StableReleaseMetadata {
         val raw = rawDescription?.trim() ?: ""
         val tracker = (TRACKER_FOLD.find(raw) ?: TRACKER_COG.find(raw))
@@ -236,8 +232,8 @@ object StableReleaseMetadataExtractor {
 
     /**
      * Fallback when no bracket group qualifies: a trailing `-GROUP` on the
-     * release name or the pack file name (`...HEVC-NTb`, `...S02E01-NTb.mp4`).
-     * Metadata lines (👤/💾/⚙/📂, "Torrentio", "<tracker> - <quality>",
+     * release name or the pack file name (`...HEVC-GRPb`, `...S02E01-GRPb.mp4`).
+     * Metadata lines (👤/💾/⚙/📂, "<tracker> - <quality>",
      * language lines) are skipped. Same guards as the card parser's suffix
      * rule, kept here as a separate copy so persistence has no UI dependency.
      */
@@ -256,7 +252,6 @@ object StableReleaseMetadataExtractor {
     }
 
     private fun isMetadataLine(line: String): Boolean {
-        if (line == "Torrentio") return true
         if (METADATA_MARKERS.any { line.contains(it) }) return true
         if (PROVIDER_QUALITY_LINE.matches(line)) return true
         if (line.contains(" / ") || LANGUAGE_LINE_WORD.matches(line)) {
@@ -315,9 +310,9 @@ object StableReleaseMetadataExtractor {
      *     tracker equals the parsed tracker
      *
      * When the parsed tracker is null, only empty and single-quality
-     * prefixes are accepted. This rules out `Other 1080p [Ironclad]
-     * Title` while still accepting `[SubsPlease] Title`, `1080p
-     * [SubsPlease] Title`, and the explicit-tracker cases.
+     * prefixes are accepted. This rules out `Other 1080p [GroupB]
+     * Title` while still accepting `[GroupA] Title`, `1080p
+     * [GroupA] Title`, and the explicit-tracker cases.
      */
     private fun isGroupPositionPrefix(
         prefix: String,
@@ -360,7 +355,7 @@ object StableReleaseMetadataExtractor {
     /**
      * Tracker corroboration through canonical tracker keys, so the
      * same tracker spelled with different case still corroborates
-     * (e.g. prefix "nyaasi" matches parsed tracker "NyaaSi").
+     * (e.g. prefix "indexa" matches parsed tracker "IndexA").
      * Arbitrary non-tracker tokens are NOT broadened: both sides
      * must canonicalize to a non-null key and be equal.
      */

@@ -685,8 +685,8 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             }
 
                             // The remembered pick was a release (only those store an
-                            // exact key). Release names change every episode ("ASW - 01"
-                            // -> "ASW - 02"), so when the name isn't there the next
+                            // exact key). Release names change every episode ("GroupA - 01"
+                            // -> "GroupA - 02"), so when the name isn't there the next
                             // episode is chosen by release family (group, quality, batch)
                             // instead of the source's first/preferred row.
                             val rememberedRelease = SelectedKeyStore.load(media!!.id) != null &&

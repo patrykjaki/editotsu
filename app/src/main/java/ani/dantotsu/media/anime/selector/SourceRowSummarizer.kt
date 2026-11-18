@@ -319,7 +319,7 @@ object SourceRowSummarizer {
 
     /**
      * Build the third-line meta (seeders · size · indexer). The seeder
-     * number is the most important signal; the indexer (e.g. NyaaSi) is
+     * number is the most important signal; the indexer (e.g. IndexA) is
      * intentionally demoted to secondary metadata per the brief.
      */
     private fun buildReleaseMeta(fields: SourceRowClassifier.ReleaseFields): List<SourceMetaChip> {

@@ -55,8 +55,8 @@ class TorrentMetadataCacheTest {
 
     @Test
     fun `magnet trackers are decoded`() {
-        val m = "magnet:?xt=urn:btih:$hash&dn=x&tr=http%3A%2F%2Fnyaa.tracker.wf%3A7777%2Fannounce&tr=udp%3A%2F%2Fa.b%3A1%2Fannounce"
-        assertEquals(listOf("http://nyaa.tracker.wf:7777/announce", "udp://a.b:1/announce"), TorrentMetadataCache.magnetTrackers(m))
+        val m = "magnet:?xt=urn:btih:$hash&dn=x&tr=http%3A%2F%2Ftracker.idxone.test%3A7777%2Fannounce&tr=udp%3A%2F%2Fa.b%3A1%2Fannounce"
+        assertEquals(listOf("http://tracker.idxone.test:7777/announce", "udp://a.b:1/announce"), TorrentMetadataCache.magnetTrackers(m))
         assertTrue(TorrentMetadataCache.magnetTrackers("http://x/y.torrent").isEmpty())
     }
 }

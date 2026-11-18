@@ -16,7 +16,7 @@ class AniZipResponseTest {
 
     @Test
     fun missingImdbIdIsNull() {
-        val json = """{"mappings":{"animeplanet_id":"dragon-ball-super-beerus","anidb_id":null}}"""
+        val json = """{"mappings":{"animeplanet_id":"dragon-ball-super-bqerus","anidb_id":null}}"""
         assertNull(Mapper.json.decodeFromString(AniZipResponse.serializer(), json).mappings.imdbId)
     }
 }

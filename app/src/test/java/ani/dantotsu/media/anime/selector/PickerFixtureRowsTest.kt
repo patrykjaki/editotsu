@@ -13,7 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Real Torrentio Anime rows (owner capture 2026-11-01), in the exact
+ * Real Relayaddon Anime rows (owner capture 2026-11-01), in the exact
  * `server.name` shape the picker gets:
  * "<tracker> - <quality>\n<torrent name>\n[<pack file name>]\n👤 💾 ⚙\n[<language line>]".
  * Expected values are written by hand from the row text.
@@ -47,36 +47,36 @@ class PickerFixtureRowsTest {
     private val DUAL = AudioKind.DUAL
 
     private val expected = listOf(
-        /* 0 */ Expect("Solisfeeld Subs", censorship = U, audio = SUB),
-        /* 1 */ Expect("ToonsHub", censorship = U, service = "ADN", audio = SUB),
-        /* 2 */ Expect("ToonsHub", censorship = U, revision = "REPACK", service = "ADN", audio = SUB),
-        /* 3 */ Expect("ToonsHub", censorship = U, ov = true, audio = SUB),
-        /* 4 */ Expect("ToonsHub", censorship = U, service = "ADN", audio = DUAL),
-        /* 5 */ Expect("ToonsHub", censorship = C, service = "Bilibili", audio = SUB),
-        /* 6 */ Expect("ToonsHub", censorship = C, service = "Amazon"),
-        /* 7 */ Expect("Darkmahou", censorship = U, service = "ADN"),
-        /* 8 */ Expect("ToonsHub", service = "Bilibili", audio = SUB),
-        /* 9 */ Expect("nnotaclue", revision = "v2", audio = SUB),
-        /* 10 */ Expect("nnotaclue", audio = SUB),
+        /* 0 */ Expect("Grpsfeeld Subs", censorship = U, audio = SUB),
+        /* 1 */ Expect("GrpsHubb", censorship = U, service = "ADN", audio = SUB),
+        /* 2 */ Expect("GrpsHubb", censorship = U, revision = "REPACK", service = "ADN", audio = SUB),
+        /* 3 */ Expect("GrpsHubb", censorship = U, ov = true, audio = SUB),
+        /* 4 */ Expect("GrpsHubb", censorship = U, service = "ADN", audio = DUAL),
+        /* 5 */ Expect("GrpsHubb", censorship = C, service = "Bilibili", audio = SUB),
+        /* 6 */ Expect("GrpsHubb", censorship = C, service = "Amazon"),
+        /* 7 */ Expect("Grpkmahou", censorship = U, service = "ADN"),
+        /* 8 */ Expect("GrpsHubb", service = "Bilibili", audio = SUB),
+        /* 9 */ Expect("ngrpaclue", revision = "v2", audio = SUB),
+        /* 10 */ Expect("ngrpaclue", audio = SUB),
         /* 11 */ Expect("Omar", censorship = U, service = "Amazon"),
-        /* 12 */ Expect("ToonsHub", censorship = U, ov = true, audio = SUB),
-        /* 13 */ Expect("NTb", service = "Netflix", audio = DUAL),
-        /* 14 */ Expect("NTb", service = "Netflix", audio = DUAL),
-        /* 15 */ Expect("NTb", service = "Netflix"),
-        /* 16 */ Expect("NTb", service = "Netflix"),
-        /* 17 */ Expect("NTb", service = "Netflix"),
-        /* 18 */ Expect("whomst-mega", revision = "v2", audio = DUAL),
-        /* 19 */ Expect("NTb", service = "Netflix", audio = DUAL),
-        /* 20 */ Expect("whomst-mega", audio = DUAL),
-        /* 21 */ Expect("Judas", audio = DUAL),
-        /* 22 */ Expect("Trix", service = "Netflix", audio = DUAL),
-        /* 23 */ Expect("Ironclad", audio = DUAL),
-        /* 24 */ Expect("whomst-mini", revision = "v2", audio = DUAL),
-        /* 25 */ Expect("whomst", revision = "v2", audio = DUAL),
-        /* 26 */ Expect("Judas", audio = DUAL),
-        /* 27 */ Expect("Trix", service = "Netflix", audio = DUAL),
-        /* 28 */ Expect("whomst-mini", audio = DUAL),
-        /* 29 */ Expect("whomst", audio = DUAL),
+        /* 12 */ Expect("GrpsHubb", censorship = U, ov = true, audio = SUB),
+        /* 13 */ Expect("NQb", service = "Netflix", audio = DUAL),
+        /* 14 */ Expect("NQb", service = "Netflix", audio = DUAL),
+        /* 15 */ Expect("NQb", service = "Netflix"),
+        /* 16 */ Expect("NQb", service = "Netflix"),
+        /* 17 */ Expect("NQb", service = "Netflix"),
+        /* 18 */ Expect("grpst-mega", revision = "v2", audio = DUAL),
+        /* 19 */ Expect("NQb", service = "Netflix", audio = DUAL),
+        /* 20 */ Expect("grpst-mega", audio = DUAL),
+        /* 21 */ Expect("Grpjd", audio = DUAL),
+        /* 22 */ Expect("Grptx", service = "Netflix", audio = DUAL),
+        /* 23 */ Expect("Grpclad", audio = DUAL),
+        /* 24 */ Expect("grpst-mini", revision = "v2", audio = DUAL),
+        /* 25 */ Expect("grpst", revision = "v2", audio = DUAL),
+        /* 26 */ Expect("Grpjd", audio = DUAL),
+        /* 27 */ Expect("Grptx", service = "Netflix", audio = DUAL),
+        /* 28 */ Expect("grpst-mini", audio = DUAL),
+        /* 29 */ Expect("grpst", audio = DUAL),
     )
 
     @Test
@@ -104,7 +104,7 @@ class PickerFixtureRowsTest {
 
     @Test
     fun dubbed_language_line_is_dub() {
-        val row = "nekoBT - 1080p\n[Group] Show - 01 [1080p]\n👤 5 💾 1 GB ⚙ nekoBT\nDubbed / 🇬🇧"
+        val row = "idxTW - 1080p\n[Group] Show - 01 [1080p]\n👤 5 💾 1 GB ⚙ idxTW\nDubbed / 🇬🇧"
         assertEquals(AudioKind.DUB, AudioKindDetector.detect(row))
     }
 
@@ -135,7 +135,7 @@ class PickerFixtureRowsTest {
     fun pack_file_name_is_not_in_the_title_but_in_details() {
         // Row 14: batch torrent; the file line names the episode file.
         val file = SourceRowClassifier.fileNameLine(rows[14])
-        assertEquals("Cyberpunk.Edgerunners.S02E01.Last.Chance.for.a.Slow.Dance.2160p.NF.WEB-DL.DDP5.1.DV.HEVC-NTb.mkv", file)
+        assertEquals("Cyberpunk.Edgerunners.S02E01.Last.Chance.for.a.Slow.Dance.2160p.NF.WEB-DL.DDP5.1.DV.HEVC-NQb.mkv", file)
         assertFalse(title(14).contains("Last Chance"))
         assertFalse(fields(14).releaseName.contains("Last.Chance"))
         assertEquals(file, CompactDetails.fileLine(rows[14]))
@@ -165,11 +165,11 @@ class PickerFixtureRowsTest {
     @Test
     fun seitokai_title_and_file_name_merge() {
         // Torrent title says [UNCENSORED]; the file name says [Real-CUGAN] instead.
-        val file = "[Solisfeeld Subs] Seitokai ni mo Ana wa Aru! - 01 [2160p][Real-CUGAN][HEVC 10bit AAC][PT-BR][ES][IT].mkv"
+        val file = "[Grpsfeeld Subs] Seitokai ni mo Ana wa Aru! - 01 [2160p][Real-CUGAN][HEVC 10bit AAC][PT-BR][ES][IT].mkv"
         val textOnly = fields(0)
         val merged = SourceRowClassifier.parseRelease(rows[0], file)
         assertEquals("Uncensored", merged.censorship)
-        assertEquals("Solisfeeld Subs", merged.releaseGroup)
+        assertEquals("Grpsfeeld Subs", merged.releaseGroup)
         assertEquals(textOnly.resolution, merged.resolution)
         assertEquals(textOnly.codec, merged.codec)
         assertEquals(textOnly.releaseName, merged.releaseName)
@@ -181,7 +181,7 @@ class PickerFixtureRowsTest {
 
     @Test
     fun file_name_fills_missing_fields_only() {
-        val row = "nekoBT - 1080p\n[Grp] Show - 01\n👤 5 💾 1 GB ⚙ nekoBT"
+        val row = "idxTW - 1080p\n[Grp] Show - 01\n👤 5 💾 1 GB ⚙ idxTW"
         val merged = SourceRowClassifier.parseRelease(row, "Show.01.1080p.NF.WEB-DL.UNCENSORED.HEVC-Other.mkv")
         assertEquals("Grp", merged.releaseGroup)
         assertEquals("HEVC", merged.codec)
@@ -200,7 +200,7 @@ class PickerFixtureRowsTest {
             assertEquals("row $i null", f, SourceRowClassifier.parseRelease(rows[i], null))
             assertEquals("row $i blank", f, SourceRowClassifier.parseRelease(rows[i], "  "))
         }
-        val row = "nekoBT - 1080p\n[Grp] Show - 01 [1080p]\n👤 5 💾 1 GB ⚙ nekoBT"
+        val row = "idxTW - 1080p\n[Grp] Show - 01 [1080p]\n👤 5 💾 1 GB ⚙ idxTW"
         assertEquals(SourceRowClassifier.parseRelease(row), SourceRowClassifier.parseRelease(row, "[Grp] Show - 01 [1080p].mkv"))
     }
 
@@ -256,14 +256,14 @@ class PickerFixtureRowsTest {
     }
 
     @Test
-    fun remember_reads_torrentio_tracker() {
-        assertEquals("nekobt", candidate(1).soft["trackerKey"])
-        assertEquals("nyaasi", candidate(2).soft["trackerKey"])
+    fun remember_reads_relayaddon_tracker() {
+        assertEquals("idxtw", candidate(1).soft["trackerKey"])
+        assertEquals("idxone", candidate(2).soft["trackerKey"])
     }
 
     @Test
     fun remember_picks_the_same_release_next_episode() {
-        // ToonsHub has 7 releases per episode (trackers, 1080p/720p, sub/dual,
+        // GrpsHubb has 7 releases per episode (trackers, 1080p/720p, sub/dual,
         // AAC/DDP, H.264/H.265). Each of these picks comes back as itself.
         for (i in listOf(0, 1, 4, 6, 7, 8, 11, 12, 21, 22, 23, 26, 27)) {
             assertEquals("row $i", ep2(i), nextEpisode(i))
@@ -271,21 +271,21 @@ class PickerFixtureRowsTest {
     }
 
     @Test
-    fun remember_suffix_group_ntb() {
-        assertEquals("ntb", candidate(14).groupKey)
-        // 4K DV HDR (13) and 4K DV (14) on NyaaSi are different releases.
+    fun remember_suffix_group_nqb() {
+        assertEquals("nqb", candidate(14).groupKey)
+        // 4K DV HDR (13) and 4K DV (14) on IdxOne are different releases.
         assertEquals(ep2(13), nextEpisode(13))
         assertEquals(ep2(14), nextEpisode(14))
     }
 
     @Test
     fun remember_same_quality_beats_same_tracker() {
-        // Stored: ToonsHub 720p on NyaaSi. Next episode has no NyaaSi 720p, only
-        // a nekoBT 720p and NyaaSi 1080p rows: the 720p row wins.
+        // Stored: GrpsHubb 720p on IdxOne. Next episode has no IdxOne 720p, only
+        // a idxTW 720p and IdxOne 1080p rows: the 720p row wins.
         val stored = storedFrom(12)
         val cands = listOf(1, 2, 3, 5).map { candidate(it, ep = 2) } +
-            FamilyCandidate("nekobt-720", PROVIDER, stored.groupKey, stored.soft + ("trackerKey" to "nekobt"))
-        assertEquals(FamilyAutoResult.Chosen("nekobt-720"), FamilyAutoSelector.select(stored, cands))
+            FamilyCandidate("idxtw-720", PROVIDER, stored.groupKey, stored.soft + ("trackerKey" to "idxtw"))
+        assertEquals(FamilyAutoResult.Chosen("idxtw-720"), FamilyAutoSelector.select(stored, cands))
     }
 
     @Test
@@ -297,23 +297,23 @@ class PickerFixtureRowsTest {
 
     @Test
     fun remember_4k_equals_2160p() {
-        val stored = FamilyPayload(PROVIDER, "ntb", mapOf("resolution" to "4k"))
+        val stored = FamilyPayload(PROVIDER, "nqb", mapOf("resolution" to "4k"))
         val cands = listOf(
-            FamilyCandidate("a", PROVIDER, "ntb", mapOf("resolution" to "1080p")),
-            FamilyCandidate("b", PROVIDER, "ntb", mapOf("resolution" to "2160p")),
+            FamilyCandidate("a", PROVIDER, "nqb", mapOf("resolution" to "1080p")),
+            FamilyCandidate("b", PROVIDER, "nqb", mapOf("resolution" to "2160p")),
         )
         assertEquals(FamilyAutoResult.Chosen("b"), FamilyAutoSelector.select(stored, cands))
     }
 
     @Test
     fun remember_missing_group_selects_nothing() {
-        val stored = FamilyPayload(PROVIDER, "subsplease", mapOf("resolution" to "1080p"))
+        val stored = FamilyPayload(PROVIDER, "subsplume", mapOf("resolution" to "1080p"))
         assertEquals(FamilyAutoResult.None, FamilyAutoSelector.select(stored, rows.indices.map { candidate(it) }))
     }
 
     private companion object {
-        const val FIXTURE = "picker/torrentio_rows_2026-11-01.json"
+        const val FIXTURE = "picker/addon_rows_2026-11-01.json"
         const val MAGNET = "magnet:?xt=urn:btih:00"
-        const val PROVIDER = "eu.kanade.tachiyomi.animeextension.all.torrentioanime"
+        const val PROVIDER = "eu.kanade.tachiyomi.animeextension.all.relayaddonanime"
     }
 }

@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * Beta07 subtitle-styling policy contract.
  *
- * Pins the full decision matrix for [shouldUseSourceSubtitleStyling],
+ * Pins the full decision magrptx for [shouldUseSourceSubtitleStyling],
  * playback-origin classification, and legacy migration. Policy-only:
  * these tests must never touch subtitle URL/header transport, CP3
  * selection, external audio, ExtensionMpvArgs, or mpv bootstrap options

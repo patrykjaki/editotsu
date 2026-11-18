@@ -16,7 +16,7 @@ enum class SourceMetaIcon {
 /**
  * One chip rendered into the meta line of a picker row.
  *
- * @param text display text for the chip (e.g. "545 seeders", "1.48 GB", "NyaaSi", "HDR").
+ * @param text display text for the chip (e.g. "545 seeders", "1.48 GB", "IndexA", "HDR").
  */
 data class SourceMetaChip(
     val icon: SourceMetaIcon,
@@ -93,7 +93,7 @@ enum class SourcePillKind {
  * @param optionalPills remaining pills in priority order, rendered in
  *              the flexible single-line strip (clipped, never wrapped).
  * @param meta meta chips rendered on the third line of the collapsed row
- *              (e.g. "545 seeders · 1.48 GB · NyaaSi").
+ *              (e.g. "545 seeders · 1.48 GB · IndexA").
  * @param details lines rendered in the expandable Details panel.
  */
 data class SourceRowViewModel(
@@ -114,7 +114,7 @@ data class SourceRowViewModel(
     val audioFlags: List<String> = emptyList(),
     val meta: List<SourceMetaChip>,
     val details: List<SourceDetailLine>,
-    /** Tracker / provenance value (e.g. NyaaSi, 1337x, nekoBT). */
+    /** Tracker / provenance value (e.g. IndexA, 2448x). */
     val tracker: String? = null,
 )
 /**

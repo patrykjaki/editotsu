@@ -25,7 +25,7 @@ import org.junit.Test
  */
 class MangaStorageAvailabilityTest {
 
-    // 1 + 2: decide() matrix (physical-first mapping used by all blocking deletes).
+    // 1 + 2: decide() magrptx (physical-first mapping used by all blocking deletes).
 
     @Test
     fun genuinelyAbsent_mapsToDeletedOrAlreadyAbsent() {

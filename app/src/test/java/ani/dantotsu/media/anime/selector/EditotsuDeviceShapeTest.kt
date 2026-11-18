@@ -20,14 +20,14 @@ class EditotsuDeviceShapeTest {
 
     private val magnet = "magnet:?xt=urn:btih:e971d09c2578aefd982b7d4059e8bdd1fc3d2cf4&dn=x&index=0"
 
-    private val title = "[DameDesuYo] ReZero kara Hajimeru Isekai Seikatsu - 01 (1280x720 10bit AAC) [F9A34879].mkv\n" +
-        "👤 15 💾 350.12 MB ⚙️ Nyaa"
+    private val title = "[GrpDameYoo] ReZero kara Hajimeru Isekai Seikatsu - 01 (1280x720 10bit AAC) [F9A34879].mkv\n" +
+        "👤 15 💾 350.12 MB ⚙️ Idxone"
 
     private val internal = """{"editotsu":1,"infoHash":"e971d09c2578aefd982b7d4059e8bdd1fc3d2cf4","fileIdx":0,""" +
-        """"torrentName":"[DameDesuYo] ReZero kara Hajimeru Isekai Seikatsu - 01 (1280x720 10bit AAC) [F9A34879].mkv",""" +
-        """"sizeBytes":367127347,"seeders":15,"leechers":2,"tracker":"nyaa","anidbEid":176270,"anidbAid":11681,""" +
+        """"torrentName":"[GrpDameYoo] ReZero kara Hajimeru Isekai Seikatsu - 01 (1280x720 10bit AAC) [F9A34879].mkv",""" +
+        """"sizeBytes":367127347,"seeders":15,"leechers":2,"tracker":"idxone","anidbEid":176270,"anidbAid":11681,""" +
         """"numFiles":1,"trusted":false,"remake":false,"source":"animetosho",""" +
-        """"tags":{"from":"name","group":"DameDesuYo"},""" +
+        """"tags":{"from":"name","group":"GrpDameYoo"},""" +
         """"media":{"from":"mediainfo","codec":"HEVC","bitDepth":10,"width":1280,"height":720,"durationSec":1500,""" +
         """"audio":[{"lang":"ja","codec":"AAC","channels":2,"default":true}],""" +
         """"subtitles":[{"lang":"en","codec":"ASS","forced":false,"title":"Eng \/ DDY"}]}}"""
@@ -62,7 +62,7 @@ class EditotsuDeviceShapeTest {
         val row = built.rows.single()
         assertNotNull(EditotsuInternalData.of(deviceRow().server.video))
         assertEquals(SourcePresentationKind.RELEASE, view.presentation)
-        assertEquals("DameDesuYo", view.header)
+        assertEquals("GrpDameYoo", view.header)
         assertTrue(view.pills.joinToString { it.toString() }, view.pills.isNotEmpty())
         assertEquals(720, row.resolution)
     }

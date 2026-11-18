@@ -32,9 +32,9 @@ class ExtensionRepoMetaTest {
     @Test
     fun `github raw url resolves to project page`() {
         assertEquals(
-            "https://github.com/keiyoushi/extensions",
+            "https://github.com/someowner/extensions",
             ExtensionRepoMetaHelper.extractGitRepoPage(
-                "https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json"
+                "https://raw.githubusercontent.com/someowner/extensions/repo/index.min.json"
             )
         )
         assertNull(ExtensionRepoMetaHelper.extractGitRepoPage(null))
@@ -136,7 +136,7 @@ class ExtensionRepoMetaTest {
         assertEquals(
             ExtensionRepoMetaHelper.RepoLinkKind.GITHUB,
             ExtensionRepoMetaHelper.classifyRepoPageUrl(
-                "https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json"
+                "https://raw.githubusercontent.com/someowner/extensions/repo/index.min.json"
             )
         )
     }
@@ -145,7 +145,7 @@ class ExtensionRepoMetaTest {
     fun `github repo page classifies as github`() {
         assertEquals(
             ExtensionRepoMetaHelper.RepoLinkKind.GITHUB,
-            ExtensionRepoMetaHelper.classifyRepoPageUrl("https://github.com/keiyoushi/extensions")
+            ExtensionRepoMetaHelper.classifyRepoPageUrl("https://github.com/someowner/extensions")
         )
     }
 
