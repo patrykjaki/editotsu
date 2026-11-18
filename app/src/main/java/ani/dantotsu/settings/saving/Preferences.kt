@@ -283,6 +283,7 @@ enum class PrefName(val data: Pref) {
     CommentAuthResponse(Pref(Location.Irrelevant, AuthResponse::class, "")),
     CommentTokenExpiry(Pref(Location.Irrelevant, Long::class, 0L)),
     AnilistLoginStartedAt(Pref(Location.Irrelevant, Long::class, 0L)),
+    DonatePromptShownAt(Pref(Location.Irrelevant, Long::class, 0L)),
     LogToFile(Pref(Location.Irrelevant, Boolean::class, false)),
     RecentGlobalNotification(Pref(Location.Irrelevant, Int::class, 0)),
     CommentNotificationStore(Pref(Location.Irrelevant, List::class, listOf<CommentStore>())),

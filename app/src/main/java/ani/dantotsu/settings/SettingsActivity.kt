@@ -218,10 +218,16 @@ class SettingsActivity : AppCompatActivity(), SettingsHost {
 
             }
 
-            lifecycleScope.launch(Dispatchers.IO) {
+            // Main scope: cancelled with the activity, and show() never runs after it stopped.
+            val recreated = savedInstanceState != null
+            lifecycleScope.launch {
                 delay(2000)
-                runOnUiThread {
-                    if (Random.nextInt(0, 100) > 69) {
+                if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return@launch
+                run {
+                    val now = System.currentTimeMillis()
+                    val last = PrefManager.getVal<Long>(PrefName.DonatePromptShownAt)
+                    if (DonatePrompt.shouldShow(now, last, Random.nextInt(0, 100), recreated)) {
+                        PrefManager.setVal(PrefName.DonatePromptShownAt, now)
                         CustomBottomDialog.newInstance().apply {
                             title = this@SettingsActivity.getString(R.string.enjoying_app)
                             addView(TextView(this@SettingsActivity).apply {
