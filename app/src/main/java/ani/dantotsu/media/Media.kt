@@ -89,6 +89,8 @@ data class Media(
     var sequel: Media? = null,
     var relations: ArrayList<Media>? = null,
     var recommendations: ArrayList<Media>? = null,
+    // Not java-serializable: skipped when a Media is saved into a Bundle (that crashed on background).
+    @Transient
     var recommendationList: ArrayList<ani.dantotsu.connections.anilist.api.Recommendation>? = null,
     var stats: ani.dantotsu.connections.anilist.api.MediaStats? = null,
     var rankings: List<ani.dantotsu.connections.anilist.api.MediaRank>? = null,

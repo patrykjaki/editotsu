@@ -1408,6 +1408,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="watch_order_alternative">Alternative to %1$d</string>
     <string name="watch_order_pick_desc">Watch order: %1$s. Change</string>
     <string name="read_article">Read Article</string>
+    <string name="news_this_week">This week</string>
+    <string name="news_undated">No date</string>
     <string name="current">Current</string>
 
     <!-- Manga Reader Overhaul & Tabs (MAX MERGE M4C, upstream aa98472a; OCR strings omitted with deferred OCR) -->

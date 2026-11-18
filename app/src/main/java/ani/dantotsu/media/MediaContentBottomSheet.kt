@@ -15,7 +15,8 @@ import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.BottomSheetDialogFragment
 import ani.dantotsu.R
 import ani.dantotsu.databinding.BottomSheetRecyclerBinding
-import ani.dantotsu.databinding.ItemMediaContentBinding
+import ani.dantotsu.databinding.ItemNewsBinding
+import ani.dantotsu.databinding.ItemNewsHeaderBinding
 import ani.dantotsu.databinding.ItemWatchOrderBinding
 import ani.dantotsu.getThemeColor
 import ani.dantotsu.loadImage
@@ -32,6 +33,13 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
     private var _binding: BottomSheetRecyclerBinding? = null
     private val binding get() = _binding!!
     private val model: MediaDetailsViewModel by activityViewModels()
+
+    /**
+     * Kept in memory, not in the arguments: Media holds fields that can't be saved, and saving
+     * them when the app went to the background crashed it. After a recreate the page's media
+     * comes from the shared view model.
+     */
+    private var startMedia: Media? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -52,9 +60,15 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
             getString(R.string.news)
         }
         val title = arguments?.getString(ARG_TITLE)?.ifEmpty { defaultTitle } ?: defaultTitle
-        val media: Media? = arguments?.getSerialized(ARG_MEDIA) ?: model.getMedia().value
+        val media: Media? = startMedia ?: model.getMedia().value
 
         binding.title.text = title
+        if (mode == MODE_NEWS) {
+            // title on the rows' 16dp gutter; the first month header brings its own top space
+            binding.title.setPadding((16 * resources.displayMetrics.density).toInt(), 0, 0, 0)
+            binding.title.typeface = androidx.core.content.res.ResourcesCompat.getFont(requireContext(), R.font.poppins_bold)
+            binding.repliesRecyclerView.setPadding(0, 0, 0, (16 * resources.displayMetrics.density).toInt())
+        }
         if (mode == MODE_WATCH_ORDER) {
             // the shared sheet header has no start inset and a lighter face than the page headers
             binding.title.setPadding((24 * resources.displayMetrics.density).toInt(), 0, 0, 0)
@@ -201,7 +215,9 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
     private fun displayNews(items: List<MediaDetailsViewModel.NewsItem>) {
         binding.repliesEmpty.visibility = View.GONE
         binding.repliesRecyclerView.visibility = View.VISIBLE
-        binding.repliesRecyclerView.adapter = NewsAdapter(items)
+        val media: Media? = startMedia ?: model.getMedia().value
+        val names = listOfNotNull(media?.name, media?.nameRomaji, media?.nameMAL, media?.userPreferredName)
+        binding.repliesRecyclerView.adapter = NewsAdapter(items, names, media?.banner ?: media?.cover)
     }
 
     private fun showEmptyState(mode: String, failed: Boolean = false) {
@@ -384,65 +400,132 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
     }
 
     private inner class NewsAdapter(
-        private val items: List<MediaDetailsViewModel.NewsItem>
-    ) : RecyclerView.Adapter<NewsAdapter.ViewHolder>() {
+        items: List<MediaDetailsViewModel.NewsItem>,
+        private val showNames: List<String>,
+        /** The show's art, for entries whose page has no picture of its own. */
+        private val fallbackImage: String?,
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
-        inner class ViewHolder(val binding: ItemMediaContentBinding) :
-            RecyclerView.ViewHolder(binding.root)
+        private val now = System.currentTimeMillis()
+        private val rows = newsRows(items, now)
+        private val monthFormat = java.text.SimpleDateFormat("LLLL yyyy", java.util.Locale.getDefault())
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-            return ViewHolder(
-                ItemMediaContentBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-            )
+        inner class EntryHolder(val binding: ItemNewsBinding) : RecyclerView.ViewHolder(binding.root)
+        inner class HeaderHolder(val binding: ItemNewsHeaderBinding) : RecyclerView.ViewHolder(binding.root)
+
+        override fun getItemViewType(position: Int) = if (rows[position] is NewsRow.Header) 0 else 1
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val inflater = LayoutInflater.from(parent.context)
+            return if (viewType == 0) {
+                HeaderHolder(ItemNewsHeaderBinding.inflate(inflater, parent, false))
+            } else {
+                EntryHolder(ItemNewsBinding.inflate(inflater, parent, false))
+            }
         }
 
-        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            val item = items[position]
-            val decodedTitle = Parser.unescapeEntities(item.title, false)
-            holder.binding.contentTitle.text = decodedTitle
-
-            val timeAgo = item.date?.let { formatTimeAgo(it.time) }
-            val readArticle = getString(R.string.read_article)
-            holder.binding.contentSubtitle.text = if (timeAgo != null) {
-                "$timeAgo • $readArticle"
-            } else {
-                readArticle
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            when (val row = rows[position]) {
+                is NewsRow.Header -> (holder as HeaderHolder).binding.newsHeader.text = headerText(row)
+                is NewsRow.Entry -> bindEntry((holder as EntryHolder).binding, row.item)
             }
-            holder.binding.contentIcon.setImageResource(R.drawable.ic_round_notifications_active_24)
+        }
 
-            holder.binding.contentCard.setOnClickListener {
-                if (item.url.isNotEmpty()) {
-                    runCatching {
-                        val uri = Uri.parse(item.url)
-                        startActivity(Intent(Intent.ACTION_VIEW, uri))
+        private fun headerText(row: NewsRow.Header): String = when {
+            row.month == null -> getString(R.string.news_this_week)
+            row.year < 0 -> getString(R.string.news_undated)
+            else -> {
+                val cal = java.util.Calendar.getInstance().apply {
+                    clear(); set(row.year, row.month, 1)
+                }
+                monthFormat.format(cal.time).replaceFirstChar { it.titlecase(java.util.Locale.getDefault()) }
+            }
+        }
+
+        private fun bindEntry(b: ItemNewsBinding, item: MediaDetailsViewModel.NewsItem) {
+            val title = newsTitleWithoutShow(Parser.unescapeEntities(item.title, false), showNames)
+            b.newsTitle.text = title
+            val site = newsSite(item.url)
+            val date = item.date?.time?.let { t ->
+                if (now - t < 7L * 24 * 60 * 60 * 1000) {
+                    android.text.format.DateUtils.getRelativeTimeSpanString(
+                        t, now, android.text.format.DateUtils.MINUTE_IN_MILLIS
+                    ).toString()
+                } else {
+                    android.text.format.DateUtils.formatDateTime(
+                        b.root.context, t,
+                        android.text.format.DateUtils.FORMAT_SHOW_DATE or android.text.format.DateUtils.FORMAT_ABBREV_MONTH
+                    )
+                }
+            }
+            b.newsMeta.text = listOfNotNull(site.ifEmpty { null }, date).joinToString(" · ")
+
+            val kind = newsKind(item.url)
+            val videoId = if (kind == NewsKind.VIDEO) youtubeId(item.url) else null
+            b.newsKindIcon.setImageResource(
+                when (kind) {
+                    NewsKind.VIDEO -> R.drawable.ic_round_play_arrow_24
+                    NewsKind.POST -> R.drawable.ic_round_comment_24
+                    NewsKind.ARTICLE -> R.drawable.ic_round_article_24
+                }
+            )
+            if (videoId != null) {
+                b.newsPlay.setImageResource(R.drawable.ic_round_play_arrow_24)
+                b.newsThumb.visibility = View.VISIBLE
+                b.newsPlay.visibility = View.VISIBLE
+                b.newsKindIcon.visibility = View.GONE
+                b.newsThumb.loadImage("https://i.ytimg.com/vi/$videoId/mqdefault.jpg")
+            } else {
+                b.newsPlay.setImageResource(
+                    if (kind == NewsKind.POST) R.drawable.ic_round_comment_24 else R.drawable.ic_round_article_24
+                )
+                if (fallbackImage != null) {
+                    // the show's art with the kind mark on top, until the page's own picture loads
+                    b.newsThumb.visibility = View.VISIBLE
+                    b.newsPlay.visibility = View.VISIBLE
+                    b.newsKindIcon.visibility = View.GONE
+                    b.newsThumb.loadImage(fallbackImage)
+                } else {
+                    b.newsThumb.setImageDrawable(null)
+                    b.newsThumb.visibility = View.GONE
+                    b.newsPlay.visibility = View.GONE
+                    b.newsKindIcon.visibility = View.VISIBLE
+                }
+                // the page's own preview picture, when it has one; the icon stays otherwise
+                b.root.tag = item.url
+                val known = NewsPreviews.cached(item.url)
+                if (known != null) {
+                    if (known.isNotEmpty()) showPreview(b, known)
+                } else if (item.url.startsWith("http")) {
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val img = withContext(Dispatchers.IO) { NewsPreviews.fetch(item.url) }
+                        if (img != null && b.root.tag == item.url) showPreview(b, img)
                     }
+                }
+            }
+
+            b.newsRow.contentDescription = listOf(title, b.newsMeta.text).joinToString(", ")
+            b.newsRow.setOnClickListener {
+                if (item.url.isNotEmpty()) {
+                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url))) }
                 }
             }
         }
 
-        override fun getItemCount() = items.size
-
-        private fun formatTimeAgo(timeMs: Long): String {
-            val diff = System.currentTimeMillis() - timeMs
-            val seconds = diff / 1000
-            val minutes = seconds / 60
-            val hours = minutes / 60
-            val days = hours / 24
-
-            return when {
-                days > 0 -> "${days}d ago"
-                hours > 0 -> "${hours}h ago"
-                minutes > 0 -> "${minutes}m ago"
-                else -> "Just now"
-            }
+        private fun showPreview(b: ItemNewsBinding, image: String) {
+            b.newsThumb.visibility = View.VISIBLE
+            b.newsKindIcon.visibility = View.GONE
+            b.newsPlay.visibility = View.GONE
+            b.newsThumb.loadImage(image)
         }
+
+        override fun getItemCount() = rows.size
     }
 
     companion object {
         private const val ARG_TITLE = "arg_title"
         private const val ARG_MODE = "arg_mode"
         private const val ARG_ITEMS = "arg_items"
-        private const val ARG_MEDIA = "arg_media"
 
         const val MODE_WATCH_ORDER = "watch_order"
         const val MODE_NEWS = "news"
@@ -451,8 +534,8 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
             return MediaContentBottomSheet().apply {
                 arguments = Bundle().apply {
                     putString(ARG_MODE, MODE_WATCH_ORDER)
-                    putSerializable(ARG_MEDIA, media)
                 }
+                startMedia = media
             }
         }
 
@@ -460,8 +543,8 @@ class MediaContentBottomSheet : BottomSheetDialogFragment() {
             return MediaContentBottomSheet().apply {
                 arguments = Bundle().apply {
                     putString(ARG_MODE, MODE_NEWS)
-                    putSerializable(ARG_MEDIA, media)
                 }
+                startMedia = media
             }
         }
 
