@@ -27,6 +27,7 @@ import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
 import nl.joery.animatedbottombar.AnimatedBottomBar
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 class NotificationActivity : AppCompatActivity() {
     lateinit var binding: ActivityNotificationBinding
@@ -48,6 +49,7 @@ class NotificationActivity : AppCompatActivity() {
         initActivity(this)
         binding = ActivityNotificationBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         binding.notificationTitle.text = getString(R.string.notifications)
         binding.notificationToolbar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
             topMargin = statusBarHeight

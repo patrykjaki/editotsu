@@ -65,6 +65,7 @@ import ani.dantotsu.settings.saving.PrefManager.asLiveBool
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.settings.saving.SharedPreferenceBooleanLiveData
 import ani.dantotsu.themes.ThemeManager
+import ani.dantotsu.themes.statusBarOverArtwork
 import ani.dantotsu.util.AudioHelper
 import ani.dantotsu.util.Logger
 import ani.dantotsu.util.customAlertDialog
@@ -86,6 +87,14 @@ import java.io.Serializable
 
 
 class MainActivity : AppCompatActivity() {
+    // what each tab (anime, home, manga) has under the status bar right now: artwork or plain background
+    private val artworkUnderStatusBar = booleanArrayOf(true, false, true)
+
+    fun setArtworkUnderStatusBar(tab: Int, artwork: Boolean) {
+        if (artworkUnderStatusBar[tab] == artwork) return
+        artworkUnderStatusBar[tab] = artwork
+        if (tab == selectedOption) statusBarOverArtwork(artwork)
+    }
     private lateinit var binding: ActivityMainBinding
     private lateinit var incognitoLiveData: SharedPreferenceBooleanLiveData
     private val scope = lifecycleScope
@@ -332,6 +341,7 @@ class MainActivity : AppCompatActivity() {
             // Not at once: the first tab's start-up loading goes first.
             mainViewPager.postDelayed({ mainViewPager.offscreenPageLimit = 2 }, 1500)
             navbar.selectTabAt(selectedOption)
+            statusBarOverArtwork(artworkUnderStatusBar[selectedOption])
             navbar.setOnTabSelectListener(object :
                 AnimatedBottomBar.OnTabSelectListener {
                 override fun onTabSelected(
@@ -343,6 +353,7 @@ class MainActivity : AppCompatActivity() {
                     navbar.animate().translationZ(12f).setDuration(200).start()
                     selectedOption = newIndex
                     mainViewPager.setCurrentItem(newIndex, false)
+                    statusBarOverArtwork(artworkUnderStatusBar[newIndex])
                 }
             })
             if (mainViewPager.currentItem != selectedOption) {

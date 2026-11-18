@@ -25,6 +25,7 @@ import com.xwray.groupie.GroupieAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 class ReviewActivity : AppCompatActivity() {
     private lateinit var binding: ActivityFollowBinding
@@ -47,6 +48,7 @@ class ReviewActivity : AppCompatActivity() {
             bottomMargin = navBarHeight
         }
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         mediaId = intent.getIntExtra("mediaId", -1)
         if (mediaId == -1) {
             finish()

@@ -29,6 +29,7 @@ import com.xwray.groupie.GroupieAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 class ThreadViewActivity : AppCompatActivity() {
 
@@ -44,6 +45,7 @@ class ThreadViewActivity : AppCompatActivity() {
         ThemeManager(this).applyTheme()
         binding = ActivityThreadViewBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         initActivity(this)
 
         binding.threadAppBar.updateLayoutParams<android.view.ViewGroup.MarginLayoutParams> {

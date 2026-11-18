@@ -17,6 +17,7 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
+import ani.dantotsu.themes.followThemeStatusBarIcons
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -31,6 +32,7 @@ class GenreActivity : AppCompatActivity() {
         ThemeManager(this).applyTheme()
         binding = ActivityGenreBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         initActivity(this)
 
         binding.genreContainer.updateLayoutParams<ViewGroup.MarginLayoutParams> { topMargin += statusBarHeight;bottomMargin += navBarHeight }

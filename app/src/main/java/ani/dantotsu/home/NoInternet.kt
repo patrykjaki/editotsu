@@ -38,6 +38,7 @@ import ani.dantotsu.snackString
 import ani.dantotsu.themes.ThemeManager
 import com.google.android.material.snackbar.Snackbar
 import nl.joery.animatedbottombar.AnimatedBottomBar
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 class NoInternet : AppCompatActivity() {
     private lateinit var binding: ActivityNoInternetBinding
@@ -50,6 +51,7 @@ class NoInternet : AppCompatActivity() {
 
         binding = ActivityNoInternetBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
 
         val bottomBar = findViewById<AnimatedBottomBar>(R.id.navbar)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

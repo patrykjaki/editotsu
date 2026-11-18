@@ -8,6 +8,7 @@ import ani.dantotsu.currContext
 import ani.dantotsu.databinding.ActivityFaqBinding
 import ani.dantotsu.initActivity
 import ani.dantotsu.themes.ThemeManager
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 class FAQActivity : AppCompatActivity() {
     private lateinit var binding: ActivityFaqBinding
@@ -114,6 +115,7 @@ class FAQActivity : AppCompatActivity() {
         ThemeManager(this).applyTheme()
         binding = ActivityFaqBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
 
         initActivity(this)
 

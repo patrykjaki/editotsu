@@ -204,6 +204,14 @@ class AnimeFragment : Fragment() {
                     }
                 }
 
+                // the trending artwork sits under the status bar until half of it scrolls away
+                // (its lower half fades into the background)
+                val trending = animePageAdapter.trendingViewPager
+                val artwork = trending != null && trending.isShown && IntArray(2).let {
+                    trending.getLocationOnScreen(it)
+                    it[1] + trending.height / 2 > statusBarHeight
+                }
+                (activity as? ani.dantotsu.MainActivity)?.setArtworkUnderStatusBar(0, artwork)
                 super.onScrolled(v, dx, dy)
             }
         })

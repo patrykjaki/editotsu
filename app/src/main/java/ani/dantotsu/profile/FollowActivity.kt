@@ -24,6 +24,7 @@ import com.xwray.groupie.GroupieAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 
 class FollowActivity : AppCompatActivity() {
@@ -42,6 +43,7 @@ class FollowActivity : AppCompatActivity() {
             bottomMargin = navBarHeight
         }
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         val layoutType = PrefManager.getVal<Int>(PrefName.FollowerLayout)
         selected = getSelected(layoutType)
         binding.followFilterButton.visibility = View.GONE

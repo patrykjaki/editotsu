@@ -60,6 +60,7 @@ import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
+import ani.dantotsu.themes.statusBarOverArtwork
 import ani.dantotsu.util.LauncherWrapper
 import com.flaviofaria.kenburnsview.RandomTransitionGenerator
 import com.google.android.material.appbar.AppBarLayout
@@ -693,6 +694,7 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
 
     //Collapsing UI Stuff
     private var isCollapsed = false
+    private var statusBarOnScrim = false
     private val percent = 45
     private var mMaxScrollSize = 0
     private var screenWidth: Float = 0f
@@ -701,6 +703,12 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
         if (!::binding.isInitialized) return
         if (mMaxScrollSize == 0) mMaxScrollSize = appBar.totalScrollRange
         val percentage = abs(i) * 100 / mMaxScrollSize
+        // the collapsed bar draws a plain scrim under the status bar: switch the icons with it
+        val scrimShown = binding.mediaCollapsing.height + i < binding.mediaCollapsing.scrimVisibleHeightTrigger
+        if (scrimShown != statusBarOnScrim) {
+            statusBarOnScrim = scrimShown
+            statusBarOverArtwork(!scrimShown)
+        }
 
         binding.mediaCover.visibility =
             if (binding.mediaCover.scaleX == 0f) View.GONE else View.VISIBLE

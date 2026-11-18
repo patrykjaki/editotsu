@@ -30,6 +30,7 @@ import ani.dantotsu.util.customAlertDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 class ReviewViewActivity : AppCompatActivity() {
     private lateinit var binding: ActivityReviewViewBinding
@@ -47,6 +48,7 @@ class ReviewViewActivity : AppCompatActivity() {
             bottomMargin += navBarHeight
         }
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         review = intent.getSerializableExtra("review") as Query.Review
         binding.userName.text = review.user?.name
         binding.userAvatar.loadImage(review.user?.avatar?.medium)

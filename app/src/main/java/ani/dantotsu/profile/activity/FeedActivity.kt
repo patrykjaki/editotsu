@@ -18,6 +18,7 @@ import ani.dantotsu.profile.activity.ActivityFragment.Companion.ActivityType
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
 import nl.joery.animatedbottombar.AnimatedBottomBar
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 class FeedActivity : AppCompatActivity() {
     private lateinit var binding: ActivityNotificationBinding
@@ -30,6 +31,7 @@ class FeedActivity : AppCompatActivity() {
         initActivity(this)
         binding = ActivityNotificationBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         binding.notificationTitle.text = getString(R.string.activities)
         binding.notificationToolbar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
             topMargin = statusBarHeight

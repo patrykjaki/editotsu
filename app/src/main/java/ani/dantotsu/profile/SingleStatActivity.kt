@@ -10,6 +10,7 @@ import ani.dantotsu.initActivity
 import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.toast
 import com.github.aachartmodel.aainfographics.aachartcreator.AAOptions
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 class SingleStatActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySingleStatBinding
@@ -19,6 +20,7 @@ class SingleStatActivity : AppCompatActivity() {
         initActivity(this)
         binding = ActivitySingleStatBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         val chartOptions = chartOptions
         if (chartOptions != null) {
             chartOptions.chart?.backgroundColor = getThemeColor(android.R.attr.windowBackground)

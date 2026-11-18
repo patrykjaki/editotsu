@@ -23,6 +23,7 @@ import com.xwray.groupie.GroupieAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 class ForumActivity : AppCompatActivity() {
 
@@ -37,6 +38,7 @@ class ForumActivity : AppCompatActivity() {
         ThemeManager(this).applyTheme()
         binding = ActivityForumBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         initActivity(this)
 
         binding.forumAppBar.updateLayoutParams<android.view.ViewGroup.MarginLayoutParams> {

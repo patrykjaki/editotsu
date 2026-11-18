@@ -25,6 +25,7 @@ import com.bumptech.glide.Glide
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 /**
  * Find the show, episode and moment a screenshot is from. One screen, four states: nothing picked
@@ -57,6 +58,7 @@ class ImageSearchActivity : AppCompatActivity() {
         ThemeManager(this).applyTheme()
         binding = ActivityImageSearchBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        followThemeStatusBarIcons()
 
         binding.imageSearchBar.updateLayoutParams<ViewGroup.MarginLayoutParams> { topMargin = statusBarHeight }
         binding.imageSearchScroll.updatePadding(bottom = binding.imageSearchScroll.paddingBottom + navBarHeight)

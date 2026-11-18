@@ -165,3 +165,14 @@ fun Activity.followThemeStatusBarIcons() {
     androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars =
         androidx.core.graphics.ColorUtils.calculateLuminance(background) > 0.5
 }
+
+/**
+ * White icons while artwork sits under the status bar, theme icons once a plain background does.
+ */
+fun Activity.statusBarOverArtwork(artwork: Boolean) {
+    if (artwork) {
+        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
+    } else {
+        followThemeStatusBarIcons()
+    }
+}

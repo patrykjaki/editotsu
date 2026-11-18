@@ -30,6 +30,7 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import tachiyomi.core.util.lang.launchIO
+import ani.dantotsu.themes.followThemeStatusBarIcons
 
 class ActivityMarkdownCreator : AppCompatActivity() {
     private lateinit var binding: ActivityMarkdownCreatorBinding
@@ -80,6 +81,7 @@ class ActivityMarkdownCreator : AppCompatActivity() {
             bottomMargin += navBarHeight
         }
         setContentView(binding.root)
+        followThemeStatusBarIcons()
         AndroidBug5497Workaround.assistActivity(this) {}
 
         val params = binding.createButton.layoutParams as ViewGroup.MarginLayoutParams

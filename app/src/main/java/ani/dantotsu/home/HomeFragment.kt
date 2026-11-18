@@ -87,6 +87,15 @@ class HomeFragment : Fragment() {
 
     val model: AnilistHomeViewModel by activityViewModels()
 
+    // the user's banner sits under the status bar until the page scrolls past it
+    private var hasBanner = false
+
+    private fun updateStatusBar() {
+        val b = _binding ?: return
+        val artwork = hasBanner && b.homeScroll.scrollY < b.homeUserBg.height / 2
+        (activity as? MainActivity)?.setArtworkUnderStatusBar(1, artwork)
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val scope = lifecycleScope
         Logger.log("HomeFragment")
@@ -120,6 +129,8 @@ class HomeFragment : Fragment() {
                     if (bannerAnimations) binding.homeUserBg else binding.homeUserBgNoKen,
                     bannerUrl
                 )
+                hasBanner = bannerUrl != null
+                updateStatusBar()
                 binding.homeUserDataProgressBar.visibility = View.GONE
 
                 val listUserId = Anilist.userid ?: 0
@@ -213,6 +224,7 @@ class HomeFragment : Fragment() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             binding.homeScroll.setOnScrollChangeListener { _, _, _, _, _ ->
+                updateStatusBar()
                 val bar = bottomBarOrNull ?: return@setOnScrollChangeListener
                 if (!binding.homeScroll.canScrollVertically(1)) {
                     reached = true
