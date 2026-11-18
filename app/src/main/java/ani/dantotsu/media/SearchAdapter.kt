@@ -104,10 +104,6 @@ class SearchAdapter(private val activity: SearchActivity, private val type: Sear
         chips = bindChips(activity, type, activity.aniMangaResult) { applyFiltersChanged() }
         activity.updateChips = { chips?.build() }
 
-        binding.searchFilter.setOnClickListener {
-            GenreTagSheet.show(activity, activity.aniMangaResult) { applyFiltersChanged() }
-        }
-
         if (activity.aniMangaResult.type != "ANIME") {
             binding.searchByImage.visibility = View.GONE
         }

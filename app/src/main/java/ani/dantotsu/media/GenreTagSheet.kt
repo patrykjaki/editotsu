@@ -35,7 +35,7 @@ import com.google.android.material.color.MaterialColors
 
 /**
  * Unified genres & tags sheet: search field on top, genres group first, then tag groups by category.
- * Every row has a tri-state box that cycles blank -> ✓ include -> ✕ exclude (in the theme's error colour).
+ * Every row has a tri-state box that cycles blank -> ✓ include -> ✕ exclude, both in the primary colour: the icon carries the state.
  */
 object GenreTagSheet {
 
@@ -209,7 +209,7 @@ object GenreTagSheet {
             val (iconRes, tintAttr) = when (mark) {
                 Mark.NONE -> R.drawable.ic_tri_box_blank to com.google.android.material.R.attr.colorOnSurfaceVariant
                 Mark.INCLUDE -> R.drawable.ic_tri_box_include to androidx.appcompat.R.attr.colorPrimary
-                Mark.EXCLUDE -> R.drawable.ic_tri_box_exclude to androidx.appcompat.R.attr.colorError
+                Mark.EXCLUDE -> R.drawable.ic_tri_box_exclude to androidx.appcompat.R.attr.colorPrimary
             }
             o.genreTagBox.setImageResource(iconRes)
             ImageViewCompat.setImageTintList(

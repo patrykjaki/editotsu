@@ -18,8 +18,8 @@
         android:layout_gravity="center_horizontal"
         android:clipToPadding="false"
         android:fillViewport="true"
-        android:paddingStart="2dp"
-        android:paddingEnd="2dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp"
         android:scrollbarSize="0dp">
 
         <LinearLayout
@@ -35,7 +35,7 @@
                 android:layout_marginEnd="8dp"
                 android:text="@string/previous_season"
                 android:textAppearance="@style/Suffix"
-                app:chipStrokeColor="?attr/colorPrimaryContainer"
+                app:chipStrokeColor="?attr/colorOutlineVariant"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent" />
         
@@ -46,7 +46,7 @@
                 android:layout_marginEnd="8dp"
                 android:text="@string/this_season"
                 android:textAppearance="@style/Suffix"
-                app:chipStrokeColor="?attr/colorPrimaryContainer"
+                app:chipStrokeColor="?attr/colorOutlineVariant"
                 app:layout_constraintBaseline_toBaselineOf="@+id/animeNextSeason"
                 app:layout_constraintEnd_toStartOf="@+id/animeNextSeason"
                 app:layout_constraintStart_toStartOf="parent" />
@@ -58,7 +58,7 @@
                 android:layout_marginEnd="8dp"
                 android:text="@string/next_season"
                 android:textAppearance="@style/Suffix"
-                app:chipStrokeColor="?attr/colorPrimaryContainer" />
+                app:chipStrokeColor="?attr/colorOutlineVariant" />
         </LinearLayout>
 
     </HorizontalScrollView>

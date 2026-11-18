@@ -34,6 +34,7 @@ class GenreActivity : AppCompatActivity() {
         setContentView(binding.root)
         followThemeStatusBarIcons()
         initActivity(this)
+        binding.genreBack.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
         binding.genreContainer.updateLayoutParams<ViewGroup.MarginLayoutParams> { topMargin += statusBarHeight;bottomMargin += navBarHeight }
         val screenWidth = resources.displayMetrics.run { widthPixels / density }
@@ -45,9 +46,12 @@ class GenreActivity : AppCompatActivity() {
                     binding.mediaInfoGenresProgressBar.visibility = View.GONE
                 }
             }
+            // the adult genre only for accounts that show adult content, as in search
+            fun shown(genre: String) = Anilist.adult || !genre.equals("hentai", true)
             if (model.genres != null) {
-                adapter.genres = model.genres!!
-                adapter.pos = ArrayList(model.genres!!.keys)
+                val keep = model.genres!!.filterKeys(::shown)
+                adapter.genres = keep.toMutableMap()
+                adapter.pos = ArrayList(keep.keys)
                 if (model.done)
                     model.doneListener?.invoke()
             }
@@ -59,7 +63,7 @@ class GenreActivity : AppCompatActivity() {
                 model.loadGenres(
                     Anilist.genres ?: loadLocalGenres() ?: arrayListOf()
                 ) {
-                    MainScope().launch {
+                    if (shown(it.first)) MainScope().launch {
                         adapter.addGenre(it)
                     }
                 }

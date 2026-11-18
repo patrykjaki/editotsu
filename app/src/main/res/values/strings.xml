@@ -759,6 +759,7 @@
     <string name="copied_device_info">Copied device info</string>
     <string name="anilist_down">Seems like Anilist is down, maybe try using a VPN or you can wait for it to come back.</string>
     <string name="rescue_mode">Rescue Mode (MAL)</string>
+    <string name="rescue_mode_needs_mal">Sign in to MyAnimeList first</string>
     <string name="rescue_mode_prompt_title">AniList Unavailable</string>
     <string name="rescue_mode_prompt_message">AniList seems to be disabled or unavailable. Would you like to enable Rescue Mode and use MAL/Jikan as a fallback? Your progress will be cached and synced back to AniList when it comes back online.</string>
     <string name="rescue_mode_enable">Enable Rescue Mode</string>
@@ -1963,7 +1964,6 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="chip_any">Any</string>
     <string name="chip_exclude">Exclude</string>
     <string name="genres_and_tags">Genres &amp; tags</string>
-    <string name="filter_genres_and_tags">Filter genres and tags</string>
     <string name="search_genres_and_tags">Search genres and tags</string>
     <string name="genre_tag_included">%1$s, included</string>
     <string name="genre_tag_excluded">%1$s, excluded</string>

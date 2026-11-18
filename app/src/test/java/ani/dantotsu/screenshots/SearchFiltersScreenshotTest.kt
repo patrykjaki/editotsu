@@ -56,9 +56,7 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         val activity = Robolectric.buildActivity(SearchActivity::class.java).setup().get()
         idle()
 
-        val filterBtn = activity.findViewById<View>(R.id.searchFilter)
-        assertNotNull("searchFilter icon button in search bar", filterBtn)
-        assertEquals(View.VISIBLE, filterBtn.visibility)
+        // one way into the sheet: the labelled chip (the search bar has no separate filter icon)
 
         val chipRow = activity.findViewById<LinearLayout>(R.id.searchChips)
         val chipLabelsBefore = (0 until chipRow.childCount).map { (chipRow.getChildAt(it) as Chip).text.toString() }
