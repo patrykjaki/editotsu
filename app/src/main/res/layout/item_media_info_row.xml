@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A label/value line like the media info table above it (Mean Score, Status...). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="24dp"
+    android:orientation="horizontal">
+
+    <TextView
+        android:id="@+id/infoRowLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:alpha="0.58"
+        android:textStyle="bold"
+        tools:text="Season 1" />
+
+    <TextView
+        android:id="@+id/infoRowValue"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_weight="1"
+        android:fontFamily="@font/poppins_bold"
+        android:textAlignment="textEnd"
+        tools:text="Vol 1–7 · Ch 1–58" />
+</LinearLayout>

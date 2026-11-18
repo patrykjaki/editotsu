@@ -397,17 +397,15 @@
                     android:textSize="16sp"
                     android:visibility="gone" />
 
-                <TextView
+                <LinearLayout
                     android:id="@+id/mediaNextChapterPrediction"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="16dp"
-                    android:ellipsize="end"
-                    android:maxLines="5"
-                    android:padding="16dp"
-                    android:text="Chap: ??"
-                    android:visibility="gone"
-                    tools:ignore="HardcodedText" />
+                    android:orientation="vertical"
+                    android:paddingHorizontal="32dp"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="16dp"
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/mediaAnimeAdaptationText"
@@ -419,17 +417,15 @@
                     android:textSize="16sp"
                     android:visibility="gone" />
 
-                <TextView
+                <LinearLayout
                     android:id="@+id/mediaAnimeAdaptation"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="16dp"
-                    android:ellipsize="end"
-                    android:maxLines="5"
-                    android:padding="16dp"
-                    android:text="Starts: ??"
-                    android:visibility="gone"
-                    tools:ignore="HardcodedText" />
+                    android:orientation="vertical"
+                    android:paddingHorizontal="32dp"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="16dp"
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/mediaInfoDescriptionText"

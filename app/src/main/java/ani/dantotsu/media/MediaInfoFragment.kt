@@ -86,42 +86,77 @@ class MediaInfoFragment : Fragment() {
         _binding = null
     }
 
-    // Method to display anime adaptation
-    private fun displayAnimeAdaptation(adaptation: MangaAnimeUtil.AnimeAdaptation) {
-        if (adaptation.hasAdaptation) {
-            val adaptationText = buildString {
-                append("Start: ${adaptation.animeStart ?: "Unknown"}\n")
-                append("End: ${adaptation.animeEnd ?: "Ongoing"}")
-            }
-
-            binding.mediaAnimeAdaptation.text = adaptationText
-
-            binding.mediaAnimeAdaptationText.fadeIn()
-            binding.mediaAnimeAdaptation.fadeIn()
-        } else {
-            binding.mediaAnimeAdaptationText.fadeOut()
-            binding.mediaAnimeAdaptation.fadeOut()
-        }
+    /** One label/value line in a section, styled like the info table at the top of the page. */
+    private fun addInfoRow(parent: android.widget.LinearLayout, label: String, value: String, accent: Boolean = false) {
+        val row = ani.dantotsu.databinding.ItemMediaInfoRowBinding.inflate(layoutInflater, parent, false)
+        row.infoRowLabel.text = label
+        row.infoRowValue.text = value
+        if (accent) row.infoRowValue.setTextColor(
+            com.google.android.material.color.MaterialColors.getColor(row.root, androidx.appcompat.R.attr.colorPrimary)
+        )
+        parent.addView(row.root)
     }
-    private fun displayNextChapterPrediction(prediction: MangaAnimeUtil.NextRelease) {
-        if (prediction.error == null && prediction.nextReleaseDate != null) {
-            val dateFormat = java.text.SimpleDateFormat("d MMMM", java.util.Locale.US)
 
-            val predictionText = buildString {
-                append("Current: ${prediction.latestChapter ?: "Unknown"}\n")
-                append("${prediction.nextChapter ?: "Next chapter"} releases on ${
-                    dateFormat.format(prediction.nextReleaseDate)
-                }")
+    /** "Vol 1–7 · Ch 1–58", "Ch 126 onward", or whatever part of that is known. */
+    private fun adaptationSpan(season: ani.dantotsu.media.mangaupdates.AdaptationSeasons.Season): String {
+        fun range(from: String?, to: String?): String? = when {
+            from != null && to != null && from != to -> "$from–$to"
+            else -> from ?: to
+        }
+        val vol = range(season.start?.volume, season.end?.volume)?.let { getString(R.string.adaptation_volume, it) }
+        val ch = range(season.start?.chapter, season.end?.chapter)?.let { getString(R.string.adaptation_chapter, it) }
+        val span = listOfNotNull(vol, ch).joinToString(" · ")
+        // a season without an end yet: "Vol 14 · Ch 126 onward"
+        return if (season.ongoing && span.isNotEmpty()) getString(R.string.adaptation_onward, span) else span
+    }
+
+    // Which chapters each anime season covers, and where to pick up the manga after the anime
+    private fun displayAnimeAdaptation(adaptation: MangaAnimeUtil.AnimeAdaptation) {
+        val box = binding.mediaAnimeAdaptation
+        if (!adaptation.hasAdaptation) {
+            binding.mediaAnimeAdaptationText.fadeOut()
+            box.fadeOut()
+            return
+        }
+        box.removeAllViews()
+        val seasons = ani.dantotsu.media.mangaupdates.AdaptationSeasons.parse(adaptation.animeStart, adaptation.animeEnd)
+        if (ani.dantotsu.media.mangaupdates.AdaptationSeasons.unreadable(seasons)) {
+            adaptation.animeStart?.let { addInfoRow(box, getString(R.string.adaptation_start), it) }
+            adaptation.animeEnd?.let { addInfoRow(box, getString(R.string.adaptation_end), it) }
+        } else {
+            seasons.forEach { season ->
+                val label = when {
+                    season.label == null -> getString(R.string.adaptation_anime)
+                    season.label.all(Char::isDigit) -> getString(R.string.adaptation_season, season.label)
+                    else -> season.label
+                }
+                addInfoRow(box, label, adaptationSpan(season))
             }
+            ani.dantotsu.media.mangaupdates.AdaptationSeasons.readFrom(seasons)?.let {
+                addInfoRow(box, getString(R.string.adaptation_read_from), getString(R.string.adaptation_chapter, it), accent = true)
+            }
+        }
+        binding.mediaAnimeAdaptationText.fadeIn()
+        box.fadeIn()
+    }
 
-            binding.mediaNextChapterPrediction.text = predictionText
-
+    private fun displayNextChapterPrediction(prediction: MangaAnimeUtil.NextRelease) {
+        val box = binding.mediaNextChapterPrediction
+        if (prediction.error == null && prediction.nextReleaseDate != null) {
+            box.removeAllViews()
+            fun chapter(raw: String?) = raw?.let { Regex("""[\d.]+""").find(it)?.value }
+                ?.let { getString(R.string.adaptation_chapter, it) } ?: raw
+            val date = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(prediction.nextReleaseDate)
+            chapter(prediction.latestChapter)?.let { addInfoRow(box, getString(R.string.prediction_latest), it) }
+            addInfoRow(
+                box, getString(R.string.prediction_next),
+                listOfNotNull(chapter(prediction.nextChapter), date).joinToString(" · "), accent = true,
+            )
             binding.mediaNextChapterPredictionText.fadeIn()
-            binding.mediaNextChapterPrediction.fadeIn()
+            box.fadeIn()
         } else {
             binding.mediaNextChapterPredictionText.fadeOut()
-            binding.mediaNextChapterPrediction.fadeOut()
-
+            box.fadeOut()
             if (prediction.error != null) {
                 Logger.log("Next chapter prediction error: ${prediction.error}")
             }

@@ -1536,8 +1536,18 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="privacy_policy_desc">Read our privacy policy</string>
     <string name="failed_to_load">Failed to load</string>
     <string name="studios">Studios</string>
-    <string name="next_chapter_prediction">Next Chapter Prediction</string>
-    <string name="anime_adaptation">Anime Adaptation</string>
+    <string name="next_chapter_prediction">Next chapter</string>
+    <string name="anime_adaptation">Anime adaptation</string>
+    <string name="adaptation_season">Season %1$s</string>
+    <string name="adaptation_anime">Anime</string>
+    <string name="adaptation_start">Start</string>
+    <string name="adaptation_end">End</string>
+    <string name="adaptation_read_from">Continue the manga from</string>
+    <string name="adaptation_onward">%1$s onward</string>
+    <string name="adaptation_volume">Vol %1$s</string>
+    <string name="adaptation_chapter">Ch %1$s</string>
+    <string name="prediction_latest">Latest chapter</string>
+    <string name="prediction_next">Next, expected</string>
 
     <string name="filter_activity">Filter Activity</string>
     <string name="filter_activity_subtitle">Choose what type of activities to show</string>

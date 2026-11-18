@@ -85,6 +85,20 @@ class SearchFilterChips(
                 }
             }
         }
+        setFiltersFirst(f)
+    }
+
+    /**
+     * Ten filters don't fit on a phone, so the ones in use move to the front (right after the type
+     * chip): a set filter is never scrolled out of sight. Each sheet's "Any" clears its filter.
+     */
+    private fun setFiltersFirst(@Suppress("UNUSED_PARAMETER") f: AniMangaSearchResults) {
+        val chips = (1 until row.childCount).map { row.getChildAt(it) as Chip }
+        val set = chips.filter { it.isChecked }
+        if (set.isEmpty()) return
+        chips.forEach(row::removeView)
+        (set + chips.filterNot { it.isChecked }).forEach(row::addView)
+        (row.parent as? android.widget.HorizontalScrollView)?.post { (row.parent as? android.widget.HorizontalScrollView)?.scrollTo(0, 0) }
     }
 
     private fun chip(text: CharSequence, dropdown: Boolean = true): Chip {
