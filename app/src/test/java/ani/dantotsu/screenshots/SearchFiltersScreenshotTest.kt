@@ -78,7 +78,8 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         assertEquals(listOf("Action"), activity.aniMangaResult.genres)
         assertEquals(emptyList<String>(), activity.aniMangaResult.excludedGenres)
 
-        val gtChipAfterInclude = (chipRow.getChildAt(2) as Chip)
+        // a set filter moves right after the type chip
+        val gtChipAfterInclude = (chipRow.getChildAt(1) as Chip)
         assertTrue(gtChipAfterInclude.isChecked)
         assertTrue(gtChipAfterInclude.text.toString().startsWith("Action"))
 
@@ -86,13 +87,15 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         idle()
         assertEquals(emptyList<String>(), activity.aniMangaResult.genres)
         assertEquals(listOf("Action"), activity.aniMangaResult.excludedGenres)
-        assertTrue((chipRow.getChildAt(2) as Chip).text.toString().startsWith("\u2212Action"))
+        assertTrue((chipRow.getChildAt(1) as Chip).text.toString().startsWith("\u2212Action"))
 
         actionRow.performClick() // EXCLUDE -> NONE
         idle()
         assertEquals(emptyList<String>(), activity.aniMangaResult.genres)
         assertEquals(emptyList<String>(), activity.aniMangaResult.excludedGenres)
-        assertFalse((chipRow.getChildAt(2) as Chip).isChecked)
+        val gtChipCleared = (0 until chipRow.childCount).map { chipRow.getChildAt(it) as Chip }
+            .first { it.text.toString().startsWith("Genres & tags") }
+        assertFalse(gtChipCleared.isChecked)
 
         // Search box inside the sheet filters groups in place
         val searchField = dialog.findViewById<EditText>(R.id.genreTagSearchText)!!

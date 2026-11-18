@@ -116,6 +116,7 @@ class SettingsKeysTest {
         g(PrefName.OverScrollMode, Location.Reader, Boolean::class, true),
         g(PrefName.OverridePassword, Location.Protected, Boolean::class, false),
         g(PrefName.Padding, Location.Reader, Boolean::class, true),
+        g(PrefName.PlayerBufferSize, Location.Player, Int::class, 0),
         g(PrefName.Pip, Location.Player, Boolean::class, true),
         g(PrefName.PrimaryColor, Location.Player, Int::class, Color.WHITE),
         g(PrefName.RecentlyListOnly, Location.General, Boolean::class, false),
