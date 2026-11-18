@@ -285,6 +285,15 @@ class MpvPlaybackEngine(
     override val durationMs: Long
         get() = currentSnapshot.durationMs
 
+    /** A bigger buffer may use at most an eighth of the device's RAM. */
+    private fun bufferRamCapBytes(): Long {
+        val am = context?.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            ?: return Long.MAX_VALUE
+        val info = android.app.ActivityManager.MemoryInfo()
+        am.getMemoryInfo(info)
+        return if (info.totalMem > 0L) info.totalMem / 8 else Long.MAX_VALUE
+    }
+
     @Volatile
     private var cacheEndMs: Long = 0L
     override val bufferedPositionMs: Long
@@ -839,7 +848,11 @@ class MpvPlaybackEngine(
             val perFileOptions = MpvNetworkOptions.buildPerFilePerformanceOptions(
                 sourceClass = request.sourceClass,
                 headers = request.headers,
-                startPositionMs = request.startPositionMs
+                startPositionMs = request.startPositionMs,
+                bufferLevel = runCatching {
+                    ani.dantotsu.settings.saving.PrefManager.getVal<Int>(ani.dantotsu.settings.saving.PrefName.PlayerBufferSize)
+                }.getOrDefault(0),
+                ramCapBytes = bufferRamCapBytes()
             )
 
             // Apply subtitle style if session-configured

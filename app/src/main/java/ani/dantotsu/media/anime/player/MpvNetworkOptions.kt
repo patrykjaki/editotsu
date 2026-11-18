@@ -2,6 +2,22 @@ package ani.dantotsu.media.anime.player
 
 object MpvNetworkOptions {
 
+    private const val MB = 1024L * 1024L
+
+    /** Forward cache per buffer size choice (Default, Large, Huge), in MB. */
+    val STREAM_BUFFER_MB = listOf(64, 256, 512)
+    val TORRENT_BUFFER_MB = listOf(32, 128, 256)
+
+    /**
+     * Forward demuxer cache for [level], never more than [ramCapBytes] (a share of the
+     * device's RAM) and never below the Default size. Unknown levels fall back to Default.
+     */
+    fun bufferBytes(level: Int, torrent: Boolean, ramCapBytes: Long = Long.MAX_VALUE): Long {
+        val table = if (torrent) TORRENT_BUFFER_MB else STREAM_BUFFER_MB
+        val chosen = table.getOrElse(level) { table[0] } * MB
+        return chosen.coerceAtMost(ramCapBytes).coerceAtLeast(table[0] * MB)
+    }
+
     private val SENSITIVE_HEADER_KEYS = setOf(
         "authorization",
         "cookie",
@@ -75,9 +91,13 @@ object MpvNetworkOptions {
     fun buildPerFilePerformanceOptions(
         sourceClass: PlaybackSourceClass = PlaybackSourceClass.LOCAL_FILE,
         headers: Map<String, String> = emptyMap(),
-        startPositionMs: Long = 0L
+        startPositionMs: Long = 0L,
+        bufferLevel: Int = 0,
+        ramCapBytes: Long = Long.MAX_VALUE
     ): String {
         val optionsList = mutableListOf<String>()
+        val streamBytes = bufferBytes(bufferLevel, torrent = false, ramCapBytes = ramCapBytes)
+        val torrentBytes = bufferBytes(bufferLevel, torrent = true, ramCapBytes = ramCapBytes)
 
         val ua = extractUserAgent(headers)
         if (!ua.isNullOrBlank()) {
@@ -106,14 +126,14 @@ object MpvNetworkOptions {
 
         when (sourceClass) {
             PlaybackSourceClass.DIRECT_HTTP -> {
-                optionsList.add("demuxer-max-bytes=67108864")
-                optionsList.add("demuxer-max-back-bytes=33554432")
+                optionsList.add("demuxer-max-bytes=$streamBytes")
+                optionsList.add("demuxer-max-back-bytes=${streamBytes / 2}")
                 optionsList.add("network-timeout=20")
                 optionsList.add("cache-pause-initial=no")
                 optionsList.add("cache-pause-wait=1")
             }
             PlaybackSourceClass.HLS -> {
-                optionsList.add("demuxer-max-bytes=67108864")
+                optionsList.add("demuxer-max-bytes=$streamBytes")
                 optionsList.add("network-timeout=20")
                 // Beta10 revert of the beta09 experiment (`demuxer-lavf-format
                 // =mpegts`): the force applies at EVERY demux_open including
@@ -127,8 +147,8 @@ object MpvNetworkOptions {
                 // regressing working servers. See MpvHlsDemuxerForceTest.
             }
             PlaybackSourceClass.TORRENT_LOCALHOST -> {
-                optionsList.add("demuxer-max-bytes=33554432")
-                optionsList.add("demuxer-max-back-bytes=16777216")
+                optionsList.add("demuxer-max-bytes=$torrentBytes")
+                optionsList.add("demuxer-max-back-bytes=${torrentBytes / 2}")
                 optionsList.add("demuxer-readahead-secs=20")
                 optionsList.add("demuxer-lavf-probesize=262144")
                 optionsList.add("demuxer-lavf-analyzeduration=0.1")

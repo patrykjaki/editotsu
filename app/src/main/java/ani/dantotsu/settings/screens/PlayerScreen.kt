@@ -9,6 +9,7 @@ import androidx.core.content.res.ResourcesCompat
 import ani.dantotsu.R
 import ani.dantotsu.connections.subtitles.OnlineSubtitleLanguages
 import ani.dantotsu.media.anime.player.ActiveVideoPipeline
+import ani.dantotsu.media.anime.player.MpvNetworkOptions
 import ani.dantotsu.media.anime.player.PlaybackSpeedSelection
 import ani.dantotsu.media.anime.player.SubtitleStylingMode
 import ani.dantotsu.media.anime.player.SubtitleStylingStore
@@ -75,6 +76,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
         VideoFilterTheme.Cinema to R.string.color_profile_cinema,
         VideoFilterTheme.Vintage to R.string.color_profile_vintage,
     )
+    private val BUFFER_LABELS = listOf(R.string.buffer_default, R.string.buffer_large, R.string.buffer_huge)
     private val SUB_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
     private val BOOST_CAPS = listOf(0, 15, 30, 50)
 
@@ -204,6 +206,16 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
                 textSegment(R.string.resize_original), textSegment(R.string.resize_zoom),
                 textSegment(R.string.resize_stretch),
             )),
+            // How much video is loaded ahead. Bigger rides out slow servers but uses more RAM;
+            // capped at an eighth of the device's RAM. Applies from the next video.
+            choiceRow(PrefName.PlayerBufferSize, R.string.buffer_size, R.drawable.ic_download_24,
+                labels = { c -> BUFFER_LABELS.map { c.getString(it) } },
+                details = { c ->
+                    BUFFER_LABELS.indices.map { i ->
+                        c.getString(R.string.buffer_size_detail,
+                            MpvNetworkOptions.STREAM_BUFFER_MB[i], MpvNetworkOptions.TORRENT_BUFFER_MB[i])
+                    }
+                }),
         )),
         Section(R.string.player_filters, listOf(
             // Smooths colour banding in dark gradients; CPU uses ffmpeg gradfun, GPU uses libmpv's deband.

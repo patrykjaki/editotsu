@@ -462,6 +462,11 @@
     <string name="default_quality_info">Automatically uses the closest quality provided by default, ONLY applied for \"Multi Quality\" Servers. Auto changes upon playing a video.</string>
     <string name="default_playback_speed">Default Playback Speed: %1$s</string>
     <string name="cursed_speeds">Cursed Speeds</string>
+    <string name="buffer_size">Buffer size</string>
+    <string name="buffer_default">Default</string>
+    <string name="buffer_large">Large</string>
+    <string name="buffer_huge">Huge</string>
+    <string name="buffer_size_detail">%1$d MB ahead, torrents %2$d MB</string>
     <string name="resize_mode_button">Default Resize Mode</string>
     <string name="subtitles">Subtitles</string>
     <string name="primary_sub_color_select">Subtitle Color</string>

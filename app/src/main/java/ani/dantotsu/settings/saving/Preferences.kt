@@ -353,4 +353,6 @@ enum class PrefName(val data: Pref) {
     SubtitleSpeed(Pref(Location.Player, Float::class, 1.0f)),
     VolumeBoostCap(Pref(Location.Player, Int::class, 30)),
     AudioNightMode(Pref(Location.Player, Boolean::class, false)),
+    /** 0 Default, 1 Large, 2 Huge; see MpvNetworkOptions.bufferBytes. */
+    PlayerBufferSize(Pref(Location.Player, Int::class, 0)),
 }
