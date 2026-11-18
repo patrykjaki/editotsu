@@ -1773,6 +1773,7 @@ fun buildMarkwon(
                 )
             }
             plugin.addHandler(AlignTagHandler())
+            plugin.addHandler(ani.dantotsu.others.SpoilerTagHandler())
         })
         .usePlugin(GlideImagesPlugin.create(object : GlideImagesPlugin.GlideStore {
 

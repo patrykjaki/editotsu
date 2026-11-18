@@ -14,11 +14,9 @@ import java.util.regex.Pattern
 
 class SpoilerPlugin(private val anilist: Boolean = false) : AbstractMarkwonPlugin() {
     override fun beforeSetText(textView: TextView, markdown: Spanned) {
-        if (anilist) {
-            applySpoilerSpans(markdown as Spannable, ARE)
-        } else {
-            applySpoilerSpans(markdown as Spannable)
-        }
+        val spannable = markdown as? Spannable ?: return
+        applySpoilerSpans(spannable, ARE)
+        if (!anilist) applySpoilerSpans(spannable, RE)
     }
 
     class RedditSpoilerSpan : CharacterStyle() {
@@ -49,12 +47,32 @@ class SpoilerPlugin(private val anilist: Boolean = false) : AbstractMarkwonPlugi
     }
 
     companion object {
-        private val RE = Pattern.compile("\\|\\|.+?\\|\\|")
-        private val ARE = Pattern.compile("~!.+?!~")
+        // DOTALL: a spoiler may run over several lines or paragraphs.
+        internal val RE: Pattern = Pattern.compile("\\|\\|.+?\\|\\|", Pattern.DOTALL)
+        // ~!text!~ or ~!{label}text!~ (labelled spoilers): the label stays readable.
+        internal val ARE: Pattern = Pattern.compile("~!(?:\\{([^}\r\n<>]*)\\})?(.+?)!~", Pattern.DOTALL)
+
+        /** Hidden range of each spoiler and the syntax around it, for [applySpoilerSpans] and tests. */
+        internal data class SpoilerRange(val start: Int, val end: Int, val hidden: List<IntRange>)
+
+        internal fun spoilerRanges(text: String, regex: Pattern): List<SpoilerRange> {
+            val out = mutableListOf<SpoilerRange>()
+            val m = regex.matcher(text)
+            while (m.find()) {
+                val s = m.start()
+                val e = m.end()
+                val labelled = m.groupCount() >= 1 && m.group(1) != null
+                // with a label: hide "~!{" and "}", keep the label, cover only what follows it
+                val bodyStart = if (labelled) m.end(1) + 1 else s
+                val hidden = if (labelled) listOf(s until m.start(1), m.end(1) until m.end(1) + 1, e - 2 until e)
+                else listOf(s until s + 2, e - 2 until e)
+                out += SpoilerRange(bodyStart, e, hidden)
+            }
+            return out
+        }
+
         private fun applySpoilerSpans(spannable: Spannable, regex: Pattern = RE) {
-            val text = spannable.toString()
-            val matcher = regex.matcher(text)
-            while (matcher.find()) {
+            for (r in spoilerRanges(spannable.toString(), regex)) {
                 val spoilerSpan = RedditSpoilerSpan()
                 val clickableSpan: ClickableSpan = object : ClickableSpan() {
                     override fun onClick(widget: View) {
@@ -65,28 +83,13 @@ class SpoilerPlugin(private val anilist: Boolean = false) : AbstractMarkwonPlugi
                         widget.postInvalidateOnAnimation()
                     }
 
-                    override fun updateDrawState(ds: TextPaint) {
-                        // no op
-                    }
+                    override fun updateDrawState(ds: TextPaint) {}
                 }
-                val s = matcher.start()
-                val e = matcher.end()
-                spannable.setSpan(spoilerSpan, s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                spannable.setSpan(clickableSpan, s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-
-                // we also can hide original syntax
-                spannable.setSpan(
-                    HideSpoilerSyntaxSpan(),
-                    s,
-                    s + 2,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-                spannable.setSpan(
-                    HideSpoilerSyntaxSpan(),
-                    e - 2,
-                    e,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
+                spannable.setSpan(spoilerSpan, r.start, r.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                spannable.setSpan(clickableSpan, r.start, r.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                r.hidden.forEach {
+                    spannable.setSpan(HideSpoilerSyntaxSpan(), it.first, it.last + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
             }
         }
     }
