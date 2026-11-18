@@ -147,6 +147,8 @@ class PlaybackEngineMedia3Player(
         if (playlist.isNotEmpty()) {
             stateBuilder.setCurrentMediaItemIndex(if (playlist.size > 1) queueIndex else 0)
             stateBuilder.setContentPositionMs(engine.positionMs.coerceAtLeast(0L))
+            // live, so the loaded part grows between the once-a-second state refreshes
+            stateBuilder.setContentBufferedPositionMs { engine.bufferedPositionMs.coerceAtLeast(0L) }
         } else {
             stateBuilder.setCurrentMediaItemIndex(C.INDEX_UNSET)
         }

@@ -18,6 +18,9 @@ interface PlaybackEngine {
 
     val positionMs: Long
     val durationMs: Long
+    /** End of what is already loaded ahead of the position; the seek bar draws it. */
+    val bufferedPositionMs: Long
+        get() = positionMs
     val isPlaying: Boolean
     val playWhenReady: Boolean
     val isBuffering: Boolean

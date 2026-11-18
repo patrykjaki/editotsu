@@ -284,6 +284,11 @@ class MpvPlaybackEngine(
         get() = currentSnapshot.positionMs
     override val durationMs: Long
         get() = currentSnapshot.durationMs
+
+    @Volatile
+    private var cacheEndMs: Long = 0L
+    override val bufferedPositionMs: Long
+        get() = MpvEventMapper.bufferedEnd(positionMs, cacheEndMs, durationMs)
     override val isPlaying: Boolean
         get() = currentSnapshot.isActuallyPlaying
     override val playWhenReady: Boolean
@@ -388,6 +393,7 @@ class MpvPlaybackEngine(
             mpvClient.observeProperty("pause", MPV_FORMAT_FLAG)
             mpvClient.observeProperty("core-idle", MPV_FORMAT_FLAG)
             mpvClient.observeProperty("paused-for-cache", MPV_FORMAT_FLAG)
+            mpvClient.observeProperty("demuxer-cache-time", MPV_FORMAT_DOUBLE)
             mpvClient.observeProperty("speed", MPV_FORMAT_DOUBLE)
             mpvClient.observeProperty("track-list", MPV_FORMAT_NODE)
             mpvClient.observeProperty("sid", MPV_FORMAT_INT64)
@@ -847,6 +853,7 @@ class MpvPlaybackEngine(
             val combinedOptions = listOf(perFileOptions, extraOptions)
                 .filter { it.isNotBlank() }
                 .joinToString(",")
+            cacheEndMs = 0L
             if (combinedOptions.isNotBlank()) {
                 mpvClient.command("loadfile", loadUri, "replace", "-1", combinedOptions)
             } else {
@@ -1521,6 +1528,10 @@ class MpvPlaybackEngine(
                 isPausedInternal = paused
                 maybeMarkPlaybackStarted(activeOp)
                 computeAndPublishPlayingState()
+            }
+            "demuxer-cache-time" -> {
+                val sec = mpvClient.getPropertyDouble("demuxer-cache-time")
+                cacheEndMs = if (sec != null && sec > 0.0) TimeConverter.secondsToMs(sec) else 0L
             }
             "core-idle" -> {
                 val idle = mpvClient.getPropertyBoolean("core-idle") ?: true

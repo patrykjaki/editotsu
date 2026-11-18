@@ -186,4 +186,13 @@ class MpvEventMapperTest {
             )
         )
     }
+
+    @Test
+    fun bufferedEndFollowsCacheButStaysBetweenPositionAndDuration() {
+        assertEquals(90_000L, MpvEventMapper.bufferedEnd(60_000L, 90_000L, 1_440_000L))
+        assertEquals(60_000L, MpvEventMapper.bufferedEnd(60_000L, 0L, 1_440_000L))
+        assertEquals(60_000L, MpvEventMapper.bufferedEnd(60_000L, 30_000L, 1_440_000L))
+        assertEquals(1_440_000L, MpvEventMapper.bufferedEnd(1_400_000L, 1_450_000L, 1_440_000L))
+        assertEquals(90_000L, MpvEventMapper.bufferedEnd(60_000L, 90_000L, 0L))
+    }
 }

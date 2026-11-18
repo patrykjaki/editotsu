@@ -293,6 +293,7 @@ class Media3DrmPlaybackEngine(
     }
 
     override val positionMs: Long get() = player?.currentPosition ?: 0L
+    override val bufferedPositionMs: Long get() = player?.bufferedPosition ?: positionMs
     override val durationMs: Long
         get() = player?.duration?.takeIf { it != C.TIME_UNSET } ?: 0L
     override val isPlaying: Boolean get() = player?.isPlaying == true

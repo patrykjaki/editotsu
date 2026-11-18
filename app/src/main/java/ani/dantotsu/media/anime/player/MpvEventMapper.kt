@@ -4,6 +4,12 @@ object MpvEventMapper {
 
     const val PLAYBACK_STARTED_ADVANCE_MS = 500L
 
+    /** Loaded end for the seek bar: mpv's cache end, never behind the position or past the end. */
+    fun bufferedEnd(positionMs: Long, cacheEndMs: Long, durationMs: Long): Long {
+        val end = maxOf(positionMs, cacheEndMs)
+        return if (durationMs > 0L) end.coerceAtMost(durationMs) else end
+    }
+
     fun shouldMarkPlaybackStarted(
         isLoaded: Boolean,
         firstFrameShown: Boolean,
