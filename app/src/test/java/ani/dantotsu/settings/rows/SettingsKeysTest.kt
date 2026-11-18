@@ -57,6 +57,7 @@ class SettingsKeysTest {
         g(PrefName.CommentNotificationInterval, Location.General, Int::class, 0),
         g(PrefName.CommentsEnabled, Location.General, Int::class, 0),
         g(PrefName.ContinueMedia, Location.General, Boolean::class, true),
+        g(PrefName.CoverEpisodeCount, Location.UI, Int::class, 0),
         g(PrefName.CropBorders, Location.Reader, Boolean::class, false),
         g(PrefName.CursedSpeeds, Location.Player, Boolean::class, false),
         g(PrefName.CustomLocalSourceStyling, Location.Player, Boolean::class, true),

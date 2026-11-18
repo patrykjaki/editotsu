@@ -1409,6 +1409,21 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="watch_order_pick_desc">Watch order: %1$s. Change</string>
     <string name="read_article">Read Article</string>
     <string name="news_this_week">This week</string>
+    <string name="cover_episode_count">Episode count</string>
+    <string name="cover_episode_count_cover">On the cover</string>
+    <string name="cover_episode_count_below">Under the title</string>
+    <string name="cover_episode_count_new">New only</string>
+    <string name="cover_episode_count_cover_detail">Watched | out | total, in a pill on the cover</string>
+    <string name="cover_episode_count_below_detail">Watched | out | total, in a line under the title</string>
+    <string name="cover_episode_count_new_detail">How many are out and not seen yet, on shows you\'ve started</string>
+    <plurals name="cover_unseen_episodes">
+        <item quantity="one">%d new episode</item>
+        <item quantity="other">%d new episodes</item>
+    </plurals>
+    <plurals name="cover_unseen_chapters">
+        <item quantity="one">%d new chapter</item>
+        <item quantity="other">%d new chapters</item>
+    </plurals>
     <string name="news_undated">No date</string>
     <string name="current">Current</string>
 

@@ -27,6 +27,7 @@ import ani.dantotsu.settings.rows.SettingsHost
 import ani.dantotsu.settings.rows.SettingsScreen
 import ani.dantotsu.settings.rows.SettingsScreenActivity
 import ani.dantotsu.settings.rows.actionRow
+import ani.dantotsu.settings.rows.choiceRow
 import ani.dantotsu.settings.rows.segmentedRow
 import ani.dantotsu.settings.rows.sliderRow
 import ani.dantotsu.settings.rows.textSegment
@@ -41,6 +42,15 @@ import eltos.simpledialogfragment.SimpleDialog
 import eltos.simpledialogfragment.color.SimpleColorDialog
 
 /** Settings > Appearance ([AppearanceScreen]). Theme changes recreate it. */
+/** Same order as [ani.dantotsu.media.CoverCountMode]. */
+private val COVER_COUNT_LABELS = listOf(
+    R.string.cover_episode_count_cover, R.string.cover_episode_count_below, R.string.cover_episode_count_new,
+)
+private val COVER_COUNT_DETAILS = listOf(
+    R.string.cover_episode_count_cover_detail, R.string.cover_episode_count_below_detail,
+    R.string.cover_episode_count_new_detail,
+)
+
 class UserInterfaceSettingsActivity : SettingsScreenActivity(), SimpleDialog.OnDialogResultListener {
     override val screen get() = AppearanceScreen
 
@@ -187,6 +197,12 @@ object AppearanceScreen : SettingsScreen("appearance", R.string.settings_appeara
                 keys = listOf(PrefName.HomeLayout, PrefName.HomeLayoutOrder),
                 onClick = { host, _ -> editHomeLayout(host) }),
             switchRow(PrefName.SmallView, R.string.small_view, icon = R.drawable.ic_round_art_track_24, onChange = restart),
+            // Where covers show the episode count: progress pill on the cover, the line below it,
+            // or only what's out and unseen. One place at a time.
+            choiceRow(PrefName.CoverEpisodeCount, R.string.cover_episode_count, R.drawable.ic_round_art_track_24,
+                labels = { c -> COVER_COUNT_LABELS.map { c.getString(it) } },
+                details = { c -> COVER_COUNT_DETAILS.map { c.getString(it) } },
+                onChange = restart),
             switchRow(PrefName.CarouselClearLogo, R.string.carousel_clearlogo, icon = R.drawable.ic_round_auto_awesome_24,
                 onChange = restart),
         )),

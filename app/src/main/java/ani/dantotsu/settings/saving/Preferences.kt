@@ -356,4 +356,6 @@ enum class PrefName(val data: Pref) {
     AudioNightMode(Pref(Location.Player, Boolean::class, false)),
     /** 0 Default, 1 Large, 2 Huge; see MpvNetworkOptions.bufferBytes. */
     PlayerBufferSize(Pref(Location.Player, Int::class, 0)),
+    /** 0: unseen count as a badge on covers; 1: the "2 | 11" line under covers. */
+    CoverEpisodeCount(Pref(Location.UI, Int::class, 0)),
 }

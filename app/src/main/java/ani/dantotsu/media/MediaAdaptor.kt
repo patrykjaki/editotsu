@@ -1,5 +1,11 @@
 package ani.dantotsu.media
 
+import com.google.android.material.color.MaterialColors
+import androidx.core.graphics.ColorUtils
+import android.text.style.ForegroundColorSpan
+import android.text.Spanned
+import android.text.SpannableString
+import android.content.res.ColorStateList
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
@@ -174,8 +180,6 @@ class MediaAdaptor(
                                     R.drawable.ic_round_movie_filter_24
                                 )
                             )
-                            b.itemCompactTotal.text =
-                                " | ${if (media.anime.nextAiringEpisode != null) (media.anime.nextAiringEpisode.toString() + " | " + (media.anime.totalEpisodes ?: "~").toString()) else (media.anime.totalEpisodes ?: "~").toString()}"
                         } else if (media.manga != null) {
                             if (media.relation != null) b.itemCompactTypeImage.setImageDrawable(
                                 AppCompatResources.getDrawable(
@@ -183,10 +187,9 @@ class MediaAdaptor(
                                     R.drawable.ic_round_import_contacts_24
                                 )
                             )
-                            b.itemCompactTotal.text = " | ${media.manga.totalChapters ?: "~"}"
                         }
                     }
-                    b.itemCompactProgressContainer.visibility = if (fav) View.GONE else View.VISIBLE
+                    bindCoverCount(b, media, fav)
                 }
             }
 
@@ -506,6 +509,55 @@ class MediaAdaptor(
             .replace("&gt;", ">")
             .replace(Regex("\\s+"), " ")
             .trim()
+    }
+
+    /**
+     * Episode count (appearance): "2 | 9 | 11" in a pill on the cover, the same in the line
+     * under the title, or only the new count on the cover. One place at a time.
+     */
+    private fun bindCoverCount(b: ItemMediaCompactBinding, media: Media, fav: Boolean) {
+        if (media.id < 0) { // skeleton placeholder: keep its grey bar, no pill
+            b.itemCompactCoverCount.isVisible = false
+            b.itemCompactProgressContainer.visibility = View.VISIBLE
+            return
+        }
+        val (watched, rest) = coverProgressParts(
+            media.userProgress,
+            media.anime?.nextAiringEpisode,
+            media.anime?.totalEpisodes ?: media.manga?.totalChapters,
+        )
+        b.itemCompactTotal.text = rest
+        val mode = CoverCountMode.of(PrefManager.getVal(PrefName.CoverEpisodeCount))
+        val pill = b.itemCompactCoverCount
+        val color = { attr: Int -> MaterialColors.getColor(pill, attr) }
+        when (mode) {
+            CoverCountMode.COVER -> {
+                pill.isVisible = !fav
+                val on = color(com.google.android.material.R.attr.colorOnSecondaryContainer)
+                pill.backgroundTintList = ColorStateList.valueOf(color(com.google.android.material.R.attr.colorSecondaryContainer))
+                pill.setTextColor(on)
+                pill.text = SpannableString(watched + rest).apply {
+                    setSpan(ForegroundColorSpan(ColorUtils.setAlphaComponent(on, 0xB3)), watched.length, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                pill.contentDescription = null // reads as the text: "2 | 9 | 11"
+            }
+            CoverCountMode.NEW -> {
+                val unseen = coverUnseenCount(media.userProgress, media.userStatus, media.releasedCount())
+                pill.isVisible = unseen != null
+                if (unseen != null) {
+                    pill.backgroundTintList = ColorStateList.valueOf(color(androidx.appcompat.R.attr.colorPrimary))
+                    pill.setTextColor(color(com.google.android.material.R.attr.colorOnPrimary))
+                    pill.text = coverCountLabel(unseen)
+                    pill.contentDescription = activity.resources.getQuantityString(
+                        if (media.anime != null) R.plurals.cover_unseen_episodes else R.plurals.cover_unseen_chapters,
+                        unseen, unseen,
+                    )
+                }
+            }
+            CoverCountMode.BELOW -> pill.isVisible = false
+        }
+        b.itemCompactProgressContainer.visibility =
+            if (fav || mode != CoverCountMode.BELOW) View.GONE else View.VISIBLE
     }
 
     override fun getItemCount() = mediaList!!.size
