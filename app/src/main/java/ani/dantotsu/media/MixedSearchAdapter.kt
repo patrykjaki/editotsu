@@ -144,7 +144,7 @@ class MixedSearchAdapter(
 
             is Row.StaffRow -> bindCompact(
                 holder as CompactVH,
-                title = row.item.name,
+                title = row.item.name.orEmpty(),
                 subtitle = row.item.role?.takeIf { it.isNotBlank() && !it.equals("STAFF", true) },
                 imageUrl = row.item.image,
                 circleAvatar = false,
