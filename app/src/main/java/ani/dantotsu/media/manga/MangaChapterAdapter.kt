@@ -56,6 +56,16 @@ class MangaChapterAdapter(
         return type
     }
 
+    /** Long-press on an unread chapter: buzz, then ask before writing the list (a stray press used to set progress at once). */
+    private fun confirmProgress(view: View, number: String) {
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        view.context.customAlertDialog().apply {
+            setTitle(view.context.getString(R.string.mark_read_up_to, number.removeSuffix(".0")))
+            setPosButton(R.string.mark_read) { updateProgress(media, number) }
+            setNegButton(R.string.cancel)
+        }.show()
+    }
+
     override fun getItemCount(): Int = arr.size
 
     inner class ChapterCompactViewHolder(val binding: ItemEpisodeCompactBinding) :
@@ -349,11 +359,8 @@ class MangaChapterAdapter(
                         binding.itemEpisodeViewedCover.visibility = View.VISIBLE
                     else {
                         binding.itemEpisodeViewedCover.visibility = View.GONE
-                        binding.itemEpisodeCont.setOnLongClickListener {
-                            updateProgress(
-                                media,
-                                MediaNameAdapter.findChapterNumber(ep.number).toString()
-                            )
+                        binding.itemEpisodeCont.setOnLongClickListener { v ->
+                            confirmProgress(v, MediaNameAdapter.findChapterNumber(ep.number).toString())
                             true
                         }
                     }
@@ -396,11 +403,8 @@ class MangaChapterAdapter(
                     } else {
                         binding.itemEpisodeViewedCover.visibility = View.GONE
                         binding.itemEpisodeViewed.visibility = View.GONE
-                        binding.root.setOnLongClickListener {
-                            updateProgress(
-                                media,
-                                MediaNameAdapter.findChapterNumber(ep.number).toString()
-                            )
+                        binding.root.setOnLongClickListener { v ->
+                            confirmProgress(v, MediaNameAdapter.findChapterNumber(ep.number).toString())
                             true
                         }
                     }

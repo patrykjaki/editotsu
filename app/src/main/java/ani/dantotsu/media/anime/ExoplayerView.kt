@@ -1379,6 +1379,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (durationMs > 0L) lastDurationMs = durationMs
         timeline.setPosition(positionMs)
         timeline.setDuration(durationMs)
+        // The loaded part of the bar: what the engine has read ahead of the playhead.
+        timeline.setBufferedPosition(playerManager.playbackEngine?.bufferedPositionMs ?: positionMs)
         exoPositionText.text = formatTime(positionMs)
         exoDurationText.text = formatTime(durationMs)
         // Discontinuity-based Discord re-publish: only fires on real seeks, not during normal playback.

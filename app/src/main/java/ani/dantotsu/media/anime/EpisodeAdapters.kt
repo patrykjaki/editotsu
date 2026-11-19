@@ -202,8 +202,8 @@ class EpisodeAdapter(
                     } else {
                         binding.itemEpisodeViewedCover.visibility = View.GONE
                         binding.itemEpisodeViewed.visibility = View.GONE
-                        binding.itemEpisodeCont.setOnLongClickListener {
-                            updateProgress(media, ep.number)
+                        binding.itemEpisodeCont.setOnLongClickListener { v ->
+                            confirmProgress(v, ep.number)
                             true
                         }
                     }
@@ -271,8 +271,8 @@ class EpisodeAdapter(
                     } else {
                         binding.itemEpisodeViewedCover.visibility = View.GONE
                         binding.itemEpisodeViewed.visibility = View.GONE
-                        binding.itemEpisodeCont.setOnLongClickListener {
-                            updateProgress(media, ep.number)
+                        binding.itemEpisodeCont.setOnLongClickListener { v ->
+                            confirmProgress(v, ep.number)
                             true
                         }
                     }
@@ -302,8 +302,8 @@ class EpisodeAdapter(
                         binding.itemEpisodeViewedCover.visibility = View.VISIBLE
                     else {
                         binding.itemEpisodeViewedCover.visibility = View.GONE
-                        binding.itemEpisodeCont.setOnLongClickListener {
-                            updateProgress(media, ep.number)
+                        binding.itemEpisodeCont.setOnLongClickListener { v ->
+                            confirmProgress(v, ep.number)
                             true
                         }
                     }
@@ -317,6 +317,16 @@ class EpisodeAdapter(
                 )
             }
         }
+    }
+
+    /** Long-press on an unwatched episode: buzz, then ask before writing the list (a stray press used to set progress at once). */
+    private fun confirmProgress(view: View, number: String) {
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        view.context.customAlertDialog().apply {
+            setTitle(view.context.getString(R.string.mark_watched_up_to, number))
+            setPosButton(R.string.mark_watched) { updateProgress(media, number) }
+            setNegButton(R.string.cancel)
+        }.show()
     }
 
     override fun getItemCount(): Int = arr.size

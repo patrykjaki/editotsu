@@ -706,6 +706,10 @@
     <string name="long_click_to_check_update">Long click to check for app updates</string>
     <string name="saved_to_path">Saved to:\n%s</string>
     <string name="error_saving_settings">Failed to save settings</string>
+    <string name="mark_watched_up_to">Mark watched up to episode %1$s?</string>
+    <string name="mark_watched">Mark watched</string>
+    <string name="mark_read_up_to">Mark read up to chapter %1$s?</string>
+    <string name="mark_read">Mark read</string>
     <string name="setting_progress">Setting progress to %1$d</string>
     <string name="progress_sync_later">Progress %1$d not saved to the tracker. It will sync when online</string>
     <string name="login_anilist_account">Please Login into AniList account!</string>
