@@ -45,4 +45,27 @@ class CoverCountTest {
         assertEquals(CoverCountMode.NEW, CoverCountMode.of(2))
         assertEquals(CoverCountMode.COVER, CoverCountMode.of(7))
     }
+
+    @Test
+    fun pillOnListShowsProgress() {
+        assertEquals(CoverPill.Progress("2", " | 9 | 11"), coverPill(2, "CURRENT", 9, 11, isAnime = true))
+        // planned: on the list, nothing watched
+        assertEquals(CoverPill.Progress("0", " | 12"), coverPill(0, "PLANNING", null, 12, isAnime = true))
+    }
+
+    @Test
+    fun pillOffListShowsHowManyAreOut() {
+        assertEquals(CoverPill.Out(7), coverPill(null, null, 7, 12, isAnime = true))
+        assertEquals(CoverPill.Out(12), coverPill(null, "", null, 12, isAnime = true))
+        assertEquals(CoverPill.Out(272), coverPill(null, null, null, 272, isAnime = false))
+        assertNull(coverPill(null, null, null, null, isAnime = true))
+    }
+
+    @Test
+    fun pillHiddenOnMovies() {
+        assertNull(coverPill(null, null, null, 1, isAnime = true))
+        assertNull(coverPill(1, "COMPLETED", null, 1, isAnime = true))
+        // a one-chapter manga still shows
+        assertEquals(CoverPill.Out(1), coverPill(null, null, null, 1, isAnime = false))
+    }
 }

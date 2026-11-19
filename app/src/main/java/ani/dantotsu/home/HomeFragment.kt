@@ -274,6 +274,24 @@ class HomeFragment : Fragment() {
 
 
         //Function For Recycler Views
+        // Row order in HomeLayout / HomeLayoutOrder. A row turned off in settings is never
+        // queried, so showing its container would leave a skeleton that never loads.
+        val layoutRows = listOf(
+            binding.homeContinueWatchingContainer,
+            binding.homeFavAnimeContainer,
+            binding.homePlannedAnimeContainer,
+            binding.homeContinueReadingContainer,
+            binding.homeFavMangaContainer,
+            binding.homePlannedMangaContainer,
+            binding.homeRecommendedContainer,
+            binding.homeUserStatusContainer,
+            binding.homeMissingSequelsContainer,
+        )
+        fun rowEnabled(container: View): Boolean {
+            val i = layoutRows.indexOf(container)
+            return i < 0 || PrefManager.getVal<List<Boolean>>(PrefName.HomeLayout).getOrElse(i) { true }
+        }
+
         fun initRecyclerView(
             mode: LiveData<ArrayList<Media>>,
             container: View,
@@ -284,7 +302,7 @@ class HomeFragment : Fragment() {
             more: View,
             string: String
         ) {
-            container.visibility = View.VISIBLE
+            container.visibility = if (rowEnabled(container)) View.VISIBLE else View.GONE
             // Until the row loads: the drawn skeleton with its sweep, like every other loading
             // row, instead of placeholder cards that don't move.
             progress.visibility = View.VISIBLE
@@ -588,10 +606,12 @@ class HomeFragment : Fragment() {
                 if (inRescueMode) {
                     alOnlySections.forEach { it.visibility = View.GONE }
 
-                    binding.homeContinueWatchingContainer.visibility = View.VISIBLE
-                    binding.homePlannedAnimeContainer.visibility = View.VISIBLE
-                    binding.homeContinueReadingContainer.visibility = View.VISIBLE
-                    binding.homePlannedMangaContainer.visibility = View.VISIBLE
+                    listOf(
+                        binding.homeContinueWatchingContainer,
+                        binding.homePlannedAnimeContainer,
+                        binding.homeContinueReadingContainer,
+                        binding.homePlannedMangaContainer,
+                    ).forEach { it.visibility = if (rowEnabled(it)) View.VISIBLE else View.GONE }
                 } else {
                     val homeLayoutShow: List<Boolean> = PrefManager.getVal(PrefName.HomeLayout)
                     val alOnlyIndices = listOf(1, 4, 7, 8)
@@ -662,7 +682,7 @@ class HomeFragment : Fragment() {
                     val homeLayoutShow: List<Boolean> = PrefManager.getVal(PrefName.HomeLayout)
                     var homeLayoutOrder: List<Int> = PrefManager.getVal(PrefName.HomeLayoutOrder)
                     if (homeLayoutOrder.isEmpty()) {
-                        homeLayoutOrder = (0..7).toList()
+                        homeLayoutOrder = containers.indices.toList()
                     }
 
                     withContext(Dispatchers.Main) {

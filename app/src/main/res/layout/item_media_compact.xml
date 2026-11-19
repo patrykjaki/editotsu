@@ -70,21 +70,21 @@
 
             </LinearLayout>
 
-            <!-- "Episode count" in appearance: "2 | 9 | 11" on secondaryContainer, or the new count on primary -->
+            <!-- "Episode count" in appearance: "2 | 9 | 11" (or "7 ep" off the list) on secondaryContainer, or the new count on primary -->
             <TextView
                 android:id="@+id/itemCompactCoverCount"
                 android:layout_width="wrap_content"
-                android:layout_height="20dp"
-                android:layout_gravity="top|end"
-                android:layout_margin="6dp"
+                android:layout_height="22dp"
+                android:layout_gravity="top|start"
                 android:background="@drawable/cover_count_bg"
                 android:backgroundTint="?attr/colorPrimary"
                 android:fontFamily="@font/poppins_bold"
                 android:gravity="center"
                 android:includeFontPadding="false"
-                android:minWidth="20dp"
+                android:minWidth="28dp"
                 android:maxLines="1"
-                android:paddingHorizontal="6dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="9dp"
                 android:textColor="?attr/colorOnPrimary"
                 android:textSize="12sp"
                 android:visibility="gone"

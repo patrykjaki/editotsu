@@ -13,6 +13,25 @@ internal fun coverProgressParts(progress: Int?, aired: Int?, total: Int?): Pair<
         (if (aired != null) " | $aired | ${total ?: "~"}" else " | ${total ?: "~"}")
 
 /**
+ * What the cover pill shows in the "On the cover" mode. On the list: [coverProgressParts]
+ * ("2 | 9 | 11"). Not on the list: only how many are out ("7 ep"), since a "~" for watched
+ * says nothing. Null hides the pill: a single-episode anime (movie), or nothing known.
+ */
+internal sealed interface CoverPill {
+    data class Progress(val watched: String, val rest: String) : CoverPill
+    data class Out(val count: Int) : CoverPill
+}
+
+internal fun coverPill(
+    progress: Int?, listStatus: String?, aired: Int?, total: Int?, isAnime: Boolean,
+): CoverPill? {
+    if (isAnime && total == 1) return null
+    if (listStatus.isNullOrEmpty()) return (aired ?: total)?.takeIf { it > 0 }?.let { CoverPill.Out(it) }
+    val (w, r) = coverProgressParts(progress, aired, total)
+    return CoverPill.Progress(w, r)
+}
+
+/**
  * Episodes or chapters that are out and not yet watched or read, for the badge on a cover.
  * Only for shows already started (watching, paused, rewatching): on a planned show it
  * would just repeat the episode total. Null hides the badge: not started, done with it,

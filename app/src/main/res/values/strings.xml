@@ -1416,6 +1416,16 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="cover_episode_count_cover_detail">Watched | out | total, in a pill on the cover</string>
     <string name="cover_episode_count_below_detail">Watched | out | total, in a line under the title</string>
     <string name="cover_episode_count_new_detail">How many are out and not seen yet, on shows you\'ve started</string>
+    <string name="cover_out_episodes">%1$d ep</string>
+    <string name="cover_out_chapters">%1$d ch</string>
+    <plurals name="cover_out_episodes_long">
+        <item quantity="one">%1$d episode out</item>
+        <item quantity="other">%1$d episodes out</item>
+    </plurals>
+    <plurals name="cover_out_chapters_long">
+        <item quantity="one">%1$d chapter out</item>
+        <item quantity="other">%1$d chapters out</item>
+    </plurals>
     <plurals name="cover_unseen_episodes">
         <item quantity="one">%d new episode</item>
         <item quantity="other">%d new episodes</item>

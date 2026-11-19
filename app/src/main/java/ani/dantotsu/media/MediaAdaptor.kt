@@ -521,7 +521,7 @@ class MediaAdaptor(
             b.itemCompactProgressContainer.visibility = View.VISIBLE
             return
         }
-        val (watched, rest) = coverProgressParts(
+        val (_, rest) = coverProgressParts(
             media.userProgress,
             media.anime?.nextAiringEpisode,
             media.anime?.totalEpisodes ?: media.manga?.totalChapters,
@@ -532,14 +532,32 @@ class MediaAdaptor(
         val color = { attr: Int -> MaterialColors.getColor(pill, attr) }
         when (mode) {
             CoverCountMode.COVER -> {
-                pill.isVisible = !fav
-                val on = color(com.google.android.material.R.attr.colorOnSecondaryContainer)
-                pill.backgroundTintList = ColorStateList.valueOf(color(com.google.android.material.R.attr.colorSecondaryContainer))
+                val shown = if (fav) null else coverPill(
+                    media.userProgress, media.userStatus, media.anime?.nextAiringEpisode,
+                    media.anime?.totalEpisodes ?: media.manga?.totalChapters, media.anime != null,
+                )
+                pill.isVisible = shown != null
+                val on = color(com.google.android.material.R.attr.colorOnPrimaryContainer)
+                pill.backgroundTintList = ColorStateList.valueOf(color(com.google.android.material.R.attr.colorPrimaryContainer))
                 pill.setTextColor(on)
-                pill.text = SpannableString(watched + rest).apply {
-                    setSpan(ForegroundColorSpan(ColorUtils.setAlphaComponent(on, 0xB3)), watched.length, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                when (shown) {
+                    is CoverPill.Progress -> {
+                        pill.text = SpannableString(shown.watched + shown.rest).apply {
+                            setSpan(ForegroundColorSpan(ColorUtils.setAlphaComponent(on, 0xB3)), shown.watched.length, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+                        pill.contentDescription = null // reads as the text: "2 | 9 | 11"
+                    }
+                    is CoverPill.Out -> {
+                        pill.text = activity.getString(
+                            if (media.anime != null) R.string.cover_out_episodes else R.string.cover_out_chapters, shown.count,
+                        )
+                        pill.contentDescription = activity.resources.getQuantityString(
+                            if (media.anime != null) R.plurals.cover_out_episodes_long else R.plurals.cover_out_chapters_long,
+                            shown.count, shown.count,
+                        )
+                    }
+                    null -> Unit
                 }
-                pill.contentDescription = null // reads as the text: "2 | 9 | 11"
             }
             CoverCountMode.NEW -> {
                 val unseen = coverUnseenCount(media.userProgress, media.userStatus, media.releasedCount())
