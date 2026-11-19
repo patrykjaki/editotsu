@@ -54,3 +54,25 @@ internal fun Media.releasedCount(): Int? = when {
     manga != null -> manga.totalChapters
     else -> null
 }
+
+
+/** How far off the next episode is, in the largest whole unit: minutes under an hour, hours under a day, else days. */
+internal enum class AiringUnit { MINUTES, HOURS, DAYS }
+
+internal data class NextEpisode(val episode: Int, val amount: Long, val unit: AiringUnit)
+
+/**
+ * The line under the title when the count sits on the cover: the next episode and when it airs.
+ * [aired] is the app's aired count (AniList's next episode - 1); [untilMs] the time to it when the
+ * list was fetched. Null when the show isn't airing or the time is unknown or already past.
+ */
+internal fun nextEpisode(aired: Int?, untilMs: Long?): NextEpisode? {
+    if (aired == null || untilMs == null || untilMs <= 0) return null
+    val minutes = (untilMs + 59_999) / 60_000
+    val (amount, unit) = when {
+        minutes < 60 -> minutes to AiringUnit.MINUTES
+        minutes < 24 * 60 -> (minutes / 60) to AiringUnit.HOURS
+        else -> (minutes / (24 * 60)) to AiringUnit.DAYS
+    }
+    return NextEpisode(aired + 1, amount, unit)
+}

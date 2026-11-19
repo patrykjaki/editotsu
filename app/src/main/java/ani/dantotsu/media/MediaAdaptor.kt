@@ -576,8 +576,29 @@ class MediaAdaptor(
             }
             CoverCountMode.BELOW -> pill.isVisible = false
         }
-        b.itemCompactProgressContainer.visibility =
-            if (fav || mode != CoverCountMode.BELOW) View.GONE else View.VISIBLE
+        // with the count on the cover the line under the title says when the next episode airs;
+        // finished shows leave it out and the title may take a third line
+        val next = if (fav || mode != CoverCountMode.COVER) null
+            else nextEpisode(media.anime?.nextAiringEpisode, media.timeUntilAiring)
+        if (next != null) {
+            val ctx = b.root.context
+            val inText = ctx.getString(
+                when (next.unit) {
+                    AiringUnit.MINUTES -> R.string.airing_in_minutes
+                    AiringUnit.HOURS -> R.string.airing_in_hours
+                    AiringUnit.DAYS -> R.string.airing_in_days
+                },
+                next.amount,
+            )
+            b.itemCompactUserProgress.text = ctx.getString(R.string.cover_next_episode, next.episode, inText)
+            b.itemCompactTotal.text = ""
+        }
+        b.itemCompactTitle.maxLines = if (mode == CoverCountMode.COVER && next == null && !fav) 3 else 2
+        b.itemCompactProgressContainer.visibility = when {
+            fav -> View.GONE
+            mode == CoverCountMode.BELOW || next != null -> View.VISIBLE
+            else -> View.GONE
+        }
     }
 
     override fun getItemCount() = mediaList!!.size

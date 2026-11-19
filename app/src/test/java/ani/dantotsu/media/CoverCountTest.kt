@@ -68,4 +68,23 @@ class CoverCountTest {
         // a one-chapter manga still shows
         assertEquals(CoverPill.Out(1), coverPill(null, null, null, 1, isAnime = false))
     }
+
+    @Test fun nextEpisodeNeedsAiringAndAFutureTime() {
+        assertNull(nextEpisode(null, 3_600_000))
+        assertNull(nextEpisode(3, null))
+        assertNull(nextEpisode(3, 0))
+        assertNull(nextEpisode(3, -5_000))
+    }
+
+    @Test fun nextEpisodeIsTheOneAfterTheAiredCount() {
+        assertEquals(4, nextEpisode(3, 60_000)!!.episode)
+    }
+
+    @Test fun nextEpisodeUsesTheLargestWholeUnit() {
+        assertEquals(NextEpisode(4, 1, AiringUnit.MINUTES), nextEpisode(3, 1_000))
+        assertEquals(NextEpisode(4, 59, AiringUnit.MINUTES), nextEpisode(3, 59 * 60_000L))
+        assertEquals(NextEpisode(4, 1, AiringUnit.HOURS), nextEpisode(3, 60 * 60_000L))
+        assertEquals(NextEpisode(4, 23, AiringUnit.HOURS), nextEpisode(3, 23 * 3_600_000L + 59 * 60_000L))
+        assertEquals(NextEpisode(4, 2, AiringUnit.DAYS), nextEpisode(3, 2 * 86_400_000L + 5 * 3_600_000L))
+    }
 }

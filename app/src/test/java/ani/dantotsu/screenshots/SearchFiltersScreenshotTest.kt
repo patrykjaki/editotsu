@@ -51,6 +51,9 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         PrefManager.setVal(PrefName.UseCustomTheme, false)
     }
 
+    /** The chips in the filter row, without the divider after the type chip. */
+    private fun chips(row: LinearLayout): List<Chip> = (0 until row.childCount).mapNotNull { row.getChildAt(it) as? Chip }
+
     @Test
     fun `genre tag sheet cycles blank to include to exclude and updates chip`() {
         val activity = Robolectric.buildActivity(SearchActivity::class.java).setup().get()
@@ -59,7 +62,7 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         // one way into the sheet: the labelled chip (the search bar has no separate filter icon)
 
         val chipRow = activity.findViewById<LinearLayout>(R.id.searchChips)
-        val chipLabelsBefore = (0 until chipRow.childCount).map { (chipRow.getChildAt(it) as Chip).text.toString() }
+        val chipLabelsBefore = chips(chipRow).map { it.text.toString() }
         assertTrue("unified Genres & tags chip present", chipLabelsBefore.any { it.startsWith("Genres & tags") })
         assertFalse("separate Tags chip removed", chipLabelsBefore.any { it.startsWith("Tags") })
         assertFalse("separate Exclude chip removed", chipLabelsBefore.any { it.startsWith("Exclude") })
@@ -79,7 +82,7 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         assertEquals(emptyList<String>(), activity.aniMangaResult.excludedGenres)
 
         // a set filter moves right after the type chip
-        val gtChipAfterInclude = (chipRow.getChildAt(1) as Chip)
+        val gtChipAfterInclude = chips(chipRow)[1]
         assertTrue(gtChipAfterInclude.isChecked)
         assertTrue(gtChipAfterInclude.text.toString().startsWith("Action"))
 
@@ -87,13 +90,13 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         idle()
         assertEquals(emptyList<String>(), activity.aniMangaResult.genres)
         assertEquals(listOf("Action"), activity.aniMangaResult.excludedGenres)
-        assertTrue((chipRow.getChildAt(1) as Chip).text.toString().startsWith("\u2212Action"))
+        assertTrue(chips(chipRow)[1].text.toString().startsWith("\u2212Action"))
 
         actionRow.performClick() // EXCLUDE -> NONE
         idle()
         assertEquals(emptyList<String>(), activity.aniMangaResult.genres)
         assertEquals(emptyList<String>(), activity.aniMangaResult.excludedGenres)
-        val gtChipCleared = (0 until chipRow.childCount).map { chipRow.getChildAt(it) as Chip }
+        val gtChipCleared = chips(chipRow)
             .first { it.text.toString().startsWith("Genres & tags") }
         assertFalse(gtChipCleared.isChecked)
 

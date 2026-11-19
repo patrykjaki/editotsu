@@ -2107,4 +2107,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="offline_local_empty_body">Put your local %1$s in the folder and pull down to refresh.</string>
     <string name="offline_choose_folder_cd">Choose local folder</string>
     <string name="scroll_to_top">Scroll to top</string>
+    <string name="cover_next_episode">Ep %1$d · in %2$s</string>
+    <string name="airing_in_minutes">%1$dm</string>
+    <string name="airing_in_hours">%1$dh</string>
+    <string name="airing_in_days">%1$dd</string>
 </resources>
