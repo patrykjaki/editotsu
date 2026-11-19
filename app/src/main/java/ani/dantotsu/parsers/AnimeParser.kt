@@ -73,9 +73,8 @@ abstract class AnimeParser : BaseParser() {
      * ```
     val domain = Uri.parse(server.embed.url).host ?: ""
     val extractor: VideoExtractor? = when {
-    "fembed" in domain   -> FPlayer(server)
-    "sb" in domain       -> StreamSB(server)
-    "streamta" in domain -> StreamTape(server)
+    "hosta" in domain -> HostAExtractor(server)
+    "hostb" in domain -> HostBExtractor(server)
     else                 -> null
     }
     return extractor

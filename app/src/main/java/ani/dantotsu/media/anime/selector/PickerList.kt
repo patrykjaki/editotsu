@@ -145,7 +145,7 @@ object AudioKindDetector {
     private val SUB = Regex("""(?i)\b(sub|subs|subbed|softsub|hardsub|raw[\s._-]?sub)\b""")
 
     // A paren holding only an audio language, as some sources name their
-    // servers: "MTBB (English) - 1080p" is the dub, "(Japanese)" the sub.
+    // servers: "GRPB (English) - 1080p" is the dub, "(Japanese)" the sub.
     private val LANG_PAREN = Regex("""(?i)\(\s*(english|eng|japanese|jpn|jp)\s*\)""")
 
     /**
@@ -181,7 +181,7 @@ object StreamNameCleaner {
 
     /**
      * Name used both for display and for grouping: resolution, size and
-     * transport words are removed so "MTBB 360p" and "MTBB 1080p" merge.
+     * transport words are removed so "GRPB 360p" and "GRPB 1080p" merge.
      * Falls back to the trimmed input when cleaning would empty it.
      */
     fun groupName(header: String): String {
@@ -197,7 +197,7 @@ object StreamNameCleaner {
         return cleaned.ifEmpty { header.trim() }
     }
 
-    /** "MTBB (Sub/English)" -> "Sub · English"; null when there is no such tag. */
+    /** "GRPB (Sub/English)" -> "Sub · English"; null when there is no such tag. */
     fun audioTag(header: String): String? {
         val inner = AUDIO_PAREN.find(header)?.groupValues?.get(1)?.trim() ?: return null
         when (inner.lowercase()) {

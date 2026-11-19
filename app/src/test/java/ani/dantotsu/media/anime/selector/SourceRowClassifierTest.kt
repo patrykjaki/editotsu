@@ -939,13 +939,13 @@ class SourceRowClassifierTest {
         // bound view-model built from the same name must agree, in
         // both directions, so recycled holders always match their
         // layout.
-        val streamName = "Vidstream - Sub - 1080p"
+        val streamName = "Hostone - Sub - 1080p"
         assertTrue((SourceRowClassifier.classifyPresentation(streamName) == SourcePresentationKind.STREAM))
         val stream = SourceRowSummarizer.build(
             displayLabel = streamName,
             qualityText = streamName,
             formatName = "M3U8",
-            url = "https://example.com/vidstream/playlist.m3u8",
+            url = "https://example.com/hostone/playlist.m3u8",
         )
         assertEquals(SourcePresentationKind.STREAM, stream.presentation)
         assertEquals(
@@ -973,10 +973,10 @@ class SourceRowClassifierTest {
         // content for the info action, and carry no torrent-only
         // fields that would justify the full card.
         val row = SourceRowSummarizer.build(
-            displayLabel = "Vidstream - Sub - 1080p",
-            qualityText = "Vidstream - Sub - 1080p",
+            displayLabel = "Hostone - Sub - 1080p",
+            qualityText = "Hostone - Sub - 1080p",
             formatName = "M3U8",
-            url = "https://example.com/vidstream/playlist.m3u8",
+            url = "https://example.com/hostone/playlist.m3u8",
         )
         assertEquals(SourcePresentationKind.STREAM,
             row.presentation)
@@ -995,7 +995,7 @@ class SourceRowClassifierTest {
         // function of presentation, so holder reuse can never leak
         // one layout's state into the other.
         val names = listOf(
-            "Vidstream - Sub - 1080p",
+            "Hostone - Sub - 1080p",
             fixtureGrpcladIdxOne,
             "VidPlay-1",
             "1080p [Group] Title S01E01.mkv",
@@ -1263,9 +1263,9 @@ class SourceRowClassifierTest {
         val f = SourceRowClassifier.parseRelease(
             "1080p Jujutsu Kaisen S01 (2020) (1080p x265 10bit BD Dual Audio FLAC 2.0) [Prof]\n" +
                 "S01E01 - Ryoumen Sukuna.mkv\n" +
-                "👤 1 💾 1001.08 MB ⚙️ TorrentGalaxy | Dubbed / Dual Audio / 🇬🇧",
+                "👤 1 💾 1001.08 MB ⚙️ IndexCee | Dubbed / Dual Audio / 🇬🇧",
         )
-        assertEquals("TorrentGalaxy", f.tracker)
+        assertEquals("IndexCee", f.tracker)
         assertNull("lone ⚙️ provider must not be a group", f.releaseGroup)
         assertEquals("Dual", f.audioSummary)
     }
@@ -1833,10 +1833,10 @@ class SourceRowClassifierTest {
         }
         // A bare name with none of the known extensions stays STREAM.
         val stream = SourceRowSummarizer.build(
-            displayLabel = "Vidstream - Sub - 1080p",
-            qualityText = "Vidstream - Sub - 1080p",
+            displayLabel = "Hostone - Sub - 1080p",
+            qualityText = "Hostone - Sub - 1080p",
             formatName = "M3U8",
-            url = "https://example.com/vidstream/playlist.m3u8",
+            url = "https://example.com/hostone/playlist.m3u8",
         )
         assertEquals(SourcePresentationKind.STREAM, stream.presentation)
     }
@@ -1987,10 +1987,10 @@ class SourceRowClassifierTest {
         val f = SourceRowClassifier.parseRelease(
             "1080p\n" +
                 "Some.Show.S01E01.1080p.x265.mkv\n" +
-                "👤 10 💾 1.2 GB ⚙️ TorrentGalaxy",
+                "👤 10 💾 1.2 GB ⚙️ IndexCee",
         )
         assertNull("no group present: null is correct", f.releaseGroup)
-        assertEquals("TorrentGalaxy", f.tracker)
+        assertEquals("IndexCee", f.tracker)
     }
 
     @Test
@@ -2247,15 +2247,15 @@ class SourceRowClassifierTest {
         // visual primary label. displayLabel carries the full server
         // name (with metadata lines), exactly as the adapter passes it.
         val qualityText =
-            "Some.Show.S01E01.1080p.x265.mkv\n👤 10 💾 1.2 GB ⚙️ TorrentGalaxy"
+            "Some.Show.S01E01.1080p.x265.mkv\n👤 10 💾 1.2 GB ⚙️ IndexCee"
         val row = SourceRowSummarizer.build(
             displayLabel = qualityText,
             qualityText = qualityText,
             formatName = "CONTAINER",
             url = magnetUrl,
         )
-        assertNull(row.header?.takeIf { it == "TorrentGalaxy" })
-        assertEquals("TorrentGalaxy", row.tracker)
+        assertNull(row.header?.takeIf { it == "IndexCee" })
+        assertEquals("IndexCee", row.tracker)
         assertFalse("header must not be blank", row.header.isNullOrBlank())
     }
 
@@ -2276,10 +2276,10 @@ class SourceRowClassifierTest {
         // STREAM rows keep exactly quality + track pills; the "Sub"
         // track label is NOT flag-mapped (track semantics, UTF text).
         val row = SourceRowSummarizer.build(
-            displayLabel = "Vidstream - Sub - 1080p",
-            qualityText = "Vidstream - Sub - 1080p",
+            displayLabel = "Hostone - Sub - 1080p",
+            qualityText = "Hostone - Sub - 1080p",
             formatName = "M3U8",
-            url = "https://example.com/vidstream/playlist.m3u8",
+            url = "https://example.com/hostone/playlist.m3u8",
         )
         assertEquals(SourcePresentationKind.STREAM, row.presentation)
         assertEquals(
@@ -2962,10 +2962,10 @@ class SourceRowClassifierTest {
         // STREAM inline card renders its own compact pills; the
         // header critical/optional seam does not apply.
         val row = SourceRowSummarizer.build(
-            displayLabel = "Vidstream - Sub - 1080p",
-            qualityText = "Vidstream - Sub - 1080p",
+            displayLabel = "Hostone - Sub - 1080p",
+            qualityText = "Hostone - Sub - 1080p",
             formatName = "M3U8",
-            url = "https://example.com/vidstream/playlist.m3u8",
+            url = "https://example.com/hostone/playlist.m3u8",
         )
         assertEquals(SourcePresentationKind.STREAM, row.presentation)
         assertTrue(row.criticalPills.isEmpty())

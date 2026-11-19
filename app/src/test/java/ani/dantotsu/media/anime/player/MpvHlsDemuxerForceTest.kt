@@ -9,7 +9,7 @@ import org.junit.Test
  *
  * Field result: the force applies at EVERY demux_open including the
  * top-level playlist open, so variant playlists stop resolving as HLS
- * (working HD-2/Vidstream-2 regressed to "loading failed"; HD-1 showed
+ * (working HD-2/Hostone-2 regressed to "loading failed"; HD-1 showed
  * decoder garbage). Desktop mpv confirms forced formats hang/fail
  * playlist opens that play fine unforced.
  *

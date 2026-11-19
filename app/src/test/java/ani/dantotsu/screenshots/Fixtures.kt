@@ -101,7 +101,7 @@ object Fixtures {
         release("GrpDameYoo", 720, "HEVC", 10, 15, 350, 7),
         release("GRPEM", 1080, "HEVC", 10, 33, 420, 8, audio = DUAL),
         release("Grpeii", 1080, "AVC", 8, 21, 1450, 9, audio = DUAL),
-        release("Anime Time", 1080, "HEVC", 10, 9, 310, 10),
+        release("Grp Time", 1080, "HEVC", 10, 9, 310, 10),
         release("Grpdere-Raws", 1080, "AVC", 8, 6, 1380, 11),
     )
 
@@ -116,11 +116,11 @@ object Fixtures {
             ),
         ),
         Ext(
-            VideoServer("Vidstream", "https://example.invalid/embed/2"),
+            VideoServer("Hostone", "https://example.invalid/embed/2"),
             listOf(Video(1080, VideoType.CONTAINER, FileUrl("https://example.invalid/1080.mp4"))),
         ),
         Ext(
-            VideoServer("Mp4Upload (dub)", "https://example.invalid/embed/3"),
+            VideoServer("Mp4Host (dub)", "https://example.invalid/embed/3"),
             listOf(Video(720, VideoType.CONTAINER, FileUrl("https://example.invalid/720.mp4"))),
         ),
     )

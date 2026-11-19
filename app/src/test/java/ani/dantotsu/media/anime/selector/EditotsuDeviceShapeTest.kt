@@ -26,7 +26,7 @@ class EditotsuDeviceShapeTest {
     private val internal = """{"editotsu":1,"infoHash":"e971d09c2578aefd982b7d4059e8bdd1fc3d2cf4","fileIdx":0,""" +
         """"torrentName":"[GrpDameYoo] ReZero kara Hajimeru Isekai Seikatsu - 01 (1280x720 10bit AAC) [F9A34879].mkv",""" +
         """"sizeBytes":367127347,"seeders":15,"leechers":2,"tracker":"idxone","anidbEid":176270,"anidbAid":11681,""" +
-        """"numFiles":1,"trusted":false,"remake":false,"source":"animetosho",""" +
+        """"numFiles":1,"trusted":false,"remake":false,"source":"feedone",""" +
         """"tags":{"from":"name","group":"GrpDameYoo"},""" +
         """"media":{"from":"mediainfo","codec":"HEVC","bitDepth":10,"width":1280,"height":720,"durationSec":1500,""" +
         """"audio":[{"lang":"ja","codec":"AAC","channels":2,"default":true}],""" +

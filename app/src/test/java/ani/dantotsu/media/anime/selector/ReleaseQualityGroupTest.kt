@@ -79,7 +79,7 @@ class ReleaseQualityGroupTest {
 
     private fun stream(i: Int, res: Int, exact: Boolean = false, preferred: Boolean = false) = PickerRow(
         ref = RowRef(i, 0), provider = "pahe", presentation = SourcePresentationKind.STREAM,
-        header = "Kwik ${res}p", resolution = res, transport = "HLS", audioKind = AudioKind.SUB,
+        header = "Hoska ${res}p", resolution = res, transport = "HLS", audioKind = AudioKind.SUB,
         rememberedExact = exact, preferred = preferred,
     )
 

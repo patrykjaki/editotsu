@@ -10,7 +10,7 @@ class ResolutionParserTest {
     @Test
     fun heights() {
         assertEquals(1080, ResolutionParser.height("[SubsPlume] Show - 05 (1080p) [F2A1B3C4].mkv"))
-        assertEquals(720, ResolutionParser.height("MTBB 720 p"))
+        assertEquals(720, ResolutionParser.height("GRPB 720 p"))
         assertEquals(1080, ResolutionParser.height("Show 1080i"))
         assertEquals(2160, ResolutionParser.height("[Group] Show - 01 [4K HDR].mkv"))
         assertEquals(2160, ResolutionParser.height("[Group] Show - 01 (4K).mkv"))
@@ -59,9 +59,9 @@ class ResolutionParserTest {
         val c = ReleaseQualityKey.of("[SubsPlume] Show - 05 (1920x1080) [0B9D7E22].mkv")
         assertEquals(a, b)
         assertEquals(a, c)
-        assertEquals("MTBB", StreamNameCleaner.groupName("MTBB [4K]"))
-        assertEquals("MTBB", StreamNameCleaner.groupName("MTBB 1920x1080"))
-        assertEquals("MTBB", StreamNameCleaner.groupName("MTBB 720 p"))
+        assertEquals("GRPB", StreamNameCleaner.groupName("GRPB [4K]"))
+        assertEquals("GRPB", StreamNameCleaner.groupName("GRPB 1920x1080"))
+        assertEquals("GRPB", StreamNameCleaner.groupName("GRPB 720 p"))
     }
 
     @Test

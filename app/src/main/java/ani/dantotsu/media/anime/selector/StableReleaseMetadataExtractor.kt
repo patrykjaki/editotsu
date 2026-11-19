@@ -239,7 +239,7 @@ object StableReleaseMetadataExtractor {
      */
     private fun suffixGroup(raw: String): String? {
         // Only release-shaped text (a resolution or codec token): plain
-        // server labels like "Vidstream-Main" never get a group.
+        // server labels like "Hostone-Main" never get a group.
         if (pickResolution(raw) == null && !CODEC.containsMatchIn(raw)) return null
         for (rawLine in raw.lines()) {
             val line = rawLine.trim()

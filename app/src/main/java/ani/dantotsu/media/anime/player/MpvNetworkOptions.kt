@@ -138,7 +138,7 @@ object MpvNetworkOptions {
                 // Beta10 revert of the beta09 experiment (`demuxer-lavf-format
                 // =mpegts`): the force applies at EVERY demux_open including
                 // the top-level playlist open, so variant playlists stop
-                // resolving as HLS (field: working HD-2/Vidstream-2 broke
+                // resolving as HLS (field: working HD-2/Hostone-2 broke
                 // with "loading failed"; HD-1 rendered decoder garbage).
                 // Desktop mpv confirms a forced format hangs/fails playlist
                 // opens that play fine unforced. The PNG-wrapped-TS problem

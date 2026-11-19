@@ -37,7 +37,7 @@ class ShowTitlesTest {
 
     @Test
     fun grpdere_raws_card_title() {
-        // feed name, 2026-11-02 (animetosho aid 19308)
+        // feed name, 2026-11-02 (real release, anidb aid 19308)
         val raw = "Even the Student Council Has Its Holes S01E03 UNCENSORED SUBFRENCH 1080p ADN WEB-DL AAC2.0 x264-Grpdere-Raws " +
             "(VOSTFR, Multi Subs, Seitokai ni mo Ana wa Aru, There Is Also a Hole in the Student Organization)"
         val text = "$raw\n👤 94 💾 572.1 MB ⚙️ idxTW"

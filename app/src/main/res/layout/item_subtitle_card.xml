@@ -126,7 +126,7 @@
                 android:maxLines="1"
                 android:textColor="?android:attr/textColorSecondary"
                 android:textSize="12sp"
-                tools:text="MegaCloud • Current Stream" />
+                tools:text="HostCloud • Current Stream" />
         </LinearLayout>
 
         <!-- Selection Checkmark -->

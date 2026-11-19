@@ -19,7 +19,7 @@ class EditotsuInternalDataTest {
     private val singleData = EditotsuInternalData.parse(
         """{"editotsu":1,"infoHash":"e971d09c2578aefd982b7d4059e8bdd1fc3d2cf4","fileIdx":0,""" +
             """"torrentName":"[GrpDameYoo] ReZero kara Hajimeru Isekai Seikatsu - 01 (1280x720 10bit AAC) [F9A34879].mkv",""" +
-            """"sizeBytes":367127347,"seeders":15,"leechers":2,"tracker":"idxone","anidbEid":176270,"numFiles":1,"source":"animetosho"}""",
+            """"sizeBytes":367127347,"seeders":15,"leechers":2,"tracker":"idxone","anidbEid":176270,"numFiles":1,"source":"feedone"}""",
     )!!.copy(resolution = 720)
 
     private val packText = "[GRPEM] Frieren: Beyond Journey`s End (2023) (Season 1) [BDRip] [1080p Dual Audio HEVC 10 bits DDP] (Sousou no Frieren) (Batch)\n" +

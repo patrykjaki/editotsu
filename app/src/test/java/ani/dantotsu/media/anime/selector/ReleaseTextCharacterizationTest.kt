@@ -61,7 +61,7 @@ class ReleaseTextCharacterizationTest {
             "1080p [GroupA] Show Title - 05 [HEVC]\n" +
             "👤 5 💾 300 MB ⚙️ IdxOne",
         "plain stream label" to "1080p",
-        "server label with a hyphen" to "Vidstream-Main",
+        "server label with a hyphen" to "Hostone-Main",
     )
 
     private fun render(): String = buildString {
