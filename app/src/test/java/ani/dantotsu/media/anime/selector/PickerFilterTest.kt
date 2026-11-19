@@ -10,7 +10,7 @@ class PickerFilterTest {
 
     private fun row(i: Int, f: RowFacets, audio: AudioKind? = AudioKind.SUB) = PickerRow(
         ref = RowRef(i, 0),
-        provider = "torrentio",
+        provider = "relayaddon",
         presentation = SourcePresentationKind.RELEASE,
         header = f.group ?: "row $i",
         resolution = f.height,
@@ -20,10 +20,10 @@ class PickerFilterTest {
     )
 
     private val rows = listOf(
-        row(0, RowFacets("1080p", "AVC", "SDR", "ToonsHub", seeders = 954, sizeBytes = 584_000_000, height = 1080)),
-        row(1, RowFacets("720p", "AVC", "SDR", "ToonsHub", seeders = 40, sizeBytes = 300_000_000, height = 720)),
-        row(2, RowFacets("4K", "HEVC", "Dolby Vision", "NTb", seeders = null, sizeBytes = 8_000_000_000, height = 2160)),
-        row(3, RowFacets("1080p", "AV1", "HDR10+", "Trix", seeders = 120, sizeBytes = null, height = 1080), AudioKind.DUAL),
+        row(0, RowFacets("1080p", "AVC", "SDR", "GrpsHubb", seeders = 954, sizeBytes = 584_000_000, height = 1080)),
+        row(1, RowFacets("720p", "AVC", "SDR", "GrpsHubb", seeders = 40, sizeBytes = 300_000_000, height = 720)),
+        row(2, RowFacets("4K", "HEVC", "Dolby Vision", "NQb", seeders = null, sizeBytes = 8_000_000_000, height = 2160)),
+        row(3, RowFacets("1080p", "AV1", "HDR10+", "Grptx", seeders = 120, sizeBytes = null, height = 1080), AudioKind.DUAL),
         row(4, RowFacets(null, null, null, null), null),
     )
     private val list = PickerListBuilder.build(rows)
@@ -36,7 +36,7 @@ class PickerFilterTest {
         val o = PickerFilter.options(rows)
         assertEquals(listOf("4K", "1080p", "720p"), o[FilterDimension.RESOLUTION])
         assertEquals(listOf("AVC", "HEVC", "AV1"), o[FilterDimension.CODEC])
-        assertEquals(listOf("ToonsHub", "NTb", "Trix"), o[FilterDimension.GROUP])
+        assertEquals(listOf("GrpsHubb", "NQb", "Grptx"), o[FilterDimension.GROUP])
         assertTrue(PickerFilter.showButton(rows, FilterState()))
         assertFalse(PickerFilter.showButton(rows.take(1), FilterState()))
     }
@@ -46,11 +46,11 @@ class PickerFilterTest {
         assertEquals(listOf(RowRef(0, 0), RowRef(3, 0)), visibleRefs(FilterState(resolutions = setOf("1080p"))))
         assertEquals(
             listOf(RowRef(0, 0)),
-            visibleRefs(FilterState(resolutions = setOf("1080p"), groups = setOf("ToonsHub"))),
+            visibleRefs(FilterState(resolutions = setOf("1080p"), groups = setOf("GrpsHubb"))),
         )
         assertEquals(
             listOf(RowRef(0, 0), RowRef(1, 0), RowRef(3, 0)),
-            visibleRefs(FilterState(groups = setOf("ToonsHub", "Trix"))),
+            visibleRefs(FilterState(groups = setOf("GrpsHubb", "Grptx"))),
         )
         assertEquals(listOf(RowRef(3, 0)), visibleRefs(FilterState(resolutions = setOf("1080p")), AudioKind.DUAL))
     }
@@ -95,13 +95,13 @@ class PickerFilterTest {
 
     @Test
     fun sanitize_drops_values_no_row_has() {
-        val stored = FilterState(groups = setOf("SubsPlease", "Trix"), resolutions = setOf("480p"), sort = PickerSort.SIZE)
-        assertEquals(FilterState(groups = setOf("Trix"), sort = PickerSort.SIZE), PickerFilter.sanitize(stored, rows))
+        val stored = FilterState(groups = setOf("SubsPlume", "Grptx"), resolutions = setOf("480p"), sort = PickerSort.SIZE)
+        assertEquals(FilterState(groups = setOf("Grptx"), sort = PickerSort.SIZE), PickerFilter.sanitize(stored, rows))
     }
 
     @Test
     fun all_hidden_is_reported_and_clear_keeps_sort() {
-        val state = FilterState(groups = setOf("NTb"), codecs = setOf("AVC"), sort = PickerSort.SEEDERS)
+        val state = FilterState(groups = setOf("NQb"), codecs = setOf("AVC"), sort = PickerSort.SEEDERS)
         val result = PickerFilter.apply(list.entries, facets, null, state)
         assertTrue(result.hiddenAll)
         assertEquals(FilterState(sort = PickerSort.SEEDERS), state.cleared())
@@ -109,7 +109,7 @@ class PickerFilterTest {
 
     @Test
     fun store_round_trip_and_bad_json() {
-        val state = FilterState(groups = setOf("ToonsHub"), hdr = setOf("SDR"), sort = PickerSort.QUALITY)
+        val state = FilterState(groups = setOf("GrpsHubb"), hdr = setOf("SDR"), sort = PickerSort.QUALITY)
         assertEquals(state, PickerFilterStore.decode(PickerFilterStore.encode(state)))
         assertEquals(FilterState(), PickerFilterStore.decode("{oops"))
         assertEquals(FilterState(), PickerFilterStore.decode(null))
@@ -125,13 +125,13 @@ class PickerFilterTest {
 
     @Test
     fun fixture_rows_get_facets() {
-        val text = javaClass.classLoader!!.getResource("picker/torrentio_rows_2026-11-01.json")!!.readText()
+        val text = javaClass.classLoader!!.getResource("picker/addon_rows_2026-11-01.json")!!.readText()
         val name = kotlinx.serialization.json.Json.parseToJsonElement(text)
             .let { (it as kotlinx.serialization.json.JsonArray)[13] }
             .let { (it as kotlinx.serialization.json.JsonPrimitive).content }
         val f = RowFacets.of(SourceRowClassifier.parseRelease(name), 2160)
         assertEquals("4K", f.resolution)
-        assertEquals("NTb", f.group)
+        assertEquals("NQb", f.group)
         assertEquals("HEVC", f.codec)
         assertTrue(f.seeders != null && f.sizeBytes != null)
     }
@@ -140,8 +140,8 @@ class PickerFilterTest {
     fun counts_are_cards_per_value() {
         val c = PickerFilter.counts(list.entries, facets)
         val toonsCards = list.entries.count { e -> e.refs.any { it == RowRef(0, 0) || it == RowRef(1, 0) } }
-        assertEquals(toonsCards, c.getValue(FilterDimension.GROUP)["ToonsHub"])
-        assertEquals(1, c.getValue(FilterDimension.GROUP)["NTb"])
+        assertEquals(toonsCards, c.getValue(FilterDimension.GROUP)["GrpsHubb"])
+        assertEquals(1, c.getValue(FilterDimension.GROUP)["NQb"])
         assertEquals(1, c.getValue(FilterDimension.CODEC)["HEVC"])
         // A card counts once per value even when two of its rows share it.
         assertTrue(c.getValue(FilterDimension.CODEC).getValue("AVC") <= 2)

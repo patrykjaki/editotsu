@@ -67,10 +67,11 @@ object DirectReleaseKeyBuilder {
         audioMode: String?,
         sourceService: String?,
         rawTitle: String,
+        tracker: String? = null,
     ): String? {
         val provider8 = ProviderHash.provider8(exactCaseProvider) ?: return null
         val id16 = StableReleaseCanonicalizer.releaseStableId16(
-            group, resolution, audioFormat, audioMode, sourceService, rawTitle,
+            group, resolution, audioFormat, audioMode, sourceService, rawTitle, tracker,
         ) ?: return null
         return PREFIX + provider8 + ":" + id16
     }

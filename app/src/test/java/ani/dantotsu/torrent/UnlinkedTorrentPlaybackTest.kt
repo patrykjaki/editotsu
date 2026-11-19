@@ -22,7 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * M7A G2: unlinked synthetic playback isolation matrix. Pure JVM — the
+ * M7A G2: unlinked synthetic playback isolation magrptx. Pure JVM — the
  * guards under test sit before any Android touch, so these prove the real
  * write boundaries refuse synthetic entries rather than asserting
  * predicates in a vacuum. Device/emulator runs remain OPEN for the sheet,

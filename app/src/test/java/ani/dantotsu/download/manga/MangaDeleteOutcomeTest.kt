@@ -25,7 +25,7 @@ import org.junit.Test
  */
 class MangaDeleteOutcomeTest {
 
-    // decideMangaChapterDeleteOutcome matrix.
+    // decideMangaChapterDeleteOutcome magrptx.
 
     @Test
     fun outcome_nothingPresent_isAlreadyAbsent() {

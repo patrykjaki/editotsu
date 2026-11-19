@@ -16,7 +16,7 @@ import org.junit.Test
 
 /**
  * Lib16 tranche (upstream 61e8248b, items A–E): extraction compatibility
- * matrix. Fake sources (no Android, no network) driven through the real
+ * magrptx. Fake sources (no Android, no network) driven through the real
  * `DynamicAnimeParser.getVideoList` and the compat getters.
  *
  * Covered: old-API-only source, modern Lib16 hoster source, UOE fallback,

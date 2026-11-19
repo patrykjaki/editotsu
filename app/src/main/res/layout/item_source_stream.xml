@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    One stream card (e.g. a source's "MTBB" stream), laid out like a release card.
+    One stream card (e.g. a source's "GRPB" stream), laid out like a release card.
     All links from one group and audio share the card. A tap plays the
     remembered quality, else the highest, shown as a tag; every other
     link is a small button on the "Also" line.
@@ -47,7 +47,7 @@
                     android:fontFamily="@font/poppins_bold"
                     android:singleLine="true"
                     android:textSize="18sp"
-                    tools:text="MTBB" />
+                    tools:text="GRPB" />
 
                 <TextView
                     android:id="@+id/streamAudio"
@@ -156,7 +156,7 @@
                 android:textIsSelectable="true"
                 android:textSize="13sp"
                 android:visibility="gone"
-                tools:text="Name: MTBB · 1080p (138MB) eng\nType: HLS"
+                tools:text="Name: GRPB · 1080p (138MB) eng\nType: HLS"
                 tools:visibility="visible" />
         </LinearLayout>
     </androidx.cardview.widget.CardView>

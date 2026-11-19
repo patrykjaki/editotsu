@@ -29,7 +29,7 @@ object StableCandidateBuilder {
         // HTTP torrent? Classify from the validated canonical URI's
         // rawPath, not from `endsWith` on the raw URL. This
         // correctly handles signed URLs like
-        // https://nyaa.si/a.torrent?token=a#x where the
+        // https://indexer.example/a.torrent?token=a#x where the
         // path is the discriminator and the query/fragment are
         // authentication artefacts that must NOT affect transport
         // identity.
@@ -56,6 +56,7 @@ object StableCandidateBuilder {
             audioMode = meta.audioMode,
             sourceService = meta.sourceService,
             rawTitle = meta.rawTitle.ifEmpty { server.name },
+            tracker = meta.tracker,
         )
     }
 
@@ -74,9 +75,9 @@ object StableCandidateBuilder {
         val provider = providerOf(server) ?: return null
         val exactKey = exactKey(provider, server) ?: return null
         val meta = StableReleaseMetadataExtractor.extract(server.name)
-        // the source's own reading of the group wins (scene names like "H.264-VARYG (Show)")
+        // the source's own reading of the group wins (scene names like "H.264-GRPVY (Show)")
         val group = EditotsuInternalData.of(server.video)?.tags?.group ?: meta.group
-        val groupKey = StableGroupCanonicalizer.canonicalKey(group) ?: return null
+        val groupKey = StableGroupCanonicalizer.canonicalKey(group, meta.tracker) ?: return null
         val soft = LinkedHashMap<String, String>()
         TrackerCanonicalizer.canonicalKey(meta.tracker)?.let { soft["trackerKey"] = it }
         (StableSoftCanonicalizer.canonicalResolution(meta.resolution)

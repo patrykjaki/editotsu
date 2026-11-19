@@ -26,10 +26,10 @@ class FamilyBestMatchTest {
 
     private fun server(torrent: String, resolution: Int, hash: String): VideoServer {
         val data = """{"editotsu":1,"infoHash":"$hash","fileIdx":0,"torrentName":"$torrent",""" +
-            """"sizeBytes":503238553,"seeders":200,"tracker":"nyaa","numFiles":1}"""
+            """"sizeBytes":503238553,"seeders":200,"tracker":"idxone","numFiles":1}"""
         val video = eu.kanade.tachiyomi.animesource.model.Video(
             videoUrl = "magnet:?xt=urn:btih:$hash&index=0",
-            videoTitle = "$torrent\n👤 200 💾 480 MB ⚙️ Nyaa",
+            videoTitle = "$torrent\n👤 200 💾 480 MB ⚙️ Idxone",
             resolution = resolution,
             internalData = data,
             initialized = true,
@@ -46,12 +46,12 @@ class FamilyBestMatchTest {
         return FamilyPayload(c!!.providerPkg, c.groupKey, c.soft)
     }
 
-    private val ep1At720 = server("[SubsPlease] Oshi no Ko - 01 (720p) [AAAAAAAA].mkv", 720, "1".repeat(40))
+    private val ep1At720 = server("[SubsPlume] Oshi no Ko - 01 (720p) [AAAAAAAA].mkv", 720, "1".repeat(40))
     private val ep2 = listOf(
-        server("[SubsPlease] Oshi no Ko - 02 (1080p) [BBBBBBBB].mkv", 1080, "2".repeat(40)),
-        server("[SubsPlease] Oshi no Ko - 02 (720p) [CCCCCCCC].mkv", 720, "3".repeat(40)),
-        server("[SubsPlease] Oshi no Ko - 02 (480p) [DDDDDDDD].mkv", 480, "4".repeat(40)),
-        server("[Erai-raws] Oshi no Ko - 02 [1080p][EEEEEEEE].mkv", 1080, "5".repeat(40)),
+        server("[SubsPlume] Oshi no Ko - 02 (1080p) [BBBBBBBB].mkv", 1080, "2".repeat(40)),
+        server("[SubsPlume] Oshi no Ko - 02 (720p) [CCCCCCCC].mkv", 720, "3".repeat(40)),
+        server("[SubsPlume] Oshi no Ko - 02 (480p) [DDDDDDDD].mkv", 480, "4".repeat(40)),
+        server("[Grpa-raws] Oshi no Ko - 02 [1080p][EEEEEEEE].mkv", 1080, "5".repeat(40)),
     )
 
     @Test
@@ -66,7 +66,7 @@ class FamilyBestMatchTest {
         val list = PickerListBuilder.build(rows, hasRememberedFamily = true)
         assertEquals(BestPick(RowRef(1, 0), BestReason.SAME_GROUP), list.best)
         assertEquals(0, list.bestIndex)
-        // the SubsPlease card shows and plays 720p, and fills the 720p button
+        // the SubsPlume card shows and plays 720p, and fills the 720p button
         val card = list.entries[0] as PickerEntry.Release
         assertEquals(RowRef(1, 0), card.row.ref)
         assertEquals(RowRef(1, 0), list.defaultQuality(card))
@@ -88,9 +88,9 @@ class FamilyBestMatchTest {
     fun two_equal_720p_reposts_leave_no_best_match() {
         val stored = remember(ep1At720)
         val reposts = listOf(
-            server("[SubsPlease] Oshi no Ko - 02 (720p) [CCCCCCCC].mkv", 720, "3".repeat(40)),
-            server("[SubsPlease] Oshi no Ko - 02 (720p) [CCCCCCCC].mkv", 720, "6".repeat(40)),
-            server("[SubsPlease] Oshi no Ko - 02 (1080p) [BBBBBBBB].mkv", 1080, "2".repeat(40)),
+            server("[SubsPlume] Oshi no Ko - 02 (720p) [CCCCCCCC].mkv", 720, "3".repeat(40)),
+            server("[SubsPlume] Oshi no Ko - 02 (720p) [CCCCCCCC].mkv", 720, "6".repeat(40)),
+            server("[SubsPlume] Oshi no Ko - 02 (1080p) [BBBBBBBB].mkv", 1080, "2".repeat(40)),
         )
         val rows = PickerRowsBuilder().build(reposts.map(::ext), null, stored, null)
         assertTrue(rows.none { it.familyChoice })
@@ -101,7 +101,7 @@ class FamilyBestMatchTest {
     fun bestMatch_uses_the_family_choice_flag() {
         fun row(i: Int, res: Int, choice: Boolean) = PickerRow(
             ref = RowRef(i, 0), provider = pkg, presentation = SourcePresentationKind.RELEASE,
-            header = "SubsPlease", resolution = res, transport = "Torrent", audioKind = null,
+            header = "SubsPlume", resolution = res, transport = "Torrent", audioKind = null,
             rememberedFamily = true, familyChoice = choice,
         )
         assertEquals(

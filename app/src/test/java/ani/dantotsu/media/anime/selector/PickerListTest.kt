@@ -36,7 +36,7 @@ class PickerListTest {
         preferred: Boolean = false,
     ) = PickerRow(
         ref = RowRef(i, 0),
-        provider = "torrentio",
+        provider = "relayaddon",
         presentation = SourcePresentationKind.RELEASE,
         header = group,
         resolution = 1080,
@@ -47,22 +47,22 @@ class PickerListTest {
         rememberedFamily = family,
     )
 
-    // ---- Stream grouping (AnimePahe case) ----------------------------------
+    // ---- Stream grouping (SiteBeeee case) ----------------------------------
 
     @Test
-    fun sixAnimePaheRowsBecomeOneCardWithThreeQualitiesAndMp4Alternates() {
+    fun sixSiteBeeeeRowsBecomeOneCardWithThreeQualitiesAndMp4Alternates() {
         val rows = listOf(
-            stream(0, "MTBB (Sub/English)", 360),
-            stream(1, "MTBB (Sub/English)", 720),
-            stream(2, "MTBB (Sub/English)", 1080),
-            stream(3, "MTBB (Sub/English)", 360, transport = "MP4"),
-            stream(4, "MTBB (Sub/English)", 720, transport = "MP4"),
-            stream(5, "MTBB (Sub/English)", 1080, transport = "MP4"),
+            stream(0, "GRPB (Sub/English)", 360),
+            stream(1, "GRPB (Sub/English)", 720),
+            stream(2, "GRPB (Sub/English)", 1080),
+            stream(3, "GRPB (Sub/English)", 360, transport = "MP4"),
+            stream(4, "GRPB (Sub/English)", 720, transport = "MP4"),
+            stream(5, "GRPB (Sub/English)", 1080, transport = "MP4"),
         )
         val list = PickerListBuilder.build(rows)
         assertEquals(1, list.entries.size)
         val g = list.entries[0] as PickerEntry.StreamGroup
-        assertEquals("MTBB", g.name)
+        assertEquals("GRPB", g.name)
         assertEquals("Sub · English", g.audioTag)
         assertEquals(listOf("1080p", "720p", "360p"), g.primary.map { it.label })
         assertEquals(listOf(RowRef(2, 0), RowRef(1, 0), RowRef(0, 0)), g.primary.map { it.ref })
@@ -73,11 +73,11 @@ class PickerListTest {
     @Test
     fun resolutionInsideTheHeaderStillMerges() {
         val rows = listOf(
-            stream(0, "Kwik · MTBB 720p (61MB)", 720),
-            stream(1, "Kwik · MTBB 1080p (138MB)", 1080),
+            stream(0, "Hoska · GRPB 720p (61MB)", 720),
+            stream(1, "Hoska · GRPB 1080p (138MB)", 1080),
         )
         val g = PickerListBuilder.group(rows).single() as PickerEntry.StreamGroup
-        assertEquals("Kwik · MTBB", g.name)
+        assertEquals("Hoska · GRPB", g.name)
         assertEquals(listOf("1080p", "720p"), g.primary.map { it.label })
         assertTrue(g.alternates.isEmpty())
     }
@@ -85,8 +85,8 @@ class PickerListTest {
     @Test
     fun subAndDubStayInSeparateCards() {
         val rows = listOf(
-            stream(0, "MTBB (Sub/English)", 1080),
-            stream(1, "MTBB (Dub/English)", 1080),
+            stream(0, "GRPB (Sub/English)", 1080),
+            stream(1, "GRPB (Dub/English)", 1080),
         )
         val entries = PickerListBuilder.group(rows)
         assertEquals(2, entries.size)
@@ -94,14 +94,14 @@ class PickerListTest {
         assertEquals(AudioKind.DUB, entries[1].audioKind)
     }
 
-    // Phone data 2026-10-31: AnimePahe names its servers by audio language.
+    // Phone data 2026-10-31: SiteBeeee names its servers by audio language.
     @Test
-    fun mtbbLanguageParenSplitsSubFromEnglishDub() {
+    fun grpbLanguageParenSplitsSubFromEnglishDub() {
         val rows = listOf(
-            stream(0, "MTBB (English) - 1080p BD (HLS)", 1080),
-            stream(1, "MTBB (Sub) - 1080p BD (HLS)", 1080),
-            stream(2, "MTBB (English) - 720p BD (HLS)", 720),
-            stream(3, "MTBB (Sub) - 720p BD (HLS)", 720),
+            stream(0, "GRPB (English) - 1080p BD (HLS)", 1080),
+            stream(1, "GRPB (Sub) - 1080p BD (HLS)", 1080),
+            stream(2, "GRPB (English) - 720p BD (HLS)", 720),
+            stream(3, "GRPB (Sub) - 720p BD (HLS)", 720),
         )
         val entries = PickerListBuilder.group(rows).map { it as PickerEntry.StreamGroup }
         assertEquals(2, entries.size)
@@ -119,10 +119,10 @@ class PickerListTest {
     @Test
     fun streamCardOrderDoesNotDependOnServerOrder() {
         val a = listOf(
-            stream(0, "MTBB (English) - 1080p BD (HLS)", 1080),
-            stream(1, "MTBB (Sub) - 360p BD (HLS)", 360),
-            stream(2, "MTBB (Sub) - 1080p BD (HLS)", 1080),
-            stream(3, "MTBB (English) - 360p BD (HLS)", 360),
+            stream(0, "GRPB (English) - 1080p BD (HLS)", 1080),
+            stream(1, "GRPB (Sub) - 360p BD (HLS)", 360),
+            stream(2, "GRPB (Sub) - 1080p BD (HLS)", 1080),
+            stream(3, "GRPB (English) - 360p BD (HLS)", 360),
         )
         val b = listOf(a[2], a[3], a[1], a[0])
         fun shape(rows: List<PickerRow>) = PickerListBuilder.group(rows)
@@ -134,19 +134,19 @@ class PickerListTest {
 
     @Test
     fun languageParenDetection() {
-        assertEquals(AudioKind.DUB, AudioKindDetector.detect("MTBB (English) - 1080p BD (HLS)"))
-        assertEquals(AudioKind.SUB, AudioKindDetector.detect("MTBB (Sub) - 1080p BD (HLS)"))
-        assertEquals(AudioKind.SUB, AudioKindDetector.detect("Kwik (Japanese) 720p"))
+        assertEquals(AudioKind.DUB, AudioKindDetector.detect("GRPB (English) - 1080p BD (HLS)"))
+        assertEquals(AudioKind.SUB, AudioKindDetector.detect("GRPB (Sub) - 1080p BD (HLS)"))
+        assertEquals(AudioKind.SUB, AudioKindDetector.detect("Hoska (Japanese) 720p"))
         // English subtitles on a sub release stay Sub.
-        assertEquals(AudioKind.SUB, AudioKindDetector.detect("MTBB (Sub/English)"))
+        assertEquals(AudioKind.SUB, AudioKindDetector.detect("GRPB (Sub/English)"))
         assertNull(AudioKindDetector.detect("English Title 1080p"))
     }
 
     @Test
     fun differentProvidersNeverMerge() {
         val rows = listOf(
-            stream(0, "Vidstream", 1080, provider = "a"),
-            stream(1, "Vidstream", 720, provider = "b"),
+            stream(0, "Hostone", 1080, provider = "a"),
+            stream(1, "Hostone", 720, provider = "b"),
         )
         assertEquals(2, PickerListBuilder.group(rows).size)
     }
@@ -165,7 +165,7 @@ class PickerListTest {
 
     @Test
     fun torrentRowsAreNeverMergedAndKeepTheirOrder() {
-        val rows = listOf(release(0, "EMBER"), release(1, "EMBER"), release(2, "Judas"))
+        val rows = listOf(release(0, "GRPEM"), release(1, "GRPEM"), release(2, "Grpjd"))
         val entries = PickerListBuilder.build(rows).entries
         assertEquals(listOf(RowRef(0, 0), RowRef(1, 0), RowRef(2, 0)), entries.flatMap { it.refs })
     }
@@ -174,7 +174,7 @@ class PickerListTest {
 
     @Test
     fun rememberedExactWinsAndMovesToTop() {
-        val rows = listOf(release(0, "Judas"), release(1, "EMBER", exact = true, family = true))
+        val rows = listOf(release(0, "Grpjd"), release(1, "GRPEM", exact = true, family = true))
         val list = PickerListBuilder.build(rows)
         assertEquals(BestPick(RowRef(1, 0), BestReason.REMEMBERED), list.best)
         assertEquals(0, list.bestIndex)
@@ -183,17 +183,17 @@ class PickerListTest {
 
     @Test
     fun singleFamilyMatchIsSameGroup() {
-        val rows = listOf(release(0, "Judas"), release(1, "EMBER", family = true))
+        val rows = listOf(release(0, "Grpjd"), release(1, "GRPEM", family = true))
         assertEquals(BestReason.SAME_GROUP, PickerListBuilder.build(rows).best?.reason)
     }
 
     @Test
     fun twoEqualFamilyMatchesGiveNoBestButBothGoToTop() {
         val rows = listOf(
-            release(0, "Judas"),
-            release(1, "EMBER", family = true),
-            release(2, "SubsPlease"),
-            release(3, "EMBER", family = true),
+            release(0, "Grpjd"),
+            release(1, "GRPEM", family = true),
+            release(2, "SubsPlume"),
+            release(3, "GRPEM", family = true),
         )
         val list = PickerListBuilder.build(rows)
         assertNull(list.best)
@@ -202,7 +202,7 @@ class PickerListTest {
 
     @Test
     fun extensionPreferredIsTheLastFallback() {
-        val rows = listOf(release(0, "Judas"), release(1, "EMBER", preferred = true))
+        val rows = listOf(release(0, "Grpjd"), release(1, "GRPEM", preferred = true))
         assertEquals(BestReason.EXTENSION_PREFERRED, PickerListBuilder.build(rows).best?.reason)
     }
 
@@ -214,27 +214,27 @@ class PickerListTest {
 
     @Test
     fun aSingleRowNeverGetsABestMatchMark() {
-        assertNull(PickerListBuilder.build(listOf(release(0, "EMBER", exact = true))).best)
+        assertNull(PickerListBuilder.build(listOf(release(0, "GRPEM", exact = true))).best)
     }
 
     @Test
     fun bestInsideAStreamGroupMarksTheGroup() {
         val rows = listOf(
             stream(0, "Other", 1080),
-            stream(1, "MTBB (Sub/English)", 720),
-            stream(2, "MTBB (Sub/English)", 1080, preferred = true),
+            stream(1, "GRPB (Sub/English)", 720),
+            stream(2, "GRPB (Sub/English)", 1080, preferred = true),
         )
         val list = PickerListBuilder.build(rows)
         assertEquals(0, list.bestIndex)
-        assertEquals("MTBB", (list.entries[0] as PickerEntry.StreamGroup).name)
+        assertEquals("GRPB", (list.entries[0] as PickerEntry.StreamGroup).name)
     }
 
     @Test
     fun rememberedFamilyMissingWhenNoRowMatches() {
-        val rows = listOf(release(0, "Judas"), release(1, "SubsPlease"))
+        val rows = listOf(release(0, "Grpjd"), release(1, "SubsPlume"))
         assertTrue(PickerListBuilder.build(rows, hasRememberedFamily = true).rememberedFamilyMissing)
         assertFalse(PickerListBuilder.build(rows, hasRememberedFamily = false).rememberedFamilyMissing)
-        val withMatch = rows + release(2, "EMBER", family = true)
+        val withMatch = rows + release(2, "GRPEM", family = true)
         assertFalse(PickerListBuilder.build(withMatch, hasRememberedFamily = true).rememberedFamilyMissing)
     }
 
@@ -242,11 +242,11 @@ class PickerListTest {
 
     @Test
     fun audioDetection() {
-        assertEquals(AudioKind.SUB, AudioKindDetector.detect("MTBB (Sub/English)"))
+        assertEquals(AudioKind.SUB, AudioKindDetector.detect("GRPB (Sub/English)"))
         assertEquals(AudioKind.DUB, AudioKindDetector.detect("[DUBBED] AnimeGG:720p"))
-        assertEquals(AudioKind.DUAL, AudioKindDetector.detect("[EMBER] Frieren [Dual Audio]"))
+        assertEquals(AudioKind.DUAL, AudioKindDetector.detect("[GRPEM] Frieren [Dual Audio]"))
         assertEquals(AudioKind.DUAL, AudioKindDetector.detect("Multi-Audio Multi-Subs"))
-        assertNull(AudioKindDetector.detect("SubsPlease Frieren 1080p"))
+        assertNull(AudioKindDetector.detect("SubsPlume Frieren 1080p"))
     }
 
     @Test
@@ -289,10 +289,10 @@ class PickerListTest {
 
     @Test
     fun resolutionPrefersExtensionData() {
-        assertEquals(720, ResolutionLabel.resolve(720, "MTBB 1080p"))
-        assertEquals(1080, ResolutionLabel.resolve(null, "MTBB 1080p"))
-        assertEquals(2160, ResolutionLabel.resolve(0, "Feibanyama 4K HEVC"))
-        assertNull(ResolutionLabel.resolve(null, "MTBB"))
+        assertEquals(720, ResolutionLabel.resolve(720, "GRPB 1080p"))
+        assertEquals(1080, ResolutionLabel.resolve(null, "GRPB 1080p"))
+        assertEquals(2160, ResolutionLabel.resolve(0, "Grpbanyama 4K HEVC"))
+        assertNull(ResolutionLabel.resolve(null, "GRPB"))
         assertEquals("4K", ResolutionLabel.label(2160))
         assertEquals("1080p", ResolutionLabel.label(1080))
     }
@@ -308,39 +308,39 @@ class PickerListTest {
 
     @Test
     fun compactDetailsShowTheBatchFileButNeverTheLink() {
-        val text = "[SubsPlease] Sousou no Frieren S2 (01-10) (1080p) [Batch]\n" +
-            "Sousou no Frieren S2/[SubsPlease] Sousou no Frieren - 29 (1080p).mkv\n" +
-            "👤 241 💾 13.7 GB ⚙️ NyaaSi"
+        val text = "[SubsPlume] Sousou no Frieren S2 (01-10) (1080p) [Batch]\n" +
+            "Sousou no Frieren S2/[SubsPlume] Sousou no Frieren - 29 (1080p).mkv\n" +
+            "👤 241 💾 13.7 GB ⚙️ IdxOne"
         val file = CompactDetails.fileLine(text)
-        assertEquals("Sousou no Frieren S2/[SubsPlease] Sousou no Frieren - 29 (1080p).mkv", file)
-        val lines = CompactDetails.lines("SubsPlease", "NyaaSi", file, "[SubsPlease] Sousou no Frieren S2 (01-10) (1080p) [Batch]", "Torrent")
+        assertEquals("Sousou no Frieren S2/[SubsPlume] Sousou no Frieren - 29 (1080p).mkv", file)
+        val lines = CompactDetails.lines("SubsPlume", "IdxOne", file, "[SubsPlume] Sousou no Frieren S2 (01-10) (1080p) [Batch]", "Torrent")
         assertEquals(
             listOf("Release group", "Tracker", "Type", "Plays file", "Release name"),
             lines.map { it.first },
         )
-        assertEquals("[SubsPlease] Sousou no Frieren - 29 (1080p).mkv", lines[3].second)
+        assertEquals("[SubsPlume] Sousou no Frieren - 29 (1080p).mkv", lines[3].second)
         assertTrue(lines.none { it.second.contains("magnet") || it.second.contains("http") })
         assertNull(CompactDetails.fileLine("Single line only"))
     }
 
     // ---- Parser regression from the phone (Frieren S2 E1, 2026-10-31) --------
 
-    private val shiniori =
+    private val grpiori =
         "4k Frieren: U kresu drogi / Sousou no Frieren (2026) [Sezon 2][4K][HEVC x265 10bit][FLAC] " +
-            "[Shiniori-Raws] [ToAlien]"
-    private val shinioriFile =
-        "[Shiniori-Raws] Sousou no Frieren S2 - 01 (BD 3840x2160 x265 10bit FLAC).mkv"
+            "[Grpiori-Raws] [ToAlien]"
+    private val grpioriFile =
+        "[Grpiori-Raws] Sousou no Frieren S2 - 01 (BD 3840x2160 x265 10bit FLAC).mkv"
 
     @Test
-    fun shinioriGroupIsNotTheTrackerWhenTheFileIsOnItsOwnLine() {
-        val text = "$shiniori\n$shinioriFile\n👤 6 💾 2.24 GB ⚙️ ExtTo"
-        assertEquals("Shiniori-Raws", SourceRowClassifier.parseRelease(text).releaseGroup)
+    fun grpioriGroupIsNotTheTrackerWhenTheFileIsOnItsOwnLine() {
+        val text = "$grpiori\n$grpioriFile\n👤 6 💾 2.24 GB ⚙️ ExtTo"
+        assertEquals("Grpiori-Raws", SourceRowClassifier.parseRelease(text).releaseGroup)
     }
 
     @Test
-    fun shinioriGroupIsFoundWhenTitleAndFileShareOneLine() {
-        val text = "$shiniori $shinioriFile\n👤 6 💾 2.24 GB ⚙️ ExtTo"
-        assertEquals("Shiniori-Raws", SourceRowClassifier.parseRelease(text).releaseGroup)
+    fun grpioriGroupIsFoundWhenTitleAndFileShareOneLine() {
+        val text = "$grpiori $grpioriFile\n👤 6 💾 2.24 GB ⚙️ ExtTo"
+        assertEquals("Grpiori-Raws", SourceRowClassifier.parseRelease(text).releaseGroup)
     }
 
     // ---- quality highlight: only the remembered row is filled ----
@@ -350,27 +350,27 @@ class PickerListTest {
 
     @Test
     fun highestQualityIsNotFilledWithoutMemory() {
-        val list = PickerListBuilder.build(listOf(stream(0, "MTBB", 1080), stream(1, "MTBB", 720)))
+        val list = PickerListBuilder.build(listOf(stream(0, "GRPB", 1080), stream(1, "GRPB", 720)))
         assertTrue(filled(list).isEmpty())
     }
 
     @Test
     fun rememberedLowerQualityIsTheOnlyFilledButton() {
-        val rows = listOf(stream(0, "MTBB", 1080), stream(1, "MTBB", 720).copy(rememberedExact = true))
+        val rows = listOf(stream(0, "GRPB", 1080), stream(1, "GRPB", 720).copy(rememberedExact = true))
         assertEquals(listOf(RowRef(1, 0)), filled(PickerListBuilder.build(rows)))
     }
 
     @Test
     fun rememberedFamilyRowIsFilled() {
-        val rows = listOf(stream(0, "MTBB", 1080), stream(1, "MTBB", 720).copy(rememberedFamily = true))
+        val rows = listOf(stream(0, "GRPB", 1080), stream(1, "GRPB", 720).copy(rememberedFamily = true))
         assertEquals(listOf(RowRef(1, 0)), filled(PickerListBuilder.build(rows)))
     }
 
     @Test
     fun exactBeatsFamilyForTheFilledButton() {
         val rows = listOf(
-            stream(0, "MTBB", 1080).copy(rememberedFamily = true),
-            stream(1, "MTBB", 720).copy(rememberedExact = true),
+            stream(0, "GRPB", 1080).copy(rememberedFamily = true),
+            stream(1, "GRPB", 720).copy(rememberedExact = true),
         )
         assertEquals(listOf(RowRef(1, 0)), filled(PickerListBuilder.build(rows)))
     }
@@ -378,11 +378,11 @@ class PickerListTest {
     @Test
     fun tiesAndExtensionPreferredFillNothing() {
         val tie = listOf(
-            stream(0, "MTBB", 1080).copy(rememberedFamily = true),
-            stream(1, "MTBB", 720).copy(rememberedFamily = true),
+            stream(0, "GRPB", 1080).copy(rememberedFamily = true),
+            stream(1, "GRPB", 720).copy(rememberedFamily = true),
         )
         assertTrue(filled(PickerListBuilder.build(tie)).isEmpty())
-        val preferred = listOf(stream(0, "MTBB", 1080), stream(1, "MTBB", 720, preferred = true))
+        val preferred = listOf(stream(0, "GRPB", 1080), stream(1, "GRPB", 720, preferred = true))
         assertTrue(filled(PickerListBuilder.build(preferred)).isEmpty())
     }
 
@@ -390,7 +390,7 @@ class PickerListTest {
         QualityVariant(RowRef(i, 0), label, res, transport)
 
     private fun group(primary: List<QualityVariant>, alternates: List<QualityVariant> = emptyList()) =
-        PickerEntry.StreamGroup("MTBB", null, null, primary, alternates, null)
+        PickerEntry.StreamGroup("GRPB", null, null, primary, alternates, null)
 
     @Test
     fun streamCardPlaysDefaultAndListsTheRestUnderAlso() {

@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * MAX MERGE M7A: one-pass adversarial matrix over the manual torrent entry
+ * MAX MERGE M7A: one-pass adversarial magrptx over the manual torrent entry
  * seam. Pure JVM — no Android, no engine, no device.
  */
 class ManualTorrentEntryTest {

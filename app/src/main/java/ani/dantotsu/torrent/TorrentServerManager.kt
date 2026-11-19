@@ -252,17 +252,11 @@ data class PrebufferProgress(
  * announce targets applied to magnet enrichment and session handles.
  * Upstream's 10 trackers are a strict subset; the two it carries that the
  * local list lacked (`internetwarriors`, `openbts`) are merged in.
+ * Only generic public trackers: none run by an index or release site.
  * Top-level (not function-local) so the JVM matrix pins the exact set:
- * 27 entries, no duplicates, all valid `.../announce` URLs.
+ * 26 entries, no duplicates, all valid `.../announce` URLs.
  */
 val TORRENT_DEFAULT_TRACKERS = listOf(
-    "http://nyaa.tracker.wf:7777/announce",
-    // Anime trackers (nyaa's sister sites and anime indexers); same set other anime
-    // streaming clients announce to.
-    "http://anidex.moe:6969/announce",
-    "http://tracker.anirena.com:80/announce",
-    "https://tracker.nekobt.to/api/tracker/public/announce",
-    "http://open.acgnxtracker.com:80/announce",
     "udp://exodus.desync.com:6969/announce",
     "udp://open.stealth.si:80/announce",
     "udp://tracker.opentrackr.org:1337/announce",
@@ -273,7 +267,6 @@ val TORRENT_DEFAULT_TRACKERS = listOf(
     "http://tracker.openbittorrent.com:80/announce",
     "udp://opentracker.i2p.rocks:6969/announce",
     "udp://tracker.moeking.me:6969/announce",
-    "udp://p4p.arenabg.com:1337/announce",
     "https://tracker.tamersunion.org:443/announce",
     "udp://tracker.dler.org:6969/announce",
     "udp://open.demonii.com:1337/announce",

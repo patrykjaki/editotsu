@@ -9,13 +9,13 @@ class ResolutionParserTest {
 
     @Test
     fun heights() {
-        assertEquals(1080, ResolutionParser.height("[SubsPlease] Show - 05 (1080p) [F2A1B3C4].mkv"))
-        assertEquals(720, ResolutionParser.height("MTBB 720 p"))
+        assertEquals(1080, ResolutionParser.height("[SubsPlume] Show - 05 (1080p) [F2A1B3C4].mkv"))
+        assertEquals(720, ResolutionParser.height("GRPB 720 p"))
         assertEquals(1080, ResolutionParser.height("Show 1080i"))
         assertEquals(2160, ResolutionParser.height("[Group] Show - 01 [4K HDR].mkv"))
         assertEquals(2160, ResolutionParser.height("[Group] Show - 01 (4K).mkv"))
         assertEquals(2160, ResolutionParser.height("[Group] Show - 01 [4K].mkv"))
-        assertEquals(2160, ResolutionParser.height("Torrentio\n4k DV | HDR"))
+        assertEquals(2160, ResolutionParser.height("Relayaddon\n4k DV | HDR"))
         assertEquals(2160, ResolutionParser.height("Show UHD BluRay"))
         assertEquals(1080, ResolutionParser.height("[Group] Show - 01 [1920x1080]"))
         assertEquals(1080, ResolutionParser.height("Kaijuu 8-gou S2 - 05 (CR 1920 x 1080 x264 AAC)"))
@@ -54,14 +54,14 @@ class ResolutionParserTest {
 
     @Test
     fun quality_key_and_stream_names_drop_every_spelling() {
-        val a = ReleaseQualityKey.of("[SubsPlease] Show - 05 (1080p) [F2A1B3C4].mkv")
-        val b = ReleaseQualityKey.of("[SubsPlease] Show - 05 (4K) [0B9D7E21].mkv")
-        val c = ReleaseQualityKey.of("[SubsPlease] Show - 05 (1920x1080) [0B9D7E22].mkv")
+        val a = ReleaseQualityKey.of("[SubsPlume] Show - 05 (1080p) [F2A1B3C4].mkv")
+        val b = ReleaseQualityKey.of("[SubsPlume] Show - 05 (4K) [0B9D7E21].mkv")
+        val c = ReleaseQualityKey.of("[SubsPlume] Show - 05 (1920x1080) [0B9D7E22].mkv")
         assertEquals(a, b)
         assertEquals(a, c)
-        assertEquals("MTBB", StreamNameCleaner.groupName("MTBB [4K]"))
-        assertEquals("MTBB", StreamNameCleaner.groupName("MTBB 1920x1080"))
-        assertEquals("MTBB", StreamNameCleaner.groupName("MTBB 720 p"))
+        assertEquals("GRPB", StreamNameCleaner.groupName("GRPB [4K]"))
+        assertEquals("GRPB", StreamNameCleaner.groupName("GRPB 1920x1080"))
+        assertEquals("GRPB", StreamNameCleaner.groupName("GRPB 720 p"))
     }
 
     @Test

@@ -49,7 +49,7 @@
                     android:fontFamily="@font/poppins_bold"
                     android:singleLine="true"
                     android:textSize="18sp"
-                    tools:text="EMBER" />
+                    tools:text="Group" />
 
                 <TextView
                     android:id="@+id/sourceSeeders"

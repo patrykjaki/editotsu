@@ -23,10 +23,10 @@ class NextEpisodeFamilyTest {
         fileIdx: Int = 0,
     ): VideoServer {
         val title = listOfNotNull(torrent, file?.substringAfterLast('/')).joinToString("\n") +
-            "\n👤 $seeders 💾 1.40 GB ⚙️ Nyaa"
+            "\n👤 $seeders 💾 1.40 GB ⚙️ Idxone"
         val fileJson = file?.let { ""","fileName":"$it"""" } ?: ""
         val data = """{"editotsu":1,"infoHash":"$hash","fileIdx":$fileIdx,"torrentName":"$torrent"$fileJson,""" +
-            """"sizeBytes":1503238553,"seeders":$seeders,"tracker":"nyaa","numFiles":$numFiles}"""
+            """"sizeBytes":1503238553,"seeders":$seeders,"tracker":"idxone","numFiles":$numFiles}"""
         val video = eu.kanade.tachiyomi.animesource.model.Video(
             videoUrl = "magnet:?xt=urn:btih:$hash&index=$fileIdx",
             videoTitle = title,
@@ -58,12 +58,12 @@ class NextEpisodeFamilyTest {
 
     @Test
     fun same_group_single_beats_more_seeded_rows() {
-        val ep1 = row("[ASW] Oshi no Ko - 01 [1080p HEVC][11111111].mkv", 40, h1)
+        val ep1 = row("[GRW] Oshi no Ko - 01 [1080p HEVC][11111111].mkv", 40, h1)
         val stored = remember(ep1)
         val ep2 = listOf(
-            row("[SubsPlease] Oshi no Ko - 02 (1080p) [22222222].mkv", 900, "e".repeat(40)),
-            row("[ASW] Oshi no Ko (01-12) [1080p HEVC][Batch]", 300, batchHash, "Oshi no Ko/[ASW] Oshi no Ko - 02 [1080p HEVC][33333333].mkv", 12, 1),
-            row("[ASW] Oshi no Ko - 02 [1080p HEVC][44444444].mkv", 35, h2),
+            row("[SubsPlume] Oshi no Ko - 02 (1080p) [22222222].mkv", 900, "e".repeat(40)),
+            row("[GRW] Oshi no Ko (01-12) [1080p HEVC][Batch]", 300, batchHash, "Oshi no Ko/[GRW] Oshi no Ko - 02 [1080p HEVC][33333333].mkv", 12, 1),
+            row("[GRW] Oshi no Ko - 02 [1080p HEVC][44444444].mkv", 35, h2),
         )
         val r = resolve(stored, ep2)
         assertTrue(r.toString(), r is RecoveryResult.Resolved)
@@ -72,13 +72,13 @@ class NextEpisodeFamilyTest {
 
     @Test
     fun batch_continues_in_the_same_batch() {
-        val ep1 = row("[ASW] Oshi no Ko (01-12) [1080p HEVC][Batch]", 300, batchHash, "Oshi no Ko/[ASW] Oshi no Ko - 01 [1080p HEVC][11111111].mkv", 12, 0)
+        val ep1 = row("[GRW] Oshi no Ko (01-12) [1080p HEVC][Batch]", 300, batchHash, "Oshi no Ko/[GRW] Oshi no Ko - 01 [1080p HEVC][11111111].mkv", 12, 0)
         val stored = remember(ep1)
         assertEquals("c".repeat(32), stored.second.soft["pack"])
         val ep2 = listOf(
-            row("[ASW] Oshi no Ko - 02 [1080p HEVC][44444444].mkv", 35, h2),
-            row("[ASW] Oshi no Ko S1 [1080p HEVC][Batch]", 500, otherBatch, "S1/[ASW] Oshi no Ko - 02 [1080p HEVC][55555555].mkv", 12, 1),
-            row("[ASW] Oshi no Ko (01-12) [1080p HEVC][Batch]", 300, batchHash, "Oshi no Ko/[ASW] Oshi no Ko - 02 [1080p HEVC][33333333].mkv", 12, 1),
+            row("[GRW] Oshi no Ko - 02 [1080p HEVC][44444444].mkv", 35, h2),
+            row("[GRW] Oshi no Ko S1 [1080p HEVC][Batch]", 500, otherBatch, "S1/[GRW] Oshi no Ko - 02 [1080p HEVC][55555555].mkv", 12, 1),
+            row("[GRW] Oshi no Ko (01-12) [1080p HEVC][Batch]", 300, batchHash, "Oshi no Ko/[GRW] Oshi no Ko - 02 [1080p HEVC][33333333].mkv", 12, 1),
         )
         val r = resolve(stored, ep2)
         assertTrue(r.toString(), r is RecoveryResult.Resolved)
@@ -90,15 +90,15 @@ class NextEpisodeFamilyTest {
     @Test
     fun scene_group_from_the_source_data() {
         fun scene(ep: Int, seeders: Int, hash: String): VideoServer {
-            val name = "The Apothecary Diaries S03E0$ep 1080p NF WEB-DL AAC2.0 H.264-VARYG (Kusuriya no Hitorigoto 3rd Season, Multi-Subs)"
+            val name = "The Apothecary Diaries S03E0$ep 1080p NF WEB-DL AAC2.0 H.264-GRPVY (Kusuriya no Hitorigoto 3rd Season, Multi-Subs)"
             val base = row(name, seeders, hash)
             val v = base.video!!
-            val data = v.internalData.dropLast(1) + ""","tags":{"from":"name","group":"VARYG","service":"NF"}}"""
+            val data = v.internalData.dropLast(1) + ""","tags":{"from":"name","group":"GRPVY","service":"NF"}}"""
             return base.copy(video = v.copy(internalData = data))
         }
         val stored = remember(scene(1, 94, h1))
-        assertEquals("varyg", stored.second.groupKey.lowercase())
-        val ep2 = listOf(row("[ToonsHub] The Apothecary Diaries S03E02 1080p (Multi-Subs)", 1000, "e".repeat(40)), scene(2, 90, h2))
+        assertEquals("grpvy", stored.second.groupKey.lowercase())
+        val ep2 = listOf(row("[GrpsHubb] The Apothecary Diaries S03E02 1080p (Multi-Subs)", 1000, "e".repeat(40)), scene(2, 90, h2))
         val r = resolve(stored, ep2)
         assertTrue(r.toString(), r is RecoveryResult.Resolved)
         assertEquals(ep2[1].name, (r as RecoveryResult.Resolved).server.name)
@@ -106,8 +106,8 @@ class NextEpisodeFamilyTest {
 
     @Test
     fun other_group_only_is_no_match() {
-        val stored = remember(row("[ASW] Oshi no Ko - 01 [1080p HEVC][11111111].mkv", 40, h1))
-        val ep2 = listOf(row("[SubsPlease] Oshi no Ko - 02 (1080p) [22222222].mkv", 900, h2))
+        val stored = remember(row("[GRW] Oshi no Ko - 01 [1080p HEVC][11111111].mkv", 40, h1))
+        val ep2 = listOf(row("[SubsPlume] Oshi no Ko - 02 (1080p) [22222222].mkv", 900, h2))
         assertEquals(RecoveryResult.NoMatch, resolve(stored, ep2))
     }
 }

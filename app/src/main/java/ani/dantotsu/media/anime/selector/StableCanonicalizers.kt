@@ -8,9 +8,13 @@ import java.util.Locale
  * are independent of `SourceRowClassifier.cleanDisplayTitle`.
  */
 object StableGroupCanonicalizer {
-    fun canonicalKey(rawGroup: String?): String? {
+    /**
+     * [tracker] is the row's own indexer (its 📂 / ⚙ value): a "group" equal to it is
+     * provenance, not a release group.
+     */
+    fun canonicalKey(rawGroup: String?, tracker: String? = null): String? {
         if (rawGroup.isNullOrBlank()) return null
-        if (looksLikeTracker(rawGroup)) return null
+        if (isRowTracker(rawGroup, tracker)) return null
         if (looksLikeService(rawGroup)) return null
         if (looksLikeResolution(rawGroup)) return null
         if (looksLikeAudioFormat(rawGroup)) return null
@@ -26,12 +30,9 @@ object StableGroupCanonicalizer {
             .replace(Regex("""\s+"""), " ")
             .lowercase(Locale.ROOT)
 
-    private val TRACKER_NAMES = setOf(
-        "nyaasi", "1337x", "nekobt", "hon3yhoneyp"
-    )
-    private fun looksLikeTracker(s: String): Boolean {
-        val t = s.trim().lowercase(Locale.ROOT)
-        return t in TRACKER_NAMES
+    private fun isRowTracker(group: String, tracker: String?): Boolean {
+        val t = TrackerCanonicalizer.canonicalKey(tracker) ?: return false
+        return TrackerCanonicalizer.canonicalKey(group) == t
     }
 
     private val SERVICE_ALIASES = mapOf(

@@ -33,7 +33,11 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.core.net.toUri
+import ani.dantotsu.util.HashedNames
 import okhttp3.RequestBody.Companion.toRequestBody
+
+/** Video hosts that refuse parallel connections (hashed). */
+private val SINGLE_CONNECTION_HOSTS = HashedNames(mapOf("fd350a999d788c21" to 9, "7018006b4499280a" to 6))
 
 class NativeVideoDownloader(private val context: Context) : DownloadAddonApiV2 {
 
@@ -944,7 +948,8 @@ class NativeVideoDownloader(private val context: Context) : DownloadAddonApiV2 {
     }
 
     private fun calculateDynamicConcurrency(host: String): Int {
-        if (host.contains("animepahe") || host.contains("sibnet") || host.contains("video.sibnet")) return 1
+        // Two hosts (hashed) refuse parallel connections.
+        if (SINGLE_CONNECTION_HOSTS.occursIn(host)) return 1
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
         return if (activityManager?.isLowRamDevice == true) 4 else 16
     }

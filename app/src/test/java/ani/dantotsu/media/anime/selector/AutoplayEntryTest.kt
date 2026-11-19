@@ -22,7 +22,7 @@ class AutoplayEntryTest {
 
     @Test
     fun remembered_name_plays_by_name() {
-        assertEquals(AutoplayEntry.NAMED, entry(name = "[Judas] Cyberpunk Edgerunners (Season 2) (Batch)", key = true, family = true))
+        assertEquals(AutoplayEntry.NAMED, entry(name = "[Grpjd] Cyberpunk Edgerunners (Season 2) (Batch)", key = true, family = true))
         assertEquals(AutoplayEntry.NAMED, entry(name = "Server 1", makeDefault = false))
     }
 

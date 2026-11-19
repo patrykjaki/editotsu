@@ -15,7 +15,7 @@ abstract class VideoExtractor : Serializable {
     var subtitles: List<Subtitle> = listOf()
     var audioTracks: List<Track> = listOf()
     // Beta03: validated extension mpv per-file options for this extractor's
-    // streams (e.g. AniKoto's demuxer-lavf-o). Empty = none. Populated from
+    // streams (e.g. SourceKay's demuxer-lavf-o). Empty = none. Populated from
     // VideoContainer by load().
     var mpvFileOptions: String = ""
 

@@ -26,58 +26,58 @@ import org.junit.Test
  */
 class SourceRowClassifierTest {
 
-    // ---- Real Torrentio golden fixtures (sanitised, current format) -
+    // ---- Real Relayaddon golden fixtures (sanitised, current format) -
 
-    // Each fixture is a multi-line Torrentio payload that includes BOTH
+    // Each fixture is a multi-line Relayaddon payload that includes BOTH
     // a 📂 tracker line and a leading [GROUP] token in the title. The
     // tests below assert group + tracker on the SAME parsed object.
 
-    private val fixtureIroncladNyaaSi =
+    private val fixtureGrpcladIdxOne =
         """
-        Torrentio
-        📂 NyaaSi
-        1080p [Ironclad] Yani Neko - S01E04 [WEB.10...mkv
+        Relayaddon
+        📂 IdxOne
+        1080p [Grpclad] Yani Neko - S01E04 [WEB.10...mkv
         """.trim()
-    private val fixtureToonsHubNyaaSi =
+    private val fixtureGrpsHubbIdxOne =
         """
-        Torrentio
-        📂 NyaaSi
-        1080p [ToonsHub] Chainsmoker Cat S01E04 [1080p][HEVC].mkv
+        Relayaddon
+        📂 IdxOne
+        1080p [GrpsHubb] Chainsmoker Cat S01E04 [1080p][HEVC].mkv
         """.trim()
-    private val fixtureDkbNyaaSi =
+    private val fixtureDkbIdxOne =
         """
-        Torrentio
-        📂 NyaaSi
-        1080p [DKB] Yani Neko - S01E04 [1080p][HE...mkv
+        Relayaddon
+        📂 IdxOne
+        1080p [DQB] Yani Neko - S01E04 [1080p][HE...mkv
         """.trim()
-    private val fixtureVarygNekoBT =
+    private val fixtureGrpvyIdxTW =
         """
-        Torrentio
-        📂 nekoBT
-        1080p [VARYG] Chainsmoker Cat S01E04 1080...mkv
+        Relayaddon
+        📂 idxTW
+        1080p [GRPVY] Chainsmoker Cat S01E04 1080...mkv
         """.trim()
-    private val fixture4kTenraiSensei =
+    private val fixture4kGrpaiSensei =
         """
-        Torrentio
-        📂 1337x
-        4k [Tenrai-Sensei] Sousou no Frieren - 01 [1080p][HEVC].mkv
+        Relayaddon
+        📂 2448x
+        4k [Grpai-Sensei] Sousou no Frieren - 01 [1080p][HEVC].mkv
         """.trim()
-    private val fixture1080pSubsPleaseNyaaSi =
-        "1080p [SubsPlease] Sousou no Frieren - 01 (1080p) [F02B9CEE].mkv"
+    private val fixture1080pSubsPlumeIdxOne =
+        "1080p [SubsPlume] Sousou no Frieren - 01 (1080p) [F02B9CEE].mkv"
 
-    // Real Torrentio metadata-block fixture (legacy two-marker shape:
+    // Real Relayaddon metadata-block fixture (legacy two-marker shape:
     // v2-era 📂 + ⚙️ lines; current rows use single-⚙️ provenance).
-    private val fixtureTorrentioMetadataBlock =
+    private val fixtureRelayaddonMetadataBlock =
         """
-        Torrentio
-        📂 NyaaSi
-        ⚙️ SubsPlease
+        Relayaddon
+        📂 IdxOne
+        ⚙️ SubsPlume
         💾 1.48 GB
         👤 545
         🎯 1080p
         🎬 Dual Audio
         🔗 Batch
-        [SubsPlease] Sousou no Frieren - 01v2 (1080p) [AAA94036].mkv
+        [SubsPlume] Sousou no Frieren - 01v2 (1080p) [AAA94036].mkv
         """.trim()
 
     // ---- Negative release-group fixtures (must NOT fabricate a group)
@@ -91,91 +91,91 @@ class SourceRowClassifierTest {
     //
     // Each of these tests uses a two-marker (📂 + title with leading
     // [GROUP]) payload. That is the LEGACY compatibility shape; current
-    // Torrentio rows carry single-⚙️ provenance instead (covered by the
+    // Relayaddon rows carry single-⚙️ provenance instead (covered by the
     // current_* tests). Both assert group + tracker on one parse result.
 
     @Test
-    fun releaseGroup_Ironclad_titleBracket_withTrackerNyaaSi() {
-        val f = SourceRowClassifier.parseRelease(fixtureIroncladNyaaSi)
-        assertEquals("Ironclad", f.releaseGroup)
-        assertEquals("NyaaSi", f.tracker)
+    fun releaseGroup_Grpclad_titleBracket_withTrackerIdxOne() {
+        val f = SourceRowClassifier.parseRelease(fixtureGrpcladIdxOne)
+        assertEquals("Grpclad", f.releaseGroup)
+        assertEquals("IdxOne", f.tracker)
     }
 
     @Test
-    fun releaseGroup_ToonsHub_titleBracket_withTrackerNyaaSi() {
-        val f = SourceRowClassifier.parseRelease(fixtureToonsHubNyaaSi)
-        assertEquals("ToonsHub", f.releaseGroup)
-        assertEquals("NyaaSi", f.tracker)
+    fun releaseGroup_GrpsHubb_titleBracket_withTrackerIdxOne() {
+        val f = SourceRowClassifier.parseRelease(fixtureGrpsHubbIdxOne)
+        assertEquals("GrpsHubb", f.releaseGroup)
+        assertEquals("IdxOne", f.tracker)
     }
 
     @Test
-    fun releaseGroup_DKB_titleBracket_withTrackerNyaaSi() {
-        val f = SourceRowClassifier.parseRelease(fixtureDkbNyaaSi)
-        assertEquals("DKB", f.releaseGroup)
-        assertEquals("NyaaSi", f.tracker)
+    fun releaseGroup_DQB_titleBracket_withTrackerIdxOne() {
+        val f = SourceRowClassifier.parseRelease(fixtureDkbIdxOne)
+        assertEquals("DQB", f.releaseGroup)
+        assertEquals("IdxOne", f.tracker)
     }
 
     @Test
-    fun releaseGroup_VARYG_titleBracket_withTrackerNekoBT() {
-        val f = SourceRowClassifier.parseRelease(fixtureVarygNekoBT)
-        assertEquals("VARYG", f.releaseGroup)
-        assertEquals("nekoBT", f.tracker)
+    fun releaseGroup_GRPVY_titleBracket_withTrackerIdxTW() {
+        val f = SourceRowClassifier.parseRelease(fixtureGrpvyIdxTW)
+        assertEquals("GRPVY", f.releaseGroup)
+        assertEquals("idxTW", f.tracker)
     }
 
     @Test
-    fun releaseGroup_4kTenraiSensei_titleBracket_withTracker1337x() {
-        val f = SourceRowClassifier.parseRelease(fixture4kTenraiSensei)
+    fun releaseGroup_4kGrpaiSensei_titleBracket_withTracker2448x() {
+        val f = SourceRowClassifier.parseRelease(fixture4kGrpaiSensei)
         // Quality prefix "4k" before the bracket must be allowed.
-        assertEquals("Tenrai-Sensei", f.releaseGroup)
-        assertEquals("1337x", f.tracker)
+        assertEquals("Grpai-Sensei", f.releaseGroup)
+        assertEquals("2448x", f.tracker)
     }
 
     @Test
-    fun releaseGroup_SubsPleaseFromBracketOrMetadata() {
-        val f = SourceRowClassifier.parseRelease(fixture1080pSubsPleaseNyaaSi)
-        // Title bracket and ⚙ line both say SubsPlease; either is acceptable.
-        assertEquals("SubsPlease", f.releaseGroup)
+    fun releaseGroup_SubsPlumeFromBracketOrMetadata() {
+        val f = SourceRowClassifier.parseRelease(fixture1080pSubsPlumeIdxOne)
+        // Title bracket and ⚙ line both say SubsPlume; either is acceptable.
+        assertEquals("SubsPlume", f.releaseGroup)
     }
 
     @Test
     fun releaseGroup_metadataBlock_usesCogLine() {
-        val f = SourceRowClassifier.parseRelease(fixtureTorrentioMetadataBlock)
+        val f = SourceRowClassifier.parseRelease(fixtureRelayaddonMetadataBlock)
         // No [BracketedToken] in the title line, so we fall back to the
-        // ⚙ line. ⚙ value "SubsPlease" is used. The 📂 tracker value
-        // is "NyaaSi" and is stored separately.
-        assertEquals("SubsPlease", f.releaseGroup)
-        assertEquals("NyaaSi", f.tracker)
+        // ⚙ line. ⚙ value "SubsPlume" is used. The 📂 tracker value
+        // is "IdxOne" and is stored separately.
+        assertEquals("SubsPlume", f.releaseGroup)
+        assertEquals("IdxOne", f.tracker)
     }
 
     // ---- Tracker is NEVER treated as release group ------------------
 
     @Test
-    fun releaseGroup_NyaaSi_indexer_isNotGroup() {
+    fun releaseGroup_IdxOne_indexer_isNotGroup() {
         // The v3.4 brief forbids a generic "looks like a tracker" prefix
         // when no 📂 tracker line corroborates it. Add the 📂 line so the
-        // "NyaaSi" prefix is the actual parsed tracker.
+        // "IdxOne" prefix is the actual parsed tracker.
         val f = SourceRowClassifier.parseRelease(
             """
-            Torrentio
-            📂 NyaaSi
-            NyaaSi [SomeGroup] Title.mkv
+            Relayaddon
+            📂 IdxOne
+            IdxOne [SomeGroup] Title.mkv
             """.trimIndent()
         )
         assertEquals("SomeGroup", f.releaseGroup)
-        assertEquals("NyaaSi", f.tracker)
+        assertEquals("IdxOne", f.tracker)
     }
 
     @Test
-    fun releaseGroup_NyaaSi_tracker_doesNotReplaceGroup() {
-        // The 📂 tracker value (NyaaSi) must not replace the title bracket
-        // group (Ironclad). This is the explicit "do not silently prefer
+    fun releaseGroup_IdxOne_tracker_doesNotReplaceGroup() {
+        // The 📂 tracker value (IdxOne) must not replace the title bracket
+        // group (Grpclad). This is the explicit "do not silently prefer
         // 📂" rule from the v3.3 brief.
-        val f = SourceRowClassifier.parseRelease(fixtureTorrentioMetadataBlock)
-        // Title line: "[SubsPlease] Sousou no Frieren ..."
-        // Cog line: "⚙️ SubsPlease"  -> both agree, so group is SubsPlease.
-        assertEquals("SubsPlease", f.releaseGroup)
-        // 📂 line is "NyaaSi", so tracker is set.
-        assertEquals("NyaaSi", f.tracker)
+        val f = SourceRowClassifier.parseRelease(fixtureRelayaddonMetadataBlock)
+        // Title line: "[SubsPlume] Sousou no Frieren ..."
+        // Cog line: "⚙️ SubsPlume"  -> both agree, so group is SubsPlume.
+        assertEquals("SubsPlume", f.releaseGroup)
+        // 📂 line is "IdxOne", so tracker is set.
+        assertEquals("IdxOne", f.tracker)
     }
 
     @Test
@@ -360,7 +360,7 @@ class SourceRowClassifierTest {
 
     @Test
     fun audioFormat_DDP2_0() {
-        val f = SourceRowClassifier.parseRelease("[EMBER] Title DDP2.0 x264-EMBER.mkv")
+        val f = SourceRowClassifier.parseRelease("[GRPEM] Title DDP2.0 x264-GRPEM.mkv")
         // v3.3 display normalisation, stereo collapsed: DDP 2.0 -> E-AC-3 / DDP.
         assertEquals("E-AC-3 / DDP", f.audioFormat)
     }
@@ -399,7 +399,7 @@ class SourceRowClassifierTest {
         // The DTS detail tail is bounded: codec/group text after it
         // must not become part of the format.
         assertEquals("DTS-HD",
-            SourceRowClassifier.parseRelease("Title DTS-HD.X265-IAHD.mkv").audioFormat)
+            SourceRowClassifier.parseRelease("Title DTS-HD.X265-IQHD.mkv").audioFormat)
         assertEquals("DTS",
             SourceRowClassifier.parseRelease("Title DTS.mkv").audioFormat)
         // Bare Dolby is ambiguous (Vision/Atmos/Digital?) and matches
@@ -459,7 +459,7 @@ class SourceRowClassifierTest {
         // Fixture has subtitle context (Multi-Subs) so the bracketed
         // language codes are collected into subtitleLanguages.
         val f = SourceRowClassifier.parseRelease(
-            "[CameEsp] Title S01E01 [Multi-Subs] [ESP-ENG][mkv]",
+            "[GrpeEsp] Title S01E01 [Multi-Subs] [ESP-ENG][mkv]",
         )
         assertTrue("ESP-ENG should be detected as a single regional code",
             "ESP-ENG" in f.subtitleLanguages)
@@ -470,8 +470,8 @@ class SourceRowClassifierTest {
     @Test
     fun cleanTitle_removesGroupResolutionCodec() {
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
-            releaseName = "1080p [Ironclad] Yani Neko - S01E04 [1080p][HEVC][10bit].mkv",
-            releaseGroup = "Ironclad",
+            releaseName = "1080p [Grpclad] Yani Neko - S01E04 [1080p][HEVC][10bit].mkv",
+            releaseGroup = "Grpclad",
             resolution = "1080p",
             codec = "HEVC",
             bitDepth = "10-bit",
@@ -479,8 +479,8 @@ class SourceRowClassifierTest {
         )
         // Group, leading resolution, and bracketed codec / bit-depth / res
         // should be removed; the title text remains.
-        assertFalse("clean title should not contain [Ironclad]",
-            cleaned.contains("[Ironclad]"))
+        assertFalse("clean title should not contain [Grpclad]",
+            cleaned.contains("[Grpclad]"))
         assertFalse("clean title should not contain [HEVC]",
             cleaned.contains("[HEVC]"))
         assertFalse("clean title should not contain [10bit]",
@@ -492,8 +492,8 @@ class SourceRowClassifierTest {
     @Test
     fun cleanTitle_removesSourceService() {
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
-            releaseName = "1080p [Ironclad] Title NF S01E01.mkv",
-            releaseGroup = "Ironclad",
+            releaseName = "1080p [Grpclad] Title NF S01E01.mkv",
+            releaseGroup = "Grpclad",
             resolution = "1080p",
             codec = null,
             bitDepth = null,
@@ -505,10 +505,10 @@ class SourceRowClassifierTest {
 
     @Test
     fun cleanTitle_keepsRawTitleForIdentity() {
-        val raw = "1080p [Ironclad] Yani Neko - S01E04 [1080p][HEVC].mkv"
+        val raw = "1080p [Grpclad] Yani Neko - S01E04 [1080p][HEVC].mkv"
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
             releaseName = raw,
-            releaseGroup = "Ironclad",
+            releaseGroup = "Grpclad",
             resolution = "1080p",
             codec = "HEVC",
             bitDepth = null,
@@ -525,29 +525,29 @@ class SourceRowClassifierTest {
     // ---- Summarizer end-to-end -----------------------------------
 
     @Test
-    fun summarize_IroncladNyaaSi_headerAndTracker() {
+    fun summarize_GrpcladIdxOne_headerAndTracker() {
         // Use the v2-era fixture that has a metadata block including
         // the 📂 tracker line and the ⚙ group line; group is the title
-        // bracket (SubsPlease); tracker is NyaaSi.
+        // bracket (SubsPlume); tracker is IdxOne.
         val row = SourceRowSummarizer.build(
-            displayLabel = fixtureTorrentioMetadataBlock,
-            qualityText = fixtureTorrentioMetadataBlock,
+            displayLabel = fixtureRelayaddonMetadataBlock,
+            qualityText = fixtureRelayaddonMetadataBlock,
             formatName = "CONTAINER",
             url = magnetUrl,
         )
-        assertEquals("SubsPlease", row.header)
-        assertEquals("NyaaSi", row.tracker)
+        assertEquals("SubsPlume", row.header)
+        assertEquals("IdxOne", row.tracker)
     }
 
     @Test
-    fun summarize_4kTenraiSensei_cleanTitleStripsPrefix() {
+    fun summarize_4kGrpaiSensei_cleanTitleStripsPrefix() {
         val row = SourceRowSummarizer.build(
-            displayLabel = fixture4kTenraiSensei,
-            qualityText = fixture4kTenraiSensei,
+            displayLabel = fixture4kGrpaiSensei,
+            qualityText = fixture4kGrpaiSensei,
             formatName = "CONTAINER",
             url = magnetUrl,
         )
-        assertEquals("Tenrai-Sensei", row.header)
+        assertEquals("Grpai-Sensei", row.header)
         // cleanSubtitle should not contain the leading "4k" or the group
         // bracket.
         assertFalse("cleanSubtitle should not start with '4k'",
@@ -694,19 +694,19 @@ class SourceRowClassifierTest {
     }
 
     @Test
-    fun releaseGroup_positive_corroboratedNyaaSi_withTracker() {
-        // The 📂 line provides the canonical tracker. The "NyaaSi" token
+    fun releaseGroup_positive_corroboratedIdxOne_withTracker() {
+        // The 📂 line provides the canonical tracker. The "IdxOne" token
         // matches the parsed tracker exactly (case-preserved), so the
         // bracketed group is accepted.
         val f = SourceRowClassifier.parseRelease(
             """
-            Torrentio
-            📂 NyaaSi
-            NyaaSi 1080p [Ironclad] Title S01E01.mkv
+            Relayaddon
+            📂 IdxOne
+            IdxOne 1080p [Grpclad] Title S01E01.mkv
             """.trimIndent()
         )
-        assertEquals("Ironclad", f.releaseGroup)
-        assertEquals("NyaaSi", f.tracker)
+        assertEquals("Grpclad", f.releaseGroup)
+        assertEquals("IdxOne", f.tracker)
     }
 
     @Test
@@ -716,32 +716,32 @@ class SourceRowClassifierTest {
         // tracker.
         val f1 = SourceRowClassifier.parseRelease(
             """
-            Torrentio
-            📂 NyaaSi
-            1080p NyaaSi [Ironclad] Title.mkv
+            Relayaddon
+            📂 IdxOne
+            1080p IdxOne [Grpclad] Title.mkv
             """.trimIndent()
         )
         val f2 = SourceRowClassifier.parseRelease(
             """
-            Torrentio
-            📂 NyaaSi
-            NyaaSi 1080p [Ironclad] Title.mkv
+            Relayaddon
+            📂 IdxOne
+            IdxOne 1080p [Grpclad] Title.mkv
             """.trimIndent()
         )
-        assertEquals("Ironclad", f1.releaseGroup)
-        assertEquals("Ironclad", f2.releaseGroup)
+        assertEquals("Grpclad", f1.releaseGroup)
+        assertEquals("Grpclad", f2.releaseGroup)
     }
 
     @Test
     fun releaseGroup_TrackerInTitleNotMatchingParsedTracker_doesNotFabricate() {
-        // The 📂 line says NyaaSi, but the prefix token says "Other".
+        // The 📂 line says IdxOne, but the prefix token says "Other".
         // Because the prefix token does not match the parsed tracker,
         // the bracketed token is rejected.
         val f = SourceRowClassifier.parseRelease(
             """
-            Torrentio
-            📂 NyaaSi
-            Other 1080p [Ironclad] Title.mkv
+            Relayaddon
+            📂 IdxOne
+            Other 1080p [Grpclad] Title.mkv
             """.trimIndent()
         )
         assertNull("Mismatched tracker prefix must not fabricate a group",
@@ -783,8 +783,8 @@ class SourceRowClassifierTest {
     @Test
     fun v35_trackerSetWhenParsed() {
         val quality = """
-            Torrentio
-            📂 NyaaSi
+            Relayaddon
+            📂 IdxOne
             1080p [Group] Title S01E01.mkv
         """.trimIndent()
         val row = SourceRowSummarizer.build(
@@ -794,7 +794,7 @@ class SourceRowClassifierTest {
             url = "magnet:?xt=urn:btih:0123456789ABCDEF0123456789ABCDEF01234567",
         )
         assertEquals("Group", row.header)
-        assertEquals("NyaaSi", row.tracker)
+        assertEquals("IdxOne", row.tracker)
     }
 
     @Test
@@ -825,8 +825,8 @@ class SourceRowClassifierTest {
         // The view-model still exposes the parsed tracker for the bind code
         // to set on the small icon cue.
         val quality = """
-            Torrentio
-            📂 NyaaSi
+            Relayaddon
+            📂 IdxOne
             1080p [Group] Title S01E01.mkv
         """.trimIndent()
         val row = SourceRowSummarizer.build(
@@ -835,7 +835,7 @@ class SourceRowClassifierTest {
             formatName = "CONTAINER",
             url = "magnet:?xt=urn:btih:0123456789ABCDEF0123456789ABCDEF01234567",
         )
-        assertEquals("NyaaSi", row.tracker)
+        assertEquals("IdxOne", row.tracker)
     }
 
     @Test
@@ -857,8 +857,8 @@ class SourceRowClassifierTest {
         // The new icon cue is in the header and does NOT remove the
         // textual appearance of the tracker here.
         val quality = """
-            Torrentio
-            📂 NyaaSi
+            Relayaddon
+            📂 IdxOne
             1080p [Group] Title S01E01.mkv
         """.trimIndent()
         val row = SourceRowSummarizer.build(
@@ -870,7 +870,7 @@ class SourceRowClassifierTest {
         val metaText = row.meta.joinToString(" · ") { it.text }
         assertTrue(
             "lower metadata row must still contain textual tracker; was '$metaText'",
-            metaText.contains("NyaaSi"),
+            metaText.contains("IdxOne"),
         )
     }
 
@@ -905,8 +905,8 @@ class SourceRowClassifierTest {
         // signal. The view-model must expose the parsed tracker so
         // the bind code can set the cue.
         val quality = """
-            Torrentio
-            📂 NyaaSi
+            Relayaddon
+            📂 IdxOne
             1080p [Group] Title S01E01.mkv
         """.trimIndent()
         val row = SourceRowSummarizer.build(
@@ -915,7 +915,7 @@ class SourceRowClassifierTest {
             formatName = "CONTAINER",
             url = "magnet:?xt=urn:btih:0123456789ABCDEF0123456789ABCDEF01234567",
         )
-        assertEquals("NyaaSi", row.tracker)
+        assertEquals("IdxOne", row.tracker)
     }
 
     @Test
@@ -939,13 +939,13 @@ class SourceRowClassifierTest {
         // bound view-model built from the same name must agree, in
         // both directions, so recycled holders always match their
         // layout.
-        val streamName = "Vidstream - Sub - 1080p"
+        val streamName = "Hostone - Sub - 1080p"
         assertTrue((SourceRowClassifier.classifyPresentation(streamName) == SourcePresentationKind.STREAM))
         val stream = SourceRowSummarizer.build(
             displayLabel = streamName,
             qualityText = streamName,
             formatName = "M3U8",
-            url = "https://example.com/vidstream/playlist.m3u8",
+            url = "https://example.com/hostone/playlist.m3u8",
         )
         assertEquals(SourcePresentationKind.STREAM, stream.presentation)
         assertEquals(
@@ -953,13 +953,13 @@ class SourceRowClassifierTest {
             stream.presentation,
         )
         val release = SourceRowSummarizer.build(
-            displayLabel = fixtureIroncladNyaaSi,
-            qualityText = fixtureIroncladNyaaSi,
+            displayLabel = fixtureGrpcladIdxOne,
+            qualityText = fixtureGrpcladIdxOne,
             formatName = "CONTAINER",
             url = magnetUrl,
         )
         assertEquals(SourcePresentationKind.RELEASE, release.presentation)
-        assertFalse((SourceRowClassifier.classifyPresentation(fixtureIroncladNyaaSi) == SourcePresentationKind.STREAM))
+        assertFalse((SourceRowClassifier.classifyPresentation(fixtureGrpcladIdxOne) == SourcePresentationKind.STREAM))
         assertEquals(
             SourcePresentationKind.RELEASE,
             release.presentation,
@@ -973,10 +973,10 @@ class SourceRowClassifierTest {
         // content for the info action, and carry no torrent-only
         // fields that would justify the full card.
         val row = SourceRowSummarizer.build(
-            displayLabel = "Vidstream - Sub - 1080p",
-            qualityText = "Vidstream - Sub - 1080p",
+            displayLabel = "Hostone - Sub - 1080p",
+            qualityText = "Hostone - Sub - 1080p",
             formatName = "M3U8",
-            url = "https://example.com/vidstream/playlist.m3u8",
+            url = "https://example.com/hostone/playlist.m3u8",
         )
         assertEquals(SourcePresentationKind.STREAM,
             row.presentation)
@@ -995,8 +995,8 @@ class SourceRowClassifierTest {
         // function of presentation, so holder reuse can never leak
         // one layout's state into the other.
         val names = listOf(
-            "Vidstream - Sub - 1080p",
-            fixtureIroncladNyaaSi,
+            "Hostone - Sub - 1080p",
+            fixtureGrpcladIdxOne,
             "VidPlay-1",
             "1080p [Group] Title S01E01.mkv",
         )
@@ -1020,9 +1020,9 @@ class SourceRowClassifierTest {
     @Test
     fun followups_dualBareWord_isAudioKind() {
         val f = SourceRowClassifier.parseRelease(
-            "[Erai-raws] Sousou no Frieren - 01 [1080p][HEVC][DUAL AAC2.0].mkv",
+            "[Grpa-raws] Sousou no Frieren - 01 [1080p][HEVC][DUAL AAC2.0].mkv",
         )
-        assertEquals("Erai-raws", f.releaseGroup)
+        assertEquals("Grpa-raws", f.releaseGroup)
         assertEquals("AAC", f.audioFormat)
         assertEquals("Dual", f.audioSummary)
     }
@@ -1105,7 +1105,7 @@ class SourceRowClassifierTest {
         // audio kind; the title here is neutral.
         val f = SourceRowClassifier.parseRelease(
             """
-            Torrentio
+            Relayaddon
             📂 DubTorrents
             1080p [Group] Title S01E01.mkv
             """.trimIndent(),
@@ -1125,30 +1125,30 @@ class SourceRowClassifierTest {
     // ---- follow-ups v1: suffix-style -GROUP extraction --------------
 
     @Test
-    fun followups_suffixVaryg_extracted() {
+    fun followups_suffixGrpvy_extracted() {
         val f = SourceRowClassifier.parseRelease(
-            "Sousou no Frieren S02E01 [1080p][HEVC]-VARYG.mkv",
+            "Sousou no Frieren S02E01 [1080p][HEVC]-GRPVY.mkv",
         )
-        assertEquals("VARYG", f.releaseGroup)
+        assertEquals("GRPVY", f.releaseGroup)
     }
 
     @Test
-    fun followups_suffixRapta_extracted_preservesCase() {
-        val f = SourceRowClassifier.parseRelease("Frieren S02E01 1080p HEVC-Rapta.mkv")
-        assertEquals("Rapta", f.releaseGroup)
+    fun followups_suffixGrpta_extracted_preservesCase() {
+        val f = SourceRowClassifier.parseRelease("Frieren S02E01 1080p HEVC-Grpta.mkv")
+        assertEquals("Grpta", f.releaseGroup)
     }
 
     @Test
     fun followups_suffixWithoutExtension_extracted() {
-        val f = SourceRowClassifier.parseRelease("Frieren S02E01 1080p-VARYG")
-        assertEquals("VARYG", f.releaseGroup)
+        val f = SourceRowClassifier.parseRelease("Frieren S02E01 1080p-GRPVY")
+        assertEquals("GRPVY", f.releaseGroup)
     }
 
     @Test
     fun followups_bracketWinsOverSuffix() {
         // An authoritative [Group] tag beats any suffix guess.
-        val f = SourceRowClassifier.parseRelease("[SubsPlease] Title S01E01 1080p-VARYG.mkv")
-        assertEquals("SubsPlease", f.releaseGroup)
+        val f = SourceRowClassifier.parseRelease("[SubsPlume] Title S01E01 1080p-GRPVY.mkv")
+        assertEquals("SubsPlume", f.releaseGroup)
     }
 
     @Test
@@ -1156,13 +1156,13 @@ class SourceRowClassifierTest {
         // The explicit ⚙ line beats the weaker suffix guess.
         val f = SourceRowClassifier.parseRelease(
             """
-            Torrentio
-            📂 NyaaSi
-            ⚙️ SubsPlease
-            Title S01E01 1080p-VARYG.mkv
+            Relayaddon
+            📂 IdxOne
+            ⚙️ SubsPlume
+            Title S01E01 1080p-GRPVY.mkv
             """.trimIndent(),
         )
-        assertEquals("SubsPlease", f.releaseGroup)
+        assertEquals("SubsPlume", f.releaseGroup)
     }
 
     @Test
@@ -1213,12 +1213,12 @@ class SourceRowClassifierTest {
     @Test
     fun followups_dualRelease_pillsCarryAudioMode() {
         val row = SourceRowSummarizer.build(
-            displayLabel = "[Erai-raws] Title - 01 [1080p][DUAL AAC2.0].mkv",
-            qualityText = "[Erai-raws] Title - 01 [1080p][DUAL AAC2.0].mkv",
+            displayLabel = "[Grpa-raws] Title - 01 [1080p][DUAL AAC2.0].mkv",
+            qualityText = "[Grpa-raws] Title - 01 [1080p][DUAL AAC2.0].mkv",
             formatName = "CONTAINER",
             url = magnetUrl,
         )
-        assertEquals("Erai-raws", row.header)
+        assertEquals("Grpa-raws", row.header)
         val mode = row.pills.firstOrNull { it.kind == SourcePillKind.AUDIO_MODE }
         assertNotNull("DUAL row must carry an audio-mode pill", mode)
         assertEquals("Dual", mode!!.text)
@@ -1242,7 +1242,7 @@ class SourceRowClassifierTest {
 
     @Test
     fun dataset_cogLine_stopsAtPipeSegment() {
-        // Torrentio metadata uses ` | ` separators: the ⚙️ value is
+        // Relayaddon metadata uses ` | ` separators: the ⚙️ value is
         // `Torrent9`, not `Torrent9 | 🇫🇷`. Under v2.2 current-format
         // semantics a lone ⚙️ is provenance (tracker), never a group.
         val f = SourceRowClassifier.parseRelease(
@@ -1263,9 +1263,9 @@ class SourceRowClassifierTest {
         val f = SourceRowClassifier.parseRelease(
             "1080p Jujutsu Kaisen S01 (2020) (1080p x265 10bit BD Dual Audio FLAC 2.0) [Prof]\n" +
                 "S01E01 - Ryoumen Sukuna.mkv\n" +
-                "👤 1 💾 1001.08 MB ⚙️ TorrentGalaxy | Dubbed / Dual Audio / 🇬🇧",
+                "👤 1 💾 1001.08 MB ⚙️ IndexCee | Dubbed / Dual Audio / 🇬🇧",
         )
-        assertEquals("TorrentGalaxy", f.tracker)
+        assertEquals("IndexCee", f.tracker)
         assertNull("lone ⚙️ provider must not be a group", f.releaseGroup)
         assertEquals("Dual", f.audioSummary)
     }
@@ -1274,17 +1274,17 @@ class SourceRowClassifierTest {
 
     @Test
     fun dataset_uncommonResolutionPrefix_isAllowed() {
-        val ice = SourceRowClassifier.parseRelease("800p [IceBlue] Naruto (Season 1) - 01.mkv")
-        assertEquals("IceBlue", ice.releaseGroup)
-        val evil = SourceRowClassifier.parseRelease("528p [EvilMini] Naruto - 001.mkv")
-        assertEquals("EvilMini", evil.releaseGroup)
+        val ice = SourceRowClassifier.parseRelease("800p [GrpBlue] Naruto (Season 1) - 01.mkv")
+        assertEquals("GrpBlue", ice.releaseGroup)
+        val evil = SourceRowClassifier.parseRelease("528p [GrplMini] Naruto - 001.mkv")
+        assertEquals("GrplMini", evil.releaseGroup)
     }
 
     @Test
     fun dataset_technicalSecondPrefix_isAllowed() {
         // `1080p HDR` is quality + technical metadata, not a title.
-        val f = SourceRowClassifier.parseRelease("1080p HDR [Salieri] Title S01 BD.mkv")
-        assertEquals("Salieri", f.releaseGroup)
+        val f = SourceRowClassifier.parseRelease("1080p HDR [Grpsali] Title S01 BD.mkv")
+        assertEquals("Grpsali", f.releaseGroup)
     }
 
     @Test
@@ -1299,9 +1299,9 @@ class SourceRowClassifierTest {
     @Test
     fun dataset_dubsEmpire_isGroup_notAudioMarker() {
         val f = SourceRowClassifier.parseRelease(
-            "4k [Dubs-Empire] Jujutsu Kaisen (2020) S01 v3 [2160p].mkv",
+            "4k [Dubs-Grpire] Jujutsu Kaisen (2020) S01 v3 [2160p].mkv",
         )
-        assertEquals("Dubs-Empire", f.releaseGroup)
+        assertEquals("Dubs-Grpire", f.releaseGroup)
     }
 
     @Test
@@ -1337,7 +1337,7 @@ class SourceRowClassifierTest {
 
     @Test
     fun dataset_urlBracket_rejected() {
-        assertNull(SourceRowClassifier.parseRelease("Title [www.descargas2020.org].mkv").releaseGroup)
+        assertNull(SourceRowClassifier.parseRelease("Title [www.example2020.org].mkv").releaseGroup)
     }
 
     @Test
@@ -1350,8 +1350,8 @@ class SourceRowClassifierTest {
     @Test
     fun dataset_dottedCompound_extractsTrailingGroup() {
         // Scene-style compound with a valid quality prefix.
-        val f = SourceRowClassifier.parseRelease("1080p [HDTV.x264-zyl] Title S01E01.mkv")
-        assertEquals("zyl", f.releaseGroup)
+        val f = SourceRowClassifier.parseRelease("1080p [HDTV.x264-zql] Title S01E01.mkv")
+        assertEquals("zql", f.releaseGroup)
     }
 
     @Test
@@ -1361,7 +1361,7 @@ class SourceRowClassifierTest {
         // tracker (not a group) and the Napisy marker still surfaces
         // subtitles.
         val f = SourceRowClassifier.parseRelease(
-            "Naruto 2002-2007 Complet [HDTV.x264-zyl][Napisy PL][Alusia]\n" +
+            "Naruto 2002-2007 Complet [HDTV.x264-zql][Napisy PL][Grpsia]\n" +
                 "Naruto - 001.PLSUB.mkv\n" +
                 "👤 1 💾 172.32 MB ⚙️ BestTorrents | 🇵🇱",
         )
@@ -1378,8 +1378,8 @@ class SourceRowClassifierTest {
 
     @Test
     fun dataset_dottedNonTechnicalName_acceptedWhole() {
-        val f = SourceRowClassifier.parseRelease("[anime4life.] Title S01E01.mkv")
-        assertEquals("anime4life.", f.releaseGroup)
+        val f = SourceRowClassifier.parseRelease("[grpe4life.] Title S01E01.mkv")
+        assertEquals("grpe4life.", f.releaseGroup)
     }
 
     // ---- provider-dataset v1: per-line suffix + extensions --------
@@ -1390,9 +1390,9 @@ class SourceRowClassifierTest {
         // line even though metadata-style lines are absent here.
         val f = SourceRowClassifier.parseRelease(
             "L'attaque des Titans (Shingeki No Kyojin) Saison 1 MULTI 1080p HDTV\n" +
-                "Shingeki.No.Kyojin.S01E01.MULTi.1080p.BluRay.REMUX.AVC.DTS-HDMA.2.0-Psaro.mkv",
+                "Shingeki.No.Kyojin.S01E01.MULTi.1080p.BluRay.REMUX.AVC.DTS-HDMA.2.0-Grpro.mkv",
         )
-        assertEquals("Psaro", f.releaseGroup)
+        assertEquals("Grpro", f.releaseGroup)
         assertEquals("Dual", f.audioSummary)
     }
 
@@ -1400,16 +1400,16 @@ class SourceRowClassifierTest {
     fun dataset_explicitCogBeatsFilenameSuffix() {
         // v2.2 current-format semantics on the full regional row: the
         // lone ⚙️ value is the tracker, and the filename suffix wins
-        // the group (this is the handoff's mandatory Psaro fixture).
+        // the group (this is the handoff's mandatory Grpro fixture).
         val f = SourceRowClassifier.parseRelease(
             "L'attaque des Titans (Shingeki No Kyojin) Saison 1 MULTI 1080p HDTV\n" +
-                "Shingeki.No.Kyojin.S01E01.MULTi.1080p.BluRay.REMUX.AVC.DTS-HDMA.2.0-Psaro.mkv\n" +
+                "Shingeki.No.Kyojin.S01E01.MULTi.1080p.BluRay.REMUX.AVC.DTS-HDMA.2.0-Grpro.mkv\n" +
                 "👤 1 💾 4.86 GB ⚙️ Torrent9\n" +
                 "Dubbed / Multi Audio / 🇫🇷",
         )
-        assertEquals("Psaro", f.releaseGroup)
+        assertEquals("Grpro", f.releaseGroup)
         assertEquals("Torrent9", f.tracker)
-        // Torrentio "Multi Audio" = original + dub = Dual (picker-v3-fixes).
+        // Relayaddon "Multi Audio" = original + dub = Dual (picker-v3-fixes).
         assertEquals("Dual", f.audioSummary)
     }
 
@@ -1516,8 +1516,8 @@ class SourceRowClassifierTest {
     fun dataset_providerNames_doNotLeakIntoKinds() {        // Tracker/provider-flavored words must not fabricate kinds.
         val f = SourceRowClassifier.parseRelease(
             """
-            Torrentio
-            📂 HorribleSubs
+            Relayaddon
+            📂 PlumbingSubs
             1080p [Group] Title S01E01.mkv
             """.trimIndent(),
         )
@@ -1526,11 +1526,11 @@ class SourceRowClassifierTest {
     }
 
     @Test
-    fun dataset_subsPleaseName_isNotSubsWord() {
-        // No word boundary inside "SubsPlease", so the subs-word rule
+    fun dataset_subsPlumeName_isNotSubsWord() = withPlaceholderEnglishGroups {
+        // No word boundary inside "SubsPlume", so the subs-word rule
         // does not fire — but the implied group default does (ENG).
-        val f = SourceRowClassifier.parseRelease("1080p [SubsPlease] Title S01E01.mkv")
-        assertEquals("SubsPlease", f.releaseGroup)
+        val f = SourceRowClassifier.parseRelease("1080p [SubsPlume] Title S01E01.mkv")
+        assertEquals("SubsPlume", f.releaseGroup)
         assertEquals("ENG", f.subtitleSummary)
         // A neutral group with no markers stays unlabeled.
         val neutral = SourceRowClassifier.parseRelease("1080p [Group] Title S01E01.mkv")
@@ -1595,12 +1595,22 @@ class SourceRowClassifierTest {
     //
     // Stereo collapse (AAC 2.0 -> AAC): stereo is the default, channels
     // shown only when multichannel. Famous-group implied subtitles
-    // (SubsPlease/HorribleSubs always ship English subs).
+    // (two groups always ship English subs; the real set is hashed, so these
+    // tests swap in the same rule for two placeholder groups).
+    private fun withPlaceholderEnglishGroups(block: () -> Unit) {
+        val real = SourceRowClassifier.impliedEnglishSubGroups
+        SourceRowClassifier.impliedEnglishSubGroups = ani.dantotsu.util.HashedNames(
+            listOf("SubsPlume", "PlumbingSubs").associate {
+                ani.dantotsu.util.HashedNames.hashOf(it.lowercase()) to it.length
+            },
+        )
+        try { block() } finally { SourceRowClassifier.impliedEnglishSubGroups = real }
+    }
 
     @Test
-    fun naming_impliedSubs_subsPlease() {
-        val f = SourceRowClassifier.parseRelease("1080p [SubsPlease] Title S01E01.mkv")
-        assertEquals("SubsPlease", f.releaseGroup)
+    fun naming_impliedSubs_subsPlume() = withPlaceholderEnglishGroups {
+        val f = SourceRowClassifier.parseRelease("1080p [SubsPlume] Title S01E01.mkv")
+        assertEquals("SubsPlume", f.releaseGroup)
         assertEquals("ENG", f.subtitleSummary)
         assertEquals(listOf("ENG"), f.subtitleLanguages)
     }
@@ -1609,17 +1619,17 @@ class SourceRowClassifierTest {
     fun naming_impliedSubs_yieldsToExplicit() {
         // Explicit flags beat the group default ...
         val flags = SourceRowClassifier.parseRelease(
-            "[SubsPlease] Title [Multi-Subs] 🇬🇧 🇵🇱.mkv",
+            "[SubsPlume] Title [Multi-Subs] 🇬🇧 🇵🇱.mkv",
         )
         assertEquals("🇬🇧 🇵🇱", flags.subtitleSummary)
         // ... and so do bare title markers (VOSTFR materializes 🇫🇷).
-        val marked = SourceRowClassifier.parseRelease("[SubsPlease] Title VOSTFR.mkv")
+        val marked = SourceRowClassifier.parseRelease("[SubsPlume] Title VOSTFR.mkv")
         assertEquals("🇫🇷", marked.subtitleSummary)
     }
 
     @Test
-    fun naming_impliedSubs_horribleSubs() {
-        val f = SourceRowClassifier.parseRelease("[HorribleSubs] Title - 01 [720p].mkv")
+    fun naming_impliedSubs_plumbingSubs() = withPlaceholderEnglishGroups {
+        val f = SourceRowClassifier.parseRelease("[PlumbingSubs] Title - 01 [720p].mkv")
         assertEquals("ENG", f.subtitleSummary)
     }
 
@@ -1814,8 +1824,8 @@ class SourceRowClassifierTest {
             "m2ts", "mov", "flv", "rmvb",
         )) {
             val row = SourceRowSummarizer.build(
-                displayLabel = "Torrentio\n[Group] Title S01E01.$ext",
-                qualityText = "Torrentio\n[Group] Title S01E01.$ext",
+                displayLabel = "Relayaddon\n[Group] Title S01E01.$ext",
+                qualityText = "Relayaddon\n[Group] Title S01E01.$ext",
                 formatName = "CONTAINER",
                 url = "magnet:?xt=urn:btih:0123456789ABCDEF0123456789ABCDEF01234567",
             )
@@ -1823,10 +1833,10 @@ class SourceRowClassifierTest {
         }
         // A bare name with none of the known extensions stays STREAM.
         val stream = SourceRowSummarizer.build(
-            displayLabel = "Vidstream - Sub - 1080p",
-            qualityText = "Vidstream - Sub - 1080p",
+            displayLabel = "Hostone - Sub - 1080p",
+            qualityText = "Hostone - Sub - 1080p",
             formatName = "M3U8",
-            url = "https://example.com/vidstream/playlist.m3u8",
+            url = "https://example.com/hostone/playlist.m3u8",
         )
         assertEquals(SourcePresentationKind.STREAM, stream.presentation)
     }
@@ -1946,7 +1956,7 @@ class SourceRowClassifierTest {
     fun standards21_dtsGuard_staysNonGreedy() {
         // The old safety case: codec/group text must not be swallowed.
         assertEquals("DTS-HD",
-            SourceRowClassifier.parseRelease("Title DTS-HD.X265-IAHD.mkv").audioFormat)
+            SourceRowClassifier.parseRelease("Title DTS-HD.X265-IQHD.mkv").audioFormat)
         // Accepted DTS:X forms stay green.
         assertEquals("DTS:X",
             SourceRowClassifier.parseRelease("[Group] Title DTS:X.mkv").audioFormat)
@@ -1957,7 +1967,7 @@ class SourceRowClassifierTest {
 
     // ---- standards-gap v2.2: current single-⚙ semantics -----------
     //
-    // The 784-row corpus has zero 📂 rows: current Torrentio payloads
+    // The 784-row corpus has zero 📂 rows: current Relayaddon payloads
     // carry the provider in ⚙️, so lone ⚙️ is tracker/provenance and
     // NEVER a release group. Legacy two-marker (📂+⚙️) coverage stays.
 
@@ -1965,11 +1975,11 @@ class SourceRowClassifierTest {
     fun current_bracketGroupWithProvider() {
         val f = SourceRowClassifier.parseRelease(
             "1080p\n" +
-                "[SubsPlease] Some Anime - 01 [1080p].mkv\n" +
-                "👤 10 💾 1.2 GB ⚙️ NyaaSi",
+                "[SubsPlume] Some Anime - 01 [1080p].mkv\n" +
+                "👤 10 💾 1.2 GB ⚙️ IdxOne",
         )
-        assertEquals("SubsPlease", f.releaseGroup)
-        assertEquals("NyaaSi", f.tracker)
+        assertEquals("SubsPlume", f.releaseGroup)
+        assertEquals("IdxOne", f.tracker)
     }
 
     @Test
@@ -1977,10 +1987,10 @@ class SourceRowClassifierTest {
         val f = SourceRowClassifier.parseRelease(
             "1080p\n" +
                 "Some.Show.S01E01.1080p.x265.mkv\n" +
-                "👤 10 💾 1.2 GB ⚙️ TorrentGalaxy",
+                "👤 10 💾 1.2 GB ⚙️ IndexCee",
         )
         assertNull("no group present: null is correct", f.releaseGroup)
-        assertEquals("TorrentGalaxy", f.tracker)
+        assertEquals("IndexCee", f.tracker)
     }
 
     @Test
@@ -1989,11 +1999,11 @@ class SourceRowClassifierTest {
         val f = SourceRowClassifier.parseRelease(
             "1080p\n" +
                 "L'attaque des Titans (Shingeki No Kyojin) Saison 1 MULTI 1080p HDTV\n" +
-                "Shingeki.No.Kyojin.S01E01.MULTi.1080p.BluRay.REMUX.AVC.DTS-HDMA.2.0-Psaro.mkv\n" +
+                "Shingeki.No.Kyojin.S01E01.MULTi.1080p.BluRay.REMUX.AVC.DTS-HDMA.2.0-Grpro.mkv\n" +
                 "👤 1 💾 4.86 GB ⚙️ Torrent9\n" +
                 "Dubbed / Multi Audio / 🇫🇷",
         )
-        assertEquals("Psaro", f.releaseGroup)
+        assertEquals("Grpro", f.releaseGroup)
         assertEquals("Torrent9", f.tracker)
     }
 
@@ -2001,22 +2011,22 @@ class SourceRowClassifierTest {
     fun legacy_twoMarkerShape_preserved() {
         // Legacy/two-marker compatibility fixture (NOT current format).
         val f = SourceRowClassifier.parseRelease(
-            "📂 NyaaSi\n" +
-                "⚙️ SubsPlease\n" +
+            "📂 IdxOne\n" +
+                "⚙️ SubsPlume\n" +
                 "Title.mkv",
         )
-        assertEquals("NyaaSi", f.tracker)
-        assertEquals("SubsPlease", f.releaseGroup)
+        assertEquals("IdxOne", f.tracker)
+        assertEquals("SubsPlume", f.releaseGroup)
     }
 
     @Test
     fun legacy_sameTrackerAndCog_noGroupFabrication() {
         val f = SourceRowClassifier.parseRelease(
-            "📂 NyaaSi\n" +
-                "⚙️ NyaaSi\n" +
+            "📂 IdxOne\n" +
+                "⚙️ IdxOne\n" +
                 "Title.mkv",
         )
-        assertEquals("NyaaSi", f.tracker)
+        assertEquals("IdxOne", f.tracker)
         assertNull("cog equal to tracker must not become a group", f.releaseGroup)
     }
 
@@ -2091,11 +2101,11 @@ class SourceRowClassifierTest {
     }
 
     @Test
-    fun v3_engImpliedBecomesFlagPill() {
+    fun v3_engImpliedBecomesFlagPill() = withPlaceholderEnglishGroups {
         // The user's ENG-chip complaint: implied ENG now renders 🇬🇧.
         val row = SourceRowSummarizer.build(
-            displayLabel = "1080p [SubsPlease] Title S01E01.mkv",
-            qualityText = "1080p [SubsPlease] Title S01E01.mkv",
+            displayLabel = "1080p [SubsPlume] Title S01E01.mkv",
+            qualityText = "1080p [SubsPlume] Title S01E01.mkv",
             formatName = "CONTAINER",
             url = magnetUrl,
         )
@@ -2119,10 +2129,10 @@ class SourceRowClassifierTest {
 
     @Test
     fun v3_priorityNeverDropsSubs() {
-        // Rapta-shaped dense row: res + codec + depth + audio + subs
+        // Grpta-shaped dense row: res + codec + depth + audio + subs
         // must keep the subtitle pill (uncapped model, subs before codec).
         val f = SourceRowClassifier.parseRelease(
-            "[Rapta] Title S01E01 [1080p][HEVC][10bit][DUAL AAC2.0][Multi-Subs].mkv",
+            "[Grpta] Title S01E01 [1080p][HEVC][10bit][DUAL AAC2.0][Multi-Subs].mkv",
         )
         val row = SourceRowSummarizer.build(
             displayLabel = f.releaseName,
@@ -2141,11 +2151,11 @@ class SourceRowClassifierTest {
 
     @Test
     fun v3_hdrDuplicationRemovedFromCleanTitle() {
-        // Live Salieri shape (with its real metadata lines, as served):
+        // Live Grpsali shape (with its real metadata lines, as served):
         // leading HDR already shown as a chip.
         val qualityText =
             "HDR Frieren - Beyond Journey's End S1 - BD (1080p) (HDR) [Dual Audio].mkv\n" +
-                "👤 49 💾 3.28 GB ⚙️ NyaaSi"
+                "👤 49 💾 3.28 GB ⚙️ IdxOne"
         val f = SourceRowClassifier.parseRelease(qualityText)
         val row = SourceRowSummarizer.build(
             displayLabel = qualityText,
@@ -2201,8 +2211,8 @@ class SourceRowClassifierTest {
     @Test
     fun v3_aggressiveTitleStripsCrcAndExtension() {
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
-            releaseName = "1080p [SubsPlease] Sousou no Frieren - 01 (1080p) [F02B9CEE].mkv",
-            releaseGroup = "SubsPlease",
+            releaseName = "1080p [SubsPlume] Sousou no Frieren - 01 (1080p) [F02B9CEE].mkv",
+            releaseGroup = "SubsPlume",
             resolution = "1080p",
             codec = null,
             bitDepth = null,
@@ -2237,28 +2247,28 @@ class SourceRowClassifierTest {
         // visual primary label. displayLabel carries the full server
         // name (with metadata lines), exactly as the adapter passes it.
         val qualityText =
-            "Some.Show.S01E01.1080p.x265.mkv\n👤 10 💾 1.2 GB ⚙️ TorrentGalaxy"
+            "Some.Show.S01E01.1080p.x265.mkv\n👤 10 💾 1.2 GB ⚙️ IndexCee"
         val row = SourceRowSummarizer.build(
             displayLabel = qualityText,
             qualityText = qualityText,
             formatName = "CONTAINER",
             url = magnetUrl,
         )
-        assertNull(row.header?.takeIf { it == "TorrentGalaxy" })
-        assertEquals("TorrentGalaxy", row.tracker)
+        assertNull(row.header?.takeIf { it == "IndexCee" })
+        assertEquals("IndexCee", row.tracker)
         assertFalse("header must not be blank", row.header.isNullOrBlank())
     }
 
     @Test
     fun v3_groupProviderSemanticsUnchanged() {
         // Spot checks that v2.2 semantics survived the redesign.
-        val bracket = SourceRowClassifier.parseRelease("1080p [SubsPlease] Title S01E01.mkv")
-        assertEquals("SubsPlease", bracket.releaseGroup)
-        val suffix = SourceRowClassifier.parseRelease("Title S01E01 1080p-VARYG.mkv")
-        assertEquals("VARYG", suffix.releaseGroup)
-        val legacy = SourceRowClassifier.parseRelease("📂 NyaaSi\n⚙️ SubsPlease\nTitle.mkv")
-        assertEquals("SubsPlease", legacy.releaseGroup)
-        assertEquals("NyaaSi", legacy.tracker)
+        val bracket = SourceRowClassifier.parseRelease("1080p [SubsPlume] Title S01E01.mkv")
+        assertEquals("SubsPlume", bracket.releaseGroup)
+        val suffix = SourceRowClassifier.parseRelease("Title S01E01 1080p-GRPVY.mkv")
+        assertEquals("GRPVY", suffix.releaseGroup)
+        val legacy = SourceRowClassifier.parseRelease("📂 IdxOne\n⚙️ SubsPlume\nTitle.mkv")
+        assertEquals("SubsPlume", legacy.releaseGroup)
+        assertEquals("IdxOne", legacy.tracker)
     }
 
     @Test
@@ -2266,10 +2276,10 @@ class SourceRowClassifierTest {
         // STREAM rows keep exactly quality + track pills; the "Sub"
         // track label is NOT flag-mapped (track semantics, UTF text).
         val row = SourceRowSummarizer.build(
-            displayLabel = "Vidstream - Sub - 1080p",
-            qualityText = "Vidstream - Sub - 1080p",
+            displayLabel = "Hostone - Sub - 1080p",
+            qualityText = "Hostone - Sub - 1080p",
             formatName = "M3U8",
-            url = "https://example.com/vidstream/playlist.m3u8",
+            url = "https://example.com/hostone/playlist.m3u8",
         )
         assertEquals(SourcePresentationKind.STREAM, row.presentation)
         assertEquals(
@@ -2285,7 +2295,7 @@ class SourceRowClassifierTest {
         // Header-row policy data: every pill label is single-line and
         // non-blank so the single clipped Flexbox line never breaks.
         val f = SourceRowClassifier.parseRelease(
-            "[Rapta] Title S01E01 [1080p][HEVC][10bit][DUAL AAC2.0][Multi-Subs][VARYG].mkv",
+            "[Grpta] Title S01E01 [1080p][HEVC][10bit][DUAL AAC2.0][Multi-Subs][GRPVY].mkv",
         )
         val row = SourceRowSummarizer.build(
             displayLabel = f.releaseName,
@@ -2308,8 +2318,8 @@ class SourceRowClassifierTest {
     @Test
     fun cleanTitleV31_stripsUnbracketedCodecDepthRes() {
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
-            releaseName = "[EMBER] Kaijuu 8 Gou S02E05 V3 2160p HEVC 10-bit AAC",
-            releaseGroup = "EMBER",
+            releaseName = "[GRPEM] Kaijuu 8 Gou S02E05 V3 2160p HEVC 10-bit AAC",
+            releaseGroup = "GRPEM",
             resolution = "2160p",
             codec = "HEVC",
             bitDepth = "10-bit",
@@ -2335,8 +2345,8 @@ class SourceRowClassifierTest {
     @Test
     fun cleanTitleV31_stripsAudioFormatUniverseAndMarker() {
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
-            releaseName = "[GJM] Frieren S01E01 [TrueHD] [Audio 5.1] [FLAC] [1080p]",
-            releaseGroup = "GJM",
+            releaseName = "[GQM] Frieren S01E01 [TrueHD] [Audio 5.1] [FLAC] [1080p]",
+            releaseGroup = "GQM",
             resolution = "1080p",
             codec = null,
             bitDepth = null,
@@ -2504,7 +2514,7 @@ class SourceRowClassifierTest {
         )
         assertEquals("Title S01E01 EP12 01v2 AVC1 2160p60", cleaned)
         val subsKept = SourceRowClassifier.cleanDisplayTitle(
-            releaseName = "HorribleSubs Title S01E01",
+            releaseName = "PlumbingSubs Title S01E01",
             releaseGroup = null,
             resolution = null,
             codec = null,
@@ -2512,14 +2522,14 @@ class SourceRowClassifierTest {
             sourceService = null,
             subtitleSummary = "Multi-subs",
         )
-        assertTrue("HorribleSubs must stay", subsKept.contains("HorribleSubs"))
+        assertTrue("PlumbingSubs must stay", subsKept.contains("PlumbingSubs"))
     }
 
     @Test
     fun cleanTitleV31_stripsTrailingSuffixGroup() {
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
-            releaseName = "Link Click S2 -Psaro",
-            releaseGroup = "Psaro",
+            releaseName = "Link Click S2 -Grpro",
+            releaseGroup = "Grpro",
             resolution = null,
             codec = null,
             bitDepth = null,
@@ -2545,9 +2555,9 @@ class SourceRowClassifierTest {
     @Test
     fun cleanTitleV31_stripsFpsChapterTtmlAndDualAudio() {
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
-            releaseName = "[GJM] Sousou no Frieren S01E28 V2 (23.976FPS) " +
+            releaseName = "[GQM] Sousou no Frieren S01E28 V2 (23.976FPS) " +
                 "[TrueHD] [Audio 5.1] [TTML] Multi-Sub [FLAC] [Chapter] [1080p]",
-            releaseGroup = "GJM",
+            releaseGroup = "GQM",
             resolution = "1080p",
             codec = null,
             bitDepth = null,
@@ -2563,8 +2573,8 @@ class SourceRowClassifierTest {
         // Full parseRelease -> cleanDisplayTitle pipeline, mirroring
         // buildRelease: every expectation is parser-driven, no
         // hand-passed values.
-        val raw = "[RAEVN] Kaijuu 8 Gou S02E05 V3 BluRay REMUX " +
-            "1080p DTS-HD MA 5.1, FLAC 2.0 x265 10-Bit -RAEVN"
+        val raw = "[RQEVN] Kaijuu 8 Gou S02E05 V3 BluRay REMUX " +
+            "1080p DTS-HD MA 5.1, FLAC 2.0 x265 10-Bit -RQEVN"
         val f = SourceRowClassifier.parseRelease(raw)
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
             releaseName = f.releaseName,
@@ -2588,7 +2598,7 @@ class SourceRowClassifierTest {
 
     @Test
     fun cleanTitleV31_pipelineWebDualAudioEndToEnd() {
-        val raw = "[ToonsHub] Isekai Shikaku S01 (CR WEB 480p AAC 2.0 x264) [Dual-Audio]"
+        val raw = "[GrpsHubb] Isekai Shikaku S01 (CR WEB 480p AAC 2.0 x264) [Dual-Audio]"
         val f = SourceRowClassifier.parseRelease(raw)
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
             releaseName = f.releaseName,
@@ -2616,7 +2626,7 @@ class SourceRowClassifierTest {
         assertEquals(
             "Crunchyroll",
             SourceRowClassifier.detectSourceService(
-                "[ToonsHub] Isekai Shikaku S01 (CR WEB 480p AAC 2.0 x264) [Dual-Audio]"),
+                "[GrpsHubb] Isekai Shikaku S01 (CR WEB 480p AAC 2.0 x264) [Dual-Audio]"),
         )
     }
 
@@ -2626,8 +2636,8 @@ class SourceRowClassifierTest {
         // though a subs summary parsed (from the word itself). Only
         // abbreviated/marker sub forms strip.
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
-            releaseName = "[ToonsHub] True Remembrance with Subtitles. DUAL-AUDIO 576p x264 AAC",
-            releaseGroup = "ToonsHub",
+            releaseName = "[GrpsHubb] True Remembrance with Subtitles. DUAL-AUDIO 576p x264 AAC",
+            releaseGroup = "GrpsHubb",
             resolution = "576p",
             codec = "AVC",
             bitDepth = null,
@@ -2645,7 +2655,7 @@ class SourceRowClassifierTest {
         // `codec-GROUP` tail goes with its codec. `MAX` stays: it is
         // an English word too, left for the reviewer (open item).
         val cleaned = SourceRowClassifier.cleanDisplayTitle(
-            releaseName = "Smiling Friends S02E05 1080p MAX WEB-DL DDP2.0 x264-PCW",
+            releaseName = "Smiling Friends S02E05 1080p MAX WEB-DL DDP2.0 x264-PQW",
             releaseGroup = null,
             resolution = "1080p",
             codec = "AVC",
@@ -2684,7 +2694,7 @@ class SourceRowClassifierTest {
             sourceService = null,
         )
         assertEquals("Sousou no Frieren - 12",
-            trailing("Sousou no Frieren - 12 [1080p] [Kira-Fansub].mkv"))
+            trailing("Sousou no Frieren - 12 [1080p] [Gira-Fansub].mkv"))
         // Language codes, episode shapes and versions are not tags.
         assertTrue(trailing("Title [1080p] [ENG]").contains("[ENG]"))
         assertTrue(trailing("Title [1080p] [S01]").contains("[S01]"))
@@ -2735,9 +2745,9 @@ class SourceRowClassifierTest {
         // Exact frozen-corpus PCM shapes (dataset file lines 583, 593:
         // JJK `PCM 2.0` / bare `PCM`; line 716: smashed `PCM20`).
         val row583 = """
-            [JP-EN] Jujutsu Kaisen : Season 01 S01 [2020-2021] COMPLETE 1080p Hybrid ITA BDRip x265 PCM 2.0 Kira [SEV]
-            Jujutsu Kaisen - Episode 01 - Ryōmen Sukuna 1080p Hybrid ITA BDRip x265 PCM 2.0 Kira [SEV].mkv
-            👤 9 💾 2.42 GB ⚙️ NyaaSi
+            [JP-EN] Jujutsu Kaisen : Season 01 S01 [2020-2021] COMPLETE 1080p Hybrid ITA BDRip x265 PCM 2.0 Kira [SQV]
+            Jujutsu Kaisen - Episode 01 - Ryōmen Sukuna 1080p Hybrid ITA BDRip x265 PCM 2.0 Kira [SQV].mkv
+            👤 9 💾 2.42 GB ⚙️ IdxOne
             🇬🇧 / 🇮🇹
         """.trimIndent()
         val f583 = SourceRowClassifier.parseRelease(row583)
@@ -2762,7 +2772,7 @@ class SourceRowClassifierTest {
         val row593 = """
             Jujutsu Kaisen [BD Remux][Part -1] [1080p Dual Audio PCM AVC]
             S01E01-Ryomen Sukuna.mkv
-            👤 3 💾 6.74 GB ⚙️ NyaaSi
+            👤 3 💾 6.74 GB ⚙️ IdxOne
             Dubbed / Dual Audio
         """.trimIndent()
         val f593 = SourceRowClassifier.parseRelease(row593)
@@ -2787,7 +2797,7 @@ class SourceRowClassifierTest {
         val row716 = """
             Attack.on.Titan.S01.Bluray.REMUX.1080p.TRUHD.51.AC351.TRUHD20.AC320.PCM20.Eng+Jap.EngSubs
             Shingeki no Kyojin - E01 [BD 1080p Hybrid REMUX].mkv
-            👤 33 💾 7.71 GB ⚙️ NyaaSi
+            👤 33 💾 7.71 GB ⚙️ IdxOne
         """.trimIndent()
         val f716 = SourceRowClassifier.parseRelease(row716)
         val c716 = SourceRowClassifier.cleanDisplayTitle(
@@ -2952,10 +2962,10 @@ class SourceRowClassifierTest {
         // STREAM inline card renders its own compact pills; the
         // header critical/optional seam does not apply.
         val row = SourceRowSummarizer.build(
-            displayLabel = "Vidstream - Sub - 1080p",
-            qualityText = "Vidstream - Sub - 1080p",
+            displayLabel = "Hostone - Sub - 1080p",
+            qualityText = "Hostone - Sub - 1080p",
             formatName = "M3U8",
-            url = "https://example.com/vidstream/playlist.m3u8",
+            url = "https://example.com/hostone/playlist.m3u8",
         )
         assertEquals(SourcePresentationKind.STREAM, row.presentation)
         assertTrue(row.criticalPills.isEmpty())
@@ -2966,19 +2976,19 @@ class SourceRowClassifierTest {
 
     // ---- v3.3 bounded correction ------------------------------------
 
-    private val deviceFeibanyamaRaw =
-        "4k [Feibanyama] Frieren Beyond Journeys End Season 1 [IQIYI WebRip 2160p HEVC OPUS Multi-Subs] (Sousou no Frieren) [Feibanyama] Frieren Beyond Journeys End - 01 [IQIYI WebRip 2160p HEVC OPUS Multi-Subs].mkv Multi Subs"
-    private val deviceSalieriRaw =
-        "1080p HDR [Salieri] Frieren - Beyond Journey's End S1 - BD (1080p) (HDR) [Dual Audio] [Salieri] Frieren - Beyond Journey's End - 01 (1080p) (HDR) [Dual Audio].mkv Dubbed / Dual Audio"
+    private val deviceGrpbanyamaRaw =
+        "4k [Grpbanyama] Frieren Beyond Journeys End Season 1 [IQIYI WebRip 2160p HEVC OPUS Multi-Subs] (Sousou no Frieren) [Grpbanyama] Frieren Beyond Journeys End - 01 [IQIYI WebRip 2160p HEVC OPUS Multi-Subs].mkv Multi Subs"
+    private val deviceGrpsaliRaw =
+        "1080p HDR [Grpsali] Frieren - Beyond Journey's End S1 - BD (1080p) (HDR) [Dual Audio] [Grpsali] Frieren - Beyond Journey's End - 01 (1080p) (HDR) [Dual Audio].mkv Dubbed / Dual Audio"
 
     /**
      * RELEASE-shaped quality text for summarizer end-to-end tests: the
      * bare device raws do not end in a release filename (trailing
      * `… Dual Audio` / `… Multi Subs`), so they classify STREAM on
-     * their own. The Torrentio wrapper carries the 📂 provenance line
+     * their own. The Relayaddon wrapper carries the 📂 provenance line
      * exactly like the live payloads.
      */
-    private fun releaseQuality(raw: String): String = "Torrentio\n📂 NyaaSi\n$raw"
+    private fun releaseQuality(raw: String): String = "Relayaddon\n📂 IdxOne\n$raw"
 
     private fun releaseRow(raw: String): SourceRowViewModel =
         SourceRowSummarizer.build(
@@ -3008,10 +3018,10 @@ class SourceRowClassifierTest {
     }
 
     @Test
-    fun v33_feibanyamaIqiyiServiceDetected() {
-        // Finding 1: the Feibanyama device row carries raw `[IQIYI …]`
+    fun v33_grpbanyamaIqiyiServiceDetected() {
+        // Finding 1: the Grpbanyama device row carries raw `[IQIYI …]`
         // blocks; the additive alias resolves the canonical service.
-        val f = SourceRowClassifier.parseRelease(deviceFeibanyamaRaw)
+        val f = SourceRowClassifier.parseRelease(deviceGrpbanyamaRaw)
         assertEquals("iQIYI", f.sourceService)
         assertEquals(
             "iQIYI",
@@ -3024,10 +3034,10 @@ class SourceRowClassifierTest {
     }
 
     @Test
-    fun v33_feibanyamaCleanTitleHasNoIqiyiResidual() {
+    fun v33_grpbanyamaCleanTitleHasNoIqiyiResidual() {
         // Finding 1: no `IQIYI` (any case) and no empty bracket
         // remnant survive in the exact device title.
-        val cleaned = cleanOf(deviceFeibanyamaRaw)
+        val cleaned = cleanOf(deviceGrpbanyamaRaw)
         assertFalse(cleaned.contains("iqiyi", ignoreCase = true))
         assertFalse(cleaned.contains("[]"))
         assertEquals(
@@ -3047,18 +3057,18 @@ class SourceRowClassifierTest {
     }
 
     @Test
-    fun v33_salieriBareBdDetectedAsSourceType() {
-        // Finding 2: the Salieri device row's bare `BD` parses
+    fun v33_grpsaliBareBdDetectedAsSourceType() {
+        // Finding 2: the Grpsali device row's bare `BD` parses
         // deterministically as source type `BD`.
-        val f = SourceRowClassifier.parseRelease(deviceSalieriRaw)
+        val f = SourceRowClassifier.parseRelease(deviceGrpsaliRaw)
         assertEquals("BD", f.sourceClass)
-        assertEquals("Salieri", f.releaseGroup)
+        assertEquals("Grpsali", f.releaseGroup)
     }
 
     @Test
-    fun v33_salieriCleanTitleHasNoBdResidual() {
+    fun v33_grpsaliCleanTitleHasNoBdResidual() {
         // Finding 2: the represented bare-BD token is removed.
-        val cleaned = cleanOf(deviceSalieriRaw)
+        val cleaned = cleanOf(deviceGrpsaliRaw)
         assertFalse(cleaned.contains("BD", ignoreCase = false))
         assertEquals(
             // picker-v3-fixes: ".mkv" and the dangling "/" residue are gone.
@@ -3091,7 +3101,7 @@ class SourceRowClassifierTest {
     fun v33_detailsSourceTypeLabelAndHdrPresence() {
         // Findings 5+6: `Source type` label; plain HDR reads as a
         // presence marker, never `HDR: HDR`.
-        val row = releaseRow(deviceSalieriRaw)
+        val row = releaseRow(deviceGrpsaliRaw)
         val labels = row.details.map { it.label }
         assertTrue(labels.contains("Source type"))
         assertFalse(labels.contains("Source class"))
@@ -3113,7 +3123,7 @@ class SourceRowClassifierTest {
     @Test
     fun v33_detailsNeverEchoesLabelAsValue() {
         // Finding 5: no detail line anywhere repeats its label.
-        val raws = listOf(deviceFeibanyamaRaw, deviceSalieriRaw, "[G] Show S01 1080p HDR10 DTS 5.1")
+        val raws = listOf(deviceGrpbanyamaRaw, deviceGrpsaliRaw, "[G] Show S01 1080p HDR10 DTS 5.1")
         for (raw in raws) {
             val row = releaseRow(raw)
             for (line in row.details) {
@@ -3130,7 +3140,7 @@ class SourceRowClassifierTest {
     fun v33_criticalPillsStayAheadOfOptional() {
         // Findings 3+4: critical set is exactly QUALITY + SUB_LANG,
         // always split ahead of the optional set.
-        val row = releaseRow(deviceSalieriRaw)
+        val row = releaseRow(deviceGrpsaliRaw)
         assertTrue(row.criticalPills.isNotEmpty())
         assertTrue(row.criticalPills.all {
             it.kind == SourcePillKind.QUALITY || it.kind == SourcePillKind.SUB_LANG
@@ -3146,7 +3156,7 @@ class SourceRowClassifierTest {
         // Finding 3: no hard take(N) cap — a dense row keeps every
         // optional pill in the model; the scrollable strip (not a cap)
         // handles overflow.
-        val raw = "[EMBER] Frieren S01 [1080p][HEVC][10-bit][E-AC-3][Dual-Audio][Multi-Subs]"
+        val raw = "[GRPEM] Frieren S01 [1080p][HEVC][10-bit][E-AC-3][Dual-Audio][Multi-Subs]"
         val row = releaseRow(raw)
         val optionalKinds = row.optionalPills.map { it.kind }
         assertTrue(optionalKinds.contains(SourcePillKind.AUDIO_MODE))
@@ -3160,7 +3170,7 @@ class SourceRowClassifierTest {
     @Test
     fun v33_rawReleaseNameRemainsExact() {
         // Raw preservation is untouched by the details cleanup.
-        for (raw in listOf(deviceFeibanyamaRaw, deviceSalieriRaw)) {
+        for (raw in listOf(deviceGrpbanyamaRaw, deviceGrpsaliRaw)) {
             val row = releaseRow(raw)
             assertEquals(raw, row.subtitle)
             val rawLine = row.details.first { it.label == "Raw release name" }

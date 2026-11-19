@@ -10,7 +10,7 @@ import org.junit.Test
  * EXT-COMPAT-1/2/4 (engine half): extension auxiliary tracks reach mpv with
  * their source transport context, and extension mpv options reach the file load.
  *
- * Synthetic AniZone-like request: HLS video + separate audio/subtitle URLs that
+ * Synthetic SourceZed-like request: HLS video + separate audio/subtitle URLs that
  * require the source Referer/Cookie, plus demuxer-lavf-o=force_mpegts=1.
  */
 class AuxTrackTransportTest {
@@ -21,7 +21,7 @@ class AuxTrackTransportTest {
     private val sourceHeaders = mapOf(
         "Referer" to "https://site.example/",
         "Cookie" to "session=abc123",
-        "User-Agent" to "AniZoneAgent/1.0"
+        "User-Agent" to "SourceZedAgent/1.0"
     )
 
     @Before
@@ -31,7 +31,7 @@ class AuxTrackTransportTest {
         Thread.sleep(200)
     }
 
-    private fun anizoneLikeRequest(): PlaybackRequest {
+    private fun sourceZedLikeRequest(): PlaybackRequest {
         return PlaybackRequest(
             uri = "https://cdn.example/master.m3u8",
             headers = sourceHeaders,
@@ -69,7 +69,7 @@ class AuxTrackTransportTest {
 
     @Test
     fun `extension mpv option reaches file load`() {
-        loadAndBind(anizoneLikeRequest())
+        loadAndBind(sourceZedLikeRequest())
 
         val loadCmd = fakeClient.executedCommands.first { it.firstOrNull() == "loadfile" }
         val options = if (loadCmd.size > 4) loadCmd[4] else ""
@@ -81,7 +81,7 @@ class AuxTrackTransportTest {
 
     @Test
     fun `aux subtitle fetched with source transport context`() {
-        loadAndBind(anizoneLikeRequest())
+        loadAndBind(sourceZedLikeRequest())
 
         val subAdds = fakeClient.executedCommands.filter { it.firstOrNull() == "sub-add" }
         assertEquals(1, subAdds.size)
@@ -94,12 +94,12 @@ class AuxTrackTransportTest {
             headerFields.contains("session=abc123")
         )
         assertEquals("https://site.example/", fakeClient.stringProperties["referrer"])
-        assertEquals("AniZoneAgent/1.0", fakeClient.stringProperties["user-agent"])
+        assertEquals("SourceZedAgent/1.0", fakeClient.stringProperties["user-agent"])
     }
 
     @Test
     fun `separate audio attached with source transport context`() {
-        loadAndBind(anizoneLikeRequest())
+        loadAndBind(sourceZedLikeRequest())
 
         val audioAdds = fakeClient.executedCommands.filter { it.firstOrNull() == "audio-add" }
         assertEquals(1, audioAdds.size)
@@ -115,7 +115,7 @@ class AuxTrackTransportTest {
 
     @Test
     fun `only first of several external audios is selected`() {
-        val request = anizoneLikeRequest().copy(
+        val request = sourceZedLikeRequest().copy(
             externalAudioTracks = listOf(
                 ExternalAudioTrack("https://cdn.example/audio/en.m3u8", "English", "English", emptyMap()),
                 ExternalAudioTrack("https://cdn.example/audio/ja.m3u8", "Japanese", "Japanese", emptyMap())

@@ -7,12 +7,12 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SubscriptionSourceTest {
-    private val names = listOf("AllAnime", "Gogo", "HiAnime")
+    private val names = listOf("SiteAye", "SiteGee", "SiteHigh")
 
     @Test
     fun findsTheSavedSourceWhereverItMovedTo() {
-        assertEquals(2, SubscriptionHelper.sourceIndexFor("HiAnime", names))
-        assertEquals(0, SubscriptionHelper.sourceIndexFor("HiAnime", listOf("HiAnime", "Gogo")))
+        assertEquals(2, SubscriptionHelper.sourceIndexFor("SiteHigh", names))
+        assertEquals(0, SubscriptionHelper.sourceIndexFor("SiteHigh", listOf("SiteHigh", "SiteGee")))
     }
 
     @Test

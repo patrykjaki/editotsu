@@ -860,7 +860,7 @@ class MpvPlaybackEngine(
 
             ani.dantotsu.util.Logger.log("MPVSTEP 41 before loadfile command (${MpvNetworkOptions.getRedactedOptionsDescription(request.headers, request.startPositionMs, request.sourceClass)})")
             // Beta03: append validated extension mpv per-file options (e.g.
-            // AniKoto's demuxer-lavf-o). Already sanitized at the adapter seam;
+            // SourceKay's demuxer-lavf-o). Already sanitized at the adapter seam;
             // blank for extractors without extension options.
             val extraOptions = request.extraMpvOptions.trim().trimEnd(',')
             val combinedOptions = listOf(perFileOptions, extraOptions)
@@ -1804,7 +1804,7 @@ class MpvPlaybackEngine(
 
                         // Attach external subtitles for this operation once.
                         // Beta03: apply the track's source transport context first
-                        // so header-gated softsubs (AniZone) fetch correctly.
+                        // so header-gated softsubs (SourceZed) fetch correctly.
                         if (!op.externalSubtitlesAttached) {
                             op.externalSubtitlesAttached = true
                             if (op.request.externalSubtitles.isNotEmpty()) stageExtensionFonts()
@@ -1827,7 +1827,7 @@ class MpvPlaybackEngine(
                         // tracks added with "auto", so a video-only HLS master
                         // (or a dead auto-picked rendition) would otherwise
                         // stay silent even though the extension's audio
-                        // fetched fine (AniZone: video played, no audio).
+                        // fetched fine (SourceZed: video played, no audio).
                         if (!op.externalAudioAttached) {
                             op.externalAudioAttached = true
                             op.request.externalAudioTracks.forEachIndexed { index, audio ->

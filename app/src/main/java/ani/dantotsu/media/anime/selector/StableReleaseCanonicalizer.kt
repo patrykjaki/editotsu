@@ -48,10 +48,11 @@ object StableReleaseCanonicalizer {
         audioMode: String?,
         sourceService: String?,
         rawTitle: String,
+        tracker: String? = null,
     ): String? {
         val parts = mutableListOf<String>()
         if (!group.isNullOrBlank()) {
-            val groupKey = StableGroupCanonicalizer.canonicalKey(group)
+            val groupKey = StableGroupCanonicalizer.canonicalKey(group, tracker)
                 ?: return null
             parts += "group=$groupKey"
         }
@@ -95,9 +96,10 @@ object StableReleaseCanonicalizer {
         audioMode: String?,
         sourceService: String?,
         rawTitle: String,
+        tracker: String? = null,
     ): String? {
         val canonical = canonicalize(group, resolution, audioFormat,
-            audioMode, sourceService, rawTitle) ?: return null
+            audioMode, sourceService, rawTitle, tracker) ?: return null
         val digest = java.security.MessageDigest.getInstance("SHA-256")
             .digest(canonical.toByteArray(Charsets.UTF_8))
         return digest.joinToString("") { "%02x".format(it) }.take(16)

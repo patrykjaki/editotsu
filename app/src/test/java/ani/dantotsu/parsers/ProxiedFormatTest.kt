@@ -6,7 +6,7 @@ import org.junit.Test
 
 /**
  * MAX MERGE FINAL-PORT C3 (upstream f1731534): proxied/nested HLS
- * resolution matrix. The stub classifier stands in for the private
+ * resolution magrptx. The stub classifier stands in for the private
  * extension-based `getVideoType`; ordering guarantees are what matter.
  */
 class ProxiedFormatTest {

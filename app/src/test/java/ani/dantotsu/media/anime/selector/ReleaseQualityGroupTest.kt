@@ -16,31 +16,31 @@ class ReleaseQualityGroupTest {
 
     @Test
     fun key_ignores_resolution_and_crc_only() {
-        val k1080 = ReleaseQualityKey.of("[SubsPlease] Sakamoto Days - 05 (1080p) [F2A1B3C4].mkv")
-        assertEquals(k1080, ReleaseQualityKey.of("[SubsPlease] Sakamoto Days - 05 (720p) [0B9D7E21].mkv"))
-        assertEquals(k1080, ReleaseQualityKey.of("[SubsPlease] Sakamoto Days - 05 (480p) [99AA00BB].mkv"))
+        val k1080 = ReleaseQualityKey.of("[SubsPlume] Sakamoto Days - 05 (1080p) [F2A1B3C4].mkv")
+        assertEquals(k1080, ReleaseQualityKey.of("[SubsPlume] Sakamoto Days - 05 (720p) [0B9D7E21].mkv"))
+        assertEquals(k1080, ReleaseQualityKey.of("[SubsPlume] Sakamoto Days - 05 (480p) [99AA00BB].mkv"))
         assertEquals(
-            ReleaseQualityKey.of("[Erai-raws] Sakamoto Days - 05 [1080p CR WEB-DL AVC AAC][MultiSub][1A2B3C4D]"),
-            ReleaseQualityKey.of("[Erai-raws] Sakamoto Days - 05 [720p CR WEB-DL AVC AAC][MultiSub][5E6F7A8B]"),
+            ReleaseQualityKey.of("[Grpa-raws] Sakamoto Days - 05 [1080p CR WEB-DL AVC AAC][MultiSub][1A2B3C4D]"),
+            ReleaseQualityKey.of("[Grpa-raws] Sakamoto Days - 05 [720p CR WEB-DL AVC AAC][MultiSub][5E6F7A8B]"),
         )
         // other episode, other group, other codec: other release
-        assertNotEquals(k1080, ReleaseQualityKey.of("[SubsPlease] Sakamoto Days - 06 (1080p) [F2A1B3C4].mkv"))
-        assertNotEquals(k1080, ReleaseQualityKey.of("[ASW] Sakamoto Days - 05 (1080p) [F2A1B3C4].mkv"))
+        assertNotEquals(k1080, ReleaseQualityKey.of("[SubsPlume] Sakamoto Days - 06 (1080p) [F2A1B3C4].mkv"))
+        assertNotEquals(k1080, ReleaseQualityKey.of("[GRW] Sakamoto Days - 05 (1080p) [F2A1B3C4].mkv"))
         assertNotEquals(
-            ReleaseQualityKey.of("[Erai-raws] Show - 05 [1080p HEVC]"),
-            ReleaseQualityKey.of("[Erai-raws] Show - 05 [720p AVC]"),
+            ReleaseQualityKey.of("[Grpa-raws] Show - 05 [1080p HEVC]"),
+            ReleaseQualityKey.of("[Grpa-raws] Show - 05 [720p AVC]"),
         )
-        assertNull(ReleaseQualityKey.of("[SubsPlease] Sakamoto Days - 05 [F2A1B3C4].mkv"))
+        assertNull(ReleaseQualityKey.of("[SubsPlume] Sakamoto Days - 05 [F2A1B3C4].mkv"))
         // x264 / x265 are not resolutions
         assertNotEquals(ReleaseQualityKey.of("Show S01E05 1080p WEB x264-GRP"), ReleaseQualityKey.of("Show S01E05 1080p WEB x265-GRP"))
     }
 
-    private fun row(i: Int, res: Int?, key: String? = "subsplease show 05", seeds: Int = 0, exact: Boolean = false, family: Boolean = false) =
+    private fun row(i: Int, res: Int?, key: String? = "subsplume show 05", seeds: Int = 0, exact: Boolean = false, family: Boolean = false) =
         PickerRow(
             ref = RowRef(i, 0),
             provider = "editotsu",
             presentation = SourcePresentationKind.RELEASE,
-            header = "SubsPlease",
+            header = "SubsPlume",
             resolution = res,
             transport = "Torrent",
             audioKind = AudioKind.SUB,
@@ -52,7 +52,7 @@ class ReleaseQualityGroupTest {
 
     @Test
     fun three_qualities_make_one_card_singles_stay() {
-        val other = row(3, 1080, key = "asw show 05")
+        val other = row(3, 1080, key = "grw show 05")
         val rows = listOf(row(0, 720), row(1, 1080), other, row(2, 480))
         val list = PickerListBuilder.build(rows)
         assertEquals(2, list.entries.size)
@@ -79,7 +79,7 @@ class ReleaseQualityGroupTest {
 
     private fun stream(i: Int, res: Int, exact: Boolean = false, preferred: Boolean = false) = PickerRow(
         ref = RowRef(i, 0), provider = "pahe", presentation = SourcePresentationKind.STREAM,
-        header = "Kwik ${res}p", resolution = res, transport = "HLS", audioKind = AudioKind.SUB,
+        header = "Hoska ${res}p", resolution = res, transport = "HLS", audioKind = AudioKind.SUB,
         rememberedExact = exact, preferred = preferred,
     )
 
@@ -127,11 +127,11 @@ class ReleaseQualityGroupTest {
     }
 
     @Test
-    fun builder_gives_subsplease_qualities_one_key_and_keeps_exact_keys() {
+    fun builder_gives_subsplume_qualities_one_key_and_keeps_exact_keys() {
         val links = listOf(
-            ext("[SubsPlease] Sakamoto Days - 05 (1080p) [F2A1B3C4].mkv\n👤 900 💾 1.4 GB ⚙️ Nyaa", 'a'),
-            ext("[SubsPlease] Sakamoto Days - 05 (720p) [0B9D7E21].mkv\n👤 300 💾 700 MB ⚙️ Nyaa", 'b'),
-            ext("[SubsPlease] Sakamoto Days - 05 (480p) [99AA00BB].mkv\n👤 40 💾 350 MB ⚙️ Nyaa", 'c'),
+            ext("[SubsPlume] Sakamoto Days - 05 (1080p) [F2A1B3C4].mkv\n👤 900 💾 1.4 GB ⚙️ Idxone", 'a'),
+            ext("[SubsPlume] Sakamoto Days - 05 (720p) [0B9D7E21].mkv\n👤 300 💾 700 MB ⚙️ Idxone", 'b'),
+            ext("[SubsPlume] Sakamoto Days - 05 (480p) [99AA00BB].mkv\n👤 40 💾 350 MB ⚙️ Idxone", 'c'),
         )
         val rows = PickerRowsBuilder().build(links, null, null, "x")
         assertEquals(1, rows.map { it.qualityKey }.distinct().size)

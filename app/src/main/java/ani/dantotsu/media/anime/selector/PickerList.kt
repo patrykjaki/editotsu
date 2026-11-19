@@ -8,7 +8,7 @@ package ani.dantotsu.media.anime.selector
  *  - merges STREAM rows that share provider + group name + audio kind
  *    into one [PickerEntry.StreamGroup] with one button per quality;
  *  - keeps every RELEASE (torrent) row as its own [PickerEntry.Release], except
- *    that one release offered in several qualities (SubsPlease 1080p/720p/480p:
+ *    that one release offered in several qualities (one group at 1080p/720p/480p:
  *    same name apart from the resolution and CRC) becomes one card with a
  *    button per quality;
  *  - picks a Best match with a visible reason ([BestMatch]);
@@ -144,8 +144,8 @@ object AudioKindDetector {
     private val DUB = Regex("""(?i)\b(dub|dubbed|english[\s._-]?dub)\b""")
     private val SUB = Regex("""(?i)\b(sub|subs|subbed|softsub|hardsub|raw[\s._-]?sub)\b""")
 
-    // A paren holding only an audio language, as AnimePahe names its
-    // servers: "MTBB (English) - 1080p" is the dub, "(Japanese)" the sub.
+    // A paren holding only an audio language, as some sources name their
+    // servers: "GRPB (English) - 1080p" is the dub, "(Japanese)" the sub.
     private val LANG_PAREN = Regex("""(?i)\(\s*(english|eng|japanese|jpn|jp)\s*\)""")
 
     /**
@@ -181,7 +181,7 @@ object StreamNameCleaner {
 
     /**
      * Name used both for display and for grouping: resolution, size and
-     * transport words are removed so "MTBB 360p" and "MTBB 1080p" merge.
+     * transport words are removed so "GRPB 360p" and "GRPB 1080p" merge.
      * Falls back to the trimmed input when cleaning would empty it.
      */
     fun groupName(header: String): String {
@@ -197,7 +197,7 @@ object StreamNameCleaner {
         return cleaned.ifEmpty { header.trim() }
     }
 
-    /** "MTBB (Sub/English)" -> "Sub · English"; null when there is no such tag. */
+    /** "GRPB (Sub/English)" -> "Sub · English"; null when there is no such tag. */
     fun audioTag(header: String): String? {
         val inner = AUDIO_PAREN.find(header)?.groupValues?.get(1)?.trim() ?: return null
         when (inner.lowercase()) {
@@ -213,7 +213,7 @@ object StreamNameCleaner {
 /**
  * A release name with what differs between the qualities of one release taken out:
  * resolution ("1080p", "(720p)", "1920x1080", "4K") and the CRC ("[A1B2C3D4]").
- * "[SubsPlease] Show - 05 (1080p) [F2A1B3C4].mkv" and "... (720p) [0B9D7E21].mkv" share a key.
+ * "[GroupA] Show - 05 (1080p) [F2A1B3C4].mkv" and "... (720p) [0B9D7E21].mkv" share a key.
  * Null when the name has no resolution (nothing to merge on).
  */
 object ReleaseQualityKey {
@@ -508,7 +508,7 @@ object CompactDetails {
     }
 
     /**
-     * Torrentio-style text: the first non-metadata line is the release
+     * Torrent-source text: the first non-metadata line is the release
      * name; a later one ending in a video extension is the file to play.
      */
     fun fileLine(qualityText: String): String? = SourceRowClassifier.fileNameLine(qualityText)
