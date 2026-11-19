@@ -546,13 +546,12 @@
     <string-array name="home_layouts">
         <item>Continue Watching</item>
         <item>Favourite Anime</item>
-        <item>Planned Anime</item>
+        <item>Watch next</item>
         <item>Continue Reading</item>
         <item>Favourite Manga</item>
         <item>Planned Manga</item>
         <item>Recommended</item>
         <item>Social Feeds</item>
-        <item>Missed Sequels</item>
     </string-array>
 
     <string name="startUpTab">Default Start Up Tab</string>
@@ -2125,4 +2124,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="filter_off">Off</string>
     <string name="remove_filter">Remove %1$s</string>
     <string name="airing_in_days">%1$dd</string>
+    <string name="watch_next">Watch next</string>
+    <string name="watch_next_sequel_to">Sequel to %1$s</string>
+    <string name="watch_next_on_your_list">On your list</string>
 </resources>

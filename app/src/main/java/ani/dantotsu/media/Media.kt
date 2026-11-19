@@ -108,7 +108,8 @@ data class Media(
     var idIMDB: String? = null,
     var idTMDB: String? = null,
 
-    var cameFromContinue: Boolean = false
+    var cameFromContinue: Boolean = false,
+    var watchNextReason: String? = null
 ) : Serializable {
 
     constructor(apiMedia: ApiMedia) : this(

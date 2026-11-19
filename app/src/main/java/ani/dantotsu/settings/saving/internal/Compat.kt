@@ -1,6 +1,7 @@
 package ani.dantotsu.settings.saving.internal
 
 import android.content.Context
+import ani.dantotsu.settings.saving.HomeLayoutDefaults
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.util.Logger
@@ -9,6 +10,7 @@ class Compat {
     companion object {
         fun importOldPrefs(context: Context) {
             migrateReposToStores(context)
+            migrateHomeLayoutForWatchNext(context)
             if (PrefManager.getVal(PrefName.HasUpdatedPrefs)) return
             val oldPrefs = context.getSharedPreferences("downloads_pref", Context.MODE_PRIVATE)
             val jsonString = oldPrefs.getString("downloads_key", null)
@@ -47,6 +49,27 @@ class Compat {
             migrateSet(PrefName.AnimeExtensionRepos)
             migrateSet(PrefName.MangaExtensionRepos)
             migrateSet(PrefName.NovelExtensionRepos)
+
+            migratedPrefs.edit().putBoolean(migratedKey, true).apply()
+        }
+
+        private fun migrateHomeLayoutForWatchNext(context: Context) {
+            val migratedKey = "has_migrated_home_layout_watch_next_v1"
+            val migratedPrefs = context.getSharedPreferences("migration_prefs", Context.MODE_PRIVATE)
+            if (migratedPrefs.getBoolean(migratedKey, false)) return
+
+            try {
+                if (PrefManager.contains(PrefName.HomeLayout)) {
+                    val saved: List<Boolean> = PrefManager.getVal(PrefName.HomeLayout)
+                    PrefManager.setVal(PrefName.HomeLayout, HomeLayoutDefaults.migrateLegacyVisibility(saved))
+                }
+                if (PrefManager.contains(PrefName.HomeLayoutOrder)) {
+                    val savedOrder: List<Int> = PrefManager.getVal(PrefName.HomeLayoutOrder)
+                    PrefManager.setVal(PrefName.HomeLayoutOrder, HomeLayoutDefaults.normalizeOrder(savedOrder))
+                }
+            } catch (e: Exception) {
+                Logger.log("Failed to migrate HomeLayout for Watch next: $e")
+            }
 
             migratedPrefs.edit().putBoolean(migratedKey, true).apply()
         }

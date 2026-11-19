@@ -643,7 +643,7 @@
             </LinearLayout>
 
             <LinearLayout
-                android:id="@+id/homePlannedAnimeContainer"
+                android:id="@+id/homeWatchNextContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
@@ -656,18 +656,18 @@
                     tools:ignore="UseCompoundDrawables">
 
                     <TextView
-                        android:id="@+id/homePlannedAnime"
+                        android:id="@+id/homeWatchNext"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="24dp"
                         android:layout_weight="1"
                         android:fontFamily="@font/poppins_bold"
                         android:padding="8dp"
-                        android:text="@string/planned_anime"
+                        android:text="@string/watch_next"
                         android:textSize="16sp" />
 
                     <ImageView
-                        android:id="@+id/homePlannedAnimeMore"
+                        android:id="@+id/homeWatchNextMore"
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
                         android:layout_marginEnd="16dp"
@@ -684,46 +684,15 @@
                     android:layout_height="wrap_content"
                     android:minHeight="250dp">
 
-                    <LinearLayout
-                        android:id="@+id/homePlannedAnimeEmpty"
-                        android:layout_width="match_parent"
-                        android:layout_height="250dp"
-                        android:gravity="center"
-                        android:orientation="vertical"
-                        android:visibility="gone">
-
-                        <ImageView
-                            android:layout_width="match_parent"
-                            android:layout_height="32dp"
-                            android:alpha="0.58"
-                            android:src="@drawable/ic_round_movie_filter_24"
-                            tools:ignore="ContentDescription" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:alpha="0.58"
-                            android:text="@string/empty" />
-
-                        <Button
-                            android:id="@+id/homePlannedAnimeBrowseButton"
-                            android:layout_width="128dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="12dp"
-                            android:text="@string/browse_anime"
-                            app:cornerRadius="16dp"
-                            tools:ignore="TextContrastCheck" />
-                    </LinearLayout>
-
                     <ani.dantotsu.others.SkeletonView
-                        android:id="@+id/homePlannedAnimeProgressBar"
-        android:tag="covers"
+                        android:id="@+id/homeWatchNextProgressBar"
+                        android:tag="covers"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center" />
 
                     <ani.dantotsu.FadingEdgeRecyclerView
-                        android:id="@+id/homePlannedAnimeRecyclerView"
+                        android:id="@+id/homeWatchNextRecyclerView"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:clipToPadding="false"
@@ -1006,95 +975,6 @@
 
                     <ani.dantotsu.FadingEdgeRecyclerView
                         android:id="@+id/homePlannedMangaRecyclerView"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:clipToPadding="false"
-                        android:paddingStart="20dp"
-                        android:paddingEnd="20dp"
-                        android:requiresFadingEdge="horizontal"
-                        tools:itemCount="4"
-                        tools:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-                        tools:listitem="@layout/item_media_compact"
-                        tools:orientation="horizontal" />
-                </FrameLayout>
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/homeMissingSequelsContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    tools:ignore="UseCompoundDrawables">
-
-                    <TextView
-                        android:id="@+id/homeMissingSequels"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="24dp"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/poppins_bold"
-                        android:padding="8dp"
-                        android:text="@string/missing_sequels"
-                        android:textSize="16sp" />
-
-                    <ImageView
-                        android:id="@+id/homeMissingSequelsMore"
-                        android:layout_width="wrap_content"
-                        android:layout_height="match_parent"
-                        android:layout_marginEnd="16dp"
-                        android:fontFamily="@font/poppins_bold"
-                        android:padding="8dp"
-                        android:src="@drawable/arrow_mark"
-                        android:textSize="16sp"
-                        tools:ignore="ContentDescription" />
-                </LinearLayout>
-
-
-                <FrameLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:minHeight="250dp">
-
-                    <LinearLayout
-                        android:id="@+id/homeMissingSequelsEmpty"
-                        android:layout_width="match_parent"
-                        android:layout_height="250dp"
-                        android:gravity="center"
-                        android:orientation="vertical"
-                        android:visibility="gone"
-                        tools:ignore="UseCompoundDrawables">
-
-                        <ImageView
-                            android:layout_width="match_parent"
-                            android:layout_height="32dp"
-                            android:alpha="0.58"
-                            android:src="@drawable/ic_round_movie_filter_24"
-                            tools:ignore="ContentDescription" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_margin="16dp"
-                            android:alpha="0.58"
-                            android:text="@string/no_missing_sequels"
-                            android:textAlignment="center" />
-                    </LinearLayout>
-
-                    <ani.dantotsu.others.SkeletonView
-                        android:id="@+id/homeMissingSequelsProgressBar"
-        android:tag="covers"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center" />
-
-                    <ani.dantotsu.FadingEdgeRecyclerView
-                        android:id="@+id/homeMissingSequelsRecyclerView"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:clipToPadding="false"

@@ -12,11 +12,21 @@ import ani.dantotsu.connections.anilist.api.FuzzyDate
 import ani.dantotsu.connections.anilist.api.MediaEdge
 import ani.dantotsu.connections.anilist.api.MediaList
 import ani.dantotsu.connections.anilist.api.MediaListStatus
+import ani.dantotsu.connections.anilist.api.MediaStatus
+import ani.dantotsu.connections.anilist.api.MediaType
 import ani.dantotsu.connections.anilist.api.NotificationResponse
 import ani.dantotsu.connections.anilist.api.Page
 import ani.dantotsu.connections.anilist.api.Query
 import ani.dantotsu.connections.anilist.api.ReplyResponse
 import ani.dantotsu.currContext
+import ani.dantotsu.home.CompletedAnimeEntry
+import ani.dantotsu.home.PlannedAnimeEntry
+import ani.dantotsu.home.WatchNextListStatus
+import ani.dantotsu.home.WatchNextMediaStatus
+import ani.dantotsu.home.WatchNextReason
+import ani.dantotsu.home.WatchNextRelation
+import ani.dantotsu.home.buildWatchNext
+import ani.dantotsu.home.completedTimestampSec
 import ani.dantotsu.isOnline
 import ani.dantotsu.logError
 import ani.dantotsu.home.status.sortUserStatusList
@@ -28,6 +38,7 @@ import ani.dantotsu.media.Studio
 import ani.dantotsu.others.MalScraper
 import ani.dantotsu.connections.mal.MAL
 import ani.dantotsu.profile.User
+import ani.dantotsu.settings.saving.HomeLayoutDefaults
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
@@ -49,12 +60,6 @@ class AnilistQueries {
 
         const val ITEMS_PER_PAGE = 25
     }
-
-    private data class MissingSequelsCache(
-        val sourceIds: Set<Int>,
-        val media: ArrayList<Media>,
-        val cachedAt: Long
-    ) : Serializable
 
     private data class UserStatusCache(
         val users: ArrayList<User>,
@@ -588,9 +593,10 @@ class AnilistQueries {
     }
 
     suspend fun getUserStatus(forceRefresh: Boolean = false): ArrayList<User>? {
-        val toShow: List<Boolean> =
+        val toShow = HomeLayoutDefaults.normalizeVisibility(
             PrefManager.getVal(PrefName.HomeLayout)
-        if (toShow.getOrNull(7) != true) return arrayListOf()
+        )
+        if (toShow.getOrNull(HomeLayoutDefaults.SOCIAL_FEEDS) != true) return arrayListOf()
         if (!forceRefresh) {
             loadUserStatusCache()?.let { return sortUserStatusList(it) }
         }
@@ -716,27 +722,51 @@ class AnilistQueries {
         return Pair(list, hasNext)
     }
 
-    private fun missingSequelsCompletedSourceQuery(): String {
-        return """ MediaListCollection( userId: ${Anilist.userid}, type: ANIME, status: COMPLETED, sort: UPDATED_TIME_DESC ) { lists { entries { media { id relations { edges { relationType(version: 2) node { id } } } } } } } """.trimIndent()
+    private fun watchNextCompletedSourceQuery(): String {
+        return """ MediaListCollection( userId: ${Anilist.userid}, type: ANIME, status: COMPLETED, sort: UPDATED_TIME_DESC ) { lists { entries { updatedAt completedAt { year month day } media { id title { english romaji userPreferred } relations { edges { relationType(version: 2) node { id type status(version: 2) isAdult } } } } } } } """.trimIndent()
     }
 
-    private fun missingSequelsAllListSourceQuery(): String {
-        return """ MediaListCollection( userId: ${Anilist.userid}, type: ANIME ) { lists { entries { media { id } } } } """.trimIndent()
+    private fun watchNextAllListSourceQuery(): String {
+        return """ MediaListCollection( userId: ${Anilist.userid}, type: ANIME ) { lists { entries { status updatedAt media { id } } } } """.trimIndent()
+    }
+
+    private fun watchNextPlannedSourceQuery(): String {
+        return """ MediaListCollection( userId: ${Anilist.userid}, type: ANIME, status: PLANNING, sort: UPDATED_TIME_DESC ) { lists { entries { progress private score(format: POINT_100) status updatedAt media { id idMal type isAdult status(version: 2) chapters episodes nextAiringEpisode { episode timeUntilAiring } meanScore isFavourite format bannerImage coverImage { large } title { english romaji userPreferred } relations { edges { relationType(version: 2) node { id type } } } } } } } """.trimIndent()
     }
 
     private val batchSize = 50
-    private fun missingSequelsLookupQuery(ids: List<Int>): String {
-        val idsString = ids.joinToString(",")
-        return """ { Page(page: 1, perPage: $batchSize) { media( id_in: [$idsString], type: ANIME, status_in: [RELEASING, FINISHED], onList: false ) { id mediaListEntry { progress progressVolumes private score(format: POINT_100) status } idMal type isAdult popularity status(version: 2) chapters volumes episodes nextAiringEpisode { episode } meanScore isFavourite format bannerImage coverImage { large } title { english romaji userPreferred } startDate { year } } } } """.trimIndent()
+    private fun watchNextLookupQuery(ids: List<Int>): String {
+        val idsString = ids.take(batchSize).joinToString(",")
+        return """ { Page(page: 1, perPage: $batchSize) { media( id_in: [$idsString], type: ANIME, status_in: [RELEASING, FINISHED] ) { id mediaListEntry { progress progressVolumes private score(format: POINT_100) status } idMal type isAdult popularity status(version: 2) chapters volumes episodes nextAiringEpisode { episode timeUntilAiring } meanScore isFavourite format bannerImage coverImage { large } title { english romaji userPreferred } startDate { year } } } } """.trimIndent()
     }
 
-    private suspend fun fetchMissingSequelMedia(ids: Set<Int>): ArrayList<Media> {
-        if (ids.isEmpty()) return arrayListOf()
-        val response = executeQuery<Query.Page>(missingSequelsLookupQuery(ids.toList()))
-        val mediaList = response?.data?.page?.media?.mapNotNull { media ->
-            if (media.mediaListEntry == null) Media(media) else null
-        } ?: emptyList()
-        return ArrayList(mediaList)
+    private suspend fun fetchWatchNextMedia(ids: List<Int>): Map<Int, Media> {
+        if (ids.isEmpty()) return emptyMap()
+        val response = executeQuery<Query.Page>(watchNextLookupQuery(ids))
+        val result = HashMap<Int, Media>()
+        response?.data?.page?.media?.forEach { apiMedia ->
+            val media = Media(apiMedia)
+            result[media.id] = media
+        }
+        return result
+    }
+
+    private fun MediaListStatus.toWatchNextStatus(): WatchNextListStatus = when (this) {
+        MediaListStatus.CURRENT -> WatchNextListStatus.CURRENT
+        MediaListStatus.REPEATING -> WatchNextListStatus.REPEATING
+        MediaListStatus.COMPLETED -> WatchNextListStatus.COMPLETED
+        MediaListStatus.DROPPED -> WatchNextListStatus.DROPPED
+        MediaListStatus.PAUSED -> WatchNextListStatus.PAUSED
+        MediaListStatus.PLANNING -> WatchNextListStatus.PLANNING
+    }
+
+    private fun MediaStatus?.toWatchNextMediaStatus(): WatchNextMediaStatus = when (this) {
+        MediaStatus.RELEASING -> WatchNextMediaStatus.RELEASING
+        MediaStatus.FINISHED -> WatchNextMediaStatus.FINISHED
+        MediaStatus.NOT_YET_RELEASED -> WatchNextMediaStatus.NOT_YET_RELEASED
+        MediaStatus.CANCELLED -> WatchNextMediaStatus.CANCELLED
+        MediaStatus.HIATUS -> WatchNextMediaStatus.HIATUS
+        null -> WatchNextMediaStatus.UNKNOWN
     }
 
     private fun loadUserStatusCache(): ArrayList<User>? {
@@ -773,51 +803,52 @@ class AnilistQueries {
             .mapNotNull { it.toIntOrNull() }.toSet()
         val hidePrivate = PrefManager.getVal<Boolean>(PrefName.HidePrivate)
         val removedMedia = ArrayList<Media>()
-        val toShow = PrefManager.getVal<List<Boolean>>(PrefName.HomeLayout).toMutableList()
+        val toShow = HomeLayoutDefaults.normalizeVisibility(
+            PrefManager.getVal(PrefName.HomeLayout)
+        )
 
         val queries = mutableListOf<String>()
-        if (toShow.getOrNull(0) == true) {
+        if (toShow.getOrNull(HomeLayoutDefaults.CONTINUE_WATCHING) == true) {
             queries.add("""currentAnime: ${continueMediaQuery("ANIME", "CURRENT")}""")
             queries.add("""repeatingAnime: ${continueMediaQuery("ANIME", "REPEATING")}""")
         }
-        if (toShow.getOrNull(1) == true) queries.add("""favoriteAnime: ${favMediaQuery(true, 1)}""")
-        if (toShow.getOrNull(2) == true) queries.add(
-            """plannedAnime: ${
-                continueMediaQuery(
-                    "ANIME",
-                    "PLANNING"
-                )
-            }"""
-        )
-        if (toShow.getOrNull(3) == true) {
+        if (toShow.getOrNull(HomeLayoutDefaults.FAV_ANIME) == true) {
+            queries.add("""favoriteAnime: ${favMediaQuery(true, 1)}""")
+        }
+        if (toShow.getOrNull(HomeLayoutDefaults.WATCH_NEXT) == true) {
+            queries.add("""plannedAnime: ${watchNextPlannedSourceQuery()}""")
+            queries.add("""watchNextCompletedQuery: ${watchNextCompletedSourceQuery()}""")
+            queries.add("""watchNextAllListQuery: ${watchNextAllListSourceQuery()}""")
+        }
+        if (toShow.getOrNull(HomeLayoutDefaults.CONTINUE_READING) == true) {
             queries.add("""currentManga: ${continueMediaQuery("MANGA", "CURRENT")}""")
             queries.add("""repeatingManga: ${continueMediaQuery("MANGA", "REPEATING")}""")
         }
-        if (toShow.getOrNull(4) == true) queries.add(
-            """favoriteManga: ${
-                favMediaQuery(
-                    false,
-                    1
-                )
-            }"""
-        )
-        if (toShow.getOrNull(5) == true) queries.add(
-            """plannedManga: ${
-                continueMediaQuery(
-                    "MANGA",
-                    "PLANNING"
-                )
-            }"""
-        )
-        if (toShow.getOrNull(6) == true) {
+        if (toShow.getOrNull(HomeLayoutDefaults.FAV_MANGA) == true) {
+            queries.add(
+                """favoriteManga: ${
+                    favMediaQuery(
+                        false,
+                        1
+                    )
+                }"""
+            )
+        }
+        if (toShow.getOrNull(HomeLayoutDefaults.PLANNED_MANGA) == true) {
+            queries.add(
+                """plannedManga: ${
+                    continueMediaQuery(
+                        "MANGA",
+                        "PLANNING"
+                    )
+                }"""
+            )
+        }
+        if (toShow.getOrNull(HomeLayoutDefaults.RECOMMENDED) == true) {
             queries.add("""recommendationQuery: ${recommendationQuery("RATING_DESC", 1, 50)}""")
             queries.add("""recommendationQueryNew: ${recommendationQuery("ID_DESC", 1, 50)}""")
         }
-        if (toShow.getOrNull(8) == true) {
-            queries.add("""missingSequelsCompletedQuery: ${missingSequelsCompletedSourceQuery()}""")
-            queries.add("""missingSequelsAllListQuery: ${missingSequelsAllListSourceQuery()}""")
-        }
-        if (queries.isEmpty() && toShow.getOrNull(8) != true) {
+        if (queries.isEmpty()) {
             return mutableMapOf("hidden" to arrayListOf())
         }
 
@@ -884,22 +915,17 @@ class AnilistQueries {
             returnMap["current$type"] = returnArray
         }
 
-        if (toShow.getOrNull(0) == true) processMedia(
+        if (toShow.getOrNull(HomeLayoutDefaults.CONTINUE_WATCHING) == true) processMedia(
             "Anime",
             response?.data?.currentAnime?.lists?.flatMap { it.entries ?: emptyList() }?.reversed(),
             response?.data?.repeatingAnime?.lists?.flatMap { it.entries ?: emptyList() }?.reversed()
         )
-        if (toShow.getOrNull(2) == true) processMedia(
-            "AnimePlanned",
-            response?.data?.plannedAnime?.lists?.flatMap { it.entries ?: emptyList() }?.reversed(),
-            null
-        )
-        if (toShow.getOrNull(3) == true) processMedia(
+        if (toShow.getOrNull(HomeLayoutDefaults.CONTINUE_READING) == true) processMedia(
             "Manga",
             response?.data?.currentManga?.lists?.flatMap { it.entries ?: emptyList() }?.reversed(),
             response?.data?.repeatingManga?.lists?.flatMap { it.entries ?: emptyList() }?.reversed()
         )
-        if (toShow.getOrNull(5) == true) processMedia(
+        if (toShow.getOrNull(HomeLayoutDefaults.PLANNED_MANGA) == true) processMedia(
             "MangaPlanned",
             response?.data?.plannedManga?.lists?.flatMap { it.entries ?: emptyList() }?.reversed(),
             null
@@ -920,16 +946,16 @@ class AnilistQueries {
             returnMap["favorite$type"] = returnArray
         }
 
-        if (toShow.getOrNull(1) == true) processFavorites(
+        if (toShow.getOrNull(HomeLayoutDefaults.FAV_ANIME) == true) processFavorites(
             "Anime",
             response?.data?.favoriteAnime?.favourites?.anime?.edges
         )
-        if (toShow.getOrNull(4) == true) processFavorites(
+        if (toShow.getOrNull(HomeLayoutDefaults.FAV_MANGA) == true) processFavorites(
             "Manga",
             response?.data?.favoriteManga?.favourites?.manga?.edges
         )
 
-        if (toShow.getOrNull(6) == true) {
+        if (toShow.getOrNull(HomeLayoutDefaults.RECOMMENDED) == true) {
             val subMap = mutableMapOf<Int, Media>()
             response?.data?.recommendationQuery?.recommendations?.forEach {
                 it.mediaRecommendation?.let { json ->
@@ -953,38 +979,130 @@ class AnilistQueries {
             returnMap["recommendations"] = list
         }
 
-        if (toShow.getOrNull(8) == true) {
+        if (toShow.getOrNull(HomeLayoutDefaults.WATCH_NEXT) == true) {
             val completedEntries =
-                response?.data?.missingSequelsCompletedQuery?.lists?.flatMap { it.entries ?: emptyList() }
+                response?.data?.watchNextCompletedQuery?.lists?.flatMap { it.entries ?: emptyList() }
             val allAnimeEntries =
-                response?.data?.missingSequelsAllListQuery?.lists?.flatMap { it.entries ?: emptyList() }
+                response?.data?.watchNextAllListQuery?.lists?.flatMap { it.entries ?: emptyList() }
+            val plannedEntries =
+                response?.data?.plannedAnime?.lists?.flatMap { it.entries ?: emptyList() }
 
-            val sequelIds = mutableSetOf<Int>()
+            val userStatuses = mutableMapOf<Int, WatchNextListStatus>()
+            val userUpdatedAtSec = mutableMapOf<Int, Long>()
+            allAnimeEntries?.forEach { entry ->
+                val id = entry.media?.id ?: return@forEach
+                entry.status?.toWatchNextStatus()?.let { status ->
+                    userStatuses[id] = status
+                }
+                entry.updatedAt?.toLong()?.let { ts ->
+                    val prev = userUpdatedAtSec[id] ?: 0L
+                    if (ts > prev) userUpdatedAtSec[id] = ts
+                }
+            }
+
+            val completedById = LinkedHashMap<Int, CompletedAnimeEntry>()
             completedEntries?.forEach { entry ->
-                entry.media?.relations?.edges?.forEach { edge ->
-                    if (edge.relationType?.name == "SEQUEL") {
-                        edge.node?.id?.let { sequelIds.add(it) }
-                    }
-                }
+                val apiMedia = entry.media ?: return@forEach
+                val updatedSec = entry.updatedAt?.toLong() ?: 0L
+                val completedSec = completedTimestampSec(
+                    completedYear = entry.completedAt?.year,
+                    completedMonth = entry.completedAt?.month,
+                    completedDay = entry.completedAt?.day,
+                    updatedAtSec = updatedSec,
+                )
+                val existing = completedById[apiMedia.id]
+                if (existing != null && existing.completedAtSec >= completedSec) return@forEach
+                val title = apiMedia.title?.userPreferred?.takeIf { it.isNotBlank() }
+                    ?: apiMedia.title?.english?.takeIf { it.isNotBlank() }
+                    ?: apiMedia.title?.romaji.orEmpty()
+                val relations = apiMedia.relations?.edges?.mapNotNull { edge ->
+                    val node = edge.node ?: return@mapNotNull null
+                    val relType = edge.relationType?.name ?: return@mapNotNull null
+                    WatchNextRelation(
+                        targetId = node.id,
+                        relationType = relType,
+                        isAnime = node.type == MediaType.ANIME,
+                        mediaStatus = node.status.toWatchNextMediaStatus(),
+                        isAdult = node.isAdult == true,
+                    )
+                } ?: emptyList()
+                completedById[apiMedia.id] = CompletedAnimeEntry(
+                    mediaId = apiMedia.id,
+                    title = title,
+                    completedAtSec = completedSec,
+                    updatedAtSec = updatedSec,
+                    relations = relations,
+                )
             }
-            val allAnimeIds = allAnimeEntries?.mapNotNull { it.media?.id }?.toSet() ?: emptySet()
-            val filteredSequelIds = sequelIds - allAnimeIds
 
-            val sequels = if (filteredSequelIds.isNotEmpty()) fetchMissingSequelMedia(filteredSequelIds) else arrayListOf()
-            val visibleSequels = arrayListOf<Media>()
-            sequels.forEach { sequel ->
-                if (sequel.id !in removeList && (!hidePrivate || !sequel.isListPrivate)) {
-                    visibleSequels.add(sequel)
-                } else {
-                    removedMedia.add(sequel)
+            val plannedById = LinkedHashMap<Int, PlannedAnimeEntry>()
+            val plannedMediaById = HashMap<Int, Media>()
+            plannedEntries?.forEach { entry ->
+                val apiMedia = entry.media ?: return@forEach
+                if (apiMedia.id !in plannedMediaById) {
+                    plannedMediaById[apiMedia.id] = Media(entry)
+                }
+                if (apiMedia.id !in plannedById) {
+                    val relations = apiMedia.relations?.edges?.mapNotNull { edge ->
+                        val node = edge.node ?: return@mapNotNull null
+                        val relType = edge.relationType?.name ?: return@mapNotNull null
+                        WatchNextRelation(
+                            targetId = node.id,
+                            relationType = relType,
+                            isAnime = node.type == MediaType.ANIME,
+                        )
+                    } ?: emptyList()
+                    plannedById[apiMedia.id] = PlannedAnimeEntry(
+                        mediaId = apiMedia.id,
+                        updatedAtSec = entry.updatedAt?.toLong() ?: 0L,
+                        isAnime = apiMedia.type == MediaType.ANIME,
+                        mediaStatus = apiMedia.status.toWatchNextMediaStatus(),
+                        isAdult = apiMedia.isAdult == true,
+                        isPrivate = entry.private == true,
+                        relations = relations,
+                    )
                 }
             }
-            returnMap["missingSequels"] = visibleSequels
+
+            val candidates = buildWatchNext(
+                completed = completedById.values.toList(),
+                planned = plannedById.values.toList(),
+                userStatuses = userStatuses,
+                userUpdatedAtSec = userUpdatedAtSec,
+                nowEpochSec = System.currentTimeMillis() / 1000L,
+                excludedMediaIds = removeList,
+                hidePrivate = hidePrivate,
+                allowAdult = Anilist.adult,
+            )
+
+            val missingIds = candidates
+                .map { it.mediaId }
+                .filter { it !in plannedMediaById }
+            val fetchedById = if (missingIds.isNotEmpty()) fetchWatchNextMedia(missingIds) else emptyMap()
+
+            val ctx = currContext()
+            val watchNextList = ArrayList<Media>(candidates.size)
+            for (candidate in candidates) {
+                val media = plannedMediaById[candidate.mediaId] ?: fetchedById[candidate.mediaId] ?: continue
+                media.watchNextReason = when (val reason = candidate.reason) {
+                    is WatchNextReason.SequelTo ->
+                        if (reason.sourceTitle.isNotBlank()) {
+                            ctx?.getString(R.string.watch_next_sequel_to, reason.sourceTitle)
+                                ?: "Sequel to ${reason.sourceTitle}"
+                        } else {
+                            null
+                        }
+                    WatchNextReason.OnYourList ->
+                        ctx?.getString(R.string.watch_next_on_your_list)
+                            ?: "On your list"
+                }
+                watchNextList.add(media)
+            }
+            returnMap["watchNext"] = watchNextList
         }
 
         val allOrders = listOf(
             "continueAnimeList",
-            "continueAnimePlannedList",
             "continueMangaList",
             "continueMangaPlannedList"
         ).flatMap {

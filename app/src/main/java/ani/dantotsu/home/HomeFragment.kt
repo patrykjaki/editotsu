@@ -48,6 +48,7 @@ import ani.dantotsu.setSafeOnClickListener
 import ani.dantotsu.setSlideIn
 import ani.dantotsu.setSlideUp
 import ani.dantotsu.settings.SettingsDialogFragment
+import ani.dantotsu.settings.saving.HomeLayoutDefaults
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefManager.asLiveBool
 import ani.dantotsu.settings.saving.PrefName
@@ -274,17 +275,33 @@ class HomeFragment : Fragment() {
         val layoutRows = listOf(
             binding.homeContinueWatchingContainer,
             binding.homeFavAnimeContainer,
-            binding.homePlannedAnimeContainer,
+            binding.homeWatchNextContainer,
             binding.homeContinueReadingContainer,
             binding.homeFavMangaContainer,
             binding.homePlannedMangaContainer,
             binding.homeRecommendedContainer,
             binding.homeUserStatusContainer,
-            binding.homeMissingSequelsContainer,
         )
         fun rowEnabled(container: View): Boolean {
             val i = layoutRows.indexOf(container)
-            return i < 0 || PrefManager.getVal<List<Boolean>>(PrefName.HomeLayout).getOrElse(i) { true }
+            if (i < 0) return true
+            val visibility = HomeLayoutDefaults.normalizeVisibility(
+                PrefManager.getVal(PrefName.HomeLayout)
+            )
+            return visibility.getOrElse(i) { true }
+        }
+        fun updateWatchNextVisibility(items: Collection<*>?) {
+            val vis = watchNextRowVisibility(
+                items = items,
+                enabled = rowEnabled(binding.homeWatchNextContainer),
+                rescueMode = PrefManager.getVal(PrefName.RescueMode),
+            )
+            binding.homeWatchNextContainer.visibility =
+                if (vis.containerVisible) View.VISIBLE else View.GONE
+            binding.homeWatchNextProgressBar.visibility =
+                if (vis.progressVisible) View.VISIBLE else View.GONE
+            binding.homeWatchNextRecyclerView.visibility =
+                if (vis.recyclerVisible) View.VISIBLE else View.GONE
         }
 
         fun initRecyclerView(
@@ -398,30 +415,37 @@ class HomeFragment : Fragment() {
             getString(R.string.fav_anime)
         )
 
-        initRecyclerView(
-            model.getAnimePlanned(),
-            binding.homePlannedAnimeContainer,
-            binding.homePlannedAnimeRecyclerView,
-            binding.homePlannedAnimeProgressBar,
-            binding.homePlannedAnimeEmpty,
-            binding.homePlannedAnime,
-            binding.homePlannedAnimeMore,
-            getString(R.string.planned_anime)
+        binding.homeWatchNextRecyclerView.layoutManager = LinearLayoutManager(
+            requireContext(),
+            LinearLayoutManager.HORIZONTAL,
+            false
         )
-        binding.homePlannedAnimeBrowseButton.setOnClickListener {
-            bottomBarOrNull?.selectTabAt(0)
+        updateWatchNextVisibility(model.getWatchNext().value)
+        model.getWatchNext().observe(viewLifecycleOwner) { items ->
+            updateWatchNextVisibility(items)
+            if (!items.isNullOrEmpty()) {
+                val rv = binding.homeWatchNextRecyclerView
+                val currentAdapter = rv.adapter as? MediaAdaptor
+                if (currentAdapter != null && currentAdapter.type == 0 && currentAdapter.mediaList === items && rv.tag == "loaded") {
+                    currentAdapter.notifyDataSetChanged()
+                } else {
+                    rv.tag = "loaded"
+                    rv.adapter = MediaAdaptor(0, items, requireActivity())
+                    rv.layoutManager = LinearLayoutManager(
+                        requireContext(),
+                        LinearLayoutManager.HORIZONTAL,
+                        false
+                    )
+                    rv.layoutAnimation = LayoutAnimationController(setSlideIn(), 0.25f)
+                }
+                binding.homeWatchNextMore.setOnClickListener { i ->
+                    MediaListViewActivity.passedMedia = items
+                    val intent = Intent(i.context, MediaListViewActivity::class.java)
+                        .putExtra("title", getString(R.string.watch_next))
+                    ContextCompat.startActivity(i.context, intent, null)
+                }
+            }
         }
-
-        initRecyclerView(
-            model.getMissingSequels(),
-            binding.homeMissingSequelsContainer,
-            binding.homeMissingSequelsRecyclerView,
-            binding.homeMissingSequelsProgressBar,
-            binding.homeMissingSequelsEmpty,
-            binding.homeMissingSequels,
-            binding.homeMissingSequelsMore,
-            getString(R.string.missing_sequels)
-        )
 
         initRecyclerView(
             model.getMangaContinue(),
@@ -477,8 +501,9 @@ class HomeFragment : Fragment() {
         binding.homeUserStatusRecyclerView.visibility = View.GONE
         model.getUserStatus().observe(viewLifecycleOwner) { users ->
             // M6 HOLD Blocker 3: resolved-empty hides the rail entirely.
-            val storiesEnabled = PrefManager.getVal<List<Boolean>>(PrefName.HomeLayout)
-                .getOrElse(7) { true } && !PrefManager.getVal<Boolean>(PrefName.RescueMode)
+            val storiesEnabled = HomeLayoutDefaults.normalizeVisibility(
+                PrefManager.getVal(PrefName.HomeLayout)
+            ).getOrElse(HomeLayoutDefaults.SOCIAL_FEEDS) { true } && !PrefManager.getVal<Boolean>(PrefName.RescueMode)
             val vis = storiesVisibility(users, storiesEnabled)
             binding.homeUserStatusContainer.visibility =
                 if (vis.containerVisible) View.VISIBLE else View.GONE
@@ -560,28 +585,15 @@ class HomeFragment : Fragment() {
         }
 
 
-        val array = arrayOf(
-            "AnimeContinue",
-            "AnimeFav",
-            "AnimePlanned",
-            "MangaContinue",
-            "MangaFav",
-            "MangaPlanned",
-            "Recommendation",
-            "UserStatus",
-            "MissingSequels",
-        )
-
         val containers = arrayOf(
             binding.homeContinueWatchingContainer,
             binding.homeFavAnimeContainer,
-            binding.homePlannedAnimeContainer,
+            binding.homeWatchNextContainer,
             binding.homeContinueReadingContainer,
             binding.homeFavMangaContainer,
             binding.homePlannedMangaContainer,
             binding.homeRecommendedContainer,
             binding.homeUserStatusContainer,
-            binding.homeMissingSequelsContainer,
         )
 
         var running = false
@@ -594,7 +606,7 @@ class HomeFragment : Fragment() {
                     binding.homeFavAnimeContainer,
                     binding.homeFavMangaContainer,
                     binding.homeUserStatusContainer,
-                    binding.homeMissingSequelsContainer,
+                    binding.homeWatchNextContainer,
                 )
                 binding.homeRescueModeBanner.visibility =
                     if (inRescueMode) View.VISIBLE else View.GONE
@@ -603,20 +615,24 @@ class HomeFragment : Fragment() {
 
                     listOf(
                         binding.homeContinueWatchingContainer,
-                        binding.homePlannedAnimeContainer,
                         binding.homeContinueReadingContainer,
                         binding.homePlannedMangaContainer,
                     ).forEach { it.visibility = if (rowEnabled(it)) View.VISIBLE else View.GONE }
                 } else {
-                    val homeLayoutShow: List<Boolean> = PrefManager.getVal(PrefName.HomeLayout)
-                    val alOnlyIndices = listOf(1, 4, 7, 8)
-                    alOnlySections.forEachIndexed { idx, view ->
-                        if (homeLayoutShow.getOrElse(alOnlyIndices[idx]) { true }) {
-                            view.visibility = View.VISIBLE
-                        } else {
-                            view.visibility = View.GONE
-                        }
-                    }
+                    val homeLayoutShow = HomeLayoutDefaults.normalizeVisibility(
+                        PrefManager.getVal(PrefName.HomeLayout)
+                    )
+                    binding.homeFavAnimeContainer.visibility =
+                        if (homeLayoutShow.getOrElse(HomeLayoutDefaults.FAV_ANIME) { false }) View.VISIBLE else View.GONE
+                    binding.homeFavMangaContainer.visibility =
+                        if (homeLayoutShow.getOrElse(HomeLayoutDefaults.FAV_MANGA) { false }) View.VISIBLE else View.GONE
+                    val storiesVis = storiesVisibility(
+                        model.getUserStatus().value,
+                        homeLayoutShow.getOrElse(HomeLayoutDefaults.SOCIAL_FEEDS) { true },
+                    )
+                    binding.homeUserStatusContainer.visibility =
+                        if (storiesVis.containerVisible) View.VISIBLE else View.GONE
+                    updateWatchNextVisibility(model.getWatchNext().value)
                 }
             }
 
@@ -674,11 +690,12 @@ class HomeFragment : Fragment() {
                     }
 
                     var empty = true
-                    val homeLayoutShow: List<Boolean> = PrefManager.getVal(PrefName.HomeLayout)
-                    var homeLayoutOrder: List<Int> = PrefManager.getVal(PrefName.HomeLayoutOrder)
-                    if (homeLayoutOrder.isEmpty()) {
-                        homeLayoutOrder = containers.indices.toList()
-                    }
+                    val homeLayoutShow = HomeLayoutDefaults.normalizeVisibility(
+                        PrefManager.getVal(PrefName.HomeLayout)
+                    )
+                    val homeLayoutOrder = HomeLayoutDefaults.normalizeOrder(
+                        PrefManager.getVal(PrefName.HomeLayoutOrder)
+                    )
 
                     withContext(Dispatchers.Main) {
                         containers.indices.forEach { i ->
@@ -688,6 +705,7 @@ class HomeFragment : Fragment() {
                                 containers[i].visibility = View.GONE
                             }
                         }
+                        updateWatchNextVisibility(model.getWatchNext().value)
 
                         var insertIndex = binding.homeContainer.indexOfChild(binding.homeHiddenItemsContainer) + 1
 

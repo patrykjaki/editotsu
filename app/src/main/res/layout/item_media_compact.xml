@@ -171,6 +171,21 @@
             tools:ignore="SpUsage"
             tools:text="@string/get_recommendations" />
 
+        <TextView
+            android:id="@+id/itemCompactReason"
+            android:layout_width="108dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:fontFamily="@font/poppins_family"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="12sp"
+            android:visibility="gone"
+            tools:text="Sequel to Frieren"
+            tools:visibility="visible" />
+
         <LinearLayout
             android:id="@+id/itemCompactProgressContainer"
             android:layout_width="match_parent"

@@ -167,8 +167,8 @@ class Query {
             @SerialName("recommendationQueryNew") val recommendationQueryNew: ani.dantotsu.connections.anilist.api.Page? = null,
             @SerialName("recommendationPlannedQueryAnime") val recommendationPlannedQueryAnime: ani.dantotsu.connections.anilist.api.MediaListCollection?,
             @SerialName("recommendationPlannedQueryManga") val recommendationPlannedQueryManga: ani.dantotsu.connections.anilist.api.MediaListCollection?,
-            @SerialName("missingSequelsCompletedQuery") val missingSequelsCompletedQuery: ani.dantotsu.connections.anilist.api.MediaListCollection?,
-            @SerialName("missingSequelsAllListQuery") val missingSequelsAllListQuery: ani.dantotsu.connections.anilist.api.MediaListCollection? = null,
+            @SerialName("watchNextCompletedQuery") val watchNextCompletedQuery: ani.dantotsu.connections.anilist.api.MediaListCollection? = null,
+            @SerialName("watchNextAllListQuery") val watchNextAllListQuery: ani.dantotsu.connections.anilist.api.MediaListCollection? = null,
             @SerialName("Page1") val page1: ActivityPage?,
             @SerialName("Page2") val page2: ActivityPage?,
             // Upstream 5ffa682b: own activities bypass isFollowing omission.

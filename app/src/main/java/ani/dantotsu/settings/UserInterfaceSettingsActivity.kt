@@ -32,6 +32,7 @@ import ani.dantotsu.settings.rows.segmentedRow
 import ani.dantotsu.settings.rows.sliderRow
 import ani.dantotsu.settings.rows.textSegment
 import ani.dantotsu.settings.rows.switchRow
+import ani.dantotsu.settings.saving.HomeLayoutDefaults
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.themes.ThemeManager
@@ -257,10 +258,14 @@ object AppearanceScreen : SettingsScreen("appearance", R.string.settings_appeara
 
     /** Home sections: show/hide each, drag to reorder; the first one stays first. */
     private fun editHomeLayout(host: SettingsHost) = with(host.activity) {
-        val currentVisibility = PrefManager.getVal<List<Boolean>>(PrefName.HomeLayout).toMutableList()
-        var currentOrder = PrefManager.getVal<List<Int>>(PrefName.HomeLayoutOrder).toMutableList()
         val views = resources.getStringArray(R.array.home_layouts)
-        val fixedIndex = 7
+        val fixedIndex = HomeLayoutDefaults.FIXED_INDEX
+        val currentVisibility = HomeLayoutDefaults.normalizeVisibility(
+            PrefManager.getVal(PrefName.HomeLayout)
+        ).toMutableList()
+        val currentOrder = HomeLayoutDefaults.normalizeOrder(
+            PrefManager.getVal(PrefName.HomeLayoutOrder)
+        )
 
         if (currentVisibility.size < views.size) {
             repeat(views.size - currentVisibility.size) { currentVisibility.add(true) }
@@ -268,17 +273,8 @@ object AppearanceScreen : SettingsScreen("appearance", R.string.settings_appeara
             currentVisibility.subList(views.size, currentVisibility.size).clear()
         }
 
-        val reorderable = views.indices.filter { it != fixedIndex }
-        if (currentOrder.isEmpty()) {
-            currentOrder = reorderable.toMutableList()
-        } else {
-            val sanitizedOrder = currentOrder.filter { it in reorderable }.distinct().toMutableList()
-            sanitizedOrder.addAll(reorderable.filterNot { it in sanitizedOrder })
-            currentOrder = sanitizedOrder
-        }
-
         val displayList = mutableListOf(fixedIndex)
-        displayList.addAll(currentOrder.filter { it != fixedIndex })
+        displayList.addAll(currentOrder.filter { it != fixedIndex && it in views.indices })
 
         val recyclerView = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@with)

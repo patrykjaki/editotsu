@@ -123,6 +123,7 @@ class MediaAdaptor(
                         b.itemCompactScoreBG.isVisible = false
                         b.itemCompactOngoing.isVisible = false
                         b.itemCompactType.isVisible = false
+                        b.itemCompactReason.isVisible = false
                         b.itemCompactImage.setImageResource(R.drawable.skeleton_cover_placeholder)
                     } else {
                         b.itemCompactTitle.updateLayoutParams<ViewGroup.MarginLayoutParams> {
@@ -145,6 +146,11 @@ class MediaAdaptor(
                         b.itemCompactOngoing.isVisible =
                             media.status == b.root.context.getString(R.string.status_releasing)
                         b.itemCompactTitle.text = media.userPreferredName
+                        val watchNextReason = media.watchNextReason?.takeIf { it.isNotBlank() }
+                        b.itemCompactReason.isVisible = watchNextReason != null
+                        if (watchNextReason != null) {
+                            b.itemCompactReason.text = watchNextReason
+                        }
                         b.itemCompactScore.text =
                             ani.dantotsu.connections.anilist.cardScoreText(media.userScore, media.meanScore)
                         b.itemCompactScoreBG.background = ContextCompat.getDrawable(
@@ -589,8 +595,10 @@ class MediaAdaptor(
             CoverCountMode.BELOW -> pill.isVisible = false
         }
         // with the count on the cover the line under the title says when the next episode airs;
-        // finished shows leave it out and the title may take a third line
-        val next = if (fav || mode != CoverCountMode.COVER) null
+        // finished shows leave it out and the title may take a third line. Watch next cards carry
+        // their own one-line reason under the title instead, keeping the title to two lines.
+        val hasReason = !media.watchNextReason.isNullOrBlank()
+        val next = if (fav || hasReason || mode != CoverCountMode.COVER) null
             else nextEpisode(media.anime?.nextAiringEpisode, media.timeUntilAiring)
         if (next != null) {
             val ctx = b.root.context
@@ -605,7 +613,7 @@ class MediaAdaptor(
             b.itemCompactUserProgress.text = ctx.getString(R.string.cover_next_episode, next.episode, inText)
             b.itemCompactTotal.text = ""
         }
-        b.itemCompactTitle.maxLines = if (mode == CoverCountMode.COVER && next == null && !fav) 3 else 2
+        b.itemCompactTitle.maxLines = if (mode == CoverCountMode.COVER && next == null && !fav && !hasReason) 3 else 2
         b.itemCompactProgressContainer.visibility = when {
             fav -> View.GONE
             // "New only" keeps the full count under the title too; the badge only adds what's unseen

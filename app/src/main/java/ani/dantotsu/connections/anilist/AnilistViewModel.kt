@@ -9,7 +9,6 @@ import androidx.lifecycle.lifecycleScope
 import ani.dantotsu.BuildConfig
 import ani.dantotsu.R
 import ani.dantotsu.connections.mal.MAL
-import ani.dantotsu.connections.mal.MalAnimeNode
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.Character
 import ani.dantotsu.media.Studio
@@ -66,10 +65,10 @@ class AnilistHomeViewModel : ViewModel() {
 
     fun getAnimeFav(): LiveData<ArrayList<Media>> = animeFav
 
-    private val animePlanned: MutableLiveData<ArrayList<Media>> =
+    private val watchNext: MutableLiveData<ArrayList<Media>> =
         MutableLiveData<ArrayList<Media>>(null)
 
-    fun getAnimePlanned(): LiveData<ArrayList<Media>> = animePlanned
+    fun getWatchNext(): LiveData<ArrayList<Media>> = watchNext
 
     private val mangaContinue: MutableLiveData<ArrayList<Media>> =
         MutableLiveData<ArrayList<Media>>(null)
@@ -134,11 +133,6 @@ class AnilistHomeViewModel : ViewModel() {
         }
     }
 
-    private val missingSequels: MutableLiveData<ArrayList<Media>> =
-        MutableLiveData<ArrayList<Media>>(null)
-
-    fun getMissingSequels(): LiveData<ArrayList<Media>> = missingSequels
-
     private val userStatus: MutableLiveData<ArrayList<User>?> =
         MutableLiveData<ArrayList<User>?>(null)
 
@@ -198,17 +192,18 @@ class AnilistHomeViewModel : ViewModel() {
     private fun postHomePageData(res: Map<String, ArrayList<Media>>) {
         res["currentAnime"]?.let { animeContinue.postValue(it) }
         res["favoriteAnime"]?.let { animeFav.postValue(it) }
-        res["currentAnimePlanned"]?.let { animePlanned.postValue(it) }
+        res["watchNext"]?.let { watchNext.postValue(it) }
         res["currentManga"]?.let { mangaContinue.postValue(it) }
         res["favoriteManga"]?.let { mangaFav.postValue(it) }
         res["currentMangaPlanned"]?.let { mangaPlanned.postValue(it) }
         res["recommendations"]?.let { recommendation.postValue(it) }
-        res["missingSequels"]?.let { missingSequels.postValue(it) }
         res["hidden"]?.let { hidden.postValue(it) }
     }
 
     private suspend fun initHomePageFromMAL() {
         hidden.postValue(arrayListOf())
+        // Watch next is hidden in rescue mode (MAL only) for now.
+        watchNext.postValue(arrayListOf())
 
         if (MAL.token == null) {
             tryWithSuspend {
@@ -217,7 +212,6 @@ class AnilistHomeViewModel : ViewModel() {
             }
             animeFav.postValue(arrayListOf())
             mangaFav.postValue(arrayListOf())
-            missingSequels.postValue(arrayListOf())
             return
         }
 
@@ -234,11 +228,6 @@ class AnilistHomeViewModel : ViewModel() {
         tryWithSuspend {
             MAL.query.getUserAnimeList(status = "watching", limit = 20)?.data?.let { entries ->
                 animeContinue.postValue(ArrayList(entries.map { Media(it, true) }))
-            }
-        }
-        tryWithSuspend {
-            MAL.query.getUserAnimeList(status = "plan_to_watch", limit = 20)?.data?.let { entries ->
-                animePlanned.postValue(ArrayList(entries.map { Media(it, true) }))
             }
         }
         tryWithSuspend {
@@ -293,51 +282,6 @@ class AnilistHomeViewModel : ViewModel() {
             animeFav.postValue(arrayListOf())
             mangaFav.postValue(arrayListOf())
         }
-
-        tryWithSuspend {
-            val completedWithRelations = MAL.query.getCompletedAnimeWithRelations(limit = 100)
-            val allUserAnimeIds = MAL.query.getAllUserAnimeIds()
-
-            val sequelIds = mutableSetOf<Int>()
-            val sequelNodes = mutableMapOf<Int, MalAnimeNode>()
-
-            completedWithRelations?.data?.forEach { entry ->
-                entry.node.relatedAnime?.forEach { rel ->
-                    if ((rel.relationType?.lowercase() == "sequel" || rel.relationTypeFormatted?.lowercase() == "sequel") && rel.node != null) {
-                        val sequelId = rel.node.id
-                        if (sequelId !in allUserAnimeIds) {
-                            sequelIds.add(sequelId)
-                            sequelNodes[sequelId] = rel.node
-                        }
-                    }
-                }
-            }
-
-            if (sequelIds.isNotEmpty()) {
-                val sequelMedia = sequelNodes.values.map { node ->
-                    Media(
-                        id = node.id,
-                        idMAL = node.id,
-                        name = node.alternativeTitles?.en ?: node.title,
-                        nameRomaji = node.title,
-                        userPreferredName = node.alternativeTitles?.en ?: node.title,
-                        cover = node.mainPicture?.large ?: node.mainPicture?.medium,
-                        meanScore = node.mean?.times(10)?.toInt(),
-                        isFav = false,
-                        isAdult = false,
-                        status = node.status,
-                        anime = Anime(
-                            totalEpisodes = node.numEpisodes,
-                            season = null,
-                            seasonYear = null,
-                        ),
-                    )
-                }
-                missingSequels.postValue(ArrayList(sequelMedia))
-            } else {
-                missingSequels.postValue(arrayListOf())
-            }
-        } ?: missingSequels.postValue(arrayListOf())
     }
 
     suspend fun loadMain(context: FragmentActivity) {
