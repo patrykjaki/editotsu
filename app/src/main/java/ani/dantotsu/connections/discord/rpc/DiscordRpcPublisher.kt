@@ -118,7 +118,8 @@ object DiscordRpcPublisher {
         val details = episode.title?.takeIf { it.isNotEmpty() }
             ?: ctx.getString(R.string.episode_num, number)
         val episodeState = DiscordProgressText.progress("Episode", number, media.anime?.totalEpisodes)
-        val state = if (!isPlaying) "Paused · $episodeState" else episodeState
+        // paused shows only by the pause icon on the cover, not by text (owner/users 2026-11-19)
+        val state = episodeState
 
         val (start, end) = if (isPlaying && durationMs > 0) {
             val now = System.currentTimeMillis()

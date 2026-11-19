@@ -17,7 +17,7 @@ package ani.dantotsu.connections.discord.rpc
 object DiscordPresenceMapper {
 
     const val ANIME_SMALL_IMAGE_KEY = "logo"
-    const val ANIME_PAUSED_SMALL_IMAGE_KEY = "logo_paused"
+    const val ANIME_PAUSED_SMALL_IMAGE_KEY = "logo_paused_big"
     const val MANGA_SMALL_IMAGE_KEY = "logo_manga"
     const val ANIME_SMALL_TEXT = "Watching on Editotsu"
     const val ANIME_PAUSED_SMALL_TEXT = "Paused on Editotsu"
@@ -29,7 +29,7 @@ object DiscordPresenceMapper {
     const val ANIME_SMALL_IMAGE_URL =
         "https://cdn.discordapp.com/app-assets/1540568327712153743/1571675865857794200.png"
     const val ANIME_PAUSED_SMALL_IMAGE_URL =
-        "https://cdn.discordapp.com/app-assets/1540568327712153743/1571675865639559200.png"
+        "https://cdn.discordapp.com/app-assets/1540568327712153743/1573072422599528448.png"
     const val MANGA_SMALL_IMAGE_URL =
         "https://cdn.discordapp.com/app-assets/1540568327712153743/1571675865903796284.png"
 

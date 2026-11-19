@@ -75,7 +75,7 @@ class DiscordPresenceMapperTest {
             DiscordPresenceMapper.ANIME_PAUSED_SMALL_IMAGE_KEY,
             DiscordPresenceMapper.ANIME_PAUSED_SMALL_TEXT, null, null, emptyList(),
         )
-        assertEquals("logo_paused", p.smallImageKey)
+        assertEquals("logo_paused_big", p.smallImageKey)
         assertEquals("Paused on Editotsu", p.smallImageText)
     }
 
