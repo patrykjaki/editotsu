@@ -21,7 +21,44 @@ object GenreTagGroups {
 
     data class Entry(val name: String, val kind: Kind)
 
-    data class Group(val title: String, val entries: List<Entry>)
+    data class Group(val title: String, val entries: List<Entry>) {
+        /** Tag category groups are collapsible (closed by default); the Genres group stays open. */
+        val isCollapsible: Boolean get() = entries.any { it.kind == Kind.TAG }
+    }
+
+    data class SelectedEntry(val entry: Entry, val mark: Mark)
+
+    /** Currently included and excluded genres/tags in display order for the pinned selected row. */
+    fun selected(
+        incGenres: List<String>,
+        excGenres: List<String>,
+        incTags: List<String>,
+        excTags: List<String>,
+    ): List<SelectedEntry> = buildList(incGenres.size + excGenres.size + incTags.size + excTags.size) {
+        incGenres.forEach { add(SelectedEntry(Entry(it, Kind.GENRE), Mark.INCLUDE)) }
+        excGenres.forEach { add(SelectedEntry(Entry(it, Kind.GENRE), Mark.EXCLUDE)) }
+        incTags.forEach { add(SelectedEntry(Entry(it, Kind.TAG), Mark.INCLUDE)) }
+        excTags.forEach { add(SelectedEntry(Entry(it, Kind.TAG), Mark.EXCLUDE)) }
+    }
+
+    /** Genres and active search matches are always expanded; tag categories start closed until tapped. */
+    fun isGroupExpanded(group: Group, expandedTitles: Set<String>, query: String): Boolean =
+        !group.isCollapsible || query.isNotBlank() || group.title in expandedTitles
+
+    /** Number of included or excluded entries belonging to [group]. */
+    fun selectedCountInGroup(
+        group: Group,
+        incGenres: List<String>,
+        excGenres: List<String>,
+        incTags: List<String>,
+        excTags: List<String>,
+    ): Int = group.entries.count { entry ->
+        val mark = when (entry.kind) {
+            Kind.GENRE -> markOf(entry.name, incGenres, excGenres)
+            Kind.TAG -> markOf(entry.name, incTags, excTags)
+        }
+        mark != Mark.NONE
+    }
 
     fun markOf(name: String, included: List<String>, excluded: List<String>): Mark = when (name) {
         in included -> Mark.INCLUDE

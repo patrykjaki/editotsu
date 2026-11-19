@@ -15,6 +15,7 @@ import ani.dantotsu.media.SearchFiltersSheet
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -74,13 +75,27 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
 
         val list = dialog!!.findViewById<RecyclerView>(R.id.genreTagList)!!
         settle(list)
+        val pinnedScroll = dialog.findViewById<View>(R.id.genreTagSelectedScroll)!!
+        val pinnedRow = dialog.findViewById<LinearLayout>(R.id.genreTagSelectedRow)!!
+        assertEquals(View.GONE, pinnedScroll.visibility)
 
-        // Position 0 is "Genres" header, position 1 is "Action"
-        val actionRow = list.findViewHolderForAdapterPosition(1)!!.itemView
-        actionRow.performClick() // blank -> INCLUDE
+        // Position 0 is the open "Genres" wrapped ChipGroup; position 1+ are collapsible tag categories (closed by default).
+        val genresSection = list.findViewHolderForAdapterPosition(0)!!.itemView
+        val genresChips = genresSection.findViewById<ChipGroup>(R.id.genreTagChipGroup)!!
+        assertEquals(View.VISIBLE, genresChips.visibility)
+        val actionChip = (0 until genresChips.childCount)
+            .map { genresChips.getChildAt(it) as Chip }
+            .first { it.text.toString() == "Action" }
+
+        val firstTagSection = list.findViewHolderForAdapterPosition(1)!!.itemView
+        assertEquals(View.GONE, firstTagSection.findViewById<ChipGroup>(R.id.genreTagChipGroup)!!.visibility)
+
+        actionChip.performClick() // blank -> INCLUDE
         idle()
         assertEquals(listOf("Action"), activity.aniMangaResult.genres)
         assertEquals(emptyList<String>(), activity.aniMangaResult.excludedGenres)
+        assertEquals(View.VISIBLE, pinnedScroll.visibility)
+        assertEquals(listOf("Action"), chips(pinnedRow).map { it.text.toString() })
 
         val afterInclude = chips(chipRow)
         assertEquals(3, afterInclude.size)
@@ -89,28 +104,68 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         assertEquals("Action", afterInclude[2].text.toString())
         assertTrue(afterInclude[2].isCloseIconVisible)
 
-        actionRow.performClick() // INCLUDE -> EXCLUDE
+        actionChip.performClick() // INCLUDE -> EXCLUDE
         idle()
         assertEquals(emptyList<String>(), activity.aniMangaResult.genres)
         assertEquals(listOf("Action"), activity.aniMangaResult.excludedGenres)
+        assertEquals(listOf("\u2212Action"), chips(pinnedRow).map { it.text.toString() })
         val afterExclude = chips(chipRow)
         assertEquals("Filters · 1", afterExclude[1].text.toString())
         assertEquals("\u2212Action", afterExclude[2].text.toString())
 
-        actionRow.performClick() // EXCLUDE -> NONE
+        actionChip.performClick() // EXCLUDE -> NONE
         idle()
         assertEquals(emptyList<String>(), activity.aniMangaResult.genres)
         assertEquals(emptyList<String>(), activity.aniMangaResult.excludedGenres)
+        assertEquals(View.GONE, pinnedScroll.visibility)
         val afterClear = chips(chipRow)
         assertEquals(2, afterClear.size)
         assertEquals("Filters", afterClear[1].text.toString())
         assertFalse(afterClear[1].isChecked)
 
-        // Search box inside the sheet filters groups in place
+        // Pinned chip close button removes the selection and updates the category count badge
+        val fantasyIndex = (1 until list.adapter!!.itemCount).first { idx ->
+            list.findViewHolderForAdapterPosition(idx)?.itemView
+                ?.findViewById<TextView>(R.id.genreTagSectionTitle)?.text?.toString() == "Theme / Fantasy"
+        }
+        val fantasyHeader = list.findViewHolderForAdapterPosition(fantasyIndex)!!.itemView
+            .findViewById<View>(R.id.genreTagSectionHeader)!!
+        fantasyHeader.performClick()
+        idle()
+        settle(list)
+        val fantasyChips = list.findViewHolderForAdapterPosition(fantasyIndex)!!.itemView
+            .findViewById<ChipGroup>(R.id.genreTagChipGroup)!!
+        assertEquals(View.VISIBLE, fantasyChips.visibility)
+        (fantasyChips.getChildAt(0) as Chip).performClick() // Isekai -> INCLUDE
+        idle()
+        val fantasyCount = list.findViewHolderForAdapterPosition(fantasyIndex)!!.itemView
+            .findViewById<TextView>(R.id.genreTagSectionCount)!!
+        assertEquals(View.VISIBLE, fantasyCount.visibility)
+        assertEquals("1", fantasyCount.text.toString())
+        assertEquals(listOf("Isekai"), chips(pinnedRow).map { it.text.toString() })
+
+        chips(pinnedRow).first().performCloseIconClick()
+        idle()
+        settle(list)
+        assertEquals(emptyList<String>(), activity.aniMangaResult.tags)
+        assertEquals(View.GONE, pinnedScroll.visibility)
+        assertEquals(
+            View.GONE,
+            list.findViewHolderForAdapterPosition(fantasyIndex)!!.itemView
+                .findViewById<TextView>(R.id.genreTagSectionCount)!!.visibility,
+        )
+
+        // Search box inside the sheet filters groups in place and auto-expands matching tag categories
         val searchField = dialog.findViewById<EditText>(R.id.genreTagSearchText)!!
         searchField.setText("isekai")
         idle()
-        assertEquals(2, list.adapter!!.itemCount) // 1 group header ("Theme / Fantasy") + 1 option ("Isekai")
+        settle(list)
+        assertEquals(1, list.adapter!!.itemCount) // 1 matching tag category ("Theme / Fantasy")
+        val matchChips = list.findViewHolderForAdapterPosition(0)!!.itemView
+            .findViewById<ChipGroup>(R.id.genreTagChipGroup)!!
+        assertEquals(View.VISIBLE, matchChips.visibility)
+        assertEquals(1, matchChips.childCount)
+        assertEquals("Isekai", (matchChips.getChildAt(0) as Chip).text.toString())
         dialog.dismiss()
     }
 
@@ -196,7 +251,15 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         idle()
         if (scrollToTags) {
             val list = dialog.findViewById<RecyclerView>(R.id.genreTagList)!!
-            list.scrollToPosition(8)
+            settle(list)
+            // Expand "Theme / Fantasy" so the screenshot exercises open tag chips and an excluded chip
+            val fantasyHolder = (0 until list.adapter!!.itemCount)
+                .mapNotNull { list.findViewHolderForAdapterPosition(it) }
+                .firstOrNull {
+                    it.itemView.findViewById<TextView>(R.id.genreTagSectionTitle)?.text?.toString() == "Theme / Fantasy"
+                }
+            fantasyHolder?.itemView?.findViewById<View>(R.id.genreTagSectionHeader)?.performClick()
+            idle()
             settle(list)
         }
         shot("search/${shotName}_sheet")

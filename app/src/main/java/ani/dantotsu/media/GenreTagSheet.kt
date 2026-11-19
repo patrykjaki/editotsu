@@ -3,39 +3,43 @@ package ani.dantotsu.media
 import android.app.Activity
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Color
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityEvent
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
-import androidx.core.widget.ImageViewCompat
+import androidx.core.view.updatePaddingRelative
 import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.AniMangaSearchResults
 import ani.dantotsu.connections.anilist.Anilist
-import ani.dantotsu.databinding.ItemChoiceGroupBinding
-import ani.dantotsu.databinding.ItemGenreTagOptionBinding
+import ani.dantotsu.databinding.ItemGenreTagSectionBinding
 import ani.dantotsu.databinding.SheetGenreTagBinding
 import ani.dantotsu.media.GenreTagGroups.Entry
+import ani.dantotsu.media.GenreTagGroups.Group
 import ani.dantotsu.media.GenreTagGroups.Kind
 import ani.dantotsu.media.GenreTagGroups.Mark
-import ani.dantotsu.settings.rows.SettingsCards
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.chip.Chip
 import com.google.android.material.color.MaterialColors
 
 /**
- * Unified genres & tags sheet: search field on top, genres group first, then tag groups by category.
- * Every row has a tri-state box that cycles blank -> ✓ include -> ✕ exclude, both in the primary colour: the icon carries the state.
+ * Unified genres & tags bottom sheet: search field on top, pinned row of selected chips,
+ * Genres as wrapped M3 filter chips, and Tags grouped by collapsible categories (closed by default)
+ * as wrapped M3 filter chips. Each chip cycles unselected -> ✓ include -> ✕ exclude -> unselected.
  */
 object GenreTagSheet {
 
@@ -51,72 +55,127 @@ object GenreTagSheet {
         val categories = Anilist.tagCategories.ifEmpty {
             GenreTagGroups.decodeCategories(PrefManager.getVal(PrefName.TagCategories))
         }
+        val tagsLabel = context.getString(R.string.tags)
         val allGroups = GenreTagGroups.groups(
             genres = genres,
             tags = tags,
             categories = categories,
             genresTitle = context.getString(R.string.genres),
-            otherTitle = context.getString(R.string.tags),
+            otherTitle = tagsLabel,
         )
         if (allGroups.isEmpty()) return null
+        val fullGroupsByTitle = allGroups.associateBy { it.title }
 
         val incGenres = (filters.genres ?: mutableListOf()).toMutableList()
         val excGenres = (filters.excludedGenres ?: mutableListOf()).toMutableList()
         val incTags = (filters.tags ?: mutableListOf()).toMutableList()
         val excTags = (filters.excludedTags ?: mutableListOf()).toMutableList()
+        val expandedCategories = HashSet<String>()
+        var currentQuery = ""
 
         val dialog = BottomSheetDialog(context)
-        val b = SheetGenreTagBinding.inflate(LayoutInflater.from(context))
+        val inflater = LayoutInflater.from(context)
+        val b = SheetGenreTagBinding.inflate(inflater)
 
         fun hasAny() = incGenres.isNotEmpty() || excGenres.isNotEmpty() || incTags.isNotEmpty() || excTags.isNotEmpty()
-
-        fun syncToFilters() {
-            filters.genres = incGenres.toMutableList()
-            filters.excludedGenres = excGenres.toMutableList()
-            filters.tags = incTags.toMutableList()
-            filters.excludedTags = excTags.toMutableList()
-            b.genreTagReset.isVisible = hasAny()
-            onChanged()
-        }
 
         fun markOf(entry: Entry): Mark = when (entry.kind) {
             Kind.GENRE -> GenreTagGroups.markOf(entry.name, incGenres, excGenres)
             Kind.TAG -> GenreTagGroups.markOf(entry.name, incTags, excTags)
         }
 
-        fun cycle(entry: Entry): Mark {
-            val next = markOf(entry).next()
+        fun setMark(entry: Entry, mark: Mark) {
             when (entry.kind) {
-                Kind.GENRE -> GenreTagGroups.set(entry.name, next, incGenres, excGenres)
-                Kind.TAG -> GenreTagGroups.set(entry.name, next, incTags, excTags)
+                Kind.GENRE -> GenreTagGroups.set(entry.name, mark, incGenres, excGenres)
+                Kind.TAG -> GenreTagGroups.set(entry.name, mark, incTags, excTags)
             }
-            syncToFilters()
+        }
+
+        lateinit var adapter: SectionAdapter
+        lateinit var syncToFilters: (Boolean) -> Unit
+
+        fun renderSelectedRow() {
+            val selected = GenreTagGroups.selected(incGenres, excGenres, incTags, excTags)
+            val hasSelected = selected.isNotEmpty()
+            b.genreTagSelectedScroll.isVisible = hasSelected
+            b.genreTagSelectedDivider.isVisible = hasSelected
+            b.genreTagSelectedRow.removeAllViews()
+            for (item in selected) {
+                val chip = inflater.inflate(
+                    R.layout.item_search_input_chip,
+                    b.genreTagSelectedRow,
+                    false,
+                ) as Chip
+                val isExclude = item.mark == Mark.EXCLUDE
+                chip.text = if (isExclude) "\u2212${item.entry.name}" else item.entry.name
+                chip.contentDescription = context.getString(
+                    if (isExclude) R.string.genre_tag_excluded else R.string.genre_tag_included,
+                    item.entry.name,
+                )
+                chip.closeIconContentDescription = context.getString(R.string.remove_filter, item.entry.name)
+                chip.setOnClickListener {
+                    setMark(item.entry, markOf(item.entry).next())
+                    syncToFilters(true)
+                }
+                chip.setOnCloseIconClickListener {
+                    setMark(item.entry, Mark.NONE)
+                    syncToFilters(true)
+                }
+                b.genreTagSelectedRow.addView(chip)
+            }
+        }
+
+        syncToFilters = { refreshList ->
+            filters.genres = incGenres.toMutableList()
+            filters.excludedGenres = excGenres.toMutableList()
+            filters.tags = incTags.toMutableList()
+            filters.excludedTags = excTags.toMutableList()
+            b.genreTagReset.isVisible = hasAny()
+            renderSelectedRow()
+            if (refreshList) adapter.notifyDataSetChanged()
+            onChanged()
+        }
+
+        fun cycleFromGroup(entry: Entry): Mark {
+            val next = markOf(entry).next()
+            setMark(entry, next)
+            syncToFilters(false)
             return next
         }
 
-        val adapter = Adapter(
-            items = buildItems(allGroups),
+        adapter = SectionAdapter(
+            groups = allGroups,
+            tagsLabel = tagsLabel,
+            expandedCategories = expandedCategories,
+            queryProvider = { currentQuery },
             markOf = ::markOf,
-            onCycle = ::cycle,
+            selectedCountOf = { group ->
+                val fullGroup = fullGroupsByTitle[group.title] ?: group
+                GenreTagGroups.selectedCountInGroup(fullGroup, incGenres, excGenres, incTags, excTags)
+            },
+            onCycle = ::cycleFromGroup,
         )
         b.genreTagList.layoutManager = LinearLayoutManager(context)
         b.genreTagList.adapter = adapter
         b.genreTagList.itemAnimator = null
 
         b.genreTagReset.isVisible = hasAny()
+        renderSelectedRow()
         b.genreTagReset.setOnClickListener {
             incGenres.clear()
             excGenres.clear()
             incTags.clear()
             excTags.clear()
-            syncToFilters()
-            adapter.notifyDataSetChanged()
+            syncToFilters(true)
         }
 
         b.genreTagSearchText.doAfterTextChanged { text ->
-            val q = text?.toString().orEmpty()
-            b.genreTagSearchClear.isVisible = q.isNotEmpty()
-            adapter.update(buildItems(GenreTagGroups.search(allGroups, q)))
+            currentQuery = text?.toString().orEmpty()
+            b.genreTagSearchClear.isVisible = currentQuery.isNotEmpty()
+            val filtered = GenreTagGroups.search(allGroups, currentQuery)
+            b.genreTagEmpty.isVisible = filtered.isEmpty()
+            b.genreTagList.isVisible = filtered.isNotEmpty()
+            adapter.update(filtered)
         }
         b.genreTagSearchClear.setOnClickListener {
             b.genreTagSearchText.setText("")
@@ -138,11 +197,6 @@ object GenreTagSheet {
             skipCollapsed = false
             state = BottomSheetBehavior.STATE_COLLAPSED
         }
-        val firstMarked = adapter.items.indexOfFirst { it is Item.Option && markOf(it.entry) != Mark.NONE }
-        if (firstMarked > 0) {
-            (b.genreTagList.layoutManager as LinearLayoutManager)
-                .scrollToPositionWithOffset(firstMarked, (metrics.heightPixels * 0.15f).toInt())
-        }
         dialog.show()
         dialog.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.backgroundTintList =
             ColorStateList.valueOf(MaterialColors.getColor(b.root, com.google.android.material.R.attr.colorSurface))
@@ -150,97 +204,180 @@ object GenreTagSheet {
         return dialog
     }
 
-    private sealed interface Item {
-        class Group(val title: String) : Item
-        class Option(val entry: Entry) : Item
-    }
-
-    private fun buildItems(groups: List<GenreTagGroups.Group>): List<Item> {
-        val out = ArrayList<Item>()
-        for (group in groups) {
-            out += Item.Group(group.title)
-            group.entries.forEach { out += Item.Option(it) }
+    private fun applyFilterChip(chip: Chip, entry: Entry, mark: Mark) {
+        val ctx = chip.context
+        val strokePx = 1f * ctx.resources.displayMetrics.density
+        chip.text = entry.name
+        when (mark) {
+            Mark.NONE -> {
+                chip.chipBackgroundColor = ColorStateList.valueOf(Color.TRANSPARENT)
+                chip.chipStrokeWidth = strokePx
+                chip.chipStrokeColor = ColorStateList.valueOf(
+                    MaterialColors.getColor(chip, com.google.android.material.R.attr.colorOutline),
+                )
+                chip.setTextColor(
+                    MaterialColors.getColor(chip, com.google.android.material.R.attr.colorOnSurfaceVariant),
+                )
+                chip.chipIcon = null
+                chip.isChipIconVisible = false
+                chip.contentDescription = entry.name
+            }
+            Mark.INCLUDE -> {
+                val fg = MaterialColors.getColor(chip, com.google.android.material.R.attr.colorOnSecondaryContainer)
+                chip.chipBackgroundColor = ColorStateList.valueOf(
+                    MaterialColors.getColor(chip, com.google.android.material.R.attr.colorSecondaryContainer),
+                )
+                chip.chipStrokeWidth = 0f
+                chip.setTextColor(fg)
+                chip.chipIcon = AppCompatResources.getDrawable(ctx, R.drawable.ic_chip_check)?.mutate()
+                chip.isChipIconVisible = true
+                chip.chipIconTint = ColorStateList.valueOf(fg)
+                chip.contentDescription = ctx.getString(R.string.genre_tag_included, entry.name)
+            }
+            Mark.EXCLUDE -> {
+                val fg = MaterialColors.getColor(chip, com.google.android.material.R.attr.colorOnSecondaryContainer)
+                chip.chipBackgroundColor = ColorStateList.valueOf(
+                    MaterialColors.getColor(chip, com.google.android.material.R.attr.colorSecondaryContainer),
+                )
+                chip.chipStrokeWidth = 0f
+                chip.setTextColor(fg)
+                chip.chipIcon = AppCompatResources.getDrawable(ctx, R.drawable.ic_round_close_24)?.mutate()
+                chip.isChipIconVisible = true
+                chip.chipIconTint = ColorStateList.valueOf(fg)
+                chip.contentDescription = ctx.getString(R.string.genre_tag_excluded, entry.name)
+            }
         }
-        return out
+        ViewCompat.setAccessibilityDelegate(chip, object : AccessibilityDelegateCompat() {
+            override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.isCheckable = true
+                info.isChecked = mark != Mark.NONE
+            }
+        })
     }
 
-    private class Holder(view: View) : RecyclerView.ViewHolder(view)
+    private class SectionHolder(val binding: ItemGenreTagSectionBinding) :
+        RecyclerView.ViewHolder(binding.root)
 
-    private class Adapter(
-        var items: List<Item>,
-        val markOf: (Entry) -> Mark,
-        val onCycle: (Entry) -> Mark,
-    ) : RecyclerView.Adapter<Holder>() {
+    private class SectionAdapter(
+        private var groups: List<Group>,
+        private val tagsLabel: String,
+        private val expandedCategories: MutableSet<String>,
+        private val queryProvider: () -> String,
+        private val markOf: (Entry) -> Mark,
+        private val selectedCountOf: (Group) -> Int,
+        private val onCycle: (Entry) -> Mark,
+    ) : RecyclerView.Adapter<SectionHolder>() {
 
-        fun update(newItems: List<Item>) {
-            items = newItems
+        fun update(next: List<Group>) {
+            groups = next
             notifyDataSetChanged()
         }
 
-        override fun getItemCount() = items.size
+        override fun getItemCount(): Int = groups.size
 
-        override fun getItemViewType(position: Int) = if (items[position] is Item.Group) 0 else 1
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            val inflater = LayoutInflater.from(parent.context)
-            return Holder(
-                if (viewType == 0) ItemChoiceGroupBinding.inflate(inflater, parent, false).root
-                else ItemGenreTagOptionBinding.inflate(inflater, parent, false).root
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SectionHolder =
+            SectionHolder(
+                ItemGenreTagSectionBinding.inflate(
+                    LayoutInflater.from(parent.context),
+                    parent,
+                    false,
+                ),
             )
-        }
 
-        override fun onBindViewHolder(holder: Holder, position: Int) {
-            when (val item = items[position]) {
-                is Item.Group -> {
-                    val g = ItemChoiceGroupBinding.bind(holder.itemView)
-                    g.groupTitle.text = item.title
-                    g.groupDetail.isVisible = false
+        override fun onBindViewHolder(holder: SectionHolder, position: Int) {
+            val group = groups[position]
+            val b = holder.binding
+            val ctx = b.root.context
+            val query = queryProvider()
+            val collapsible = group.isCollapsible
+            val firstTagSection = collapsible && groups.getOrNull(position - 1)?.isCollapsible != true
+            val expanded = GenreTagGroups.isGroupExpanded(group, expandedCategories, query)
+            val canToggle = collapsible && query.isBlank()
+
+            // Show a "Tags" section overline before the first categorized tag group (not when the
+            // single fallback group is already titled "Tags").
+            b.genreTagTagsSubheader.isVisible = firstTagSection && group.title != tagsLabel
+            b.genreTagSectionDivider.isVisible = collapsible && !firstTagSection
+
+            val density = ctx.resources.displayMetrics.density
+            if (canToggle) {
+                val outValue = TypedValue()
+                ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+                b.genreTagSectionHeader.setBackgroundResource(outValue.resourceId)
+                b.genreTagSectionHeader.isClickable = true
+                b.genreTagSectionHeader.isFocusable = true
+                ViewCompat.setStateDescription(
+                    b.genreTagSectionHeader,
+                    ctx.getString(if (expanded) R.string.genre_tag_expanded else R.string.genre_tag_collapsed),
+                )
+                b.genreTagSectionHeader.setOnClickListener {
+                    if (!expandedCategories.add(group.title)) expandedCategories.remove(group.title)
+                    val pos = holder.bindingAdapterPosition
+                    if (pos != RecyclerView.NO_POSITION) notifyItemChanged(pos)
                 }
-                is Item.Option -> bindOption(ItemGenreTagOptionBinding.bind(holder.itemView), item.entry, position)
+            } else {
+                b.genreTagSectionHeader.background = null
+                b.genreTagSectionHeader.isClickable = false
+                b.genreTagSectionHeader.isFocusable = false
+                b.genreTagSectionHeader.setOnClickListener(null)
+                ViewCompat.setStateDescription(b.genreTagSectionHeader, null)
             }
-        }
-
-        private fun bindOption(o: ItemGenreTagOptionBinding, entry: Entry, position: Int) {
-            val view = o.root
-            val ctx = view.context
-            val mark = markOf(entry)
-            o.genreTagLabel.text = entry.name
-
-            val (iconRes, tintAttr) = when (mark) {
-                Mark.NONE -> R.drawable.ic_tri_box_blank to com.google.android.material.R.attr.colorOnSurfaceVariant
-                Mark.INCLUDE -> R.drawable.ic_tri_box_include to androidx.appcompat.R.attr.colorPrimary
-                Mark.EXCLUDE -> R.drawable.ic_tri_box_exclude to androidx.appcompat.R.attr.colorPrimary
-            }
-            o.genreTagBox.setImageResource(iconRes)
-            ImageViewCompat.setImageTintList(
-                o.genreTagBox,
-                ColorStateList.valueOf(MaterialColors.getColor(view, tintAttr)),
+            b.genreTagSectionHeader.minimumHeight = if (collapsible) (48 * density).toInt() else 0
+            b.genreTagSectionHeader.updatePaddingRelative(
+                start = (16 * density).toInt(),
+                top = if (collapsible) 0 else (12 * density).toInt(),
+                end = (12 * density).toInt(),
+                bottom = if (collapsible) 0 else (4 * density).toInt(),
             )
 
-            SettingsCards.apply(
-                view,
-                first = items.getOrNull(position - 1) !is Item.Option,
-                last = items.getOrNull(position + 1) !is Item.Option,
+            b.genreTagSectionTitle.text = group.title
+            b.genreTagSectionTitle.setTextColor(
+                MaterialColors.getColor(
+                    b.genreTagSectionTitle,
+                    if (collapsible) {
+                        com.google.android.material.R.attr.colorOnSurface
+                    } else {
+                        com.google.android.material.R.attr.colorOnSurfaceVariant
+                    },
+                ),
             )
 
-            view.contentDescription = when (mark) {
-                Mark.NONE -> entry.name
-                Mark.INCLUDE -> ctx.getString(R.string.genre_tag_included, entry.name)
-                Mark.EXCLUDE -> ctx.getString(R.string.genre_tag_excluded, entry.name)
-            }
-            view.setOnClickListener {
-                onCycle(entry)
-                notifyItemChanged(position)
-                view.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED)
-            }
-            ViewCompat.setAccessibilityDelegate(view, object : AccessibilityDelegateCompat() {
-                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
-                    super.onInitializeAccessibilityNodeInfo(host, info)
-                    info.className = android.widget.CheckBox::class.java.name
-                    info.isCheckable = true
-                    info.isChecked = markOf(entry) != Mark.NONE
+            fun updateCount() {
+                val count = if (collapsible) selectedCountOf(group) else 0
+                b.genreTagSectionCount.isVisible = count > 0
+                if (count > 0) b.genreTagSectionCount.text = count.toString()
+                b.genreTagSectionHeader.contentDescription = if (collapsible && count > 0) {
+                    ctx.getString(R.string.genre_tag_category_selected, group.title, count)
+                } else {
+                    group.title
                 }
-            })
+            }
+            updateCount()
+
+            b.genreTagSectionChevron.isVisible = canToggle
+            b.genreTagSectionChevron.rotation = if (expanded) 180f else 0f
+
+            b.genreTagChipGroup.isVisible = expanded
+            b.genreTagChipGroup.removeAllViews()
+            if (expanded) {
+                val inflater = LayoutInflater.from(ctx)
+                for (entry in group.entries) {
+                    val chip = inflater.inflate(
+                        R.layout.item_genre_tag_chip,
+                        b.genreTagChipGroup,
+                        false,
+                    ) as Chip
+                    applyFilterChip(chip, entry, markOf(entry))
+                    chip.setOnClickListener {
+                        val next = onCycle(entry)
+                        applyFilterChip(chip, entry, next)
+                        updateCount()
+                        chip.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED)
+                    }
+                    b.genreTagChipGroup.addView(chip)
+                }
+            }
         }
     }
 }

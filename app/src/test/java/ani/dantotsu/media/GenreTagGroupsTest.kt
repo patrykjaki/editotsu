@@ -1,9 +1,13 @@
 package ani.dantotsu.media
 
+import ani.dantotsu.media.GenreTagGroups.Entry
 import ani.dantotsu.media.GenreTagGroups.Kind
 import ani.dantotsu.media.GenreTagGroups.Mark
+import ani.dantotsu.media.GenreTagGroups.SelectedEntry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GenreTagGroupsTest {
@@ -91,5 +95,54 @@ class GenreTagGroupsTest {
         val map = mapOf("Isekai" to "Theme-Fantasy", "Female Protagonist" to "Cast-Main Cast")
         assertEquals(map, GenreTagGroups.decodeCategories(GenreTagGroups.encodeCategories(map)))
         assertEquals(emptyMap<String, String>(), GenreTagGroups.decodeCategories(setOf("broken", "\tx", "y\t")))
+    }
+
+    @Test
+    fun `genres stay open while tag categories start collapsed and auto-expand on search`() {
+        val groups = GenreTagGroups.groups(
+            genres = listOf("Action"),
+            tags = listOf("Isekai"),
+            categories = mapOf("Isekai" to "Theme-Fantasy"),
+            genresTitle = "Genres",
+            otherTitle = "Tags",
+        )
+        val genresGroup = groups[0]
+        val fantasyGroup = groups[1]
+
+        assertFalse(genresGroup.isCollapsible)
+        assertTrue(fantasyGroup.isCollapsible)
+
+        assertTrue(GenreTagGroups.isGroupExpanded(genresGroup, emptySet(), ""))
+        assertFalse(GenreTagGroups.isGroupExpanded(fantasyGroup, emptySet(), ""))
+        assertTrue(GenreTagGroups.isGroupExpanded(fantasyGroup, setOf("Theme / Fantasy"), ""))
+        assertTrue(GenreTagGroups.isGroupExpanded(fantasyGroup, emptySet(), "ise"))
+    }
+
+    @Test
+    fun `selected lists pinned entries in order and counts selections per group`() {
+        val groups = GenreTagGroups.groups(
+            genres = listOf("Action", "Comedy"),
+            tags = listOf("Isekai", "Swordplay"),
+            categories = mapOf("Isekai" to "Theme-Fantasy", "Swordplay" to "Theme-Action"),
+            genresTitle = "Genres",
+            otherTitle = "Tags",
+        )
+        val incGenres = listOf("Action")
+        val excGenres = listOf("Comedy")
+        val incTags = listOf("Isekai")
+        val excTags = listOf("Swordplay")
+
+        assertEquals(
+            listOf(
+                SelectedEntry(Entry("Action", Kind.GENRE), Mark.INCLUDE),
+                SelectedEntry(Entry("Comedy", Kind.GENRE), Mark.EXCLUDE),
+                SelectedEntry(Entry("Isekai", Kind.TAG), Mark.INCLUDE),
+                SelectedEntry(Entry("Swordplay", Kind.TAG), Mark.EXCLUDE),
+            ),
+            GenreTagGroups.selected(incGenres, excGenres, incTags, excTags),
+        )
+        assertEquals(2, GenreTagGroups.selectedCountInGroup(groups[0], incGenres, excGenres, incTags, excTags))
+        assertEquals(1, GenreTagGroups.selectedCountInGroup(groups[1], incGenres, excGenres, incTags, excTags))
+        assertEquals(1, GenreTagGroups.selectedCountInGroup(groups[2], incGenres, excGenres, incTags, excTags))
     }
 }

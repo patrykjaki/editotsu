@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Unified Genres & tags bottom sheet: primary handle, title + reset icon, pill search field, and grouped tri-state rows. -->
+<!-- Unified Genres & tags bottom sheet: primary handle, title + reset icon, pill search field, pinned selected chips row, and wrapped filter-chip sections (Genres open, tag categories collapsible and closed by default). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -24,8 +24,8 @@
         android:gravity="center_vertical"
         android:minHeight="48dp"
         android:orientation="horizontal"
-        android:paddingStart="32dp"
-        android:paddingEnd="16dp">
+        android:paddingStart="24dp"
+        android:paddingEnd="8dp">
 
         <TextView
             android:id="@+id/genreTagTitle"
@@ -39,15 +39,17 @@
             android:textSize="20sp"
             tools:ignore="UnusedAttribute" />
 
-        <ImageButton
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/genreTagReset"
+            style="@style/Widget.Material3.Button.IconButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/reset"
+            android:tooltipText="@string/reset"
             android:visibility="gone"
-            app:srcCompat="@drawable/ic_round_refresh_24"
-            app:tint="?attr/colorOnSurfaceVariant"
+            app:icon="@drawable/ic_round_refresh_24"
+            app:iconTint="?attr/colorOnSurfaceVariant"
+            tools:ignore="UnusedAttribute"
             tools:visibility="visible" />
     </LinearLayout>
 
@@ -57,7 +59,7 @@
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:layout_marginHorizontal="16dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="4dp"
         app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
         app:cardCornerRadius="28dp"
         app:cardElevation="0dp">
@@ -94,17 +96,63 @@
                 android:textColorHint="?attr/colorOnSurfaceVariant"
                 android:textSize="16sp" />
 
-            <ImageButton
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/genreTagSearchClear"
+                style="@style/Widget.Material3.Button.IconButton"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/clear"
-                android:src="@drawable/ic_round_close_24"
+                android:tooltipText="@string/clear"
                 android:visibility="gone"
-                app:tint="?attr/colorOnSurfaceVariant" />
+                app:icon="@drawable/ic_round_close_24"
+                app:iconTint="?attr/colorOnSurfaceVariant"
+                tools:ignore="UnusedAttribute" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
+
+    <!-- Pinned horizontal row of currently included / excluded genres and tags -->
+    <HorizontalScrollView
+        android:id="@+id/genreTagSelectedScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="4dp"
+        android:scrollbars="none"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <LinearLayout
+            android:id="@+id/genreTagSelectedRow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
+    <View
+        android:id="@+id/genreTagSelectedDivider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="?attr/colorOutlineVariant"
+        android:importantForAccessibility="no"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
+    <TextView
+        android:id="@+id/genreTagEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/poppins"
+        android:gravity="center"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="32dp"
+        android:text="@string/genre_tag_empty"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:textSize="14sp"
+        android:visibility="gone" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/genreTagList"
@@ -112,7 +160,7 @@
         android:layout_height="wrap_content"
         android:clipToPadding="false"
         android:paddingTop="4dp"
-        android:paddingBottom="4dp"
+        android:paddingBottom="8dp"
         android:scrollbars="vertical"
-        tools:listitem="@layout/item_genre_tag_option" />
+        tools:listitem="@layout/item_genre_tag_section" />
 </LinearLayout>
