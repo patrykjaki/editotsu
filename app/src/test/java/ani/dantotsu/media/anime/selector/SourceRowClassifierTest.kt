@@ -1526,11 +1526,11 @@ class SourceRowClassifierTest {
     }
 
     @Test
-    fun dataset_subsPlumeName_isNotSubsWord() {
-        // No word boundary inside "SubsPlease", so the subs-word rule
+    fun dataset_subsPlumeName_isNotSubsWord() = withPlaceholderEnglishGroups {
+        // No word boundary inside "SubsPlume", so the subs-word rule
         // does not fire — but the implied group default does (ENG).
-        val f = SourceRowClassifier.parseRelease("1080p [SubsPlease] Title S01E01.mkv")
-        assertEquals("SubsPlease", f.releaseGroup)
+        val f = SourceRowClassifier.parseRelease("1080p [SubsPlume] Title S01E01.mkv")
+        assertEquals("SubsPlume", f.releaseGroup)
         assertEquals("ENG", f.subtitleSummary)
         // A neutral group with no markers stays unlabeled.
         val neutral = SourceRowClassifier.parseRelease("1080p [Group] Title S01E01.mkv")
@@ -1595,12 +1595,22 @@ class SourceRowClassifierTest {
     //
     // Stereo collapse (AAC 2.0 -> AAC): stereo is the default, channels
     // shown only when multichannel. Famous-group implied subtitles
-    // (two groups always ship English subs; the table is in SourceRowClassifier).
+    // (two groups always ship English subs; the real set is hashed, so these
+    // tests swap in the same rule for two placeholder groups).
+    private fun withPlaceholderEnglishGroups(block: () -> Unit) {
+        val real = SourceRowClassifier.impliedEnglishSubGroups
+        SourceRowClassifier.impliedEnglishSubGroups = ani.dantotsu.util.HashedNames(
+            listOf("SubsPlume", "PlumbingSubs").associate {
+                ani.dantotsu.util.HashedNames.hashOf(it.lowercase()) to it.length
+            },
+        )
+        try { block() } finally { SourceRowClassifier.impliedEnglishSubGroups = real }
+    }
 
     @Test
-    fun naming_impliedSubs_subsPlume() {
-        val f = SourceRowClassifier.parseRelease("1080p [SubsPlease] Title S01E01.mkv")
-        assertEquals("SubsPlease", f.releaseGroup)
+    fun naming_impliedSubs_subsPlume() = withPlaceholderEnglishGroups {
+        val f = SourceRowClassifier.parseRelease("1080p [SubsPlume] Title S01E01.mkv")
+        assertEquals("SubsPlume", f.releaseGroup)
         assertEquals("ENG", f.subtitleSummary)
         assertEquals(listOf("ENG"), f.subtitleLanguages)
     }
@@ -1618,8 +1628,8 @@ class SourceRowClassifierTest {
     }
 
     @Test
-    fun naming_impliedSubs_plumbingSubs() {
-        val f = SourceRowClassifier.parseRelease("[HorribleSubs] Title - 01 [720p].mkv")
+    fun naming_impliedSubs_plumbingSubs() = withPlaceholderEnglishGroups {
+        val f = SourceRowClassifier.parseRelease("[PlumbingSubs] Title - 01 [720p].mkv")
         assertEquals("ENG", f.subtitleSummary)
     }
 
@@ -2091,11 +2101,11 @@ class SourceRowClassifierTest {
     }
 
     @Test
-    fun v3_engImpliedBecomesFlagPill() {
+    fun v3_engImpliedBecomesFlagPill() = withPlaceholderEnglishGroups {
         // The user's ENG-chip complaint: implied ENG now renders 🇬🇧.
         val row = SourceRowSummarizer.build(
-            displayLabel = "1080p [SubsPlease] Title S01E01.mkv",
-            qualityText = "1080p [SubsPlease] Title S01E01.mkv",
+            displayLabel = "1080p [SubsPlume] Title S01E01.mkv",
+            qualityText = "1080p [SubsPlume] Title S01E01.mkv",
             formatName = "CONTAINER",
             url = magnetUrl,
         )

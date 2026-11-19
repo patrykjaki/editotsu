@@ -6,6 +6,7 @@ import ani.dantotsu.parsers.novel.AvailableNovelSources
 import ani.dantotsu.parsers.novel.NovelExtension
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
+import ani.dantotsu.util.HashedNames
 import ani.dantotsu.util.Logger
 import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
 import eu.kanade.tachiyomi.extension.anime.model.AvailableAnimeSources
@@ -35,6 +36,9 @@ import okio.source
 import java.io.ByteArrayInputStream
 import tachiyomi.core.util.lang.withIOContext
 import uy.kohesive.injekt.injectLazy
+
+/** Two repo owners / forks whose old index.min.json is a stub pointing at index.pb (hashed). */
+private val MOVED_REPO_NAMES = HashedNames(mapOf("3038173c6500298f" to 9, "a3ebf4ffa4dfc641" to 7))
 
 internal class ExtensionGithubApi {
     private val networkService: NetworkHelper by injectLazy()
@@ -167,12 +171,13 @@ internal class ExtensionGithubApi {
                 val bodyString = responseBytes.toString(Charsets.UTF_8)
                 val list = json.decodeFromString<List<ExtensionJsonObject>>(bodyString)
                 // Upstream 14b05593: Anime repos that moved to index.pb keep a
-                // dummy index.min.json ("Outdated App, switch to Animiru").
+                // dummy index.min.json ("Outdated App, switch to <app>"), recognised by
+                // the stub's name or by one of two hashed package/app names.
                 val hasDeprecation = (mediaType == MediaType.MANGA || mediaType == MediaType.ANIME) && list.any {
-                    it.pkg.contains("keiyoushi") || it.pkg.contains("animiru") ||
+                    MOVED_REPO_NAMES.occursIn(it.pkg) ||
                     it.name.contains("Outdated App", ignoreCase = true) ||
                     it.name.contains("Update to Mihon", ignoreCase = true) ||
-                    it.name.contains("switch to Animiru", ignoreCase = true)
+                    (it.name.contains("switch to", ignoreCase = true) && MOVED_REPO_NAMES.occursIn(it.name))
                 }
                 if (hasDeprecation && !targetUrl.endsWith("index.pb")) {
                     val pbUrl = "${cleanRepoUrl(targetUrl)}/index.pb"

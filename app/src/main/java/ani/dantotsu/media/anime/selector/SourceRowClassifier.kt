@@ -1,5 +1,8 @@
 package ani.dantotsu.media.anime.selector
 
+import androidx.annotation.VisibleForTesting
+import ani.dantotsu.util.HashedNames
+
 /**
  * Pure functions that classify a candidate's quality text + URL + format into
  * presentation kind, transport, and (for RELEASE rows) parsed field values.
@@ -1345,8 +1348,7 @@ object SourceRowClassifier {
         // always ship English subs): last resort only, filling both
         // the summary and the language list.
         val impliedLangs = if (!hasExplicitSubs && markedSubs == null) {
-            IMPLIED_SUBTITLE_LANGUAGES[releaseGroup?.uppercase()]
-                ?: emptyList()
+            if (impliedEnglishSubGroups.matches(releaseGroup)) listOf("ENG") else emptyList()
         } else {
             emptyList()
         }
@@ -1467,11 +1469,12 @@ object SourceRowClassifier {
      * title says nothing (user-confirmed: the info is real release
      * metadata, just not printed in the title): these groups always
      * ship English subtitles. Applied LAST, so
-     * every explicit signal (flags, codes, markers) wins.
+     * every explicit signal (flags, codes, markers) wins. Kept as hashes
+     * (see [HashedNames]); tests swap in their own set.
      */
-    private val IMPLIED_SUBTITLE_LANGUAGES: Map<String, List<String>> = mapOf(
-        "SUBSPLEASE" to listOf("ENG"),
-        "HORRIBLESUBS" to listOf("ENG"),
+    @VisibleForTesting
+    internal var impliedEnglishSubGroups = HashedNames(
+        mapOf("68495affe8a03823" to 10, "5c6c814aec6bc036" to 12),
     )
 
     private fun detectMultiSubsSummary(releaseName: String): String? {
