@@ -311,10 +311,16 @@
     <string name="themes_shuffle_completed">Shuffle completed shows</string>
     <string name="themes_play_favourites">Play favourites</string>
     <string name="themes_shuffle_favourites">Shuffle favourites</string>
-    <string name="themes_kind_both">OP &amp; ED</string>
+    <string name="themes_kind_both">All</string>
     <string name="themes_kind_openings">OP</string>
     <string name="themes_kind_endings">ED</string>
     <string name="themes_no_favourites">No favourite themes. Tap the heart on a show\'s Themes tab.</string>
+    <string name="themes_no_favourites_title">No favourite themes</string>
+    <string name="themes_no_favourites_body">Tap the heart on a show\'s Themes tab.</string>
+    <string name="themes_no_favourite_openings">No favourite openings</string>
+    <string name="themes_no_favourite_endings">No favourite endings</string>
+    <string name="themes_no_favourites_filtered_body">Your other favourites are under All.</string>
+    <string name="themes_show_all">Show all</string>
     <string name="themes_saved_size">Saved: %1$s</string>
     <string name="themes_download_audio">Download audio</string>
     <string name="themes_download_video">Download video</string>

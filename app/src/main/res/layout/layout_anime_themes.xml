@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Openings & endings: title row with the audio-only and video settings icons, then two grouped lists. -->
+<!-- Openings & endings on a show's Themes tab: title row with audio-only and video settings icons, then grouped sections. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingBottom="8dp">
+    android:paddingBottom="16dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="24dp"
-        android:layout_marginEnd="16dp"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:minHeight="48dp"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="4dp">
 
         <TextView
             android:id="@+id/themesTitle"
@@ -22,10 +23,13 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:accessibilityHeading="true"
+            android:ellipsize="end"
             android:fontFamily="@font/poppins_bold"
-            android:padding="8dp"
+            android:includeFontPadding="false"
+            android:maxLines="1"
             android:text="@string/anime_themes_title"
-            android:textSize="16sp" />
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="20sp" />
 
         <ImageButton
             android:id="@+id/themesAudioOnly"
@@ -37,22 +41,21 @@
             android:tooltipText="@string/theme_audio_only"
             app:tint="?attr/colorOnSurfaceVariant" />
 
-        <ImageButton
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/themesSettings"
+            style="@style/Widget.Material3.Button.IconButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/theme_video_settings"
-            android:src="@drawable/ic_round_video_settings_24"
             android:tooltipText="@string/theme_video_settings"
-            app:tint="?attr/colorOnSurfaceVariant" />
+            app:icon="@drawable/ic_round_video_settings_24"
+            app:iconTint="?attr/colorOnSurfaceVariant" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/themesSections"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="24dp"
         android:orientation="vertical"
         tools:minHeight="200dp" />
 </LinearLayout>

@@ -1,8 +1,10 @@
 package ani.dantotsu.animethemes
 
-import ani.dantotsu.themes.followThemeStatusBarIcons
 import android.os.Bundle
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.format.Formatter
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
@@ -12,11 +14,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.R
-import ani.dantotsu.toast
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.databinding.ActivityThemesBinding
 import ani.dantotsu.databinding.ItemThemeFavouriteBinding
-import ani.dantotsu.databinding.ItemThemesActionBinding
 import ani.dantotsu.databinding.ItemThemesHeaderBinding
 import ani.dantotsu.initActivity
 import ani.dantotsu.media.anime.ExoplayerView
@@ -26,6 +26,9 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
+import ani.dantotsu.themes.followThemeStatusBarIcons
+import ani.dantotsu.toast
+import com.google.android.material.color.MaterialColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -33,9 +36,9 @@ import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 /**
- * Themes screen, opened from the anime home top bar: shuffle openings/endings from the
- * user's completed shows, play or shuffle the favourite themes, and save favourites to
- * Downloads/Editotsu/AnimeThemes (audio or video).
+ * Openings & endings screen (opened from the profile menu): shuffle openings/endings from
+ * completed shows, filter favourites by All / OP / ED so what is shown is what plays,
+ * play or shuffle favourites, and save favourites to Downloads/Editotsu/AnimeThemes.
  */
 class ThemesActivity : AppCompatActivity() {
     private lateinit var binding: ActivityThemesBinding
@@ -43,8 +46,11 @@ class ThemesActivity : AppCompatActivity() {
     private val adapter = Adapter()
     private var favourites: List<FavouriteTheme> = emptyList()
     private var status: String? = null
+    private var shuffleLoading = false
     private var shuffleJob: Job? = null
     private val kinds get() = ThemeKinds.fromInt(PrefManager.getVal(PrefName.AnimeThemesRadioKinds))
+    private val visibleFavourites: List<FavouriteTheme>
+        get() = ThemeRadio.filterFavourites(favourites, kinds)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,6 +66,7 @@ class ThemesActivity : AppCompatActivity() {
         lifecycleScope.launch {
             ThemeFavourites.flow.collect { list ->
                 favourites = list.orEmpty()
+                adapter.notifyDataSetChanged()
                 refreshStates()
             }
         }
@@ -77,9 +84,17 @@ class ThemesActivity : AppCompatActivity() {
 
     private fun refreshStates() = controls.refresh(favourites.map { it.track })
 
-    private fun setStatus(text: String?) {
+    private fun setStatus(text: String?, loading: Boolean = false) {
         status = text
+        shuffleLoading = loading
         adapter.notifyItemChanged(0)
+    }
+
+    private fun emptyFavouritesMessage(): String = when {
+        favourites.isEmpty() -> getString(R.string.themes_no_favourites)
+        kinds == ThemeKinds.OPENINGS -> getString(R.string.themes_no_favourite_openings)
+        kinds == ThemeKinds.ENDINGS -> getString(R.string.themes_no_favourite_endings)
+        else -> getString(R.string.themes_no_favourites)
     }
 
     // ---- actions ----
@@ -87,7 +102,7 @@ class ThemesActivity : AppCompatActivity() {
     private fun playFavourites(shuffle: Boolean) {
         ThemeRadioSession.stop()
         val queue = ThemeRadio.favouritesQueue(favourites, kinds, shuffle, Random(System.nanoTime()))
-        if (queue.isEmpty()) return setStatus(getString(R.string.themes_no_favourites))
+        if (queue.isEmpty()) return setStatus(emptyFavouritesMessage())
         setStatus(null)
         ExoplayerView.openThemes(this, queue, 0, getString(R.string.themes_favourites))
     }
@@ -96,7 +111,7 @@ class ThemesActivity : AppCompatActivity() {
         val userId = Anilist.userid
         if (Anilist.token == null || userId == null) return setStatus(getString(R.string.themes_login_needed))
         shuffleJob?.cancel()
-        setStatus(getString(R.string.themes_finding))
+        setStatus(getString(R.string.themes_finding), loading = true)
         shuffleJob = lifecycleScope.launch {
             // null = AniList didn't return the list (rate limit, timeout): say so instead of
             // claiming there are no completed shows
@@ -116,9 +131,10 @@ class ThemesActivity : AppCompatActivity() {
     }
 
     private fun downloadAll() {
-        if (favourites.isEmpty()) return setStatus(getString(R.string.themes_no_favourites))
+        val shown = visibleFavourites
+        if (shown.isEmpty()) return setStatus(emptyFavouritesMessage())
         controls.chooseKind { kind ->
-            val tracks = favourites.map { it.track }
+            val tracks = shown.map { it.track }
             tracks.forEach { controls.download(it, kind, quiet = true) }
             refreshStates()
             val missing = ThemeDownloadNames.missingFiles(tracks, kind)
@@ -129,7 +145,7 @@ class ThemesActivity : AppCompatActivity() {
     // ---- list ----
 
     private inner class Adapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-        override fun getItemCount() = 1 + favourites.size
+        override fun getItemCount() = 1 + visibleFavourites.size
         override fun getItemViewType(position: Int) = if (position == 0) 0 else 1
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
@@ -150,10 +166,11 @@ class ThemesActivity : AppCompatActivity() {
         init {
             b.themesBack.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
             ThemeAudioToggle.bind(b.themesAudioOnly)
-            action(b.actionShuffleCompleted, R.drawable.ic_shuffle_24, R.string.themes_shuffle_completed, primary = true) { shuffleCompleted() }
-            action(b.actionPlayFavourites, R.drawable.ic_round_playlist_play_24, R.string.themes_play_favourites) { playFavourites(false) }
-            action(b.actionShuffleFavourites, R.drawable.ic_round_favorite_24, R.string.themes_shuffle_favourites) { playFavourites(true) }
-            action(b.actionDownloadAll, R.drawable.ic_download_24, R.string.themes_download_all) { downloadAll() }
+            b.actionShuffleCompleted.setOnClickListener { shuffleCompleted() }
+            b.actionPlayFavourites.setOnClickListener { playFavourites(false) }
+            b.actionShuffleFavourites.setOnClickListener { playFavourites(true) }
+            b.actionDownloadAll.setOnClickListener { downloadAll() }
+            b.themesEmptyShowAll.setOnClickListener { b.themesKinds.check(R.id.kindBoth) }
             b.themesKinds.check(
                 when (kinds) {
                     ThemeKinds.OPENINGS -> R.id.kindOpenings
@@ -170,54 +187,59 @@ class ThemesActivity : AppCompatActivity() {
                     R.id.kindEndings -> ThemeKinds.ENDINGS
                     else -> ThemeKinds.BOTH
                 }
-                PrefManager.setVal(PrefName.AnimeThemesRadioKinds, k.value)
+                if (k != kinds) {
+                    PrefManager.setVal(PrefName.AnimeThemesRadioKinds, k.value)
+                    shuffleJob?.cancel()
+                    shuffleLoading = false
+                    status = null
+                    binding.themesList.post { adapter.notifyDataSetChanged() }
+                }
             }
-        }
-
-        private fun action(a: ItemThemesActionBinding, icon: Int, label: Int, primary: Boolean = false, onClick: () -> Unit) {
-            a.actionIcon.setImageResource(icon)
-            a.actionIcon.setBackgroundResource(if (primary) R.drawable.theme_action_primary else R.drawable.theme_action_tonal)
-            androidx.core.widget.ImageViewCompat.setImageTintList(
-                a.actionIcon,
-                android.content.res.ColorStateList.valueOf(
-                    com.google.android.material.color.MaterialColors.getColor(
-                        a.actionIcon,
-                        if (primary) com.google.android.material.R.attr.colorOnPrimary
-                        else com.google.android.material.R.attr.colorOnSecondaryContainer,
-                    )
-                ),
-            )
-            a.actionLabel.setText(label)
-            a.root.contentDescription = getString(label)
-            a.root.isClickable = true
-            a.root.isFocusable = true
-            a.actionIcon.setOnClickListener { onClick() }
-            a.root.setOnClickListener { onClick() }
         }
 
         fun bind() {
+            val shown = visibleFavourites
             ThemeAudioToggle.show(b.themesAudioOnly)
             b.themesSaved.isVisible = controls.savedBytes > 0
             b.themesSaved.text = getString(R.string.themes_saved_size, Formatter.formatShortFileSize(this@ThemesActivity, controls.savedBytes))
-            b.themesStatus.isVisible = status != null
+            b.themesStatusRow.isVisible = status != null
+            b.themesStatusProgress.isVisible = shuffleLoading
             b.themesStatus.text = status
-            b.themesEmpty.isVisible = favourites.isEmpty()
-            // Nothing to play or save without favourites: those actions look and act disabled.
-            listOf(b.actionPlayFavourites, b.actionShuffleFavourites, b.actionDownloadAll).forEach { a ->
-                val on = favourites.isNotEmpty()
-                a.root.isEnabled = on
-                a.actionIcon.isEnabled = on
-                a.root.alpha = if (on) 1f else 0.38f
+
+            val hasShown = shown.isNotEmpty()
+            b.themesEmpty.isVisible = !hasShown
+            if (!hasShown) {
+                val filteredOut = favourites.isNotEmpty()
+                b.themesEmptyTitle.setText(
+                    when {
+                        !filteredOut -> R.string.themes_no_favourites_title
+                        kinds == ThemeKinds.OPENINGS -> R.string.themes_no_favourite_openings
+                        kinds == ThemeKinds.ENDINGS -> R.string.themes_no_favourite_endings
+                        else -> R.string.themes_no_favourites_title
+                    }
+                )
+                b.themesEmptyBody.setText(
+                    if (filteredOut) R.string.themes_no_favourites_filtered_body
+                    else R.string.themes_no_favourites_body
+                )
+                b.themesEmptyShowAll.isVisible = filteredOut
             }
-            // the count trails the heading in the quieter colour, not glued on with a dot
-            b.themesFavouritesLabel.text = if (favourites.isEmpty()) getString(R.string.themes_favourites)
+
+            // Nothing to play or save when no matching favourites are shown.
+            listOf(b.actionPlayFavourites, b.actionShuffleFavourites, b.actionDownloadAll).forEach { button ->
+                button.isEnabled = hasShown
+                button.alpha = if (hasShown) 1f else 0.38f
+            }
+
+            // The count trails the heading in the quieter colour, not glued on with a dot.
+            b.themesFavouritesLabel.text = if (shown.isEmpty()) getString(R.string.themes_favourites)
             else getString(R.string.themes_favourites).let { name ->
-                android.text.SpannableString("$name  ${favourites.size}").apply {
+                SpannableString("$name  ${shown.size}").apply {
                     setSpan(
-                        android.text.style.ForegroundColorSpan(
-                            com.google.android.material.color.MaterialColors.getColor(b.themesFavouritesLabel, com.google.android.material.R.attr.colorOnSurfaceVariant)
+                        ForegroundColorSpan(
+                            MaterialColors.getColor(b.themesFavouritesLabel, com.google.android.material.R.attr.colorOnSurfaceVariant)
                         ),
-                        name.length, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                        name.length, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
                     )
                 }
             }
@@ -226,7 +248,8 @@ class ThemesActivity : AppCompatActivity() {
 
     private inner class Row(val b: ItemThemeFavouriteBinding) : RecyclerView.ViewHolder(b.root) {
         fun bind(i: Int) {
-            val fav = favourites[i]
+            val shown = visibleFavourites
+            val fav = shown[i]
             val t = fav.track
             b.favTag.text = if (t.versionCount > 1) "${t.tag} v${t.version}" else t.tag
             b.favSong.text = t.songTitle.ifBlank { t.tag }
@@ -234,12 +257,23 @@ class ThemesActivity : AppCompatActivity() {
 
             val saved = controls.savedLabel(t)
             val running = controls.running(t)
-            b.favSaved.isVisible = saved != null || running != null || controls.failed(t)
+            val failed = controls.failed(t)
+            b.favSaved.isVisible = saved != null || running != null || failed
             b.favSaved.text = when {
                 running != null -> getString(R.string.themes_downloading, running.percent)
                 saved != null -> getString(saved)
                 else -> getString(R.string.themes_download_failed)
             }
+            b.favSaved.setTextColor(
+                MaterialColors.getColor(
+                    b.favSaved,
+                    when {
+                        running != null -> com.google.android.material.R.attr.colorOnSurfaceVariant
+                        saved != null -> androidx.appcompat.R.attr.colorPrimary
+                        else -> androidx.appcompat.R.attr.colorError
+                    },
+                )
+            )
             controls.bind(b.favDownload, b.favProgress, t, fav.mediaId)
 
             b.favHeart.setOnClickListener { ThemeFavourites.remove(t.themeId) }
@@ -247,11 +281,11 @@ class ThemesActivity : AppCompatActivity() {
                 .filterNotNull().joinToString(", ")
             b.root.setOnClickListener {
                 ThemeRadioSession.stop()
-                val queue = ThemeRadio.favouritesQueue(favourites, ThemeKinds.BOTH, false, Random.Default)
+                val queue = ThemeRadio.favouritesQueue(favourites, kinds, false, Random.Default)
                 ExoplayerView.openThemes(this@ThemesActivity, queue, queue.indexOfFirst { it.themeId == t.themeId }.coerceAtLeast(0), getString(R.string.themes_favourites))
             }
             b.root.setOnLongClickListener { controls.showMenu(b.favDownload, t, fav.mediaId); true }
-            ThemeRowShape.apply(b.root, i == 0, i == favourites.lastIndex)
+            ThemeRowShape.apply(b.root, i == 0, i == shown.lastIndex)
         }
     }
 }

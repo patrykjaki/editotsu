@@ -11,6 +11,8 @@ import androidx.core.widget.ImageViewCompat
 import androidx.lifecycle.lifecycleScope
 import ani.dantotsu.R
 import ani.dantotsu.media.MediaDetailsActivity
+import ani.dantotsu.settings.rows.ChoiceOption
+import ani.dantotsu.settings.rows.ChoiceSheet
 import ani.dantotsu.toast
 import ani.dantotsu.util.StoragePermissions
 import ani.dantotsu.util.customAlertDialog
@@ -122,12 +124,18 @@ class ThemeDownloadControls(
     }
 
     fun chooseKind(onKind: (ThemeFileKind) -> Unit) {
-        activity.customAlertDialog()
-            .setTitle(R.string.themes_download_folder)
-            .singleChoiceItems(arrayOf(activity.getString(R.string.themes_download_audio), activity.getString(R.string.themes_download_video))) { which ->
-                onKind(if (which == 0) ThemeFileKind.AUDIO else ThemeFileKind.VIDEO)
-            }
-            .show()
+        ChoiceSheet.single(
+            context = activity,
+            title = activity.getString(R.string.themes_download_all),
+            options = listOf(
+                ChoiceOption(activity.getString(R.string.themes_download_audio)),
+                ChoiceOption(activity.getString(R.string.themes_download_video)),
+            ),
+            selected = -1,
+            note = activity.getString(R.string.themes_download_folder),
+        ) { which ->
+            onKind(if (which == 0) ThemeFileKind.AUDIO else ThemeFileKind.VIDEO)
+        }
     }
 
     /** [mediaId] > 0 adds "Open show" (the Themes screen; the tab is already on the show). */

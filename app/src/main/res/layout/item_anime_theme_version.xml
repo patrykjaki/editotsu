@@ -11,17 +11,17 @@
     android:gravity="center_vertical"
     android:minHeight="48dp"
     android:orientation="horizontal"
-    android:paddingStart="64dp"
-    android:paddingEnd="18dp">
+    android:paddingStart="68dp"
+    android:paddingEnd="16dp">
 
     <TextView
         android:id="@+id/versionNumber"
-        android:layout_width="36dp"
+        android:layout_width="32dp"
         android:layout_height="wrap_content"
         android:fontFamily="@font/poppins_bold"
         android:includeFontPadding="false"
         android:textColor="?attr/colorPrimary"
-        android:textSize="14sp"
+        android:textSize="12sp"
         tools:text="v2" />
 
     <TextView

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Header of the Themes screen: M3 top bar with audio-only toggle, OP/ED filter, four actions, and Favourites section heading. -->
+<!-- Header of the Themes screen: M3 top bar with audio-only toggle, All/OP/ED filter, primary radio CTA, Favourites header with icon actions, and empty state. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -14,16 +14,16 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="4dp"
-        android:paddingEnd="8dp">
+        android:paddingEnd="4dp">
 
-        <ImageButton
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/themesBack"
             style="@style/Widget.Material3.Button.IconButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:contentDescription="@string/themes_back"
-            app:srcCompat="@drawable/ic_round_arrow_back_ios_new_24"
-            app:tint="?attr/colorOnSurface" />
+            app:icon="@drawable/ic_round_arrow_back_ios_new_24"
+            app:iconTint="?attr/colorOnSurface" />
 
         <TextView
             android:layout_width="0dp"
@@ -50,7 +50,7 @@
             app:tint="?attr/colorOnSurfaceVariant" />
     </LinearLayout>
 
-    <!-- Full-width 16dp-gutter OP / ED segmented filter -->
+    <!-- Full-width 16dp-gutter All / OP / ED segmented filter -->
     <com.google.android.material.button.MaterialButtonToggleGroup
         android:id="@+id/themesKinds"
         android:layout_width="match_parent"
@@ -65,10 +65,13 @@
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1.2"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:minHeight="48dp"
             android:paddingHorizontal="12dp"
-            android:text="@string/themes_kind_both" />
+            android:text="@string/themes_kind_both"
+            android:textAppearance="@style/TextAppearance.Editotsu.Chip" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/kindOpenings"
@@ -76,9 +79,12 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:minHeight="48dp"
             android:paddingHorizontal="12dp"
-            android:text="@string/themes_kind_openings" />
+            android:text="@string/themes_kind_openings"
+            android:textAppearance="@style/TextAppearance.Editotsu.Chip" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/kindEndings"
@@ -86,107 +92,205 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:minHeight="48dp"
             android:paddingHorizontal="12dp"
-            android:text="@string/themes_kind_endings" />
+            android:text="@string/themes_kind_endings"
+            android:textAppearance="@style/TextAppearance.Editotsu.Chip" />
     </com.google.android.material.button.MaterialButtonToggleGroup>
 
-    <!-- Actions row: 1 primary hero (Shuffle completed) + 3 tonal secondary actions (Favourites) -->
-    <LinearLayout
+    <!-- The one filled primary action on the screen: radio from completed shows -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/actionShuffleCompleted"
+        style="@style/Widget.Material3.Button"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="16dp"
         android:layout_marginTop="16dp"
-        android:baselineAligned="false"
-        android:orientation="horizontal">
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:minHeight="48dp"
+        android:text="@string/themes_shuffle_completed"
+        android:textAppearance="@style/TextAppearance.Editotsu.Chip"
+        app:cornerRadius="12dp"
+        app:icon="@drawable/ic_shuffle_24"
+        app:iconGravity="textStart"
+        app:iconPadding="8dp"
+        app:iconSize="20dp" />
 
-        <include
-            android:id="@+id/actionShuffleCompleted"
-            layout="@layout/item_themes_action"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
-
-        <include
-            android:id="@+id/actionPlayFavourites"
-            layout="@layout/item_themes_action"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
-
-        <include
-            android:id="@+id/actionShuffleFavourites"
-            layout="@layout/item_themes_action"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
-
-        <include
-            android:id="@+id/actionDownloadAll"
-            layout="@layout/item_themes_action"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/themesStatus"
+    <LinearLayout
+        android:id="@+id/themesStatusRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="16dp"
         android:layout_marginTop="8dp"
-        android:fontFamily="@font/poppins"
         android:gravity="center"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:textSize="14sp"
+        android:orientation="horizontal"
         android:visibility="gone"
-        tools:text="Looking up themes"
-        tools:visibility="visible" />
+        tools:visibility="visible">
 
-    <!-- Favourites section header + trailing saved size -->
+        <com.google.android.material.progressindicator.CircularProgressIndicator
+            android:id="@+id/themesStatusProgress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:importantForAccessibility="no"
+            android:indeterminate="true"
+            android:visibility="gone"
+            app:indicatorSize="16dp"
+            app:trackThickness="2dp"
+            tools:visibility="visible" />
+
+        <TextView
+            android:id="@+id/themesStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/poppins"
+            android:gravity="center"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="14sp"
+            tools:text="Looking up themes" />
+    </LinearLayout>
+
+    <!-- Favourites section header with saved size and play / shuffle / download icon actions -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="16dp"
         android:layout_marginTop="24dp"
         android:layout_marginBottom="8dp"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:minHeight="48dp"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="4dp">
 
-        <TextView
-            android:id="@+id/themesFavouritesLabel"
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:accessibilityHeading="true"
-            android:fontFamily="@font/poppins_bold"
-            android:includeFontPadding="false"
-            android:text="@string/themes_favourites"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/themesFavouritesLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:accessibilityHeading="true"
+                android:ellipsize="end"
+                android:fontFamily="@font/poppins_bold"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/themes_favourites"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/themesSaved"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:fontFamily="@font/poppins_semi_bold"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp"
+                android:visibility="gone"
+                tools:text="Saved: 84 MB"
+                tools:visibility="visible" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/actionPlayFavourites"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/themes_play_favourites"
+            android:tooltipText="@string/themes_play_favourites"
+            app:icon="@drawable/ic_round_playlist_play_24"
+            app:iconTint="?attr/colorOnSurfaceVariant" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/actionShuffleFavourites"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/themes_shuffle_favourites"
+            android:tooltipText="@string/themes_shuffle_favourites"
+            app:icon="@drawable/ic_shuffle_24"
+            app:iconTint="?attr/colorOnSurfaceVariant" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/actionDownloadAll"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/themes_download_all"
+            android:tooltipText="@string/themes_download_all"
+            app:icon="@drawable/ic_download_24"
+            app:iconTint="?attr/colorOnSurfaceVariant" />
+    </LinearLayout>
+
+    <!-- Empty state when there are no favourites (or none matching the OP/ED filter) -->
+    <LinearLayout
+        android:id="@+id/themesEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingHorizontal="32dp"
+        android:paddingTop="32dp"
+        android:paddingBottom="24dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            app:cardBackgroundColor="?attr/colorSurfaceVariant"
+            app:cardCornerRadius="28dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                app:srcCompat="@drawable/ic_round_favorite_border_24"
+                app:tint="?attr/colorOnSurfaceVariant" />
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:id="@+id/themesEmptyTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:fontFamily="@font/poppins_semi_bold"
+            android:gravity="center"
+            android:text="@string/themes_no_favourites_title"
             android:textColor="?attr/colorOnSurface"
             android:textSize="16sp" />
 
         <TextView
-            android:id="@+id/themesSaved"
+            android:id="@+id/themesEmptyBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="@font/poppins"
+            android:gravity="center"
+            android:text="@string/themes_no_favourites_body"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="14sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/themesEmptyShowAll"
+            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:fontFamily="@font/poppins_semi_bold"
-            android:includeFontPadding="false"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="12sp"
-            android:visibility="gone"
-            tools:text="Saved: 84 MB"
-            tools:visibility="visible" />
+            android:layout_marginTop="8dp"
+            android:minHeight="48dp"
+            android:text="@string/themes_show_all"
+            android:textAppearance="@style/TextAppearance.Editotsu.Chip"
+            android:visibility="gone" />
     </LinearLayout>
-
-    <TextView
-        android:id="@+id/themesEmpty"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginHorizontal="16dp"
-        android:fontFamily="@font/poppins"
-        android:text="@string/themes_no_favourites"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:textSize="14sp"
-        android:visibility="gone" />
 </LinearLayout>
