@@ -1,35 +1,37 @@
 package ani.dantotsu.download.manga
 
-import android.content.Intent
 import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.TextWatcher
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AlphaAnimation
 import android.view.animation.LayoutAnimationController
 import android.widget.AbsListView
-import android.widget.AutoCompleteTextView
 import android.widget.GridView
-import android.widget.ImageView
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.marginBottom
+import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import ani.dantotsu.R
 import ani.dantotsu.bottomBarOrNull
 import ani.dantotsu.connections.crashlytics.CrashlyticsInterface
-import ani.dantotsu.currActivity
 import ani.dantotsu.currContext
+import ani.dantotsu.databinding.FragmentOfflinePageBinding
 import ani.dantotsu.download.DownloadCompat
 import ani.dantotsu.download.DownloadCompat.Companion.loadOfflineMangaModelCompat
 import ani.dantotsu.download.DownloadedType
@@ -37,23 +39,22 @@ import ani.dantotsu.download.DownloadsManager
 import ani.dantotsu.download.DownloadsManager.Companion.compareName
 import ani.dantotsu.download.DownloadsManager.Companion.getSubDirectory
 import ani.dantotsu.download.findValidName
-import ani.dantotsu.getThemeColor
 import ani.dantotsu.initActivity
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.MediaDetailsActivity
 import ani.dantotsu.media.MediaType
 import ani.dantotsu.navBarHeight
 import ani.dantotsu.setSafeOnClickListener
+import ani.dantotsu.settings.DownloadQueueActivity
 import ani.dantotsu.settings.SettingsDialogFragment
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
+import ani.dantotsu.statusBarHeight
 import ani.dantotsu.util.Logger
 import ani.dantotsu.util.customAlertDialog
 import com.anggrayudi.storage.file.openInputStream
-import com.google.android.material.card.MaterialCardView
-import com.google.android.material.imageview.ShapeableImageView
-import com.google.android.material.textfield.TextInputLayout
+import com.google.android.material.color.MaterialColors
 import com.google.gson.GsonBuilder
 import com.google.gson.InstanceCreator
 import eu.kanade.tachiyomi.source.model.SChapter
@@ -69,11 +70,13 @@ import uy.kohesive.injekt.api.get
 class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
 
     private val downloadManager = Injekt.get<DownloadsManager>()
+    private var _binding: FragmentOfflinePageBinding? = null
+    private val binding get() = _binding!!
     private var downloads: List<OfflineMangaModel> = listOf()
     private lateinit var gridView: GridView
     private lateinit var adapter: OfflineMangaAdapter
-    private lateinit var total: TextView
     private var downloadsJob: Job = Job()
+    private var currentQuery: String = ""
 
     /**
      * Ordered scope-delete completion (whole-title / purge-all). Refreshes the grid
@@ -97,123 +100,106 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
-        val view = inflater.inflate(R.layout.fragment_offline_page, container, false)
+    ): View {
+        _binding = FragmentOfflinePageBinding.inflate(inflater, container, false)
 
-        val textInputLayout = view.findViewById<TextInputLayout>(R.id.offlineMangaSearchBar)
-        textInputLayout.hint = "Manga"
-        val currentColor = textInputLayout.boxBackgroundColor
-        val semiTransparentColor = (currentColor and 0x00FFFFFF) or 0xA8000000.toInt()
-        textInputLayout.boxBackgroundColor = semiTransparentColor
-        val materialCardView = view.findViewById<MaterialCardView>(R.id.offlineMangaAvatarContainer)
-        materialCardView.setCardBackgroundColor(semiTransparentColor)
-        val color = requireContext().getThemeColor(android.R.attr.windowBackground)
+        val baseGridBottom = binding.gridView.paddingBottom
+        binding.offlineRoot.updatePadding(top = statusBarHeight)
+        binding.gridView.updatePadding(bottom = baseGridBottom + navBarHeight)
+        binding.gridView1.updatePadding(bottom = baseGridBottom + navBarHeight)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.offlineRoot) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            if (v.paddingTop < bars.top) v.updatePadding(top = bars.top)
+            val bottomPad = baseGridBottom + bars.bottom
+            if (binding.gridView.paddingBottom < bottomPad) {
+                binding.gridView.updatePadding(bottom = bottomPad)
+                binding.gridView1.updatePadding(bottom = bottomPad)
+            }
+            insets
+        }
 
-        val animeUserAvatar = view.findViewById<ShapeableImageView>(R.id.offlineMangaUserAvatar)
-        animeUserAvatar.setSafeOnClickListener {
+        binding.animeSearchBarText.hint = getString(R.string.offline_search_manga)
+        binding.offlineSearchClear.setOnClickListener {
+            binding.animeSearchBarText.setText("")
+        }
+        binding.animeSearchBarText.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) {}
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                currentQuery = s?.toString().orEmpty()
+                binding.offlineSearchClear.isVisible = currentQuery.isNotEmpty()
+                onSearchQuery(currentQuery)
+            }
+        })
+
+        binding.offlineDownloadsQueue.setSafeOnClickListener {
+            startActivity(Intent(requireContext(), DownloadQueueActivity::class.java))
+        }
+
+        binding.offlineActionButton.setSafeOnClickListener {
             val dialogFragment =
                 SettingsDialogFragment.newInstance(SettingsDialogFragment.Companion.PageType.OfflineMANGA)
             dialogFragment.show((it.context as AppCompatActivity).supportFragmentManager, "dialog")
         }
-        if (!(PrefManager.getVal(PrefName.ImmersiveMode) as Boolean)) {
-            view.rootView.fitsSystemWindows = true
-        }
 
-        textInputLayout.boxBackgroundColor = (color and 0x00FFFFFF) or 0x28000000
-        materialCardView.setCardBackgroundColor((color and 0x00FFFFFF) or 0x28000000)
-
-        val searchView = view.findViewById<AutoCompleteTextView>(R.id.animeSearchBarText)
-        searchView.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) {
-            }
-
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
-            }
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                onSearchQuery(s.toString())
-            }
-        })
         var style: Int = PrefManager.getVal(PrefName.OfflineView)
-        val layoutList = view.findViewById<ImageView>(R.id.downloadedList)
-        val layoutcompact = view.findViewById<ImageView>(R.id.downloadedGrid)
-        var selected = when (style) {
-            0 -> layoutList
-            1 -> layoutcompact
-            else -> layoutList
-        }
-        selected.alpha = 1f
+        binding.offlineViewToggle.check(if (style == 1) R.id.downloadedGrid else R.id.downloadedList)
+        gridView = if (style == 1) binding.gridView1 else binding.gridView
 
-        fun selected(it: ImageView) {
-            selected.alpha = 0.33f
-            selected = it
-            selected.alpha = 1f
-        }
-
-        layoutList.setOnClickListener {
-            selected(it as ImageView)
-            style = 0
+        binding.offlineViewToggle.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val nextStyle = if (checkedId == R.id.downloadedGrid) 1 else 0
+            if (nextStyle == style) return@addOnButtonCheckedListener
+            style = nextStyle
             PrefManager.setVal(PrefName.OfflineView, style)
-            gridView.visibility = View.GONE
-            gridView = view.findViewById(R.id.gridView)
+            gridView.isVisible = false
+            gridView = if (style == 1) binding.gridView1 else binding.gridView
             adapter.notifyNewGrid()
             grid()
-
+            bindScrollListener()
         }
 
-        layoutcompact.setOnClickListener {
-            selected(it as ImageView)
-            style = 1
-            PrefManager.setVal(PrefName.OfflineView, style)
-            gridView.visibility = View.GONE
-            gridView = view.findViewById(R.id.gridView1)
-            adapter.notifyNewGrid()
-            grid()
-        }
-        gridView =
-            if (style == 0) view.findViewById(R.id.gridView) else view.findViewById(R.id.gridView1)
-        total = view.findViewById(R.id.total)
-
-        val swipeRefresh = view.findViewById<androidx.swiperefreshlayout.widget.SwipeRefreshLayout>(R.id.localRefresh)
-        swipeRefresh.setOnChildScrollUpCallback { _, _ ->
+        binding.localRefresh.setOnChildScrollUpCallback { _, _ ->
             gridView.canScrollVertically(-1)
         }
-        swipeRefresh.setOnRefreshListener {
+        binding.localRefresh.setOnRefreshListener {
             getDownloads()
-            swipeRefresh.isRefreshing = false
+            binding.localRefresh.isRefreshing = false
         }
 
         grid()
-        return view
+        return binding.root
     }
 
     private fun grid() {
-        gridView.visibility = View.VISIBLE
+        gridView.isVisible = true
         val fadeIn = AlphaAnimation(0f, 1f)
-        fadeIn.duration = 300 // animations  pog
+        fadeIn.duration = 250
         gridView.layoutAnimation = LayoutAnimationController(fadeIn)
         adapter = OfflineMangaAdapter(requireContext(), downloads, this)
-        getDownloads()
+        if (currentQuery.isNotEmpty()) adapter.onSearchQuery(currentQuery)
         gridView.adapter = adapter
         gridView.scheduleLayoutAnimation()
-        total.text =
-            if (gridView.count > 0) "Manga and Novels (${gridView.count})" else "Empty List"
+        updateHeaderAndEmptyState()
+
         gridView.setOnItemClickListener { _, _, position, _ ->
-            // Get the OfflineMangaModel that was clicked
             val item = adapter.getItem(position) as OfflineMangaModel
             val media =
                 downloadManager.mangaDownloadedTypes.firstOrNull { it.titleName.compareName(item.title) }
                     ?: downloadManager.novelDownloadedTypes.firstOrNull {
-                        it.titleName.compareName(
-                            item.title
-                        )
+                        it.titleName.compareName(item.title)
                     }
             media?.let {
                 lifecycleScope.launch {
+                    val mediaModel = withContext(Dispatchers.IO) { getMedia(it) }
+                    if (mediaModel == null) {
+                        snackString("Error loading media.json")
+                        return@launch
+                    }
+                    MediaDetailsActivity.mediaSingleton = mediaModel
                     ContextCompat.startActivity(
                         requireActivity(),
                         Intent(requireContext(), MediaDetailsActivity::class.java)
-                            .putExtra("media", getMedia(it))
                             .putExtra("download", true),
                         null
                     )
@@ -224,7 +210,6 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
         }
 
         gridView.setOnItemLongClickListener { _, _, position, _ ->
-            // Get the OfflineMangaModel that was clicked
             val item = adapter.getItem(position) as OfflineMangaModel
             val type: MediaType =
                 MediaType.fromText(item.type)
@@ -242,11 +227,7 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
                 setMessage("Are you sure you want to delete ${item.title}?")
                 setPosButton(R.string.yes) {
                     if (type == MediaType.MANGA) {
-                        // Authoritative title delete: explicit command to the
-                        // non-exported service (scope reservation + owner
-                        // cancel/join + synchronous deletion). The grid refreshes
-                        // on the ordered scope-completion broadcast; onResume
-                        // refreshes as a second path.
+                        // Authoritative title delete via the non-exported service.
                         val intent = Intent(
                             requireContext(),
                             MangaDownloaderService::class.java
@@ -264,10 +245,14 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
             }.show()
             true
         }
+        getDownloads()
     }
 
     override fun onSearchQuery(query: String) {
-        adapter.onSearchQuery(query)
+        if (::adapter.isInitialized) {
+            adapter.onSearchQuery(query)
+            updateHeaderAndEmptyState()
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -280,33 +265,67 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
 
-        val scrollTop = view.findViewById<CardView>(R.id.mangaPageScrollTop)
-        scrollTop.setOnClickListener {
+        binding.mangaPageScrollTop.setOnClickListener {
             gridView.smoothScrollToPositionFromTop(0, 0)
         }
+        binding.mangaPageScrollTop.isVisible = false
+        bindScrollListener()
+    }
 
-        // Assuming 'scrollTop' is a view that you want to hide/show
-        scrollTop.visibility = View.GONE
-
+    private fun bindScrollListener() {
         gridView.setOnScrollListener(object : AbsListView.OnScrollListener {
-            override fun onScrollStateChanged(view: AbsListView, scrollState: Int) {
-            }
-
+            override fun onScrollStateChanged(view: AbsListView, scrollState: Int) {}
             override fun onScroll(
                 view: AbsListView,
                 firstVisibleItem: Int,
                 visibleItemCount: Int,
                 totalItemCount: Int
             ) {
+                val b = _binding ?: return
                 val first = view.getChildAt(0)
                 val visibility = first != null && first.top < 0
-                scrollTop.isVisible = visibility
-                scrollTop.translationY =
+                b.mangaPageScrollTop.isVisible = visibility
+                b.mangaPageScrollTop.translationY =
                     -(navBarHeight + (bottomBarOrNull?.height ?: 0) + (bottomBarOrNull?.marginBottom ?: 0)).toFloat()
             }
         })
+    }
 
+    private fun updateHeaderAndEmptyState() {
+        val b = _binding ?: return
+        val count = if (::adapter.isInitialized) adapter.count else 0
+        val title = getString(R.string.offline_manga_novels)
+        b.total.text = if (count > 0) {
+            SpannableString("$title  $count").apply {
+                setSpan(
+                    ForegroundColorSpan(
+                        MaterialColors.getColor(b.total, com.google.android.material.R.attr.colorOnSurfaceVariant)
+                    ),
+                    title.length,
+                    length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
+        } else {
+            title
+        }
 
+        val isEmpty = count == 0
+        b.offlineEmptyState.isVisible = isEmpty
+        gridView.isVisible = !isEmpty
+        if (isEmpty) {
+            b.offlineEmptyIcon.setImageResource(
+                if (currentQuery.isNotBlank()) R.drawable.ic_round_search_24 else R.drawable.ic_download_24
+            )
+            b.offlineEmptyAction.isVisible = false
+            if (currentQuery.isNotBlank()) {
+                b.offlineEmptyTitle.setText(R.string.offline_empty_search_title)
+                b.offlineEmptyBody.text = getString(R.string.offline_empty_search_body, currentQuery)
+            } else {
+                b.offlineEmptyTitle.setText(R.string.offline_empty_manga_title)
+                b.offlineEmptyBody.setText(R.string.offline_empty_manga_body)
+            }
+        }
     }
 
     override fun onResume() {
@@ -319,9 +338,15 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
         downloads = listOf()
     }
 
+    override fun onDestroyView() {
+        super.onDestroyView()
+        downloadsJob.cancel()
+        runCatching { requireContext().unregisterReceiver(scopeDeleteReceiver) }
+        _binding = null
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        runCatching { requireContext().unregisterReceiver(scopeDeleteReceiver) }
         downloads = listOf()
     }
 
@@ -335,7 +360,6 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
         if (downloadsJob.isActive) {
             downloadsJob.cancel()
         }
-        downloads = listOf()
         downloadsJob = Job()
         CoroutineScope(Dispatchers.IO + downloadsJob).launch {
             // Reconcile persisted state: drop manga entries whose page set is
@@ -363,20 +387,14 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
             }
             downloads += newNovelDownloads
             withContext(Dispatchers.Main) {
+                if (!isAdded || _binding == null) return@withContext
                 adapter.setItems(downloads)
-                total.text =
-                    if (gridView.count > 0) "Manga and Novels (${gridView.count})" else "Empty List"
-                adapter.notifyDataSetChanged()
+                if (currentQuery.isNotEmpty()) adapter.onSearchQuery(currentQuery)
+                updateHeaderAndEmptyState()
             }
         }
-
     }
 
-    /**
-     * Load media.json file from the directory and convert it to Media class
-     * @param downloadedType DownloadedType object
-     * @return Media object
-     */
     private suspend fun getMedia(downloadedType: DownloadedType): Media? {
         return try {
             val directory = getSubDirectory(
@@ -384,9 +402,7 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
                 false, downloadedType.titleName
             )
             val gson = GsonBuilder()
-                .registerTypeAdapter(SChapter::class.java, InstanceCreator<SChapter> {
-                    SChapterImpl()
-                })
+                .registerTypeAdapter(SChapter::class.java, InstanceCreator<SChapter> { SChapterImpl() })
                 .create()
             val media = directory?.findFile("media.json")
             if (media == null) {
@@ -415,18 +431,14 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
             )
             val mediaModel = getMedia(downloadedType)!!
             val cover = directory?.findFile("cover.jpg")
-            val coverUri: Uri? = if (cover?.exists() == true) {
-                cover.uri
-            } else null
+            val coverUri: Uri? = if (cover?.exists() == true) cover.uri else null
             val banner = directory?.findFile("banner.jpg")
-            val bannerUri: Uri? = if (banner?.exists() == true) {
-                banner.uri
-            } else null
+            val bannerUri: Uri? = if (banner?.exists() == true) banner.uri else null
             if (coverUri == null && bannerUri == null) throw Exception("No cover or banner found, probably compat")
             val title = mediaModel.mainName()
             val score = ani.dantotsu.connections.anilist.cardScoreText(mediaModel.userScore, mediaModel.meanScore)
             val isOngoing =
-                mediaModel.status == currActivity()!!.getString(R.string.status_releasing)
+                mediaModel.status == (context ?: currContext())?.getString(R.string.status_releasing)
             val isUserScored = mediaModel.userScore != 0
             val readChapter = (mediaModel.userProgress ?: "~").toString()
             val totalChapter = "${mediaModel.manga?.totalChapters ?: "??"}"

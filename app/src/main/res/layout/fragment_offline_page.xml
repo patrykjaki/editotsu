@@ -1,194 +1,384 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Offline anime, manga/novels and local media grid: M3 pill search bar, queue & settings/folder actions,
+     optional local type segmented filter, section header + M3 icon-only list/grid toggle,
+     centered empty state, and signature cover/banner grids. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".home.MangaFragment">
+    android:background="?attr/colorSurface">
 
-    <FrameLayout
+    <ani.dantotsu.others.ThemedSwipeRefreshLayout
+        android:id="@+id/localRefresh"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:clipChildren="false"
-        android:clipToPadding="false">
+        android:layout_height="match_parent">
 
-        <!-- Add a LinearLayout or other ViewGroup as a direct child of SwipeRefreshLayout -->
-        <ani.dantotsu.others.ThemedSwipeRefreshLayout
-            android:id="@+id/localRefresh"
+        <LinearLayout
+            android:id="@+id/offlineRoot"
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="match_parent"
+            android:orientation="vertical">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical">
-
+            <!-- M3 Pill Search Bar + Downloads Queue + Settings/Folder Action -->
             <LinearLayout
                 android:id="@+id/animeTitleContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_margin="32dp"
-                android:orientation="horizontal">
-
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/offlineMangaSearchBar"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
-                    android:layout_width="0dp"
-                    android:layout_height="56dp"
-                    android:layout_marginEnd="8dp"
-                    android:layout_weight="1"
-                    android:fontFamily="@font/poppins_bold"
-                    android:hint="Something"
-                    android:textColorHint="@color/bg_opp"
-                    android:transitionName="@string/search"
-                    app:boxBackgroundColor="?attr/colorPrimaryContainer"
-                    app:boxCornerRadiusBottomEnd="28dp"
-                    app:boxCornerRadiusBottomStart="28dp"
-                    app:boxCornerRadiusTopEnd="28dp"
-                    app:boxCornerRadiusTopStart="28dp"
-                    app:boxStrokeColor="@color/text_input_layout_stroke_color"
-                    app:endIconDrawable="@drawable/ic_round_search_24"
-                    app:endIconTint="@color/bg_opp"
-                    app:hintAnimationEnabled="true">
-
-                    <AutoCompleteTextView
-                        android:id="@+id/animeSearchBarText"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/poppins_bold"
-                        android:imeOptions="actionSearch"
-                        android:inputType="textPersonName"
-                        android:padding="8dp"
-                        android:selectAllOnFocus="true"
-                        android:textSize="14sp"
-                        tools:ignore="LabelFor,TextContrastCheck" />
-                </com.google.android.material.textfield.TextInputLayout>
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="16dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="4dp"
+                android:paddingBottom="4dp">
 
                 <com.google.android.material.card.MaterialCardView
-                    android:id="@+id/offlineMangaAvatarContainer"
-                    android:layout_width="52dp"
-                    android:layout_height="match_parent"
-                    android:layout_marginTop="4dp"
-                    app:cardBackgroundColor="?attr/colorPrimaryContainer"
-                    app:cardCornerRadius="26dp"
-                    app:strokeColor="@color/text_input_layout_stroke_color">
+                    android:id="@+id/offlineSearchBarCard"
+                    style="@style/Widget.Material3.CardView.Filled"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_weight="1"
+                    android:transitionName="@string/search"
+                    app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
+                    app:cardCornerRadius="28dp"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="0dp">
 
-                    <com.google.android.material.imageview.ShapeableImageView
-                        android:id="@+id/offlineMangaUserAvatar"
-                        android:layout_width="52dp"
-                        android:layout_height="52dp"
-                        android:scaleType="center"
-                        android:tint="@color/bg_opp"
-                        app:srcCompat="@drawable/ic_round_settings_24"
-                        tools:ignore="ContentDescription,ImageContrastCheck" />
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="4dp">
 
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:importantForAccessibility="no"
+                            app:srcCompat="@drawable/ic_round_search_24"
+                            app:tint="?attr/colorOnSurfaceVariant" />
+
+                        <AutoCompleteTextView
+                            android:id="@+id/animeSearchBarText"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginStart="12dp"
+                            android:layout_weight="1"
+                            android:background="@null"
+                            android:fontFamily="@font/poppins"
+                            android:imeOptions="actionSearch"
+                            android:inputType="text"
+                            android:selectAllOnFocus="true"
+                            android:singleLine="true"
+                            android:textColor="?attr/colorOnSurface"
+                            android:textColorHint="?attr/colorOnSurfaceVariant"
+                            android:textSize="16sp"
+                            tools:hint="Search downloaded anime"
+                            tools:ignore="LabelFor" />
+
+                        <ImageButton
+                            android:id="@+id/offlineSearchClear"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="@string/clear"
+                            android:src="@drawable/ic_round_close_24"
+                            android:visibility="gone"
+                            app:tint="?attr/colorOnSurfaceVariant" />
+                    </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/offlineDownloadsQueue"
+                    style="@style/Widget.Material3.Button.IconButton"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="4dp"
+                    android:contentDescription="@string/download_queue"
+                    android:tooltipText="@string/download_queue"
+                    app:icon="@drawable/ic_download_24"
+                    app:iconTint="?attr/colorOnSurfaceVariant"
+                    tools:ignore="UnusedAttribute" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/offlineActionButton"
+                    style="@style/Widget.Material3.Button.IconButton"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:contentDescription="@string/settings"
+                    android:tooltipText="@string/settings"
+                    app:icon="@drawable/ic_round_settings_24"
+                    app:iconTint="?attr/colorOnSurfaceVariant"
+                    tools:ignore="UnusedAttribute" />
             </LinearLayout>
 
+            <!-- Local media type segmented toggle (shown by LocalFragment) -->
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                android:id="@+id/offlineTypeToggle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="8dp"
+                android:visibility="gone"
+                app:selectionRequired="true"
+                app:singleSelection="true"
+                tools:visibility="visible">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/offlineTypeAnime"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:insetTop="4dp"
+                    android:insetBottom="4dp"
+                    android:maxLines="1"
+                    android:minHeight="48dp"
+                    android:paddingHorizontal="12dp"
+                    android:text="@string/anime"
+                    android:textAllCaps="false"
+                    android:textSize="14sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/offlineTypeManga"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:insetTop="4dp"
+                    android:insetBottom="4dp"
+                    android:maxLines="1"
+                    android:minHeight="48dp"
+                    android:paddingHorizontal="12dp"
+                    android:text="@string/manga"
+                    android:textAllCaps="false"
+                    android:textSize="14sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/offlineTypeNovel"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:insetTop="4dp"
+                    android:insetBottom="4dp"
+                    android:maxLines="1"
+                    android:minHeight="48dp"
+                    android:paddingHorizontal="12dp"
+                    android:text="@string/extensions_type_novel"
+                    android:textAllCaps="false"
+                    android:textSize="14sp" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            <!-- Section Heading + M3 Icon-Only List/Grid Segmented Toggle -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingLeft="32dp"
-                android:paddingRight="32dp">
+                android:paddingStart="16dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="4dp">
 
                 <TextView
                     android:id="@+id/total"
                     android:layout_width="0dp"
-                    android:layout_height="match_parent"
+                    android:layout_height="wrap_content"
                     android:layout_weight="1"
+                    android:accessibilityHeading="true"
+                    android:ellipsize="end"
                     android:fontFamily="@font/poppins_bold"
-                    android:gravity="center_vertical"
-                    android:hint="Type"
-                    android:textSize="14sp"
-                    tools:ignore="HardcodedText,RtlSymmetry" />
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="20sp"
+                    tools:ignore="UnusedAttribute"
+                    tools:text="Anime  4" />
 
-                <ImageView
-                    android:id="@+id/downloadedList"
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/offlineViewToggle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center_vertical"
-                    android:alpha="0.33"
-                    android:padding="8dp"
-                    app:srcCompat="@drawable/ic_round_view_list_24"
-                    app:tint="?attr/colorOnBackground"
-                    tools:ignore="ContentDescription,ImageContrastCheck" />
+                    android:layout_marginStart="12dp"
+                    app:selectionRequired="true"
+                    app:singleSelection="true">
 
-                <ImageView
-                    android:id="@+id/downloadedGrid"
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
-                    android:layout_gravity="end"
-                    android:alpha="0.33"
-                    android:padding="8dp"
-                    app:srcCompat="@drawable/ic_round_grid_view_24"
-                    app:tint="?attr/colorOnBackground"
-                    tools:ignore="ContentDescription,ImageContrastCheck" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/downloadedList"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="48dp"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/list_view"
+                        android:insetTop="4dp"
+                        android:insetBottom="4dp"
+                        android:minWidth="0dp"
+                        android:minHeight="48dp"
+                        android:paddingHorizontal="12dp"
+                        android:tooltipText="@string/list_view"
+                        app:icon="@drawable/ic_round_view_list_24"
+                        app:iconGravity="textStart"
+                        app:iconPadding="0dp"
+                        app:iconSize="20dp"
+                        tools:ignore="UnusedAttribute" />
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/downloadedGrid"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="48dp"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/grid_view"
+                        android:insetTop="4dp"
+                        android:insetBottom="4dp"
+                        android:minWidth="0dp"
+                        android:minHeight="48dp"
+                        android:paddingHorizontal="12dp"
+                        android:tooltipText="@string/grid_view"
+                        app:icon="@drawable/ic_round_grid_view_24"
+                        app:iconGravity="textStart"
+                        app:iconPadding="0dp"
+                        app:iconSize="20dp"
+                        tools:ignore="UnusedAttribute" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
             </LinearLayout>
-            <!-- This TextView might overlap with GridView if GridView has items -->
-            <TextView
-                android:id="@+id/noMangaOffline"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:text="@string/no_offline_manga_found"
-                android:textColor="?attr/colorOnSurface"
-                android:textSize="18sp"
-                android:visibility="gone" />
-            <!-- for large view  -->
-            <GridView
-                android:id="@+id/gridView"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:horizontalSpacing="10dp"
-                android:numColumns="1"
-                android:paddingStart="25dp"
-                android:paddingEnd="25dp"
-                android:scrollbars="none"
-                android:verticalSpacing="20dp"
-                android:visibility="gone" />
-            <!-- for compact view -->
-            <GridView
-                android:id="@+id/gridView1"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:columnWidth="138dp"
-                android:gravity="center"
-                android:horizontalSpacing="-30dp"
-                android:numColumns="auto_fit"
-                android:paddingStart="-10dp"
-                android:paddingEnd="-10dp"
-                android:scrollbars="none"
-                android:verticalSpacing="20dp"
-                android:visibility="gone" />
-        </LinearLayout>
-        </ani.dantotsu.others.ThemedSwipeRefreshLayout>
-    </FrameLayout>
 
-    <androidx.cardview.widget.CardView
+            <!-- Content Area: Empty State or Signature Large/Compact Grids -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
+                <LinearLayout
+                    android:id="@+id/offlineEmptyState"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="32dp"
+                    android:paddingBottom="96dp"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <FrameLayout
+                        android:layout_width="72dp"
+                        android:layout_height="72dp"
+                        android:background="@drawable/downloads_empty_icon_bg">
+
+                        <ImageView
+                            android:id="@+id/offlineEmptyIcon"
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:layout_gravity="center"
+                            android:importantForAccessibility="no"
+                            app:srcCompat="@drawable/ic_download_24"
+                            app:tint="?attr/colorOnSecondaryContainer" />
+                    </FrameLayout>
+
+                    <TextView
+                        android:id="@+id/offlineEmptyTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="20dp"
+                        android:fontFamily="@font/poppins_bold"
+                        android:gravity="center"
+                        android:text="@string/offline_empty_anime_title"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="20sp" />
+
+                    <TextView
+                        android:id="@+id/offlineEmptyBody"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:fontFamily="@font/poppins"
+                        android:gravity="center"
+                        android:maxWidth="300dp"
+                        android:text="@string/offline_empty_anime_body"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textSize="14sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/offlineEmptyAction"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:fontFamily="@font/poppins_semi_bold"
+                        android:minHeight="48dp"
+                        android:text="@string/offline_local_pick_folder"
+                        android:textAllCaps="false"
+                        android:textSize="14sp"
+                        android:visibility="gone"
+                        app:icon="@drawable/ic_round_folder_24" />
+                </LinearLayout>
+
+                <!-- Large banner-cover cards (item_media_large) -->
+                <GridView
+                    android:id="@+id/gridView"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:gravity="center"
+                    android:numColumns="1"
+                    android:paddingStart="8dp"
+                    android:paddingTop="4dp"
+                    android:paddingEnd="8dp"
+                    android:paddingBottom="104dp"
+                    android:scrollbars="none"
+                    android:verticalSpacing="4dp"
+                    android:visibility="gone" />
+
+                <!-- Compact Saikou cover cards (item_media_compact) -->
+                <GridView
+                    android:id="@+id/gridView1"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:columnWidth="128dp"
+                    android:gravity="center"
+                    android:horizontalSpacing="-24dp"
+                    android:numColumns="auto_fit"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="104dp"
+                    android:scrollbars="none"
+                    android:stretchMode="spacingWidthUniform"
+                    android:verticalSpacing="8dp"
+                    android:visibility="gone" />
+            </FrameLayout>
+        </LinearLayout>
+    </ani.dantotsu.others.ThemedSwipeRefreshLayout>
+
+    <!-- Scroll-to-top tonal pill button (visible in dark, light and OLED) -->
+    <com.google.android.material.card.MaterialCardView
         android:id="@+id/mangaPageScrollTop"
+        style="@style/Widget.Material3.CardView.Filled"
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="16dp"
-        app:cardBackgroundColor="?android:colorBackground"
+        android:contentDescription="@string/scroll_to_top"
+        android:tooltipText="@string/scroll_to_top"
+        android:visibility="gone"
+        app:cardBackgroundColor="?attr/colorSecondaryContainer"
         app:cardCornerRadius="24dp"
-        app:contentPadding="12dp">
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp"
+        tools:ignore="UnusedAttribute">
 
         <ImageView
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:importantForAccessibility="no"
             android:rotation="90"
             app:srcCompat="@drawable/ic_round_arrow_back_ios_new_24"
-            app:tint="?attr/colorOnSurface"
-            tools:ignore="ContentDescription" />
-    </androidx.cardview.widget.CardView>
-
+            app:tint="?attr/colorOnSecondaryContainer" />
+    </com.google.android.material.card.MaterialCardView>
 </FrameLayout>

@@ -2033,4 +2033,72 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="search_idle_subtitle">Type a name to start searching.</string>
     <string name="watch_order_role_coming">%1$s, %2$s</string>
     <string name="watch_order_finished_cd">%1$s, completed</string>
+
+    <!-- Downloads & offline redesign -->
+    <string name="downloads_options">Download options</string>
+    <string name="downloads_storage_settings">Storage &amp; download settings</string>
+    <string name="downloads_storage_settings_desc">Folder location, Wi-Fi only, parallel limit and storage cleanup</string>
+    <string name="downloads_free_space">%1$s free</string>
+    <string name="downloads_no_titles">No downloaded titles</string>
+    <string name="downloads_section_in_progress">In progress</string>
+    <string name="downloads_section_downloaded">Downloaded</string>
+    <string name="downloads_active_count">%1$d downloading</string>
+    <string name="downloads_queued_count">%1$d queued</string>
+    <string name="downloads_active_and_queued">%1$d downloading · %2$d queued</string>
+    <string name="downloads_starting">Starting…</string>
+    <string name="downloads_queued">Queued</string>
+    <string name="downloads_cancel_cd">Cancel download for %1$s</string>
+    <string name="downloads_delete_cd">Delete downloads for %1$s</string>
+    <string name="downloads_delete_title">Delete downloads</string>
+    <string name="downloads_empty_title">Your downloads are feeling a bit lonely…</string>
+    <string name="downloads_empty_anime_body">Download episodes from a show\'s Watch tab to watch offline.</string>
+    <string name="downloads_empty_manga_body">Download chapters from a manga\'s Read tab to read offline.</string>
+    <string name="downloads_empty_novel_body">Download chapters from a novel\'s Read tab to read offline.</string>
+    <plurals name="downloads_summary_anime_count">
+        <item quantity="one">%d anime</item>
+        <item quantity="other">%d anime</item>
+    </plurals>
+    <plurals name="downloads_summary_manga_count">
+        <item quantity="one">%d manga</item>
+        <item quantity="other">%d manga</item>
+    </plurals>
+    <plurals name="downloads_summary_novel_count">
+        <item quantity="one">%d novel</item>
+        <item quantity="other">%d novels</item>
+    </plurals>
+    <plurals name="downloads_summary_titles">
+        <item quantity="one">%d title</item>
+        <item quantity="other">%d titles</item>
+    </plurals>
+    <plurals name="downloads_episode_count">
+        <item quantity="one">%d episode</item>
+        <item quantity="other">%d episodes</item>
+    </plurals>
+    <plurals name="downloads_chapter_count">
+        <item quantity="one">%d chapter</item>
+        <item quantity="other">%d chapters</item>
+    </plurals>
+    <string name="offline_search_anime">Search downloaded anime</string>
+    <string name="offline_search_manga">Search downloaded manga</string>
+    <string name="offline_search_local_anime">Search local anime</string>
+    <string name="offline_search_local_manga">Search local manga</string>
+    <string name="offline_search_local_novel">Search local novels</string>
+    <string name="offline_manga_novels">Manga &amp; Novels</string>
+    <string name="offline_local_anime">Local anime</string>
+    <string name="offline_local_manga">Local manga</string>
+    <string name="offline_local_novel">Local novels</string>
+    <string name="offline_scanning">Scanning…</string>
+    <string name="offline_empty_anime_title">No offline anime yet</string>
+    <string name="offline_empty_anime_body">Download episodes before the Wi-Fi disappears.</string>
+    <string name="offline_empty_manga_title">No offline manga yet</string>
+    <string name="offline_empty_manga_body">Download chapters so you\'re ready when the signal drops.</string>
+    <string name="offline_empty_search_title">No matches</string>
+    <string name="offline_empty_search_body">Nothing here matches “%1$s”.</string>
+    <string name="offline_local_pick_folder">Choose folder</string>
+    <string name="offline_local_no_folder_title">No local folder selected</string>
+    <string name="offline_local_no_folder_body">Pick a folder to scan local anime, manga and novels from your device.</string>
+    <string name="offline_local_empty_title">Nothing found in this folder</string>
+    <string name="offline_local_empty_body">Put your local %1$s in the folder and pull down to refresh.</string>
+    <string name="offline_choose_folder_cd">Choose local folder</string>
+    <string name="scroll_to_top">Scroll to top</string>
 </resources>

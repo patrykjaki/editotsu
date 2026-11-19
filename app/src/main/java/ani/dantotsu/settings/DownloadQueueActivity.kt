@@ -1,28 +1,42 @@
 package ani.dantotsu.settings
 
-import ani.dantotsu.themes.followThemeStatusBarIcons
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.res.ColorStateList
 import android.os.Bundle
+import android.os.Environment
+import android.os.StatFs
+import android.text.format.Formatter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
+import android.view.accessibility.AccessibilityEvent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.view.updateLayoutParams
+import androidx.core.view.AccessibilityDelegateCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import androidx.core.view.isVisible
+import androidx.core.view.updatePadding
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.SimpleItemAnimator
 import ani.dantotsu.R
 import ani.dantotsu.databinding.ActivityDownloadQueueBinding
 import ani.dantotsu.databinding.ItemDownloadQueueBinding
-import ani.dantotsu.download.DownloadsManager
+import ani.dantotsu.databinding.ItemDownloadsHeaderBinding
+import ani.dantotsu.databinding.SheetDownloadOptionsBinding
+import ani.dantotsu.download.DownloadCompat.Companion.loadMediaCompat
 import ani.dantotsu.download.DownloadedType
-import ani.dantotsu.download.findValidName
+import ani.dantotsu.download.DownloadsManager
+import ani.dantotsu.download.DownloadsManager.Companion.compareName
 import ani.dantotsu.download.anime.AnimeDownloaderService
 import ani.dantotsu.download.anime.AnimeServiceDataSingleton
 import ani.dantotsu.download.manga.MangaDownloaderService
@@ -31,15 +45,34 @@ import ani.dantotsu.download.manga.MangaServiceDataSingleton
 import ani.dantotsu.download.novel.NovelDownloaderService
 import ani.dantotsu.download.novel.NovelServiceDataSingleton
 import ani.dantotsu.initActivity
-import ani.dantotsu.navBarHeight
-import ani.dantotsu.settings.saving.PrefManager
-import ani.dantotsu.statusBarHeight
+import ani.dantotsu.loadImage
+import ani.dantotsu.media.Media
+import ani.dantotsu.media.MediaDetailsActivity
 import ani.dantotsu.media.MediaType
+import ani.dantotsu.navBarHeight
+import ani.dantotsu.settings.data.SettingsDataActivity
+import ani.dantotsu.settings.rows.SettingsCards
+import ani.dantotsu.settings.rows.markSegment
+import ani.dantotsu.settings.saving.PrefManager
+import ani.dantotsu.snackString
+import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
+import ani.dantotsu.themes.followThemeStatusBarIcons
+import ani.dantotsu.util.Logger
 import ani.dantotsu.util.SizeFormatter
 import ani.dantotsu.util.customAlertDialog
-import ani.dantotsu.loadImage
-import com.google.android.material.tabs.TabLayout
+import com.anggrayudi.storage.file.openInputStream
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.color.MaterialColors
+import com.google.gson.GsonBuilder
+import com.google.gson.InstanceCreator
+import eu.kanade.tachiyomi.animesource.model.SAnime
+import eu.kanade.tachiyomi.animesource.model.SAnimeImpl
+import eu.kanade.tachiyomi.animesource.model.SEpisode
+import eu.kanade.tachiyomi.animesource.model.SEpisodeImpl
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SChapterImpl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -54,9 +87,26 @@ class DownloadQueueActivity : AppCompatActivity() {
     private lateinit var binding: ActivityDownloadQueueBinding
     private lateinit var adapter: DownloadsAdapter
     private var updateJob: Job? = null
-    private var selectedTabPosition = 0 // 0: Anime, 1: Manga, 2: Novel
+    private var measureJob: Job? = null
+    private var selectedType: MediaType = MediaType.ANIME
     private val folderSizeCache = mutableMapOf<String, Long>()
     private val coverPathCache = mutableMapOf<String, String?>()
+
+    private val mangaScopeDeleteReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != MangaDownloaderService.ACTION_MANGA_SCOPE_DELETED) return
+            if (intent.getBooleanExtra(MangaDownloaderService.EXTRA_MANGA_DELETED, false)) {
+                val scopeTitle = intent.getStringExtra(MangaDownloaderService.EXTRA_SCOPE_TITLE)
+                if (scopeTitle != null) {
+                    folderSizeCache.remove(DownloadsSummary.mediaCacheKey(MediaType.MANGA, scopeTitle))
+                } else {
+                    folderSizeCache.keys.removeAll { it.startsWith("${MediaType.MANGA.name}:") }
+                }
+                measureAllDownloadedMedia()
+                refreshUI()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,51 +114,77 @@ class DownloadQueueActivity : AppCompatActivity() {
         binding = ActivityDownloadQueueBinding.inflate(layoutInflater)
         setContentView(binding.root)
         followThemeStatusBarIcons()
-
         initActivity(this)
-        binding.downloadQueueContainer.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-            topMargin = statusBarHeight
-            bottomMargin = navBarHeight
+
+        selectedType = when (savedInstanceState?.getInt(STATE_SELECTED_TYPE, 0) ?: 0) {
+            1 -> MediaType.MANGA
+            2 -> MediaType.NOVEL
+            else -> MediaType.ANIME
+        }
+
+        val listBottomBase = binding.downloadQueueRecyclerView.paddingBottom
+        binding.downloadQueueContainer.updatePadding(top = statusBarHeight)
+        binding.downloadQueueRecyclerView.updatePadding(bottom = listBottomBase + navBarHeight)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.downloadQueueContainer) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            if (v.paddingTop < bars.top) v.updatePadding(top = bars.top)
+            val listBottom = listBottomBase + bars.bottom
+            if (binding.downloadQueueRecyclerView.paddingBottom < listBottom) {
+                binding.downloadQueueRecyclerView.updatePadding(bottom = listBottom)
+            }
+            insets
         }
 
         binding.downloadQueueBack.setOnClickListener {
             onBackPressedDispatcher.onBackPressed()
         }
 
-        binding.autoDeleteSwitch.isChecked = PrefManager.getCustomVal("auto_delete_downloads", false)
-        binding.autoDeleteSwitch.setOnCheckedChangeListener { _, isChecked ->
-            PrefManager.setCustomVal("auto_delete_downloads", isChecked)
+        binding.downloadQueueClear.setOnClickListener {
+            confirmClearQueue()
+        }
+
+        binding.downloadQueueOptions.setOnClickListener {
+            showOptionsSheet()
         }
 
         adapter = DownloadsAdapter(
-            coverPathCache = coverPathCache,
             onCancelQueueClick = { item -> cancelTask(item) },
-            onDeleteMediaClick = { title, type -> showDeleteMediaDialog(title, type) }
+            onDeleteMediaClick = { title, type -> showDeleteMediaDialog(title, type) },
+            onOpenMediaClick = { title, type -> openDownloadedMedia(title, type) },
         )
 
         binding.downloadQueueRecyclerView.layoutManager = LinearLayoutManager(this)
+        (binding.downloadQueueRecyclerView.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
         binding.downloadQueueRecyclerView.adapter = adapter
 
-        binding.downloadQueueClear.setOnClickListener {
-            customAlertDialog().apply {
-                setTitle(R.string.clear_queue)
-                setMessage(R.string.clear_queue_confirm)
-                setPosButton(R.string.yes) {
-                    clearAllQueues()
-                }
-                setNegButton(R.string.no)
-                show()
-            }
-        }
+        setupTypeToggle()
 
-        setupTabLayout()
+        ContextCompat.registerReceiver(
+            this,
+            mangaScopeDeleteReceiver,
+            IntentFilter(MangaDownloaderService.ACTION_MANGA_SCOPE_DELETED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(
+            STATE_SELECTED_TYPE,
+            when (selectedType) {
+                MediaType.ANIME -> 0
+                MediaType.MANGA -> 1
+                MediaType.NOVEL -> 2
+            },
+        )
     }
 
     override fun onResume() {
         super.onResume()
         folderSizeCache.clear()
         coverPathCache.clear()
-        updateDownloadedMediaSizes(getSelectedMediaType())
+        updateDeviceStorage()
+        measureAllDownloadedMedia()
         startUpdating()
     }
 
@@ -117,30 +193,58 @@ class DownloadQueueActivity : AppCompatActivity() {
         stopUpdating()
     }
 
-    private fun setupTabLayout() {
-        val tabLayout = binding.downloadQueueTabLayout
-        tabLayout.addTab(tabLayout.newTab().setText("Anime"))
-        tabLayout.addTab(tabLayout.newTab().setText("Manga"))
-        tabLayout.addTab(tabLayout.newTab().setText("Novel"))
-
-        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: TabLayout.Tab) {
-                selectedTabPosition = tab.position
-                folderSizeCache.clear()
-                coverPathCache.clear()
-                updateDownloadedMediaSizes(getSelectedMediaType())
-                startUpdating()
-            }
-            override fun onTabUnselected(tab: TabLayout.Tab) {}
-            override fun onTabReselected(tab: TabLayout.Tab) {}
-        })
+    override fun onDestroy() {
+        measureJob?.cancel()
+        runCatching { unregisterReceiver(mangaScopeDeleteReceiver) }
+        super.onDestroy()
     }
 
-    private fun getSelectedMediaType(): MediaType {
-        return when (selectedTabPosition) {
-            0 -> MediaType.ANIME
-            1 -> MediaType.MANGA
-            else -> MediaType.NOVEL
+    private fun setupTypeToggle() {
+        val checkedId = when (selectedType) {
+            MediaType.ANIME -> R.id.downloadsTypeAnime
+            MediaType.MANGA -> R.id.downloadsTypeManga
+            MediaType.NOVEL -> R.id.downloadsTypeNovel
+        }
+        binding.downloadsTypeToggle.check(checkedId)
+        listOf(
+            binding.downloadsTypeAnime,
+            binding.downloadsTypeManga,
+            binding.downloadsTypeNovel,
+        ).forEach { markSegment(it, null, it.isChecked) }
+
+        binding.downloadsTypeToggle.addOnButtonCheckedListener { group, id, isChecked ->
+            group.findViewById<MaterialButton>(id)?.let { markSegment(it, null, isChecked) }
+            if (!isChecked) return@addOnButtonCheckedListener
+            val nextType = when (id) {
+                R.id.downloadsTypeManga -> MediaType.MANGA
+                R.id.downloadsTypeNovel -> MediaType.NOVEL
+                else -> MediaType.ANIME
+            }
+            if (nextType != selectedType) {
+                selectedType = nextType
+                refreshUI()
+            }
+        }
+    }
+
+    private fun updateDeviceStorage() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val stats = runCatching {
+                val stat = StatFs(Environment.getDataDirectory().path)
+                val total = stat.blockCountLong * stat.blockSizeLong
+                val available = stat.availableBlocksLong * stat.blockSizeLong
+                total to available
+            }.getOrNull() ?: return@launch
+
+            withContext(Dispatchers.Main) {
+                val (totalBytes, availableBytes) = stats
+                binding.downloadsStorageBar.progress =
+                    DownloadsSummary.storageUsedPercent(totalBytes, availableBytes)
+                binding.downloadsFreeSpace.text = getString(
+                    R.string.downloads_free_space,
+                    Formatter.formatShortFileSize(this@DownloadQueueActivity, availableBytes),
+                )
+            }
         }
     }
 
@@ -149,36 +253,6 @@ class DownloadQueueActivity : AppCompatActivity() {
         updateJob = lifecycleScope.launch {
             while (isActive) {
                 refreshUI()
-
-                // Update tab titles with active queue count and prevent flickering
-                val tabLayout = binding.downloadQueueTabLayout
-                val animeCount = AnimeServiceDataSingleton.currentTasks.size + AnimeServiceDataSingleton.downloadQueue.size
-                val mangaCount = MangaServiceDataSingleton.currentTasks.size + MangaServiceDataSingleton.downloadQueue.size
-                val novelCount = NovelServiceDataSingleton.currentTasks.size + NovelServiceDataSingleton.downloadQueue.size
-
-                val tab0 = tabLayout.getTabAt(0)
-                val text0 = if (animeCount > 0) "Anime ($animeCount)" else "Anime"
-                if (tab0?.text != text0) tab0?.text = text0
-
-                val tab1 = tabLayout.getTabAt(1)
-                val text1 = if (mangaCount > 0) "Manga ($mangaCount)" else "Manga"
-                if (tab1?.text != text1) tab1?.text = text1
-
-                val tab2 = tabLayout.getTabAt(2)
-                val text2 = if (novelCount > 0) "Novel ($novelCount)" else "Novel"
-                if (tab2?.text != text2) tab2?.text = text2
-
-                // Update status text
-                val currentType = getSelectedMediaType()
-                val currentTypeActiveList = getActiveQueueTasks(currentType)
-                val activeCount = currentTypeActiveList.count { it.isActive }
-                val queuedCount = currentTypeActiveList.size - activeCount
-                binding.downloadQueueStatus.text = if (currentTypeActiveList.isNotEmpty() || getDownloadedMediaCount(currentType) > 0) {
-                    "Downloading: $activeCount • Queued: $queuedCount"
-                } else {
-                    getString(R.string.download_queue_desc)
-                }
-
                 delay(1000)
             }
         }
@@ -190,28 +264,114 @@ class DownloadQueueActivity : AppCompatActivity() {
     }
 
     private fun refreshUI() {
-        val currentType = getSelectedMediaType()
-        val newItems = getDownloadsListItems(currentType)
+        val animeQueue = getActiveQueueTasks(MediaType.ANIME)
+        val mangaQueue = getActiveQueueTasks(MediaType.MANGA)
+        val novelQueue = getActiveQueueTasks(MediaType.NOVEL)
+
+        updateSegmentLabel(binding.downloadsTypeAnime, getString(R.string.anime), animeQueue.size)
+        updateSegmentLabel(binding.downloadsTypeManga, getString(R.string.manga), mangaQueue.size)
+        updateSegmentLabel(binding.downloadsTypeNovel, getString(R.string.extensions_type_novel), novelQueue.size)
+
+        binding.downloadQueueClear.isVisible = DownloadsSummary.hasQueuedWork(
+            animeQueue.size,
+            mangaQueue.size,
+            novelQueue.size,
+        )
+
+        val totalActive = animeQueue.count { it.isActive } +
+            mangaQueue.count { it.isActive } +
+            novelQueue.count { it.isActive }
+        val totalQueued = (animeQueue.size + mangaQueue.size + novelQueue.size) - totalActive
+
+        updateSummaryCard(totalActive, totalQueued)
+
+        val currentQueue = when (selectedType) {
+            MediaType.ANIME -> animeQueue
+            MediaType.MANGA -> mangaQueue
+            MediaType.NOVEL -> novelQueue
+        }
+        val newItems = buildListItems(selectedType, currentQueue)
         adapter.submitList(newItems)
 
-        binding.downloadQueueEmptyState.visibility = if (newItems.isEmpty()) View.VISIBLE else View.GONE
-        binding.downloadQueueRecyclerView.visibility = if (newItems.isEmpty()) View.GONE else View.VISIBLE
+        val empty = newItems.isEmpty()
+        binding.downloadQueueEmptyState.isVisible = empty
+        binding.downloadQueueRecyclerView.isVisible = !empty
+        if (empty) {
+            binding.downloadQueueEmptyBody.setText(
+                when (selectedType) {
+                    MediaType.ANIME -> R.string.downloads_empty_anime_body
+                    MediaType.MANGA -> R.string.downloads_empty_manga_body
+                    MediaType.NOVEL -> R.string.downloads_empty_novel_body
+                },
+            )
+        }
     }
 
-    private fun getDownloadedMediaCount(type: MediaType): Int {
-        val downloadsManager = Injekt.get<DownloadsManager>()
-        return when (type) {
-            MediaType.ANIME -> downloadsManager.animeDownloadedTypes.groupBy { it.titleName }.size
-            MediaType.MANGA -> downloadsManager.mangaDownloadedTypes.groupBy { it.titleName }.size
-            MediaType.NOVEL -> downloadsManager.novelDownloadedTypes.groupBy { it.titleName }.size
+    private fun updateSegmentLabel(button: MaterialButton, baseLabel: String, count: Int) {
+        val next = DownloadsSummary.segmentLabel(baseLabel, count)
+        if (button.text.toString() != next) {
+            button.text = next
+            if (button.isChecked) markSegment(button, null, true)
         }
+    }
+
+    private fun updateSummaryCard(totalActive: Int, totalQueued: Int) {
+        val dm = Injekt.get<DownloadsManager>()
+        val overview = DownloadsSummary.computeOverview(
+            animeTitleSet = dm.animeDownloadedTypes.map { it.titleName }.toSet(),
+            mangaTitleSet = dm.mangaDownloadedTypes.map { it.titleName }.toSet(),
+            novelTitleSet = dm.novelDownloadedTypes.map { it.titleName }.toSet(),
+            sizeByKey = folderSizeCache,
+            activeCount = totalActive,
+            queuedCount = totalQueued,
+        )
+
+        binding.downloadsTotalSize.text = when {
+            overview.totalTitles == 0 -> SizeFormatter.formatBytes(0L)
+            !overview.sizesComplete && overview.totalDownloadedBytes == 0L -> getString(R.string.cache_calculating)
+            else -> SizeFormatter.formatBytes(overview.totalDownloadedBytes)
+        }
+
+        val breakdownParts = buildList {
+            if (overview.animeTitles > 0) {
+                add(resources.getQuantityString(R.plurals.downloads_summary_anime_count, overview.animeTitles, overview.animeTitles))
+            }
+            if (overview.mangaTitles > 0) {
+                add(resources.getQuantityString(R.plurals.downloads_summary_manga_count, overview.mangaTitles, overview.mangaTitles))
+            }
+            if (overview.novelTitles > 0) {
+                add(resources.getQuantityString(R.plurals.downloads_summary_novel_count, overview.novelTitles, overview.novelTitles))
+            }
+        }
+        binding.downloadsBreakdown.text = if (breakdownParts.isEmpty()) {
+            getString(R.string.downloads_no_titles)
+        } else {
+            breakdownParts.joinToString(" · ")
+        }
+
+        val activeText = formatInProgress(overview.activeCount, overview.queuedCount)
+        binding.downloadsActiveBadge.isVisible = activeText != null
+        if (activeText != null) binding.downloadsActiveBadge.text = activeText
+    }
+
+    private fun formatInProgress(active: Int, queued: Int): String? = when {
+        active > 0 && queued > 0 -> getString(R.string.downloads_active_and_queued, active, queued)
+        active > 0 -> getString(R.string.downloads_active_count, active)
+        queued > 0 -> getString(R.string.downloads_queued_count, queued)
+        else -> null
     }
 
     private fun getActiveQueueTasks(type: MediaType): List<QueueItem> {
         val activeList = when (type) {
-            MediaType.ANIME -> AnimeServiceDataSingleton.currentTasks.toList().map { QueueItem.Anime(it, true) }
-            MediaType.MANGA -> MangaServiceDataSingleton.currentTasks.toList().map { QueueItem.Manga(it, true) }
-            MediaType.NOVEL -> NovelServiceDataSingleton.currentTasks.toList().map { QueueItem.Novel(it, true) }
+            MediaType.ANIME -> synchronized(AnimeServiceDataSingleton.currentTasks) {
+                AnimeServiceDataSingleton.currentTasks.toList()
+            }.map { QueueItem.Anime(it, true) }
+            MediaType.MANGA -> synchronized(MangaServiceDataSingleton.currentTasks) {
+                MangaServiceDataSingleton.currentTasks.toList()
+            }.map { QueueItem.Manga(it, true) }
+            MediaType.NOVEL -> synchronized(NovelServiceDataSingleton.currentTasks) {
+                NovelServiceDataSingleton.currentTasks.toList()
+            }.map { QueueItem.Novel(it, true) }
         }
         val queuedList = when (type) {
             MediaType.ANIME -> AnimeServiceDataSingleton.downloadQueue.toList().map { QueueItem.Anime(it, false) }
@@ -229,24 +389,34 @@ class DownloadQueueActivity : AppCompatActivity() {
         return queueItems
     }
 
-    private fun getDownloadsListItems(type: MediaType): List<DownloadsListItem> {
+    private fun buildListItems(type: MediaType, queueItems: List<QueueItem>): List<DownloadsListItem> {
         val listItems = mutableListOf<DownloadsListItem>()
 
-        // 1. Active Queue Tasks
-        val queueItems = getActiveQueueTasks(type)
+        // 1. In progress
         if (queueItems.isNotEmpty()) {
-            listItems.add(DownloadsListItem.Header(getString(R.string.download_queue_header)))
-            listItems.addAll(queueItems.map { item ->
-                val progress = when (item) {
-                    is QueueItem.Anime -> AnimeServiceDataSingleton.progress[item.uniqueId]
-                    is QueueItem.Manga -> MangaServiceDataSingleton.progress[item.uniqueId]
-                    is QueueItem.Novel -> NovelServiceDataSingleton.progress[item.uniqueId]
-                }
-                DownloadsListItem.QueueItemWrapper(item, progress)
-            })
+            val active = queueItems.count { it.isActive }
+            val queued = queueItems.size - active
+            listItems.add(
+                DownloadsListItem.Header(
+                    id = "queue_${type.name}",
+                    title = getString(R.string.downloads_section_in_progress),
+                    meta = formatInProgress(active, queued).orEmpty(),
+                ),
+            )
+            listItems.addAll(
+                queueItems.map { item ->
+                    val progress = when (item) {
+                        is QueueItem.Anime -> AnimeServiceDataSingleton.progress[item.uniqueId]
+                        is QueueItem.Manga -> MangaServiceDataSingleton.progress[item.uniqueId]
+                        is QueueItem.Novel -> NovelServiceDataSingleton.progress[item.uniqueId]
+                    }
+                    val key = DownloadsSummary.mediaCacheKey(item.mediaType, item.title)
+                    DownloadsListItem.QueueItemWrapper(item, progress, coverPathCache[key])
+                },
+            )
         }
 
-        // 2. Downloaded Media Items (CRUD & Insights)
+        // 2. Downloaded titles
         val downloadsManager = Injekt.get<DownloadsManager>()
         val downloadedTypes = when (type) {
             MediaType.ANIME -> downloadsManager.animeDownloadedTypes
@@ -255,86 +425,230 @@ class DownloadQueueActivity : AppCompatActivity() {
         }
         val grouped = downloadedTypes.groupBy { it.titleName }
         val mediaItems = grouped.map { (title, list) ->
-            val sizeBytes = folderSizeCache[title] ?: 0L
+            val key = DownloadsSummary.mediaCacheKey(type, title)
             DownloadsListItem.DownloadedMediaItem(
                 title = title,
                 type = type,
                 count = list.size,
-                sizeBytes = sizeBytes
+                sizeBytes = folderSizeCache[key],
+                coverPath = coverPathCache[key],
             )
-        }.sortedBy { it.title }
+        }.sortedBy { it.title.lowercase() }
 
         if (mediaItems.isNotEmpty()) {
-            val totalSizeBytes = mediaItems.sumOf { it.sizeBytes }
-            val totalTitles = mediaItems.size
-            val totalStr = SizeFormatter.formatBytes(totalSizeBytes)
-            val headerTitle = getString(R.string.download_insights_header) + " ($totalStr • $totalTitles titles)"
-            listItems.add(DownloadsListItem.Header(headerTitle))
+            val measuredSizes = mediaItems.mapNotNull { it.sizeBytes }
+            val titleCountStr = resources.getQuantityString(
+                R.plurals.downloads_summary_titles,
+                mediaItems.size,
+                mediaItems.size,
+            )
+            val meta = if (measuredSizes.isNotEmpty()) {
+                "${SizeFormatter.formatBytes(measuredSizes.sum())} · $titleCountStr"
+            } else {
+                titleCountStr
+            }
+            listItems.add(
+                DownloadsListItem.Header(
+                    id = "downloaded_${type.name}",
+                    title = getString(R.string.downloads_section_downloaded),
+                    meta = meta,
+                ),
+            )
             listItems.addAll(mediaItems)
         }
 
         return listItems
     }
 
-    private fun updateDownloadedMediaSizes(type: MediaType) {
-        lifecycleScope.launch(Dispatchers.IO) {
+    private fun measureAllDownloadedMedia() {
+        measureJob?.cancel()
+        measureJob = lifecycleScope.launch(Dispatchers.IO) {
             val downloadsManager = Injekt.get<DownloadsManager>()
-            val downloadedTypes = when (type) {
-                MediaType.ANIME -> downloadsManager.animeDownloadedTypes
-                MediaType.MANGA -> downloadsManager.mangaDownloadedTypes
-                MediaType.NOVEL -> downloadsManager.novelDownloadedTypes
-            }
-            val titles = downloadedTypes.map { it.titleName }.distinct()
-            for (title in titles) {
-                val folder = DownloadsManager.getSubDirectory(this@DownloadQueueActivity, type, false, title, null)
-                val size = getFolderSize(folder)
-                folderSizeCache[title] = size
+            // Measure the currently visible type first so its sizes and covers land immediately.
+            val orderedTypes = listOf(selectedType) +
+                listOf(MediaType.ANIME, MediaType.MANGA, MediaType.NOVEL).filter { it != selectedType }
 
-                val coverFile = folder?.findFile("cover.jpg")
-                val coverPath = if (coverFile != null && coverFile.exists()) {
-                    coverFile.uri.toString()
-                } else {
-                    val cachedCover = PrefManager.getCustomVal<String>("local_cover_${title}", "")
-                    if (cachedCover.isNotEmpty() && cachedCover != "null") cachedCover else null
+            for (type in orderedTypes) {
+                val downloadedTypes = when (type) {
+                    MediaType.ANIME -> downloadsManager.animeDownloadedTypes
+                    MediaType.MANGA -> downloadsManager.mangaDownloadedTypes
+                    MediaType.NOVEL -> downloadsManager.novelDownloadedTypes
                 }
-                coverPathCache[title] = coverPath
-            }
+                val batchSizes = mutableMapOf<String, Long>()
+                val batchCovers = mutableMapOf<String, String?>()
 
-            // Also cache covers for active queue items
-            val activeQueue = getActiveQueueTasks(type)
-            for (item in activeQueue) {
-                val itemType = item.mediaType
-                val itemTitle = item.title
-                if (!coverPathCache.containsKey(itemTitle)) {
-                    val folder = DownloadsManager.getSubDirectory(this@DownloadQueueActivity, itemType, false, itemTitle, null)
-                    val coverFile = folder?.findFile("cover.jpg")
-                    val coverPath = if (coverFile != null && coverFile.exists()) {
-                        coverFile.uri.toString()
-                    } else {
-                        val cachedCover = PrefManager.getCustomVal<String>("local_cover_${itemTitle}", "")
-                        if (cachedCover.isNotEmpty() && cachedCover != "null") cachedCover else null
+                val titles = downloadedTypes.map { it.titleName }.distinct()
+                for (title in titles) {
+                    val key = DownloadsSummary.mediaCacheKey(type, title)
+                    val folder = DownloadsManager.findSubDirectory(this@DownloadQueueActivity, type, title, null)
+                    batchSizes[key] = getFolderSize(folder)
+                    batchCovers[key] = resolveCoverPath(folder, title)
+                }
+
+                for (item in getActiveQueueTasks(type)) {
+                    val key = DownloadsSummary.mediaCacheKey(item.mediaType, item.title)
+                    if (!batchCovers.containsKey(key)) {
+                        val folder = DownloadsManager.findSubDirectory(
+                            this@DownloadQueueActivity,
+                            item.mediaType,
+                            item.title,
+                            null,
+                        )
+                        batchCovers[key] = resolveCoverPath(folder, item.title)
                     }
-                    coverPathCache[itemTitle] = coverPath
                 }
-            }
 
-            withContext(Dispatchers.Main) {
-                refreshUI()
+                withContext(Dispatchers.Main) {
+                    folderSizeCache.putAll(batchSizes)
+                    coverPathCache.putAll(batchCovers)
+                    refreshUI()
+                }
             }
         }
+    }
+
+    private fun resolveCoverPath(folder: DocumentFile?, title: String): String? {
+        val coverFile = folder?.findFile("cover.jpg")
+        if (coverFile != null && coverFile.exists()) return coverFile.uri.toString()
+        val cachedCover = PrefManager.getCustomVal<String>("local_cover_$title", "")
+        return cachedCover.takeIf { it.isNotEmpty() && it != "null" }
     }
 
     private fun getFolderSize(directory: DocumentFile?): Long {
         if (directory == null || !directory.exists()) return 0L
         var size = 0L
         for (file in directory.listFiles()) {
-            if (file.isDirectory) {
-                size += getFolderSize(file)
-            } else {
-                size += file.length()
-            }
+            size += if (file.isDirectory) getFolderSize(file) else file.length()
         }
         return size
+    }
+
+    private fun openDownloadedMedia(title: String, type: MediaType) {
+        val downloadsManager = Injekt.get<DownloadsManager>()
+        val list = when (type) {
+            MediaType.ANIME -> downloadsManager.animeDownloadedTypes
+            MediaType.MANGA -> downloadsManager.mangaDownloadedTypes
+            MediaType.NOVEL -> downloadsManager.novelDownloadedTypes
+        }
+        val entry = list.firstOrNull { it.titleName == title || it.titleName.compareName(title) }
+        if (entry == null) {
+            snackString(getString(R.string.error_loading_data, title))
+            return
+        }
+
+        lifecycleScope.launch {
+            val mediaModel = withContext(Dispatchers.IO) { loadDownloadedMedia(entry) }
+            if (mediaModel == null) {
+                snackString(getString(R.string.error_loading_data, title))
+                return@launch
+            }
+            MediaDetailsActivity.mediaSingleton = mediaModel
+            ContextCompat.startActivity(
+                this@DownloadQueueActivity,
+                Intent(this@DownloadQueueActivity, MediaDetailsActivity::class.java)
+                    .putExtra("download", true),
+                null,
+            )
+        }
+    }
+
+    private fun loadDownloadedMedia(downloadedType: DownloadedType): Media? {
+        return try {
+            val directory = DownloadsManager.findSubDirectory(
+                this,
+                downloadedType.type,
+                downloadedType.titleName,
+            )
+            val gson = GsonBuilder()
+                .registerTypeAdapter(SChapter::class.java, InstanceCreator<SChapter> { SChapterImpl() })
+                .registerTypeAdapter(SAnime::class.java, InstanceCreator<SAnime> { SAnimeImpl() })
+                .registerTypeAdapter(SEpisode::class.java, InstanceCreator<SEpisode> { SEpisodeImpl() })
+                .create()
+            val mediaFile = directory?.findFile("media.json")
+                ?: return loadMediaCompat(downloadedType)
+            val mediaJson = mediaFile.openInputStream(this)?.bufferedReader().use { it?.readText() }
+                ?: return null
+            gson.fromJson(mediaJson, Media::class.java)
+        } catch (e: Exception) {
+            Logger.log("DownloadQueueActivity: error loading media.json: ${e.message}")
+            null
+        }
+    }
+
+    private fun showOptionsSheet() {
+        val dialog = BottomSheetDialog(this)
+        val b = SheetDownloadOptionsBinding.inflate(layoutInflater)
+
+        val animeQueue = getActiveQueueTasks(MediaType.ANIME)
+        val mangaQueue = getActiveQueueTasks(MediaType.MANGA)
+        val novelQueue = getActiveQueueTasks(MediaType.NOVEL)
+        val active = animeQueue.count { it.isActive } +
+            mangaQueue.count { it.isActive } +
+            novelQueue.count { it.isActive }
+        val queued = (animeQueue.size + mangaQueue.size + novelQueue.size) - active
+        val hasQueue = active + queued > 0
+
+        b.optionAutoDeleteSwitch.isChecked = PrefManager.getCustomVal("auto_delete_downloads", false)
+        b.optionAutoDeleteRow.setOnClickListener {
+            val now = !b.optionAutoDeleteSwitch.isChecked
+            b.optionAutoDeleteSwitch.isChecked = now
+            PrefManager.setCustomVal("auto_delete_downloads", now)
+            b.optionAutoDeleteRow.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED)
+        }
+        ViewCompat.setAccessibilityDelegate(b.optionAutoDeleteRow, object : AccessibilityDelegateCompat() {
+            override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.className = android.widget.Switch::class.java.name
+                info.isCheckable = true
+                info.isChecked = b.optionAutoDeleteSwitch.isChecked
+            }
+        })
+
+        b.optionStorageSettingsRow.setOnClickListener {
+            dialog.dismiss()
+            startActivity(Intent(this, SettingsDataActivity::class.java))
+        }
+
+        b.optionClearQueueRow.isVisible = hasQueue
+        if (hasQueue) {
+            b.optionClearQueueSummary.text = formatInProgress(active, queued).orEmpty()
+            b.optionClearQueueRow.setOnClickListener {
+                dialog.dismiss()
+                confirmClearQueue()
+            }
+        }
+
+        SettingsCards.apply(b.optionAutoDeleteRow, first = true, last = false)
+        SettingsCards.apply(b.optionStorageSettingsRow, first = false, last = !hasQueue)
+        if (hasQueue) {
+            SettingsCards.apply(b.optionClearQueueRow, first = false, last = true)
+        }
+
+        dialog.setContentView(b.root)
+        val baseBottom = b.root.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(b.root) { v, insets ->
+            val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            v.updatePadding(bottom = baseBottom + nav)
+            insets
+        }
+        dialog.show()
+        dialog.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.backgroundTintList =
+            ColorStateList.valueOf(
+                MaterialColors.getColor(b.root, com.google.android.material.R.attr.colorSurface),
+            )
+        ViewCompat.requestApplyInsets(b.root)
+    }
+
+    private fun confirmClearQueue() {
+        customAlertDialog().apply {
+            setTitle(R.string.clear_queue)
+            setMessage(R.string.clear_queue_confirm)
+            setPosButton(R.string.yes) {
+                clearAllQueues()
+            }
+            setNegButton(R.string.no)
+            show()
+        }
     }
 
     private fun cancelTask(item: QueueItem) {
@@ -368,13 +682,12 @@ class DownloadQueueActivity : AppCompatActivity() {
 
     private fun showDeleteMediaDialog(title: String, type: MediaType) {
         customAlertDialog().apply {
-            setTitle("Delete Downloads")
+            setTitle(R.string.downloads_delete_title)
             setMessage(getString(R.string.clear_media_confirm, title))
             setPosButton(R.string.yes) {
                 if (type == MediaType.MANGA) {
                     // Authoritative title delete via the service scope barrier
                     // (live owners cancelled+joined before physical deletion).
-                    // The 1s poll loop converges once the ordered completion lands.
                     val intent = Intent(this@DownloadQueueActivity, MangaDownloaderService::class.java).apply {
                         action = MangaDownloaderService.ACTION_DELETE_TITLE
                         putExtra(MangaDownloaderService.EXTRA_TITLE, title)
@@ -384,8 +697,9 @@ class DownloadQueueActivity : AppCompatActivity() {
                     val downloadsManager = Injekt.get<DownloadsManager>()
                     downloadsManager.removeMedia(title, type)
                 }
-                folderSizeCache.remove(title)
-                updateDownloadedMediaSizes(getSelectedMediaType())
+                folderSizeCache.remove(DownloadsSummary.mediaCacheKey(type, title))
+                updateDeviceStorage()
+                measureAllDownloadedMedia()
                 startUpdating()
             }
             setNegButton(R.string.no)
@@ -396,24 +710,20 @@ class DownloadQueueActivity : AppCompatActivity() {
     private fun clearAllQueues() {
         // Clear Queues. Anime/Novel keep their existing full-clear behavior.
         // Manga clear-all is ONE linearizable cutoff transaction owned by the
-        // service (ACTION_CLEAR_MANGA): the invocation-time cutoff drives the
-        // queued sweep, the live-owner cancel+join, and the job-record sweep, so
-        // a fresh retry can neither be dropped (no snapshot/clear/re-add) nor
-        // misclassified by a recaptured cutoff (no per-task cancel broadcasts).
+        // service (ACTION_CLEAR_MANGA).
         AnimeServiceDataSingleton.downloadQueue.clear()
         NovelServiceDataSingleton.downloadQueue.clear()
         ContextCompat.startForegroundService(
             this,
             Intent(this, MangaDownloaderService::class.java).apply {
                 action = MangaDownloaderService.ACTION_CLEAR_MANGA
-            }
+            },
         )
         MangaServiceDataSingleton.isServiceRunning = true
 
-        // Cancel running tasks (anime/novel only: manga actives are cancelled+joined
-        // inside the service transaction under the SAME cutoff, never via a
-        // recaptured per-task cutoff).
-        val animeActive = AnimeServiceDataSingleton.currentTasks.toList()
+        val animeActive = synchronized(AnimeServiceDataSingleton.currentTasks) {
+            AnimeServiceDataSingleton.currentTasks.toList()
+        }
         for (task in animeActive) {
             val intent = Intent(AnimeDownloaderService.ACTION_CANCEL_DOWNLOAD).apply {
                 putExtra(AnimeDownloaderService.EXTRA_TASK_NAME, task.getTaskName())
@@ -421,21 +731,24 @@ class DownloadQueueActivity : AppCompatActivity() {
             sendBroadcast(intent.setPackage(packageName))
         }
 
-        val novelActive = NovelServiceDataSingleton.currentTasks.toList()
+        val novelActive = synchronized(NovelServiceDataSingleton.currentTasks) {
+            NovelServiceDataSingleton.currentTasks.toList()
+        }
         for (task in novelActive) {
             val intent = Intent(NovelDownloaderService.ACTION_CANCEL_DOWNLOAD).apply {
                 putExtra(
                     NovelDownloaderService.EXTRA_TASK_KEY,
-                    ani.dantotsu.download.novel.novelTaskKey(task.title, task.chapter)
+                    ani.dantotsu.download.novel.novelTaskKey(task.title, task.chapter),
                 )
             }
             sendBroadcast(intent.setPackage(packageName))
         }
 
-        // Fresh manga survivors are drained by the service itself (the clear runner
-        // cues the processor after the transaction); the start above guarantees the
-        // command — and therefore the drain — is delivered even from a stopped state.
         startUpdating()
+    }
+
+    private companion object {
+        const val STATE_SELECTED_TYPE = "downloads_selected_type"
     }
 }
 
@@ -459,7 +772,7 @@ sealed class QueueItem {
         override val title: String get() = task.title
         override val subTitle: String get() = task.chapter
         override val type: String get() = "Manga"
-        override val uniqueId: String get() = "${task.title}_${task.chapter}"
+        override val uniqueId: String get() = DownloadsSummary.mangaProgressKey(task.title, task.chapter)
         override val mediaType: MediaType get() = MediaType.MANGA
     }
 
@@ -473,22 +786,29 @@ sealed class QueueItem {
 }
 
 sealed class DownloadsListItem {
-    data class Header(val title: String) : DownloadsListItem()
-    data class QueueItemWrapper(val queueItem: QueueItem, val progress: Int?) : DownloadsListItem()
+    data class Header(val id: String, val title: String, val meta: String) : DownloadsListItem()
+    data class QueueItemWrapper(
+        val queueItem: QueueItem,
+        val progress: Int?,
+        val coverPath: String?,
+    ) : DownloadsListItem()
     data class DownloadedMediaItem(
         val title: String,
         val type: MediaType,
         val count: Int,
-        val sizeBytes: Long
+        val sizeBytes: Long?,
+        val coverPath: String?,
     ) : DownloadsListItem()
 }
 
 class DownloadsDiffCallback : DiffUtil.ItemCallback<DownloadsListItem>() {
     override fun areItemsTheSame(oldItem: DownloadsListItem, newItem: DownloadsListItem): Boolean {
         return when {
-            oldItem is DownloadsListItem.Header && newItem is DownloadsListItem.Header -> oldItem.title == newItem.title
+            oldItem is DownloadsListItem.Header && newItem is DownloadsListItem.Header ->
+                oldItem.id == newItem.id
             oldItem is DownloadsListItem.QueueItemWrapper && newItem is DownloadsListItem.QueueItemWrapper ->
-                oldItem.queueItem.type == newItem.queueItem.type && oldItem.queueItem.uniqueId == newItem.queueItem.uniqueId
+                oldItem.queueItem.mediaType == newItem.queueItem.mediaType &&
+                    oldItem.queueItem.uniqueId == newItem.queueItem.uniqueId
             oldItem is DownloadsListItem.DownloadedMediaItem && newItem is DownloadsListItem.DownloadedMediaItem ->
                 oldItem.title == newItem.title && oldItem.type == newItem.type
             else -> false
@@ -501,9 +821,9 @@ class DownloadsDiffCallback : DiffUtil.ItemCallback<DownloadsListItem>() {
 }
 
 class DownloadsAdapter(
-    private val coverPathCache: Map<String, String?>,
     private val onCancelQueueClick: (QueueItem) -> Unit,
-    private val onDeleteMediaClick: (String, MediaType) -> Unit
+    private val onDeleteMediaClick: (String, MediaType) -> Unit,
+    private val onOpenMediaClick: (String, MediaType) -> Unit,
 ) : ListAdapter<DownloadsListItem, RecyclerView.ViewHolder>(DownloadsDiffCallback()) {
 
     companion object {
@@ -523,18 +843,9 @@ class DownloadsAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
-            TYPE_HEADER -> {
-                val view = inflater.inflate(R.layout.item_downloads_header, parent, false)
-                HeaderViewHolder(view)
-            }
-            TYPE_QUEUE -> {
-                val binding = ItemDownloadQueueBinding.inflate(inflater, parent, false)
-                QueueViewHolder(binding)
-            }
-            else -> {
-                val binding = ItemDownloadQueueBinding.inflate(inflater, parent, false)
-                MediaViewHolder(binding)
-            }
+            TYPE_HEADER -> HeaderViewHolder(ItemDownloadsHeaderBinding.inflate(inflater, parent, false))
+            TYPE_QUEUE -> QueueViewHolder(ItemDownloadQueueBinding.inflate(inflater, parent, false))
+            else -> MediaViewHolder(ItemDownloadQueueBinding.inflate(inflater, parent, false))
         }
     }
 
@@ -543,39 +854,47 @@ class DownloadsAdapter(
         when (holder) {
             is HeaderViewHolder -> {
                 val header = item as DownloadsListItem.Header
-                (holder.itemView as TextView).text = header.title
+                holder.binding.headerTitle.text = header.title
+                holder.binding.headerMeta.text = header.meta
+                holder.binding.headerMeta.isVisible = header.meta.isNotEmpty()
             }
             is QueueViewHolder -> {
                 val wrapper = item as DownloadsListItem.QueueItemWrapper
                 val queueItem = wrapper.queueItem
+                val ctx = holder.binding.root.context
+                holder.binding.itemDownloadCard.isClickable = false
+                holder.binding.itemDownloadCard.setOnClickListener(null)
                 holder.binding.itemDownloadTitle.text = queueItem.title
-                holder.binding.itemDownloadSubtitle.text = "${queueItem.subTitle} • ${queueItem.type}"
+                holder.binding.itemDownloadSubtitle.text = queueItem.subTitle
 
-                val progress = wrapper.progress
+                bindCover(holder.binding, queueItem.mediaType, wrapper.coverPath)
 
-                // Load cover image
-                val coverPath = coverPathCache[queueItem.title]
-                if (coverPath != null) {
-                    holder.binding.itemDownloadImage.loadImage(coverPath)
-                    holder.binding.itemDownloadImageCard.visibility = View.VISIBLE
-                } else {
-                    holder.binding.itemDownloadImageCard.visibility = View.GONE
+                holder.binding.itemDownloadCancel.setIconResource(R.drawable.ic_round_close_24)
+                holder.binding.itemDownloadCancel.contentDescription =
+                    ctx.getString(R.string.downloads_cancel_cd, queueItem.title)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    holder.binding.itemDownloadCancel.tooltipText = ctx.getString(R.string.cancel)
                 }
 
-                holder.binding.itemDownloadCancel.setImageResource(R.drawable.ic_circle_cancel)
-
                 if (queueItem.isActive) {
-                    holder.binding.itemDownloadProgressLayout.visibility = View.VISIBLE
+                    holder.binding.itemDownloadProgressLayout.isVisible = true
+                    holder.binding.itemDownloadQueuedLabel.isVisible = false
+                    val progress = wrapper.progress
+                    val bar = holder.binding.itemDownloadProgressBar
                     if (progress != null) {
-                        holder.binding.itemDownloadProgressBar.isIndeterminate = false
-                        holder.binding.itemDownloadProgressBar.progress = progress
+                        bar.setProgressCompat(progress, true)
                         holder.binding.itemDownloadProgressText.text = "$progress%"
                     } else {
-                        holder.binding.itemDownloadProgressBar.isIndeterminate = true
-                        holder.binding.itemDownloadProgressText.text = "0%"
+                        if (!bar.isIndeterminate) {
+                            bar.visibility = View.INVISIBLE
+                            bar.isIndeterminate = true
+                            bar.visibility = View.VISIBLE
+                        }
+                        holder.binding.itemDownloadProgressText.setText(R.string.downloads_starting)
                     }
                 } else {
-                    holder.binding.itemDownloadProgressLayout.visibility = View.GONE
+                    holder.binding.itemDownloadProgressLayout.isVisible = false
+                    holder.binding.itemDownloadQueuedLabel.isVisible = true
                 }
 
                 holder.binding.itemDownloadCancel.setOnClickListener {
@@ -584,36 +903,66 @@ class DownloadsAdapter(
             }
             is MediaViewHolder -> {
                 val media = item as DownloadsListItem.DownloadedMediaItem
+                val ctx = holder.binding.root.context
+                holder.binding.itemDownloadCard.isClickable = true
+                holder.binding.itemDownloadCard.setOnClickListener {
+                    onOpenMediaClick(media.title, media.type)
+                }
                 holder.binding.itemDownloadTitle.text = media.title
 
-                val countUnit = when (media.type) {
-                    MediaType.ANIME -> if (media.count == 1) "episode" else "episodes"
-                    else -> if (media.count == 1) "chapter" else "chapters"
+                val countText = when (media.type) {
+                    MediaType.ANIME -> ctx.resources.getQuantityString(
+                        R.plurals.downloads_episode_count,
+                        media.count,
+                        media.count,
+                    )
+                    else -> ctx.resources.getQuantityString(
+                        R.plurals.downloads_chapter_count,
+                        media.count,
+                        media.count,
+                    )
                 }
-                val countText = "${media.count} $countUnit"
-                val sizeStr = SizeFormatter.formatBytes(media.sizeBytes)
-                holder.binding.itemDownloadSubtitle.text = "$countText • $sizeStr"
-
-                // Load cover image
-                val coverPath = coverPathCache[media.title]
-                if (coverPath != null) {
-                    holder.binding.itemDownloadImage.loadImage(coverPath)
-                    holder.binding.itemDownloadImageCard.visibility = View.VISIBLE
+                holder.binding.itemDownloadSubtitle.text = if (media.sizeBytes != null) {
+                    "$countText · ${SizeFormatter.formatBytes(media.sizeBytes)}"
                 } else {
-                    holder.binding.itemDownloadImageCard.visibility = View.GONE
+                    countText
                 }
 
-                holder.binding.itemDownloadCancel.setImageResource(R.drawable.ic_round_delete_24)
+                bindCover(holder.binding, media.type, media.coverPath)
+
+                holder.binding.itemDownloadCancel.setIconResource(R.drawable.ic_round_delete_24)
+                holder.binding.itemDownloadCancel.contentDescription =
+                    ctx.getString(R.string.downloads_delete_cd, media.title)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    holder.binding.itemDownloadCancel.tooltipText = ctx.getString(R.string.delete)
+                }
                 holder.binding.itemDownloadCancel.setOnClickListener {
                     onDeleteMediaClick(media.title, media.type)
                 }
 
-                holder.binding.itemDownloadProgressLayout.visibility = View.GONE
+                holder.binding.itemDownloadProgressLayout.isVisible = false
+                holder.binding.itemDownloadQueuedLabel.isVisible = false
             }
         }
     }
 
-    class HeaderViewHolder(view: View) : RecyclerView.ViewHolder(view)
+    private fun bindCover(b: ItemDownloadQueueBinding, type: MediaType, coverPath: String?) {
+        val placeholderIcon = when (type) {
+            MediaType.ANIME -> R.drawable.ic_round_movie_filter_24
+            MediaType.MANGA -> R.drawable.ic_round_import_contacts_24
+            MediaType.NOVEL -> R.drawable.ic_round_book_24
+        }
+        b.itemDownloadPlaceholder.setImageResource(placeholderIcon)
+        if (coverPath != null) {
+            b.itemDownloadImage.isVisible = true
+            b.itemDownloadImage.loadImage(coverPath)
+        } else {
+            b.itemDownloadImage.setImageDrawable(null)
+            b.itemDownloadImage.isVisible = false
+        }
+    }
+
+    class HeaderViewHolder(val binding: ItemDownloadsHeaderBinding) : RecyclerView.ViewHolder(binding.root)
     class QueueViewHolder(val binding: ItemDownloadQueueBinding) : RecyclerView.ViewHolder(binding.root)
     class MediaViewHolder(val binding: ItemDownloadQueueBinding) : RecyclerView.ViewHolder(binding.root)
 }

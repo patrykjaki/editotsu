@@ -1,100 +1,113 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- One row in Downloads (either an in-progress queue task or a downloaded title):
+     flat M3 card, 56x80dp 12dp-rounded cover with tonal placeholder, title + meta + progress, 48dp trailing action. -->
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/itemDownloadCard"
+    style="@style/Widget.Material3.CardView.Filled"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="16dp"
-    android:layout_marginVertical="8dp"
-    android:background="@drawable/card_outline"
+    android:layout_marginVertical="4dp"
+    app:cardBackgroundColor="?attr/colorSurfaceVariant"
     app:cardCornerRadius="16dp"
     app:cardElevation="0dp"
-    app:cardBackgroundColor="?attr/colorSurfaceVariant">
+    app:strokeWidth="0dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="12dp">
+        android:paddingStart="12dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="4dp"
+        android:paddingBottom="12dp">
 
-        <!-- Cover Image Card -->
-        <androidx.cardview.widget.CardView
+        <!-- 56x80dp Cover (DESIGN.md cover-row) with tonal placeholder -->
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/itemDownloadImageCard"
-            android:layout_width="60dp"
-            android:layout_height="84dp"
-            app:cardCornerRadius="8dp"
+            style="@style/Widget.Material3.CardView.Filled"
+            android:layout_width="56dp"
+            android:layout_height="80dp"
+            app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
+            app:cardCornerRadius="12dp"
             app:cardElevation="0dp"
-            app:cardBackgroundColor="?attr/colorSurface">
+            app:strokeWidth="0dp">
+
+            <ImageView
+                android:id="@+id/itemDownloadPlaceholder"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:alpha="0.6"
+                android:importantForAccessibility="no"
+                app:srcCompat="@drawable/ic_round_movie_filter_24"
+                app:tint="?attr/colorOnSurfaceVariant" />
 
             <ImageView
                 android:id="@+id/itemDownloadImage"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:scaleType="centerCrop"
-                tools:ignore="ContentDescription" />
-        </androidx.cardview.widget.CardView>
+                android:importantForAccessibility="no"
+                android:scaleType="centerCrop" />
+        </com.google.android.material.card.MaterialCardView>
 
-        <!-- Details Container -->
+        <!-- Details & Progress -->
         <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
+            android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
-            android:orientation="vertical"
-            android:gravity="center_vertical">
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-            <RelativeLayout
+            <TextView
+                android:id="@+id/itemDownloadTitle"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content">
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="@font/poppins_semi_bold"
+                android:includeFontPadding="false"
+                android:maxLines="2"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp"
+                tools:text="Frieren: Beyond Journey's End" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_toStartOf="@id/itemDownloadCancel"
-                    android:orientation="vertical">
+            <TextView
+                android:id="@+id/itemDownloadSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:fontFamily="@font/poppins"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp"
+                tools:text="12 episodes · 1.4 GB" />
 
-                    <TextView
-                        android:id="@+id/itemDownloadTitle"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="@font/poppins_bold"
-                        android:textSize="14sp"
-                        android:textColor="?attr/colorOnSurface"
-                        android:maxLines="2"
-                        android:ellipsize="end"
-                        tools:text="Attack on Titan" />
-
-                    <TextView
-                        android:id="@+id/itemDownloadSubtitle"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:alpha="0.7"
-                        android:fontFamily="@font/poppins_family"
-                        android:textSize="12sp"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        tools:text="Episode 1 • Anime" />
-                </LinearLayout>
-
-                <ImageButton
-                    android:id="@+id/itemDownloadCancel"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:layout_alignParentEnd="true"
-                    android:layout_centerVertical="true"
-                    android:background="?android:attr/selectableItemBackgroundBorderless"
-                    android:src="@drawable/ic_circle_cancel"
-                    app:tint="?attr/colorError"
-                    tools:ignore="ContentDescription" />
-            </RelativeLayout>
+            <TextView
+                android:id="@+id/itemDownloadQueuedLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:fontFamily="@font/poppins_semi_bold"
+                android:includeFontPadding="false"
+                android:text="@string/downloads_queued"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp"
+                android:visibility="gone"
+                tools:visibility="gone" />
 
             <LinearLayout
                 android:id="@+id/itemDownloadProgressLayout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:orientation="horizontal"
                 android:gravity="center_vertical"
+                android:orientation="horizontal"
                 android:visibility="gone"
                 tools:visibility="visible">
 
@@ -103,23 +116,32 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    app:trackColor="?attr/colorSurface"
                     app:indicatorColor="?attr/colorPrimary"
-                    app:trackCornerRadius="4dp"
-                    app:trackThickness="6dp" />
+                    app:trackColor="?android:attr/colorBackground"
+                    app:trackCornerRadius="2dp"
+                    app:trackStopIndicatorSize="0dp"
+                    app:trackThickness="4dp" />
 
                 <TextView
                     android:id="@+id/itemDownloadProgressText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
-                    android:fontFamily="@font/poppins_bold"
-                    android:textSize="12sp"
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:includeFontPadding="false"
                     android:textColor="?attr/colorPrimary"
+                    android:textSize="12sp"
                     tools:text="45%" />
             </LinearLayout>
-
         </LinearLayout>
 
+        <!-- 48dp Trailing Action (Cancel queue item or Delete downloaded title) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/itemDownloadCancel"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            app:icon="@drawable/ic_round_close_24"
+            app:iconTint="?attr/colorOnSurfaceVariant" />
     </LinearLayout>
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>
