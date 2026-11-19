@@ -146,7 +146,9 @@ object ThemeQueue {
     fun episodesLabel(episodes: String?): String? {
         val text = episodes?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val single = text.all { it.isDigit() }
-        return (if (single) "Ep\u00A0" else "Eps\u00A0") + text.replace("-", "–")
+        // "1-" is an open range (still in use): "Eps 1+" instead of a dangling dash.
+        val range = if (text.endsWith("-")) text.dropLast(1).trimEnd() + "+" else text
+        return (if (single) "Ep\u00A0" else "Eps\u00A0") + range.replace("-", "–")
     }
 
     /** What to put in the player queue when [tapped] is opened: visible themes plus the tapped one, in order. */
