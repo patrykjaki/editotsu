@@ -81,7 +81,10 @@ class PlaybackCoordinator(
     }
 
     fun togglePlayPause() {
-        if (userPlayIntent) {
+        // paused by a headphone unplug or audio focus still has userPlayIntent set:
+        // the tap should resume, not "pause" an already paused player
+        val playing = if (playbackTarget == PlaybackTarget.LOCAL) shouldPlayLocally else userPlayIntent
+        if (playing) {
             pause()
         } else {
             play()

@@ -21,8 +21,10 @@ object MpvEventMapper {
         currentPositionMs: Long
     ): Boolean {
         if (!isLoaded || firstFrameShown || pausedForCache) return false
-        if (!coreIdle && !isPaused) return true
+        // A resume seek issued on load is not "started" yet, even if mpv reports it busy:
+        // PLAYBACK_RESTART after the seek marks the first frame.
         if (seekPending) return false
+        if (!coreIdle && !isPaused) return true
         val baseline = initialLoadedPositionMs ?: return false
         return currentPositionMs - baseline > PLAYBACK_STARTED_ADVANCE_MS
     }

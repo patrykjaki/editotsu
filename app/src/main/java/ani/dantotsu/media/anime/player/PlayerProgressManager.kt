@@ -132,7 +132,8 @@ class PlayerProgressManager(
         val episodeEnd = progress.isComplete(PrefManager.getVal(PrefName.WatchPercentage), episodeLength, forceComplete)
         val episode0 = currentEpisodeIndex == 0 && PrefManager.getVal<Boolean>(PrefName.ChapterZeroPlayer)
 
-        if (!incognito && (episodeEnd || episode0) && Anilist.userid != null) {
+        if (!incognito && (episodeEnd || episode0) &&
+            (Anilist.userid != null || PrefManager.getVal<Boolean>(PrefName.RescueMode))) {
             val saveProgress = if (PrefManager.getVal(PrefName.AskIndividualPlayer)) {
                 PrefManager.getCustomVal("${m.id}_save_progress", true)
             } else true

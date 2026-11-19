@@ -185,6 +185,20 @@ class MpvEventMapperTest {
                 currentPositionMs = 30_000L
             )
         )
+
+        // a busy core does not count as started while the resume seek is pending
+        assertFalse(
+            MpvEventMapper.shouldMarkPlaybackStarted(
+                isLoaded = true,
+                firstFrameShown = false,
+                coreIdle = false,
+                isPaused = false,
+                pausedForCache = false,
+                seekPending = true,
+                initialLoadedPositionMs = 0L,
+                currentPositionMs = 0L
+            )
+        )
     }
 
     @Test

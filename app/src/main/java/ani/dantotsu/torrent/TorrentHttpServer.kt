@@ -68,6 +68,9 @@ class TorrentHttpServer(
             }, "TorrentHttpServer-Acceptor").start()
             Logger.log("TorrentHttpServer: Started on 127.0.0.1:$port")
         } catch (e: Exception) {
+            // let the next start() try again instead of staying "running" with no socket
+            isRunning = false
+            serverSocket = null
             Logger.log("TorrentHttpServer: Failed to start: ${e.message}")
         }
     }

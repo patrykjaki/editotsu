@@ -1022,7 +1022,7 @@ class SubtitleDialogFragment : BottomSheetDialogFragment() {
                     itemBinding.subtitleCardRoot.setOnClickListener {
                         PrefManager.setCustomVal(legacySubLangKey(mediaId, episode.number), uniqueKey)
                         exoActivity?.subtitleManager?.clearOnlineSubtitle(mediaId, episode.number)
-                        exoActivity?.reApplyLocalSubtitle(item.subtitle.file.url)
+                        exoActivity?.subtitleManager?.setActiveServerSubtitle(item.subtitle, explicitUserAction = true)
                         updateActiveSubtitleBadge()
                         dismiss()
                     }

@@ -654,11 +654,12 @@ class AnilistQueries {
                 }
             }
 
-            if (anilistActivities.isEmpty() && Anilist.token != null) {
+            val uid = Anilist.userid
+            if (anilistActivities.isEmpty() && Anilist.token != null && uid != null) {
                 anilistActivities.add(
                     0,
                     User(
-                        Anilist.userid!!,
+                        uid,
                         Anilist.username ?: "",
                         Anilist.avatar,
                         Anilist.bg,
@@ -1059,9 +1060,32 @@ class AnilistQueries {
         anime: Boolean,
         userId: Int,
         sortOrder: String? = null
+    ): MutableMap<String, ArrayList<Media>> =
+        buildMediaLists(mediaListCollection(anime, userId), anime, userId, sortOrder)
+
+    /**
+     * Like [getMediaLists], but null when AniList didn't return the list (rate limit, timeout,
+     * expired login). List sync needs this: an empty result would read as "nothing is on AniList".
+     */
+    suspend fun getMediaListsOrNull(
+        anime: Boolean,
+        userId: Int,
+        sortOrder: String? = null
+    ): MutableMap<String, ArrayList<Media>>? {
+        val response = mediaListCollection(anime, userId)
+        if (response?.data?.mediaListCollection?.lists == null) return null
+        return buildMediaLists(response, anime, userId, sortOrder)
+    }
+
+    private suspend fun mediaListCollection(anime: Boolean, userId: Int) =
+        executeQuery<Query.MediaListCollection>("""{ MediaListCollection(userId: $userId, type: ${if (anime) "ANIME" else "MANGA"}) { lists { name isCustomList entries { status progress progressVolumes private score(format:POINT_100) updatedAt startedAt{year month day} completedAt{year month day} media { id idMal isAdult type status chapters volumes episodes nextAiringEpisode {episode} bannerImage genres tags { name isMediaSpoiler } meanScore isFavourite format coverImage{large} startDate{year month day} title {english romaji userPreferred } } } } user { id mediaListOptions { rowOrder animeList { sectionOrder } mangaList { sectionOrder } } } } }""")
+
+    private suspend fun buildMediaLists(
+        response: Query.MediaListCollection?,
+        anime: Boolean,
+        userId: Int,
+        sortOrder: String?
     ): MutableMap<String, ArrayList<Media>> {
-        val response =
-            executeQuery<Query.MediaListCollection>("""{ MediaListCollection(userId: $userId, type: ${if (anime) "ANIME" else "MANGA"}) { lists { name isCustomList entries { status progress progressVolumes private score(format:POINT_100) updatedAt startedAt{year month day} completedAt{year month day} media { id idMal isAdult type status chapters volumes episodes nextAiringEpisode {episode} bannerImage genres tags { name isMediaSpoiler } meanScore isFavourite format coverImage{large} startDate{year month day} title {english romaji userPreferred } } } } user { id mediaListOptions { rowOrder animeList { sectionOrder } mangaList { sectionOrder } } } } }""")
         val sorted = mutableMapOf<String, ArrayList<Media>>()
         val unsorted = mutableMapOf<String, ArrayList<Media>>()
         val all = arrayListOf<Media>()

@@ -109,19 +109,19 @@ class MediaListDialogSmallFragment : BottomSheetDialogFragment() {
 
         var total: Int? = null
         binding.mediaListProgress.setText(if (media.userProgress != null) media.userProgress.toString() else "")
-        if (media.anime != null) if (media.anime!!.totalEpisodes != null) {
+        if (media.anime != null) { if (media.anime!!.totalEpisodes != null) {
             total = media.anime!!.totalEpisodes!!;binding.mediaListProgress.filters =
                 arrayOf(
                     InputFilterMinMax(0.0, total.toDouble(), binding.mediaListStatus),
                     LengthFilter(total.toString().length)
                 )
-        } else if (media.manga != null) if (media.manga!!.totalChapters != null) {
+        } } else if (media.manga != null) { if (media.manga!!.totalChapters != null) {
             total = media.manga!!.totalChapters!!;binding.mediaListProgress.filters =
                 arrayOf(
                     InputFilterMinMax(0.0, total.toDouble(), binding.mediaListStatus),
                     LengthFilter(total.toString().length)
                 )
-        }
+        } }
         binding.mediaListProgressLayout.suffixText = " / ${total ?: '?'}"
         binding.mediaListProgressLayout.suffixTextView.updateLayoutParams {
             height = ViewGroup.LayoutParams.MATCH_PARENT

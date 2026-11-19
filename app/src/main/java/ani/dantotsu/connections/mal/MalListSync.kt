@@ -103,7 +103,7 @@ object MalListSync {
         val userId = Anilist.userid
             ?: PrefManager.getVal<String>(PrefName.AnilistUserId).toIntOrNull()
             ?: return null
-        val lists = runCatching { Anilist.query.getMediaLists(isAnime, userId) }.getOrNull() ?: return null
+        val lists = runCatching { Anilist.query.getMediaListsOrNull(isAnime, userId) }.getOrNull() ?: return null
         return lists.filterKeys { it != "Favourites" }.values.flatten().mapNotNull { m ->
             val id = m.idMAL ?: return@mapNotNull null
             val status = m.userStatus ?: return@mapNotNull null
@@ -157,7 +157,11 @@ object MalListSync {
                 ?: return false
             val ok = runCatching {
                 Anilist.mutation.editList(
-                    id, progress = change.progress, score = m.score * 10, status = m.status,
+                    // MAL scores are whole points: sending one back would round a finer AniList
+                    // score (85 -> 80) whenever only progress or status changed.
+                    id, progress = change.progress,
+                    score = (m.score * 10).takeIf { change.target == null || change.fields.any { it.what == What.SCORE } },
+                    status = m.status,
                     startedAt = m.start.takeIf { !it.isEmpty() }, completedAt = m.end.takeIf { !it.isEmpty() },
                 )
             }.getOrDefault(false)

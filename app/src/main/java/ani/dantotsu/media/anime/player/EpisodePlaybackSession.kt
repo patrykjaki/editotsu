@@ -25,7 +25,10 @@ class EpisodePlaybackSession {
 
     fun savePosition(save: (episodeKey: String, positionMs: Long) -> Unit) {
         val active = binding ?: return
-        save(active.episodeKey, active.engine.positionMs)
+        // 0 while still loading (the engine resets position on load): keep the saved resume point
+        val position = active.engine.positionMs
+        if (position <= 0L) return
+        save(active.episodeKey, position)
     }
 
     fun progress(selectedKey: String?): EpisodePlaybackProgress? {

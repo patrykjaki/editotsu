@@ -254,7 +254,9 @@ fun syncPendingProgressUpdates() {
                                 repeat = update.rewatch,
                                 notes = update.notes,
                                 status = update.status,
-                                private = update.isPrivate,
+                                // false is also the field's default for queued player/reader progress,
+                                // which knows nothing about privacy: only ever send "make private".
+                                private = update.isPrivate.takeIf { it },
                                 startedAt = update.startDate,
                                 completedAt = update.endDate,
                                 customList = update.customLists,

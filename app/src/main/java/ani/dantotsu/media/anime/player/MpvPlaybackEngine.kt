@@ -874,6 +874,8 @@ class MpvPlaybackEngine(
             }
             loadIssuedAtMs = android.os.SystemClock.elapsedRealtime()
             seekIssuedAtMs = 0L
+            // core-idle from the previous file must not count as playback of this one.
+            coreIdleInternal = true
             autoUpscaler.onNewFile(loadIssuedAtMs)
             ani.dantotsu.util.Logger.log("MPVSTEP 42 after loadfile command")
 

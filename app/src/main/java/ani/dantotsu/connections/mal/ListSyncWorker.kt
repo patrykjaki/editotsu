@@ -30,7 +30,8 @@ class ListSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineW
             val changes = MalListSync.load(isAnime, main) ?: return Result.retry()
             for (change in changes) {
                 if (written >= MAX_WRITES) return Result.success()
-                MalListSync.write(change, main)
+                // a failed write is usually a rate limit, lapsed login or no network: try later
+                if (!MalListSync.write(change, main)) return Result.retry()
                 written++
             }
         }

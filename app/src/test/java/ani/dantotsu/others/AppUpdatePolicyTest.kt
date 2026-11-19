@@ -222,11 +222,36 @@ class AppUpdatePolicyTest {
     @Test
     fun betaAppGetsInPlaceUpdateFromPrereleases() {
         val releases = listOf(
-            release("v0.9.0-rc01", true, "2026-12-01T10:00:00Z"),
+            release("v0.9.0-beta03", true, "2026-12-01T10:00:00Z"),
             release("v0.8.0-beta02", true, "2026-11-01T10:00:00Z")
         )
         val d = AppUpdatePolicy.decide(releases, "0.8.0-beta02", BETA_ID)
-        assertEquals(AppUpdatePolicy.Decision.Update(releases[0], "0.9.0-rc01"), d)
+        assertEquals(AppUpdatePolicy.Decision.Update(releases[0], "0.9.0-beta03"), d)
+    }
+
+    @Test
+    fun betaAppSeesReleaseCandidateAsNotice() {
+        // rc ships as ani.editotsu: never an in-place update for the beta app
+        val releases = listOf(
+            release("v0.9.0-rc01", true, "2026-12-10T10:00:00Z"),
+            release("v0.9.0-beta03", true, "2026-12-01T10:00:00Z")
+        )
+        assertEquals(
+            AppUpdatePolicy.Decision.StableNotice(releases[0], "0.9.0-rc01"),
+            AppUpdatePolicy.decide(releases, "0.9.0-beta02", BETA_ID)
+        )
+        assertEquals(
+            AppUpdatePolicy.Decision.StableNotice(releases[0], "0.9.0-rc01"),
+            AppUpdatePolicy.decide(releases, "0.9.0-beta03", BETA_ID)
+        )
+        // a newer beta still wins over an older rc
+        val later = releases + release("v0.10.0-beta01", true, "2027-01-01T10:00:00Z")
+        assertEquals(
+            AppUpdatePolicy.Decision.Update(later[2], "0.10.0-beta01"),
+            AppUpdatePolicy.decide(later, "0.9.0-beta03", BETA_ID)
+        )
+        // the stable app never sees an rc
+        assertEquals(AppUpdatePolicy.Decision.None, AppUpdatePolicy.decide(releases, "0.8.0", "ani.editotsu"))
     }
 
     @Test

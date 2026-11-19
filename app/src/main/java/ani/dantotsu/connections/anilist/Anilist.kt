@@ -286,6 +286,9 @@ object Anilist {
 
     fun getSavedToken(): Boolean {
         token = PrefManager.getVal(PrefName.AnilistToken, null as String?)
+        if (!token.isNullOrEmpty() && userid == null) {
+            userid = PrefManager.getNullableVal<String>(PrefName.AnilistUserId, null)?.toIntOrNull()
+        }
         return !token.isNullOrEmpty()
     }
 
@@ -329,7 +332,7 @@ object Anilist {
             val parts = t.split(".")
             if (parts.size != 3) return null
             val payload = android.util.Base64.decode(
-                parts[1].replace('-', '+').replace('_', '/'),
+                parts[1],
                 android.util.Base64.NO_PADDING or android.util.Base64.URL_SAFE
             )
             val json = Json.parseToJsonElement(String(payload)).jsonObject

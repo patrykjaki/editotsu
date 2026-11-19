@@ -94,6 +94,10 @@ jobs:
               sys.exit("editotsu.version '%s' is not MAJOR.MINOR.PATCH[-alphaNN|-betaNN|-rcNN]" % v)
           major, minor, patch, stage, nn = m.groups()
           n = int(nn or 0)
+          if stage == 'rc':
+              # Updaters since 0.9.0-beta03 treat rc tags as the stable package (ani.editotsu)
+              # and show beta users the move notice. Build rc as ani.editotsu before allowing it.
+              sys.exit("rc releases must ship as ani.editotsu; this workflow still builds them as .beta")
           s = {'alpha': n, 'beta': 20 + n, 'rc': 50 + n}.get(stage, 99)
           code = 1_000_000 + int(major) * 10_000_000 + int(minor) * 100_000 + int(patch) * 1_000 + s
           pre = stage is not None

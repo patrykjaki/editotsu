@@ -70,10 +70,22 @@ class TorrentServerService : Service() {
         }
     }
 
+    /** Android 15+ ends dataSync services after their daily limit; not stopping crashes the app. */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Logger.log("TorrentServerService: foreground time limit reached (type $fgsType), stopping")
+        try {
+            if (::manager.isInitialized) manager.stop()
+            applicationContext.cancelNotification(ID_TORRENT_SERVER)
+        } catch (e: Exception) {
+            Logger.log(e)
+        }
+        stopSelf()
+    }
+
     override fun onTaskRemoved(rootIntent: Intent?) {
         Logger.log("TorrentServerService: App swiped away from recents. Stopping server.")
         try {
-            manager.stop()
+            if (::manager.isInitialized) manager.stop()
             applicationContext.cancelNotification(ID_TORRENT_SERVER)
         } catch (e: Exception) {
             e.printStackTrace()

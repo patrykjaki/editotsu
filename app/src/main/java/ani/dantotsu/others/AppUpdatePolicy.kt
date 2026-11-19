@@ -75,6 +75,13 @@ object AppUpdatePolicy {
     }
 
     /**
+     * True for releases that ship as the stable package (`ani.editotsu`): every non-prerelease,
+     * and pre-releases tagged `-rcNN` (release candidates go through the beta -> stable move).
+     */
+    fun isStablePackageRelease(release: ReleaseInfo): Boolean =
+        !release.prerelease || (parseVersion(release.tag)?.qualifierRank ?: 0) >= 2
+
+    /**
      * Beta application identity check: alpha/beta build types share the
      * `.beta` applicationId suffix and follow the prerelease channel.
      */
@@ -108,10 +115,17 @@ object AppUpdatePolicy {
         applicationId: String
     ): Decision {
         val beta = isBetaApplication(applicationId)
-        val update = selectRelease(releases, wantPrerelease = beta)
-            ?.takeIf { isUpdateAvailable(currentVersion, versionOf(it)) }
+        // rc and stable tags ship as the stable package, so a beta app never installs them in place.
+        val update = selectRelease(
+            if (beta) releases.filterNot { isStablePackageRelease(it) } else releases,
+            wantPrerelease = beta
+        )?.takeIf { isUpdateAvailable(currentVersion, versionOf(it)) }
         if (beta) {
-            val stable = selectRelease(releases, wantPrerelease = false)
+            val stablePackage = releases.filter { isStablePackageRelease(it) }
+            val stable = listOfNotNull(
+                selectRelease(stablePackage, wantPrerelease = false),
+                selectRelease(stablePackage, wantPrerelease = true)
+            ).maxWithOrNull(compareBy(nullsFirst()) { parseVersion(it.tag) })
                 ?.takeIf { isUpdateAvailable(currentVersion, versionOf(it)) }
             // Prefer the in-place update unless the stable release is at least as new.
             if (stable != null && (update == null || !isUpdateAvailable(versionOf(stable), versionOf(update)))) {

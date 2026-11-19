@@ -1379,7 +1379,7 @@ class MangaReaderActivity : AppCompatActivity() {
                 true
             ) else false
         val action = chapterProgressSync(
-            loggedIn = Anilist.userid != null,
+            loggedIn = Anilist.userid != null || PrefManager.getVal<Boolean>(PrefName.RescueMode),
             askIndividually = showProgressDialog,
             incognito = PrefManager.getVal(PrefName.Incognito),
             saveProgress = PrefManager.getCustomVal("${media.id}_save_progress", true),
