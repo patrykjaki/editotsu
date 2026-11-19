@@ -486,6 +486,89 @@ class TorrentServerManager(private val context: Context) {
         }
     }
 
+    /**
+     * Read-only snapshot of how far the contiguous downloaded run extends in [fileIndex]
+     * starting from [fromFileOffsetBytes] (bytes from the start of the file).
+     *
+     * Holds the per-hash handle lock briefly to read metadata and the piece bitfield;
+     * returns null when the session isn't running, the torrent/metadata isn't ready, or
+     * inputs are out of range. Call off the main thread.
+     */
+    fun contiguousDownloadedSpan(
+        hash: String,
+        fileIndex: Int,
+        fromFileOffsetBytes: Long,
+    ): FileDownloadSpan? {
+        if (fromFileOffsetBytes < 0L) return null
+        return withFilePieces(hash, fileIndex) { fileOffset, fileLength, pieceLength, havePiece ->
+            val playheadByte = fileOffset + fromFileOffsetBytes.coerceAtMost(fileLength)
+            val endByte = TorrentBufferBand.contiguousEndByte(
+                fileOffset = fileOffset,
+                fileLength = fileLength,
+                pieceLength = pieceLength,
+                playheadByte = playheadByte,
+                havePiece = havePiece,
+            ) ?: return@withFilePieces null
+            FileDownloadSpan(
+                fileOffset = fileOffset,
+                fileLength = fileLength,
+                contiguousEndByte = endByte,
+            )
+        }
+    }
+
+    /**
+     * Read-only estimate of how far ahead of [positionMs] the torrent has downloaded
+     * contiguously in [fileIndex], mapped linearly onto [durationMs].
+     *
+     * Call off the main thread; returns null when the torrent or piece bitfield is unknown.
+     */
+    fun contiguousBufferedPositionMs(
+        hash: String,
+        fileIndex: Int,
+        positionMs: Long,
+        durationMs: Long,
+    ): Long? {
+        if (positionMs < 0L || durationMs <= 0L) return null
+        return withFilePieces(hash, fileIndex) { fileOffset, fileLength, pieceLength, havePiece ->
+            TorrentBufferBand.bufferedEndMs(
+                fileOffset = fileOffset,
+                fileLength = fileLength,
+                pieceLength = pieceLength,
+                positionMs = positionMs,
+                durationMs = durationMs,
+                havePiece = havePiece,
+            )
+        }
+    }
+
+    private fun <T> withFilePieces(
+        hash: String,
+        fileIndex: Int,
+        block: (fileOffset: Long, fileLength: Long, pieceLength: Long, havePiece: (Int) -> Boolean) -> T?,
+    ): T? {
+        if (!sessionManager.isRunning) return null
+        val normalized = hash.uppercase()
+        return try {
+            val handle = sessionManager.find(Sha1Hash.parseHex(normalized)) ?: return null
+            synchronized(getHandleLock(normalized)) {
+                if (!handle.isValid) return null
+                val torrentInfo = handle.torrentFile() ?: return null
+                val fileStorage = torrentInfo.files()
+                if (fileIndex < 0 || fileIndex >= fileStorage.numFiles()) return null
+                val fileOffset = fileStorage.fileOffset(fileIndex)
+                val fileLength = fileStorage.fileSize(fileIndex)
+                val pieceLength = torrentInfo.pieceLength().toLong()
+                val pieces = handle.status().pieces() ?: return null
+                val piecesSize = pieces.size()
+                if (fileLength <= 0L || pieceLength <= 0L || piecesSize <= 0) return null
+                block(fileOffset, fileLength, pieceLength) { p -> p in 0 until piecesSize && pieces.getBit(p) }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun getDeadlineRegistry(hash: String): TorrentDeadlineRegistry? {
         val normalized = hash.uppercase()
         registries[normalized]?.let { return it }

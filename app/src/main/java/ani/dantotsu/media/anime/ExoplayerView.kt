@@ -125,6 +125,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -254,6 +255,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     // so the end handler falls back to the last values the episode actually reached.
     private var lastPositionMs = 0L
     private var lastDurationMs = 0L
+    // Torrent read-ahead band: only active for PlaybackSourceClass.TORRENT_LOCALHOST.
+    private var activeTorrentLink: TorrentRelayLink? = null
+    private var lastTorrentBandMs = 0L
+    private var lastTorrentBandPosMs = 0L
+    private var torrentBandJob: Job? = null
     private var themeAnime = ""
     /** Every attempt for the current theme (saved copy, audio, video, other videos). */
     private var themePlan: List<ThemeQueue.Attempt> = emptyList()
@@ -447,6 +453,10 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             }
             override fun onScrubStop(timeBar: TimeBar, position: Long, canceled: Boolean) {
                 if (!canceled) {
+                    if (activeTorrentLink != null) {
+                        lastTorrentBandMs = 0L
+                        lastTorrentBandPosMs = position
+                    }
                     playerManager.playbackEngine?.seekTo(position)
                     // Use the scrub target directly — seekTo is async on mpv, so
                     // playbackEngine.positionMs may still return the pre-seek value.
@@ -1240,6 +1250,13 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         subtitleManager.notePlaybackOrigin(playbackOrigin)
         subtitleManager.applySubtitlePreferences(playbackOrigin)
         engine.loadMedia(request)
+        startTorrentBandPolling(
+            if (request.sourceClass == PlaybackSourceClass.TORRENT_LOCALHOST) {
+                TorrentRelayLink.parse(request.uri)
+            } else {
+                null
+            }
+        )
 
         // While casting, the new episode goes to the TV and the phone stays paused.
         val sentToCast = castManager.updateCurrentMedia(
@@ -1283,6 +1300,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     private fun releasePlayer() {
+        stopTorrentBandPolling()
         playerManager.playbackEngine?.let { engine ->
             isPlayerPlaying = engine.isPlaying
             playbackPosition = engine.positionMs
@@ -1379,8 +1397,19 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         if (durationMs > 0L) lastDurationMs = durationMs
         timeline.setPosition(positionMs)
         timeline.setDuration(durationMs)
-        // The loaded part of the bar: what the engine has read ahead of the playhead.
-        timeline.setBufferedPosition(playerManager.playbackEngine?.bufferedPositionMs ?: positionMs)
+        // The loaded part of the bar: what the engine has read ahead of the playhead,
+        // or the contiguous torrent pieces downloaded ahead of it when streaming a torrent.
+        val engineBuffered = playerManager.playbackEngine?.bufferedPositionMs ?: positionMs
+        val bufferedMs = if (activeTorrentLink != null) {
+            if (positionMs < lastTorrentBandPosMs - 2_000L) {
+                lastTorrentBandMs = 0L
+                lastTorrentBandPosMs = positionMs
+            }
+            maxOf(engineBuffered, lastTorrentBandMs)
+        } else {
+            engineBuffered
+        }
+        timeline.setBufferedPosition(bufferedMs)
         exoPositionText.text = formatTime(positionMs)
         exoDurationText.text = formatTime(durationMs)
         // Discontinuity-based Discord re-publish: only fires on real seeks, not during normal playback.
@@ -1389,6 +1418,50 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             discordManager.updatePresence(media, episode, positionMs, durationMs, true)
         }
         if (!themeMode) updateNowPlaying(positionMs)
+    }
+
+    private fun stopTorrentBandPolling() {
+        torrentBandJob?.cancel()
+        torrentBandJob = null
+        activeTorrentLink = null
+        lastTorrentBandMs = 0L
+        lastTorrentBandPosMs = 0L
+    }
+
+    private fun startTorrentBandPolling(link: TorrentRelayLink?) {
+        stopTorrentBandPolling()
+        activeTorrentLink = link
+        if (link == null) return
+        val torrentManager = Injekt.get<ani.dantotsu.torrent.TorrentServerManager>()
+        torrentBandJob = lifecycleScope.launch {
+            while (isActive) {
+                if (playerView.isControllerFullyVisible &&
+                    lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+                ) {
+                    val engine = playerManager.playbackEngine
+                    val posMs = engine?.positionMs ?: lastPositionMs
+                    val durMs = engine?.durationMs?.takeIf { it > 0L } ?: lastDurationMs
+                    if (durMs > 0L && posMs >= 0L) {
+                        val bandMs = withContext(Dispatchers.IO) {
+                            torrentManager.contiguousBufferedPositionMs(
+                                hash = link.hash,
+                                fileIndex = link.index,
+                                positionMs = posMs,
+                                durationMs = durMs,
+                            )
+                        }
+                        val currentPos = playerManager.playbackEngine?.positionMs ?: lastPositionMs
+                        if (activeTorrentLink == link && bandMs != null && kotlin.math.abs(currentPos - posMs) < 5_000L) {
+                            lastTorrentBandMs = bandMs
+                            lastTorrentBandPosMs = posMs
+                            val engineBuffered = playerManager.playbackEngine?.bufferedPositionMs ?: currentPos
+                            timeline.setBufferedPosition(maxOf(engineBuffered, bandMs))
+                        }
+                    }
+                }
+                delay(1_000L)
+            }
+        }
     }
 
     /** Looks up the show's themes (cache first) for the now-playing chip; no lookup offline. */
@@ -2246,6 +2319,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
         themeJob?.cancel()
         themeRadioJob?.cancel()
+        stopTorrentBandPolling()
         if (themeMode) {
             AnimePlayerService.stop(this)
             if (this::playerManager.isInitialized && playerManager.isInitialized) playerManager.releasePlayer()
