@@ -1,10 +1,12 @@
 package ani.dantotsu.media
 
 import android.content.Intent
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.R
@@ -25,7 +27,11 @@ class GenreAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): GenreViewHolder {
         val binding = ItemGenreBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        if (big) binding.genreCard.updateLayoutParams { height = 72f.px }
+        if (big) {
+            binding.genreCard.updateLayoutParams { height = 72f.px }
+            binding.genreAccent.isVisible = true
+            binding.genreTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        }
         return GenreViewHolder(binding)
     }
 

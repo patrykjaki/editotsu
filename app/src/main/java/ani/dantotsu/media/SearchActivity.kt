@@ -1,6 +1,5 @@
 package ani.dantotsu.media
 
-import ani.dantotsu.themes.followThemeStatusBarIcons
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.Parcelable
@@ -14,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.AniMangaSearchResults
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.AnilistSearch
@@ -31,13 +31,15 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
+import ani.dantotsu.themes.followThemeStatusBarIcons
+import com.google.android.material.color.MaterialColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class SearchActivity : AppCompatActivity() {
-    private lateinit var binding: ActivitySearchBinding
+    internal lateinit var binding: ActivitySearchBinding
     private val scope = lifecycleScope
     val model: AnilistSearch by viewModels()
     private val genresModel: ani.dantotsu.connections.anilist.GenresViewModel by viewModels()
@@ -55,6 +57,7 @@ class SearchActivity : AppCompatActivity() {
     private lateinit var progressAdapter: ProgressAdapter
     private lateinit var concatAdapter: ConcatAdapter
     private lateinit var headerAdaptor: HeaderInterface
+    private var resultsHeaderAdapter: RecyclerView.Adapter<*>? = null
 
     lateinit var aniMangaResult: AniMangaSearchResults
     lateinit var characterResult: CharacterSearchResults
@@ -63,6 +66,13 @@ class SearchActivity : AppCompatActivity() {
     lateinit var userResult: UserSearchResults
 
     lateinit var updateChips: (() -> Unit)
+
+    private enum class UiState { IDLE, LOADING, RESULTS, EMPTY, ERROR }
+
+    private var uiState: UiState = UiState.IDLE
+    private var topBarScrolled: Boolean = false
+    private var searchInFlight: Boolean = false
+    private var loadingNextPage: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,10 +84,9 @@ class SearchActivity : AppCompatActivity() {
         initActivity(this)
         screenWidth = resources.displayMetrics.run { widthPixels / density }
 
-        binding.searchRecyclerView.updatePaddingRelative(
-            top = statusBarHeight,
-            bottom = navBarHeight + 80f.px
-        )
+        binding.searchTopBar.updatePaddingRelative(top = statusBarHeight)
+        binding.searchRecyclerView.updatePaddingRelative(bottom = navBarHeight + 80f.px)
+        binding.searchIdleScroll.updatePaddingRelative(bottom = navBarHeight + 32f.px)
 
         val notSet = model.notSet
         searchType = SearchType.fromString(intent.getStringExtra("type") ?: "ANIME")
@@ -186,14 +195,17 @@ class SearchActivity : AppCompatActivity() {
         } else {
             SupportingSearchAdapter(this, searchType)
         }
+        headerAdaptor.bind()
+        resultsHeaderAdapter = headerAdaptor.resultsHeaderAdapter()
 
-        val gridSize = (screenWidth / 120f).toInt()
+        val gridSize = (screenWidth / 120f).toInt().coerceAtLeast(2)
         val gridLayoutManager = GridLayoutManager(this, gridSize)
         gridLayoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
             override fun getSpanSize(position: Int): Int {
-                return when (position) {
-                    0 -> gridSize
-                    concatAdapter.itemCount - 1 -> gridSize
+                val hasHeader = resultsHeaderAdapter != null
+                return when {
+                    hasHeader && position == 0 -> gridSize
+                    position == concatAdapter.itemCount - 1 -> gridSize
                     else -> when (style) {
                         0 -> 1
                         else -> gridSize
@@ -202,38 +214,55 @@ class SearchActivity : AppCompatActivity() {
             }
         }
 
-        concatAdapter = when (searchType) {
-            SearchType.ANIME, SearchType.MANGA -> {
-                ConcatAdapter(headerAdaptor, mediaAdaptor, progressAdapter)
-            }
-
-            SearchType.CHARACTER -> {
-                ConcatAdapter(headerAdaptor, characterAdaptor, progressAdapter)
-            }
-
-            SearchType.STUDIO -> {
-                ConcatAdapter(headerAdaptor, studioAdaptor, progressAdapter)
-            }
-
-            SearchType.STAFF -> {
-                ConcatAdapter(headerAdaptor, staffAdaptor, progressAdapter)
-            }
-
-            SearchType.USER -> {
-                ConcatAdapter(headerAdaptor, usersAdapter, progressAdapter)
-            }
+        val contentAdapter: RecyclerView.Adapter<*> = when (searchType) {
+            SearchType.ANIME, SearchType.MANGA -> mediaAdaptor
+            SearchType.CHARACTER -> characterAdaptor
+            SearchType.STUDIO -> studioAdaptor
+            SearchType.STAFF -> staffAdaptor
+            SearchType.USER -> usersAdapter
         }
+        concatAdapter = resultsHeaderAdapter?.let {
+            ConcatAdapter(it, contentAdapter, progressAdapter)
+        } ?: ConcatAdapter(contentAdapter, progressAdapter)
 
         binding.searchRecyclerView.layoutManager = gridLayoutManager
         binding.searchRecyclerView.adapter = concatAdapter
+        syncSkeletonMode()
+
+        binding.searchIdleScroll.setOnScrollChangeListener(
+            androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+                if (uiState == UiState.IDLE) {
+                    updateTopBarSurface(scrollY > 0)
+                    if (scrollY > 16 && binding.searchBarText.hasFocus()) {
+                        headerAdaptor.hideKeyboard(this)
+                    }
+                }
+            }
+        )
 
         binding.searchRecyclerView.addOnScrollListener(object :
             RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING && binding.searchBarText.hasFocus()) {
+                    headerAdaptor.hideKeyboard(this@SearchActivity)
+                }
+            }
+
             override fun onScrolled(v: RecyclerView, dx: Int, dy: Int) {
+                if (uiState == UiState.RESULTS) {
+                    updateTopBarSurface(v.canScrollVertically(-1))
+                }
                 if (!v.canScrollVertically(1)) {
                     if (model.hasNextPage(searchType) && model.resultsIsNotEmpty(searchType) && !loading) {
+                        loading = true
+                        loadingNextPage = true
+                        progressAdapter.bar?.isVisible = true
                         scope.launch(Dispatchers.IO) {
-                            model.loadNextPage(searchType)
+                            try {
+                                model.loadNextPage(searchType)
+                            } finally {
+                                loading = false
+                            }
                         }
                     }
                 }
@@ -244,116 +273,226 @@ class SearchActivity : AppCompatActivity() {
         when (searchType) {
             SearchType.ANIME, SearchType.MANGA -> {
                 model.getSearch<AniMangaSearchResults>(searchType).observe(this) {
-                    if (it != null) {
-                        model.aniMangaSearchResults.apply {
-                            onList = it.onList
-                            isAdult = it.isAdult
-                            perPage = it.perPage
-                            search = it.search
-                            sort = it.sort
-                            genres = it.genres
-                            excludedGenres = it.excludedGenres
-                            excludedTags = it.excludedTags
-                            tags = it.tags
-                            season = it.season
-                            startYear = it.startYear
-                            seasonYear = it.seasonYear
-                            status = it.status
-                            source = it.source
-                            format = it.format
-                            countryOfOrigin = it.countryOfOrigin
-                            page = it.page
-                            hasNextPage = it.hasNextPage
-                        }
+                    if (it == null) {
+                        handleNullEmission()
+                        return@observe
+                    }
+                    if (uiState == UiState.IDLE) return@observe
+                    model.aniMangaSearchResults.apply {
+                        onList = it.onList
+                        isAdult = it.isAdult
+                        perPage = it.perPage
+                        search = it.search
+                        sort = it.sort
+                        genres = it.genres
+                        excludedGenres = it.excludedGenres
+                        excludedTags = it.excludedTags
+                        tags = it.tags
+                        season = it.season
+                        startYear = it.startYear
+                        seasonYear = it.seasonYear
+                        status = it.status
+                        source = it.source
+                        format = it.format
+                        countryOfOrigin = it.countryOfOrigin
+                        page = it.page
+                        hasNextPage = it.hasNextPage
+                    }
 
-                        val prev = model.aniMangaSearchResults.results.size
-                        val newResults = it.results.distinctBy { it.id }.filter { newItem -> model.aniMangaSearchResults.results.none { oldItem -> oldItem.id == newItem.id } }
+                    val prev = model.aniMangaSearchResults.results.size
+                    val newResults = it.results.distinctBy { item -> item.id }
+                        .filter { newItem -> model.aniMangaSearchResults.results.none { oldItem -> oldItem.id == newItem.id } }
+                    if (newResults.isNotEmpty()) {
                         model.aniMangaSearchResults.results.addAll(newResults)
                         mediaAdaptor.notifyItemRangeInserted(prev, newResults.size)
-
-                        progressAdapter.bar?.isVisible = it.hasNextPage
                     }
+                    finishEmission(model.aniMangaSearchResults.results.size, it.hasNextPage)
                 }
             }
 
             SearchType.CHARACTER -> {
                 model.getSearch<CharacterSearchResults>(searchType).observe(this) {
-                    if (it != null) {
-                        model.characterSearchResults.apply {
-                            search = it.search
-                            page = it.page
-                            hasNextPage = it.hasNextPage
-                        }
+                    if (it == null) {
+                        handleNullEmission()
+                        return@observe
+                    }
+                    if (uiState == UiState.IDLE) return@observe
+                    model.characterSearchResults.apply {
+                        search = it.search
+                        page = it.page
+                        hasNextPage = it.hasNextPage
+                    }
 
-                        val prev = model.characterSearchResults.results.size
-                        val newResults = it.results.distinctBy { it.id }.filter { newItem -> model.characterSearchResults.results.none { oldItem -> oldItem.id == newItem.id } }
+                    val prev = model.characterSearchResults.results.size
+                    val newResults = it.results.distinctBy { item -> item.id }
+                        .filter { newItem -> model.characterSearchResults.results.none { oldItem -> oldItem.id == newItem.id } }
+                    if (newResults.isNotEmpty()) {
                         model.characterSearchResults.results.addAll(newResults)
                         characterAdaptor.notifyItemRangeInserted(prev, newResults.size)
-
-                        progressAdapter.bar?.isVisible = it.hasNextPage
                     }
+                    finishEmission(model.characterSearchResults.results.size, it.hasNextPage)
                 }
             }
 
             SearchType.STUDIO -> {
                 model.getSearch<StudioSearchResults>(searchType).observe(this) {
-                    if (it != null) {
-                        model.studioSearchResults.apply {
-                            search = it.search
-                            page = it.page
-                            hasNextPage = it.hasNextPage
-                        }
+                    if (it == null) {
+                        handleNullEmission()
+                        return@observe
+                    }
+                    if (uiState == UiState.IDLE) return@observe
+                    model.studioSearchResults.apply {
+                        search = it.search
+                        page = it.page
+                        hasNextPage = it.hasNextPage
+                    }
 
-                        val prev = model.studioSearchResults.results.size
-                        val newResults = it.results.distinctBy { it.id }.filter { newItem -> model.studioSearchResults.results.none { oldItem -> oldItem.id == newItem.id } }
+                    val prev = model.studioSearchResults.results.size
+                    val newResults = it.results.distinctBy { item -> item.id }
+                        .filter { newItem -> model.studioSearchResults.results.none { oldItem -> oldItem.id == newItem.id } }
+                    if (newResults.isNotEmpty()) {
                         model.studioSearchResults.results.addAll(newResults)
                         studioAdaptor.notifyItemRangeInserted(prev, newResults.size)
-
-                        progressAdapter.bar?.isVisible = it.hasNextPage
                     }
+                    finishEmission(model.studioSearchResults.results.size, it.hasNextPage)
                 }
             }
 
             SearchType.STAFF -> {
                 model.getSearch<StaffSearchResults>(searchType).observe(this) {
-                    if (it != null) {
-                        model.staffSearchResults.apply {
-                            search = it.search
-                            page = it.page
-                            hasNextPage = it.hasNextPage
-                        }
+                    if (it == null) {
+                        handleNullEmission()
+                        return@observe
+                    }
+                    if (uiState == UiState.IDLE) return@observe
+                    model.staffSearchResults.apply {
+                        search = it.search
+                        page = it.page
+                        hasNextPage = it.hasNextPage
+                    }
 
-                        val prev = model.staffSearchResults.results.size
-                        val newResults = it.results.distinctBy { it.id }.filter { newItem -> model.staffSearchResults.results.none { oldItem -> oldItem.id == newItem.id } }
+                    val prev = model.staffSearchResults.results.size
+                    val newResults = it.results.distinctBy { item -> item.id }
+                        .filter { newItem -> model.staffSearchResults.results.none { oldItem -> oldItem.id == newItem.id } }
+                    if (newResults.isNotEmpty()) {
                         model.staffSearchResults.results.addAll(newResults)
                         staffAdaptor.notifyItemRangeInserted(prev, newResults.size)
-
-                        progressAdapter.bar?.isVisible = it.hasNextPage
                     }
+                    finishEmission(model.staffSearchResults.results.size, it.hasNextPage)
                 }
             }
 
             SearchType.USER -> {
                 model.getSearch<UserSearchResults>(searchType).observe(this) {
-                    if (it != null) {
-                        model.userSearchResults.apply {
-                            search = it.search
-                            page = it.page
-                            hasNextPage = it.hasNextPage
-                        }
+                    if (it == null) {
+                        handleNullEmission()
+                        return@observe
+                    }
+                    if (uiState == UiState.IDLE) return@observe
+                    model.userSearchResults.apply {
+                        search = it.search
+                        page = it.page
+                        hasNextPage = it.hasNextPage
+                    }
 
-                        val prev = model.userSearchResults.results.size
-                        val newResults = it.results.distinctBy { it.id }.filter { newItem -> model.userSearchResults.results.none { oldItem -> oldItem.id == newItem.id } }
+                    val prev = model.userSearchResults.results.size
+                    val newResults = it.results.distinctBy { item -> item.id }
+                        .filter { newItem -> model.userSearchResults.results.none { oldItem -> oldItem.id == newItem.id } }
+                    if (newResults.isNotEmpty()) {
                         model.userSearchResults.results.addAll(newResults)
                         usersAdapter.notifyItemRangeInserted(prev, newResults.size)
-
-                        progressAdapter.bar?.isVisible = it.hasNextPage
                     }
+                    finishEmission(model.userSearchResults.results.size, it.hasNextPage)
                 }
             }
         }
 
-        binding.searchRecyclerView.post { runInitialSearchActions(notSet) }
+        runInitialSearchActions(notSet)
+    }
+
+    private fun handleNullEmission() {
+        when {
+            searchInFlight -> {
+                searchInFlight = false
+                renderState(UiState.ERROR)
+            }
+
+            loadingNextPage -> {
+                loadingNextPage = false
+                progressAdapter.bar?.isVisible = false
+            }
+        }
+    }
+
+    private fun finishEmission(totalCount: Int, hasNextPage: Boolean) {
+        searchInFlight = false
+        loadingNextPage = false
+        progressAdapter.bar?.isVisible = hasNextPage
+        renderState(if (totalCount == 0) UiState.EMPTY else UiState.RESULTS)
+    }
+
+    private fun updateTopBarSurface(scrolled: Boolean) {
+        if (scrolled == topBarScrolled) return
+        topBarScrolled = scrolled
+        val attr = if (scrolled) {
+            com.google.android.material.R.attr.colorSurfaceContainer
+        } else {
+            com.google.android.material.R.attr.colorSurface
+        }
+        binding.searchTopBar.setBackgroundColor(MaterialColors.getColor(binding.searchTopBar, attr))
+        binding.searchTopDivider.animate().alpha(if (scrolled) 1f else 0f).setDuration(150).start()
+    }
+
+    private fun syncSkeletonMode() {
+        val isMediaList = style == 1 && (searchType == SearchType.ANIME || searchType == SearchType.MANGA)
+        binding.searchLoading.setMode(if (isMediaList) "media_list" else "grid")
+    }
+
+    private fun renderState(state: UiState) {
+        uiState = state
+        binding.searchIdleScroll.isVisible = state == UiState.IDLE
+        binding.searchLoading.isVisible = state == UiState.LOADING
+        binding.searchRecyclerView.isVisible = state == UiState.RESULTS
+        binding.searchEmptyState.isVisible = state == UiState.EMPTY || state == UiState.ERROR
+
+        when (state) {
+            UiState.IDLE -> {
+                headerAdaptor.updateIdleSections()
+                updateTopBarSurface(binding.searchIdleScroll.scrollY > 0)
+            }
+
+            UiState.RESULTS -> {
+                updateTopBarSurface(binding.searchRecyclerView.canScrollVertically(-1))
+            }
+
+            UiState.LOADING -> {
+                syncSkeletonMode()
+                updateTopBarSurface(false)
+            }
+
+            UiState.EMPTY -> {
+                updateTopBarSurface(false)
+                binding.searchEmptyTitle.setText(R.string.search_empty_title)
+                if (headerAdaptor.hasActiveFilters()) {
+                    binding.searchEmptyMessage.setText(R.string.search_empty_filtered)
+                    binding.searchEmptyAction.isVisible = true
+                    binding.searchEmptyAction.setText(R.string.reset_filters)
+                    binding.searchEmptyAction.setOnClickListener { headerAdaptor.resetFilters() }
+                } else {
+                    binding.searchEmptyMessage.setText(R.string.search_empty_query)
+                    binding.searchEmptyAction.isVisible = false
+                }
+            }
+
+            UiState.ERROR -> {
+                updateTopBarSurface(false)
+                binding.searchEmptyTitle.setText(R.string.search_empty_title)
+                binding.searchEmptyMessage.setText(R.string.search_failed)
+                binding.searchEmptyAction.isVisible = true
+                binding.searchEmptyAction.setText(R.string.picker_retry)
+                binding.searchEmptyAction.setOnClickListener { search(debounceMs = 0L) }
+            }
+        }
     }
 
     /**
@@ -369,77 +508,80 @@ class SearchActivity : AppCompatActivity() {
         return null
     }
 
+    fun showIdle() {
+        emptyMediaAdapter()
+        renderState(UiState.IDLE)
+    }
+
     fun emptyMediaAdapter() {
         searchJob?.cancel()
         loading = false
+        searchInFlight = false
+        loadingNextPage = false
+        clearCurrentResults()
+        progressAdapter.bar?.visibility = View.GONE
+    }
+
+    private fun clearCurrentResults() {
         when (searchType) {
             SearchType.ANIME, SearchType.MANGA -> {
-                mediaAdaptor.notifyItemRangeRemoved(0, model.aniMangaSearchResults.results.size)
+                val count = model.aniMangaSearchResults.results.size
                 model.aniMangaSearchResults.results.clear()
+                model.aniMangaSearchResults.page = 1
+                model.aniMangaSearchResults.hasNextPage = false
+                if (count > 0) mediaAdaptor.notifyItemRangeRemoved(0, count)
             }
 
             SearchType.CHARACTER -> {
-                characterAdaptor.notifyItemRangeRemoved(
-                    0,
-                    model.characterSearchResults.results.size
-                )
+                val count = model.characterSearchResults.results.size
                 model.characterSearchResults.results.clear()
+                model.characterSearchResults.page = 1
+                model.characterSearchResults.hasNextPage = false
+                if (count > 0) characterAdaptor.notifyItemRangeRemoved(0, count)
             }
 
             SearchType.STUDIO -> {
-                studioAdaptor.notifyItemRangeRemoved(0, model.studioSearchResults.results.size)
+                val count = model.studioSearchResults.results.size
                 model.studioSearchResults.results.clear()
+                model.studioSearchResults.page = 1
+                model.studioSearchResults.hasNextPage = false
+                if (count > 0) studioAdaptor.notifyItemRangeRemoved(0, count)
             }
 
             SearchType.STAFF -> {
-                staffAdaptor.notifyItemRangeRemoved(0, model.staffSearchResults.results.size)
+                val count = model.staffSearchResults.results.size
                 model.staffSearchResults.results.clear()
+                model.staffSearchResults.page = 1
+                model.staffSearchResults.hasNextPage = false
+                if (count > 0) staffAdaptor.notifyItemRangeRemoved(0, count)
             }
 
             SearchType.USER -> {
-                usersAdapter.notifyItemRangeRemoved(0, model.userSearchResults.results.size)
+                val count = model.userSearchResults.results.size
                 model.userSearchResults.results.clear()
+                model.userSearchResults.page = 1
+                model.userSearchResults.hasNextPage = false
+                if (count > 0) usersAdapter.notifyItemRangeRemoved(0, count)
             }
         }
-        progressAdapter.bar?.visibility = View.GONE
     }
 
     private var searchJob: Job? = null
     @Volatile
     private var loading = false
-    fun search() {
-        headerAdaptor.setHistoryVisibility(false)
-        val size = model.size(searchType)
-        model.clearResults(searchType)
-        binding.searchRecyclerView.post {
-            when (searchType) {
-                SearchType.ANIME, SearchType.MANGA -> {
-                    mediaAdaptor.notifyItemRangeRemoved(0, size)
-                }
 
-                SearchType.CHARACTER -> {
-                    characterAdaptor.notifyItemRangeRemoved(0, size)
-                }
-
-                SearchType.STUDIO -> {
-                    studioAdaptor.notifyItemRangeRemoved(0, size)
-                }
-
-                SearchType.STAFF -> {
-                    staffAdaptor.notifyItemRangeRemoved(0, size)
-                }
-
-                SearchType.USER -> {
-                    usersAdapter.notifyItemRangeRemoved(0, size)
-                }
-            }
-        }
-
-        progressAdapter.bar?.visibility = View.VISIBLE
-
+    fun search(debounceMs: Long = 400L) {
         searchJob?.cancel()
+        clearCurrentResults()
+        binding.searchRecyclerView.scrollToPosition(0)
+        progressAdapter.bar?.visibility = View.GONE
+        loadingNextPage = false
+        searchInFlight = true
+        model.searched = true
+        renderState(UiState.LOADING)
+
         searchJob = scope.launch(Dispatchers.IO) {
-            delay(500)
+            if (debounceMs > 0L) delay(debounceMs)
             try {
                 loading = true
                 model.loadSearch(searchType)
@@ -454,6 +596,8 @@ class SearchActivity : AppCompatActivity() {
         if (searchType == SearchType.ANIME || searchType == SearchType.MANGA) {
             mediaAdaptor.type = style
             mediaAdaptor.notifyDataSetChanged()
+            binding.searchRecyclerView.requestLayout()
+            syncSkeletonMode()
         }
     }
 
@@ -461,18 +605,32 @@ class SearchActivity : AppCompatActivity() {
         if (isFinishing || isDestroyed) return
 
         if (!notSet) {
-            if (!model.searched) {
-                model.searched = true
-                headerAdaptor.search?.run()
+            when {
+                model.resultsIsNotEmpty(searchType) -> {
+                    progressAdapter.bar?.isVisible = model.hasNextPage(searchType)
+                    renderState(UiState.RESULTS)
+                }
+
+                headerAdaptor.currentQuery().isNotBlank() || headerAdaptor.hasActiveFilters() -> {
+                    if (!model.searched) {
+                        model.searched = true
+                        headerAdaptor.search?.invoke(0L)
+                    } else {
+                        renderState(UiState.EMPTY)
+                    }
+                }
+
+                else -> renderState(UiState.IDLE)
             }
-        } else if (!intent.getBooleanExtra("search", false)) {
-            // opened with a query already running (type switch, genre): leave the keyboard down
-            headerAdaptor.requestFocus?.run()
+            return
         }
 
         if (intent.getBooleanExtra("search", false)) {
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED)
-            search()
+            search(debounceMs = 0L)
+        } else {
+            renderState(UiState.IDLE)
+            binding.searchBarText.post { headerAdaptor.requestFocus?.run() }
         }
     }
 
