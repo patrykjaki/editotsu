@@ -227,11 +227,15 @@ class OfflineMangaFragment : Fragment(), OfflineMangaSearchListener {
             // Get the OfflineMangaModel that was clicked
             val item = adapter.getItem(position) as OfflineMangaModel
             val type: MediaType =
-                if (downloadManager.mangaDownloadedTypes.any { it.titleName == item.title }) {
-                    MediaType.MANGA
-                } else {
-                    MediaType.NOVEL
-                }
+                MediaType.fromText(item.type)
+                    ?: if (downloadManager.mangaDownloadedTypes.any {
+                            it.titleName.findValidName() == item.title.findValidName()
+                        }
+                    ) {
+                        MediaType.MANGA
+                    } else {
+                        MediaType.NOVEL
+                    }
             // Alert dialog to confirm deletion
             requireContext().customAlertDialog().apply {
                 setTitle("Delete ${item.title}?")

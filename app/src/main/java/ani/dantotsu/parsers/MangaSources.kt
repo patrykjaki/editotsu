@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
 import kotlinx.coroutines.flow.StateFlow
 
 object MangaSources : MangaReadSources() {
+    @Volatile
     override var list: List<Lazier<BaseParser>> = emptyList()
     var pinnedMangaSources: List<String> = emptyList()
     var isInitialized = false
@@ -74,5 +75,6 @@ object MangaSources : MangaReadSources() {
 
 object HMangaSources : MangaReadSources() {
     private val aList: List<Lazier<BaseParser>> = lazyList()
-    override val list = listOf(aList, MangaSources.list).flatten()
+    override val list: List<Lazier<BaseParser>>
+        get() = aList + MangaSources.list
 }

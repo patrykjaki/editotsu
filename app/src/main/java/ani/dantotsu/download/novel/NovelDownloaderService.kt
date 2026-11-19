@@ -547,7 +547,14 @@ class NovelDownloaderService : Service() {
 
                 withContext(Dispatchers.IO) {
                     this@NovelDownloaderService.contentResolver.openOutputStream(file.uri)?.use { os ->
-                        val epubBytes = HtmlToEpubUtils.createEpub(task.chapter, html)
+                        val identifierKey = task.downloadLink.ifBlank {
+                            task.originalLink.ifBlank { "${task.title}:${task.chapter}" }
+                        }
+                        val epubBytes = HtmlToEpubUtils.createEpub(
+                            task.chapter,
+                            html,
+                            identifierKey = identifierKey
+                        )
                         os.write(epubBytes)
                     } ?: throw Exception("Could not open OutputStream")
                 }

@@ -24,14 +24,8 @@ class LnReaderExtensionManager(private val context: Context) {
     private val pluginDir: File
         get() = File(context.filesDir, "lnreader_plugins").also { it.mkdirs() }
 
-    private fun safePluginDir(pluginId: String): File {
-        val sanitized = pluginId.replace(Regex("""[^a-zA-Z0-9._-]"""), "_")
-        val dir = File(pluginDir, sanitized)
-        require(dir.canonicalPath.startsWith(pluginDir.canonicalPath)) {
-            "Invalid plugin ID: path traversal detected in '$pluginId'"
-        }
-        return dir
-    }
+    private fun safePluginDir(pluginId: String): File =
+        resolveSafePluginDir(pluginDir, pluginId)
 
     private val _installedPluginsFlow = MutableStateFlow(emptyList<LnReaderInstalledPlugin>())
     val installedPluginsFlow = _installedPluginsFlow.asStateFlow()
@@ -186,4 +180,26 @@ class LnReaderExtensionManager(private val context: Context) {
         }
         return false
     }
+}
+
+internal fun resolveSafePluginDir(rootDir: File, pluginId: String): File {
+    require(pluginId.isNotBlank()) {
+        "Invalid plugin ID: blank plugin ID"
+    }
+    val sanitized = pluginId.replace(Regex("""[^a-zA-Z0-9._-]"""), "_")
+    require(sanitized.isNotEmpty() && sanitized != "." && sanitized != "..") {
+        "Invalid plugin ID: '$pluginId'"
+    }
+    val rootCanonical = rootDir.canonicalPath
+    val expectedPrefix = if (rootCanonical.endsWith(File.separator)) {
+        rootCanonical
+    } else {
+        rootCanonical + File.separator
+    }
+    val dir = File(rootDir, sanitized)
+    val dirCanonical = dir.canonicalPath
+    require(dirCanonical.startsWith(expectedPrefix) && dirCanonical.length > expectedPrefix.length) {
+        "Invalid plugin ID: path traversal detected in '$pluginId'"
+    }
+    return dir
 }
