@@ -459,7 +459,7 @@ sealed class QueueItem {
         override val title: String get() = task.title
         override val subTitle: String get() = task.chapter
         override val type: String get() = "Manga"
-        override val uniqueId: String get() = task.chapter
+        override val uniqueId: String get() = "${task.title}_${task.chapter}"
         override val mediaType: MediaType get() = MediaType.MANGA
     }
 

@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.extension.anime.model.AnimeExtension
 import kotlinx.coroutines.flow.StateFlow
 
 object AnimeSources : WatchSources() {
+    @Volatile
     override var list: List<Lazier<BaseParser>> = emptyList()
     var pinnedAnimeSources: List<String> = emptyList()
     var isInitialized = false
@@ -75,5 +76,6 @@ object HAnimeSources : WatchSources() {
     private val aList: List<Lazier<BaseParser>> = lazyList(
     )
 
-    override val list = listOf(aList, AnimeSources.list).flatten()
+    override val list: List<Lazier<BaseParser>>
+        get() = aList + AnimeSources.list
 }
