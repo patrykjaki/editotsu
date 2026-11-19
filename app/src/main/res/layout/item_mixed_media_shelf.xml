@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Horizontal cover-card shelf for Anime and Manga sections in mixed "All" search. -->
+<androidx.recyclerview.widget.RecyclerView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/mixedMediaShelf"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:clipToPadding="false"
+    android:nestedScrollingEnabled="false"
+    android:overScrollMode="never"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp" />

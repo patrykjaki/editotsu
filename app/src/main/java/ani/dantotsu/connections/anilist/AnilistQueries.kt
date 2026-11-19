@@ -1548,6 +1548,107 @@ class AnilistQueries {
         return null
     }
 
+    suspend fun searchAll(search: String?, isAdult: Boolean = false): MixedSearchResults? {
+        if (search.isNullOrBlank()) return null
+        val escaped = search.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+        val query = """
+            query (${"$"}search: String, ${"$"}isAdult: Boolean = false) {
+              anime: Page(page: 1, perPage: 8) {
+                media(type: ANIME, search: ${"$"}search, isAdult: ${"$"}isAdult) {
+                  ${standardMediaInformation()}
+                }
+              }
+              manga: Page(page: 1, perPage: 8) {
+                media(type: MANGA, search: ${"$"}search, isAdult: ${"$"}isAdult) {
+                  ${standardMediaInformation()}
+                }
+              }
+              characters: Page(page: 1, perPage: 4) {
+                characters(search: ${"$"}search) {
+                  ${characterInformation(false)}
+                }
+              }
+              staff: Page(page: 1, perPage: 4) {
+                staff(search: ${"$"}search) {
+                  ${staffInformation(1, 1)}
+                }
+              }
+              studios: Page(page: 1, perPage: 4) {
+                studios(search: ${"$"}search) {
+                  ${studioInformation(1, 1)}
+                }
+              }
+              users: Page(page: 1, perPage: 4) {
+                users(search: ${"$"}search) {
+                  ${userInformation()}
+                }
+              }
+            }
+        """.prepare()
+        val variables = """{"search":"$escaped","isAdult":$isAdult}"""
+        val data = executeQuery<Query.MixedSearch>(query, variables, force = true)?.data ?: return null
+
+        val anime = data.anime?.media?.map { i ->
+            Media(i).apply {
+                cover = i.coverImage?.large
+                genres = arrayListOf<String>().apply { i.genres?.let { addAll(it) } }
+            }
+        }?.toMutableList() ?: mutableListOf()
+
+        val manga = data.manga?.media?.map { i ->
+            Media(i).apply {
+                cover = i.coverImage?.large
+                genres = arrayListOf<String>().apply { i.genres?.let { addAll(it) } }
+            }
+        }?.toMutableList() ?: mutableListOf()
+
+        val characters = data.characters?.characters?.map { i ->
+            Character(
+                i.id,
+                i.name?.full,
+                i.image?.medium ?: i.image?.large,
+                null,
+                null.toString(),
+                i.isFavourite ?: false,
+                i.description,
+                i.age,
+                i.gender,
+                i.dateOfBirth,
+            )
+        }?.toMutableList() ?: mutableListOf()
+
+        val staff = data.staff?.staff?.mapNotNull { i ->
+            val name = i.name?.userPreferred ?: return@mapNotNull null
+            Author(i.id, name, i.image?.large, null, null, null)
+        }?.toMutableList() ?: mutableListOf()
+
+        val studios = data.studios?.studios?.mapNotNull { i ->
+            val name = i.name ?: return@mapNotNull null
+            Studio(
+                i.id.toString(),
+                name,
+                i.isFavourite ?: false,
+                i.favourites,
+                i.media?.edges?.firstOrNull()?.node?.coverImage?.large,
+            )
+        }?.toMutableList() ?: mutableListOf()
+
+        val users = data.users?.users?.mapNotNull { user ->
+            val name = user.name ?: return@mapNotNull null
+            User(user.id, name, user.avatar?.medium, user.bannerImage)
+        }?.toMutableList() ?: mutableListOf()
+
+        return MixedSearchResults(
+            search = search,
+            anime = anime,
+            manga = manga,
+            characters = characters,
+            staff = staff,
+            studios = studios,
+            users = users,
+        )
+    }
+
     private fun mediaList(media1: Page?): ArrayList<Media> {
         val combinedList = arrayListOf<Media>()
         media1?.media?.mapTo(combinedList) { Media(it) }

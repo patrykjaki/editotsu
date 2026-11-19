@@ -53,6 +53,22 @@ class Query {
             val page: ani.dantotsu.connections.anilist.api.Page?
         )
     }
+
+    @Serializable
+    data class MixedSearch(
+        @SerialName("data")
+        val data: Data?
+    ) {
+        @Serializable
+        data class Data(
+            @SerialName("anime") val anime: ani.dantotsu.connections.anilist.api.Page? = null,
+            @SerialName("manga") val manga: ani.dantotsu.connections.anilist.api.Page? = null,
+            @SerialName("characters") val characters: ani.dantotsu.connections.anilist.api.Page? = null,
+            @SerialName("staff") val staff: ani.dantotsu.connections.anilist.api.Page? = null,
+            @SerialName("studios") val studios: ani.dantotsu.connections.anilist.api.Page? = null,
+            @SerialName("users") val users: ani.dantotsu.connections.anilist.api.Page? = null,
+        )
+    }
 //    data class AiringSchedule(
 //        val data : Data?
 //    ){

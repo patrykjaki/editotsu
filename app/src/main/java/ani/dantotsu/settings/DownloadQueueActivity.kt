@@ -91,6 +91,10 @@ class DownloadQueueActivity : AppCompatActivity() {
     private var selectedType: MediaType = MediaType.ANIME
     private val folderSizeCache = mutableMapOf<String, Long>()
     private val coverPathCache = mutableMapOf<String, String?>()
+    private var deviceTotalBytes: Long = 0L
+    private var deviceAvailableBytes: Long = 0L
+    private var lastDownloadedBytes: Long = 0L
+    private var lastDownloadsLabel: String = SizeFormatter.formatBytes(0L)
 
     private val mangaScopeDeleteReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -238,13 +242,32 @@ class DownloadQueueActivity : AppCompatActivity() {
 
             withContext(Dispatchers.Main) {
                 val (totalBytes, availableBytes) = stats
-                binding.downloadsStorageBar.progress =
-                    DownloadsSummary.storageUsedPercent(totalBytes, availableBytes)
-                binding.downloadsFreeSpace.text = getString(
-                    R.string.downloads_free_space,
-                    Formatter.formatShortFileSize(this@DownloadQueueActivity, availableBytes),
-                )
+                deviceTotalBytes = totalBytes
+                deviceAvailableBytes = availableBytes
+                renderStorageHeader()
             }
+        }
+    }
+
+    private fun renderStorageHeader() {
+        val breakdown = DownloadsSummary.storageBreakdown(
+            totalBytes = deviceTotalBytes,
+            availableBytes = deviceAvailableBytes,
+            downloadedBytes = lastDownloadedBytes,
+        )
+        binding.downloadsStorageBar.setSegments(
+            downloadsFraction = breakdown.downloadsFraction,
+            otherUsedFraction = breakdown.otherUsedFraction,
+        )
+        binding.downloadsStorageLine.text = if (deviceTotalBytes > 0L) {
+            getString(
+                R.string.downloads_storage_line,
+                lastDownloadsLabel,
+                breakdown.phoneUsedPercent,
+                Formatter.formatShortFileSize(this, deviceAvailableBytes),
+            )
+        } else {
+            getString(R.string.downloads_storage_only, lastDownloadsLabel)
         }
     }
 
@@ -326,11 +349,13 @@ class DownloadQueueActivity : AppCompatActivity() {
             queuedCount = totalQueued,
         )
 
-        binding.downloadsTotalSize.text = when {
+        lastDownloadedBytes = overview.totalDownloadedBytes
+        lastDownloadsLabel = when {
             overview.totalTitles == 0 -> SizeFormatter.formatBytes(0L)
             !overview.sizesComplete && overview.totalDownloadedBytes == 0L -> getString(R.string.cache_calculating)
             else -> SizeFormatter.formatBytes(overview.totalDownloadedBytes)
         }
+        renderStorageHeader()
 
         val breakdownParts = buildList {
             if (overview.animeTitles > 0) {
