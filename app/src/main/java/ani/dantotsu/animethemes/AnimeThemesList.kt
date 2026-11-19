@@ -5,13 +5,10 @@ import android.content.res.ColorStateList
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.os.Build
-import android.text.SpannableStringBuilder
-import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.content.res.ResourcesCompat
-import androidx.core.text.inSpans
 import androidx.core.view.ViewCompat
 import ani.dantotsu.R
 import ani.dantotsu.databinding.ItemAnimeThemeRowBinding
@@ -104,22 +101,25 @@ class AnimeThemesList(
         val hiddenLabel = context.getString(R.string.theme_hidden_until, ThemeQueue.firstEpisode(track.episodes) ?: 0)
 
         row.themeTag.text = track.tag
+        row.themePlay.alpha = if (hidden) 0.38f else 1f
+        row.themeFlag.text = flag
+        row.themeFlag.visibility = if (flag == null) View.GONE else View.VISIBLE
         row.themeSong.typeface = ResourcesCompat.getFont(context, R.font.poppins_semi_bold)
         row.themeSong.setTextColor(color(com.google.android.material.R.attr.colorOnSurface))
         if (hidden && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // The title stays in place, blurred; the line below says why.
             row.themeSong.text = track.songTitle.ifBlank { track.tag }
             row.themeSong.setRenderEffect(RenderEffect.createBlurEffect(BLUR_PX, BLUR_PX, Shader.TileMode.CLAMP))
-            row.themeMeta.text = meta(null, hiddenLabel, flag)
+            row.themeMeta.text = hiddenLabel
         } else if (hidden) {
             row.themeSong.text = hiddenLabel
             row.themeSong.typeface = ResourcesCompat.getFont(context, R.font.poppins)
             row.themeSong.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant))
-            row.themeMeta.text = meta(null, episodes, flag)
+            row.themeMeta.text = episodes.orEmpty()
         } else {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) row.themeSong.setRenderEffect(null)
             row.themeSong.text = track.songTitle.ifBlank { track.tag }
-            row.themeMeta.text = meta(track.artist, episodes, flag)
+            row.themeMeta.text = meta(track.artist, episodes)
         }
         row.themeMeta.visibility = if (row.themeMeta.text.isNullOrEmpty()) View.GONE else View.VISIBLE
 
@@ -127,7 +127,7 @@ class AnimeThemesList(
         row.themeMain.contentDescription = if (hidden) {
             listOfNotNull(tag, hiddenLabel, flag).joinToString(", ")
         } else {
-            listOfNotNull(tag, row.themeSong.text.toString(), row.themeMeta.text?.toString()?.takeIf { it.isNotBlank() })
+            listOfNotNull(tag, row.themeSong.text.toString(), row.themeMeta.text?.toString()?.takeIf { it.isNotBlank() }, flag)
                 .joinToString(", ")
         }
         ViewCompat.replaceAccessibilityAction(
@@ -143,6 +143,9 @@ class AnimeThemesList(
             } else {
                 onPlay(shown[i], shown.mapIndexed { j, t -> if (j == i || !hiddenNow(t)) t else null }.filterNotNull())
             }
+        }
+        if (downloads != null) {
+            row.themeMain.setOnLongClickListener { downloads.showMenu(row.themeDownload, shown[i], mediaId = 0); true }
         }
         bindFavourite(row, track)
         bindDownload(row, track)
@@ -218,19 +221,9 @@ class AnimeThemesList(
         }
     }
 
-    /** "Artist · Eps 1–12 · Spoiler", the flag in the error colour. */
-    private fun meta(artist: String?, episodes: String?, flag: String?): CharSequence {
-        val sb = SpannableStringBuilder()
-        listOfNotNull(artist?.takeIf { it.isNotBlank() }, episodes).forEach {
-            if (sb.isNotEmpty()) sb.append(" · ")
-            sb.append(it)
-        }
-        if (flag != null) {
-            if (sb.isNotEmpty()) sb.append(" · ")
-            sb.inSpans(ForegroundColorSpan(color(androidx.appcompat.R.attr.colorError))) { append(flag) }
-        }
-        return sb
-    }
+    /** "Artist · Eps 1–12"; empty when both are missing. */
+    private fun meta(artist: String?, episodes: String?): String =
+        listOfNotNull(artist?.takeIf { it.isNotBlank() }, episodes).joinToString(" · ")
 
     private fun shape(view: View, first: Boolean, last: Boolean) = ThemeRowShape.apply(view, first, last)
 
