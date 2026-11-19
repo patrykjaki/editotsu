@@ -285,6 +285,29 @@ class AppUpdatePolicyTest {
     }
 
     @Test
+    fun stableAppOnReleaseCandidateFollowsNewerCandidates() {
+        val releases = listOf(
+            release("v1.0.0-rc02", true, "2027-01-05T10:00:00Z"),
+            release("v1.0.0-rc01", true, "2027-01-01T10:00:00Z"),
+            release("v1.0.0-beta05", true, "2026-12-20T10:00:00Z")
+        )
+        // rc01 is offered rc02, never a beta
+        assertEquals(
+            AppUpdatePolicy.Decision.Update(releases[0], "1.0.0-rc02"),
+            AppUpdatePolicy.decide(releases, "1.0.0-rc01", STABLE_ID)
+        )
+        // the final release wins over the candidates
+        val withStable = releases + release("v1.0.0", false, "2027-01-10T10:00:00Z")
+        assertEquals(
+            AppUpdatePolicy.Decision.Update(withStable[3], "1.0.0"),
+            AppUpdatePolicy.decide(withStable, "1.0.0-rc02", STABLE_ID)
+        )
+        // once on stable, a later rc is not offered
+        val nextRc = withStable + release("v1.1.0-rc01", true, "2027-02-01T10:00:00Z")
+        assertEquals(AppUpdatePolicy.Decision.None, AppUpdatePolicy.decide(nextRc, "1.0.0", STABLE_ID))
+    }
+
+    @Test
     fun stableAppNeverGetsPrereleasesOrNotices() {
         val releases = listOf(
             release("v1.1.0-beta01", true, "2027-02-10T10:00:00Z"),

@@ -116,10 +116,18 @@ object AppUpdatePolicy {
     ): Decision {
         val beta = isBetaApplication(applicationId)
         // rc and stable tags ship as the stable package, so a beta app never installs them in place.
-        val update = selectRelease(
-            if (beta) releases.filterNot { isStablePackageRelease(it) } else releases,
-            wantPrerelease = beta
-        )?.takeIf { isUpdateAvailable(currentVersion, versionOf(it)) }
+        val update = if (beta) {
+            selectRelease(releases.filterNot { isStablePackageRelease(it) }, wantPrerelease = true)
+        } else {
+            // A stable app on a release candidate also follows newer rc pre-releases;
+            // a stable app on a stable version only takes stable releases.
+            val onRc = parseVersion(currentVersion)?.qualifierRank == 2
+            val stablePackage = releases.filter { isStablePackageRelease(it) }
+            listOfNotNull(
+                selectRelease(stablePackage, wantPrerelease = false),
+                if (onRc) selectRelease(stablePackage, wantPrerelease = true) else null
+            ).maxWithOrNull(compareBy(nullsFirst()) { parseVersion(it.tag) })
+        }?.takeIf { isUpdateAvailable(currentVersion, versionOf(it)) }
         if (beta) {
             val stablePackage = releases.filter { isStablePackageRelease(it) }
             val stable = listOfNotNull(

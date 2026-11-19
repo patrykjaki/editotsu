@@ -7,8 +7,8 @@
 #   RC validation : manual workflow_dispatch with rc_sha -> evidence only, NO release.
 #   Tag mode      : push of tag v<editotsu.version> -> reverify approved SHA
 #                   (repo variable APPROVED_RELEASE_SHA) -> GitHub release.
-#                   Versions with "-" (alpha/beta/rc) ship as ani.editotsu.beta
-#                   pre-releases; stable versions as ani.editotsu.
+#                   alpha/beta versions ship as ani.editotsu.beta pre-releases;
+#                   rc versions as ani.editotsu pre-releases; stable as ani.editotsu.
 #
 # Provenance rule: every publishable APK has exactly one producing build
 # execution (per-flavor matrix legs build and upload only their flavor).
@@ -94,18 +94,16 @@ jobs:
               sys.exit("editotsu.version '%s' is not MAJOR.MINOR.PATCH[-alphaNN|-betaNN|-rcNN]" % v)
           major, minor, patch, stage, nn = m.groups()
           n = int(nn or 0)
-          if stage == 'rc':
-              # Updaters since 0.9.0-beta03 treat rc tags as the stable package (ani.editotsu)
-              # and show beta users the move notice. Build rc as ani.editotsu before allowing it.
-              sys.exit("rc releases must ship as ani.editotsu; this workflow still builds them as .beta")
           s = {'alpha': n, 'beta': 20 + n, 'rc': 50 + n}.get(stage, 99)
           code = 1_000_000 + int(major) * 10_000_000 + int(minor) * 100_000 + int(patch) * 1_000 + s
           pre = stage is not None
           print("version=%s" % v)
           print("code=%d" % code)
           print("prerelease=%s" % ("true" if pre else "false"))
-          print("build_type=%s" % ("beta" if pre else "release"))
-          print("package=%s" % ("ani.editotsu.beta" if pre else "ani.editotsu"))
+          # rc builds ship as the stable package (ani.editotsu) but stay GitHub pre-releases.
+          beta_pkg = stage in ('alpha', 'beta')
+          print("build_type=%s" % ("beta" if beta_pkg else "release"))
+          print("package=%s" % ("ani.editotsu.beta" if beta_pkg else "ani.editotsu"))
           print("channel=%s" % (stage or "stable"))
           EOF
           ) || { echo "::error::bad editotsu.version"; exit 1; }
