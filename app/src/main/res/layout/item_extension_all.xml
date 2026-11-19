@@ -5,19 +5,22 @@
     android:id="@+id/extensionCardView"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:minHeight="64dp"
+    android:gravity="center_vertical"
+    android:minHeight="72dp"
     android:orientation="horizontal"
     android:paddingStart="16dp"
-    android:paddingTop="8dp"
+    android:paddingTop="12dp"
     android:paddingEnd="4dp"
-    android:paddingBottom="8dp">
+    android:paddingBottom="12dp">
 
-    <ImageView
+    <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/extensionIconImageView"
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:layout_gravity="center_vertical"
         android:layout_marginEnd="12dp"
+        android:scaleType="centerCrop"
+        app:shapeAppearanceOverlay="@style/roundedImageViewSmall"
         tools:ignore="ContentDescription" />
 
     <LinearLayout
@@ -25,13 +28,17 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center_vertical"
         android:layout_weight="1"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:paddingEnd="4dp">
 
         <TextView
             android:id="@+id/extensionNameTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:ellipsize="end"
             android:fontFamily="@font/poppins_semi_bold"
+            android:includeFontPadding="false"
+            android:maxLines="2"
             android:text="@string/extension_name"
             android:textColor="?attr/colorOnSurface"
             android:textSize="16sp" />
@@ -40,7 +47,11 @@
             android:id="@+id/extensionVersionTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
             android:fontFamily="@font/poppins"
+            android:includeFontPadding="false"
+            android:maxLines="2"
             android:text="@string/extension_version"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="12sp" />
@@ -50,10 +61,12 @@
         android:id="@+id/closeTextView"
         android:layout_width="48dp"
         android:layout_height="48dp"
-        android:padding="12dp"
+        android:layout_gravity="center_vertical"
         android:background="@drawable/icon_button_ripple"
         android:contentDescription="@string/extensions_row_install"
-        android:layout_gravity="center_vertical"
+        android:padding="12dp"
         android:src="@drawable/ic_download_24"
-        app:tint="?attr/colorOnSurfaceVariant" />
+        android:tooltipText="@string/extensions_row_install"
+        app:tint="?attr/colorOnSurfaceVariant"
+        tools:ignore="UnusedAttribute" />
 </LinearLayout>

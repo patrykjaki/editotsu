@@ -1,41 +1,53 @@
 package ani.dantotsu.settings
 
-import ani.dantotsu.themes.followThemeStatusBarIcons
-import ani.dantotsu.settings.rows.ChoiceSheet
-import ani.dantotsu.settings.rows.ChoiceOption
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
-import android.view.ViewGroup
 import android.widget.AutoCompleteTextView
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
-import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.viewpager2.adapter.FragmentStateAdapter
-import androidx.viewpager2.widget.ViewPager2
 import ani.dantotsu.R
 import ani.dantotsu.databinding.ActivityExtensionsBinding
 import ani.dantotsu.initActivity
 import ani.dantotsu.media.MediaType
 import ani.dantotsu.navBarHeight
-import ani.dantotsu.others.AndroidBug5497Workaround
 import ani.dantotsu.others.LanguageMapper
+import ani.dantotsu.others.setDropdownText
 import ani.dantotsu.parsers.ParserTestActivity
+import ani.dantotsu.parsers.novel.NovelExtensionManager
+import ani.dantotsu.settings.rows.ChoiceOption
+import ani.dantotsu.settings.rows.ChoiceSheet
 import ani.dantotsu.settings.rows.markSegment
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.statusBarHeight
 import ani.dantotsu.themes.ThemeManager
-import androidx.appcompat.widget.PopupMenu
-import java.util.Locale
+import ani.dantotsu.themes.followThemeStatusBarIcons
+import com.google.android.material.tabs.TabLayout
+import eu.kanade.tachiyomi.extension.anime.AnimeExtensionManager
+import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
+import kotlinx.coroutines.launch
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class ExtensionsActivity : AppCompatActivity() {
     lateinit var binding: ActivityExtensionsBinding
+
+    // Predictive back needs the callback disabled unless it will clear an active search query.
+    private lateinit var clearSearchBackCallback: OnBackPressedCallback
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,21 +57,6 @@ class ExtensionsActivity : AppCompatActivity() {
         setContentView(binding.root)
         followThemeStatusBarIcons()
         initActivity(this)
-        AndroidBug5497Workaround.assistActivity(this) {
-            if (it) {
-                binding.searchView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                    bottomMargin = statusBarHeight
-                }
-            } else {
-                binding.searchView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                    bottomMargin = statusBarHeight + navBarHeight
-                }
-            }
-        }
-
-        binding.searchView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-            bottomMargin = statusBarHeight + navBarHeight
-        }
 
         supportFragmentManager.addOnBackStackChangedListener {
             val hasPrefFragment = supportFragmentManager.findFragmentById(R.id.fragmentExtensionsContainer) != null
@@ -88,76 +85,157 @@ class ExtensionsActivity : AppCompatActivity() {
             }
         }
 
-        val searchView: AutoCompleteTextView = findViewById(R.id.searchViewText)
+        val searchView: AutoCompleteTextView = binding.searchViewText
 
-        val typeButtons = mapOf(
-            MediaType.ANIME to R.id.extensionsTypeAnime,
-            MediaType.MANGA to R.id.extensionsTypeManga,
-            MediaType.NOVEL to R.id.extensionsTypeNovel,
-        )
+        // Primary tabs: Anime / Manga / Novel
+        val tabs = binding.extensionsTypeTabs
+        ExtensionPages.TYPES.forEach { type ->
+            tabs.addTab(tabs.newTab().setText(typeLabel(type)), false)
+        }
+
         val startPage = savedInstanceState?.getInt(KEY_PAGE) ?: 0
-        binding.extensionsTypeToggle.check(typeButtons.getValue(ExtensionPages.typeOf(startPage)))
-        binding.extensionsStatusChips.check(
-            if (ExtensionPages.isInstalled(startPage)) R.id.extensionsChipInstalled
-            else R.id.extensionsChipAvailable
+        val startType = ExtensionPages.typeOf(startPage)
+        val startInstalled = ExtensionPages.isInstalled(startPage)
+
+        tabs.getTabAt(ExtensionPages.tabIndexOf(startType))?.select()
+        binding.extensionsStatusToggle.check(
+            if (startInstalled) R.id.extensionsStatusInstalled else R.id.extensionsStatusAvailable
         )
+        listOf(binding.extensionsStatusInstalled, binding.extensionsStatusAvailable).forEach { button ->
+            markSegment(button, null, button.isChecked)
+        }
+
         fun selectPage() {
-            val type = typeButtons.entries.firstOrNull {
-                it.value == binding.extensionsTypeToggle.checkedButtonId
-            }?.key ?: MediaType.ANIME
-            val installed =
-                binding.extensionsStatusChips.checkedChipId != R.id.extensionsChipAvailable
+            val type = ExtensionPages.typeForTab(tabs.selectedTabPosition)
+            val installed = binding.extensionsStatusToggle.checkedButtonId != R.id.extensionsStatusAvailable
             val page = ExtensionPages.pageOf(type, installed)
             if (viewPager.currentItem != page) {
-                searchView.setText("")
+                if (searchView.text.isNotEmpty()) searchView.setText("")
                 searchView.clearFocus()
                 viewPager.setCurrentItem(page, false)
             }
-            binding.searchView.hint = getString(searchHint(type))
+            searchView.hint = getString(searchHint(type))
+            binding.extensionsLanguageBar.isVisible = !installed
+            if (!installed) updateLanguageChip()
         }
+
         viewPager.setCurrentItem(startPage, false)
-        binding.searchView.hint = getString(searchHint(ExtensionPages.typeOf(startPage)))
-        typeButtons.values.forEach { id ->
-            findViewById<com.google.android.material.button.MaterialButton>(id).let { markSegment(it, null, it.isChecked) }
-        }
-        binding.extensionsTypeToggle.addOnButtonCheckedListener { group, id, isChecked ->
+        searchView.hint = getString(searchHint(startType))
+        binding.extensionsLanguageBar.isVisible = !startInstalled
+        updateLanguageChip()
+
+        tabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                selectPage()
+            }
+
+            override fun onTabUnselected(tab: TabLayout.Tab?) = Unit
+            override fun onTabReselected(tab: TabLayout.Tab?) = Unit
+        })
+
+        binding.extensionsStatusToggle.addOnButtonCheckedListener { group, id, isChecked ->
             markSegment(group.findViewById(id), null, isChecked)
             if (isChecked) selectPage()
         }
-        binding.extensionsStatusChips.setOnCheckedStateChangeListener { _, _ -> selectPage() }
+
+        binding.extensionsLanguageChip.setOnClickListener {
+            // The chip toggles itself on tap; keep its checked state tied to the active filter.
+            updateLanguageChip()
+            chooseLanguage()
+        }
+
+        binding.extensionsReposButton.setOnClickListener {
+            openRepositories(ExtensionPages.typeOf(binding.viewPager.currentItem))
+        }
         binding.extensionsMenuButton.setOnClickListener { showMenu(it) }
 
-        searchView.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) {
+        clearSearchBackCallback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                searchView.setText("")
+                searchView.clearFocus()
             }
+        }
+        onBackPressedDispatcher.addCallback(this, clearSearchBackCallback)
 
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
-            }
+        binding.searchClear.setOnClickListener {
+            searchView.setText("")
+        }
+
+        searchView.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) = Unit
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                val currentFragment =
-                    supportFragmentManager.findFragmentByTag("f${viewPager.currentItem}")
-                if (currentFragment is SearchQueryHandler) {
-                    currentFragment.updateContentBasedOnQuery(s?.toString()?.trim())
-                }
+                val hasText = !s.isNullOrEmpty()
+                binding.searchClear.isVisible = hasText
+                updateBackCallback()
+                (currentPageFragment() as? SearchQueryHandler)
+                    ?.updateContentBasedOnQuery(s?.toString()?.trim())
             }
         })
 
-        binding.settingsContainer.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-            topMargin = statusBarHeight
-            bottomMargin = navBarHeight
-        }
-        // The shared heights are measured by the first activity; when this screen is the
-        // first one (shortcut, restored task) they are still 0, so read the real insets too.
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.settingsContainer) { v, insets ->
-            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-            v.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                if (topMargin < bars.top) topMargin = bars.top
-                if (bottomMargin < bars.bottom) bottomMargin = bars.bottom
-            }
+        binding.settingsContainer.setPadding(0, statusBarHeight, 0, navBarHeight)
+        // Read real insets too (when this screen is opened directly or when the IME shows).
+        ViewCompat.setOnApplyWindowInsetsListener(binding.settingsContainer) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            v.setPadding(
+                bars.left,
+                if (bars.top > 0) bars.top else statusBarHeight,
+                bars.right,
+                maxOf(bars.bottom, ime.bottom, navBarHeight),
+            )
             insets
         }
+        ViewCompat.requestApplyInsets(binding.settingsContainer)
+
         binding.extensionsBack.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+
+        observeUpdateBadges()
+    }
+
+    private fun observeUpdateBadges() {
+        val animeManager: AnimeExtensionManager = Injekt.get()
+        val mangaManager: MangaExtensionManager = Injekt.get()
+        val novelManager: NovelExtensionManager = Injekt.get()
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    animeManager.installedExtensionsFlow.collect { list ->
+                        updateTabBadge(MediaType.ANIME, list.count { it.hasUpdate })
+                    }
+                }
+                launch {
+                    mangaManager.installedExtensionsFlow.collect { list ->
+                        updateTabBadge(MediaType.MANGA, list.count { it.hasUpdate })
+                    }
+                }
+                launch {
+                    novelManager.allInstalledExtensionsFlow.collect { list ->
+                        updateTabBadge(MediaType.NOVEL, list.count(ExtensionUpdateAll::novelHasUpdate))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updateTabBadge(type: MediaType, count: Int) {
+        val tab = binding.extensionsTypeTabs.getTabAt(ExtensionPages.tabIndexOf(type)) ?: return
+        if (count > 0) {
+            tab.orCreateBadge.apply {
+                isVisible = true
+                number = count
+                maxCharacterCount = 3
+            }
+        } else {
+            tab.removeBadge()
+        }
+    }
+
+    private fun updateBackCallback() {
+        clearSearchBackCallback.isEnabled =
+            !binding.searchViewText.text.isNullOrEmpty() && !binding.fragmentExtensionsContainer.isVisible
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -170,15 +248,16 @@ class ExtensionsActivity : AppCompatActivity() {
 
     private fun showMenu(anchor: View) {
         val page = binding.viewPager.currentItem
+        val type = ExtensionPages.typeOf(page)
         PopupMenu(this, anchor).apply {
-            menu.add(0, MENU_REPOS, 0, R.string.extensions_menu_repositories)
+            menu.add(0, MENU_REFRESH, 0, R.string.extensions_menu_refresh)
             if (!ExtensionPages.isInstalled(page)) {
                 menu.add(0, MENU_LANGUAGE, 1, R.string.extensions_menu_language)
             }
             menu.add(0, MENU_TEST, 2, R.string.extensions_menu_test)
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
-                    MENU_REPOS -> openRepositories(ExtensionPages.typeOf(page))
+                    MENU_REFRESH -> ExtensionRefresh.refresh(this@ExtensionsActivity, this@ExtensionsActivity, type)
                     MENU_LANGUAGE -> chooseLanguage()
                     MENU_TEST -> ContextCompat.startActivity(
                         this@ExtensionsActivity,
@@ -192,28 +271,34 @@ class ExtensionsActivity : AppCompatActivity() {
         }
     }
 
+    private fun languageLabel(entry: LanguageMapper.Companion.Language): String =
+        if (entry == LanguageMapper.Companion.Language.ALL) getString(R.string.extensions_language_all)
+        else LanguageMapper.getLanguageName(entry.code)
+
+    private fun updateLanguageChip() {
+        val code: String = PrefManager.getVal(PrefName.LangSort)
+        val entry = LanguageMapper.Companion.Language.entries.firstOrNull { it.code == code }
+            ?: LanguageMapper.Companion.Language.ALL
+        binding.extensionsLanguageChip.setDropdownText(languageLabel(entry))
+        binding.extensionsLanguageChip.isChecked = entry != LanguageMapper.Companion.Language.ALL
+    }
+
     private fun chooseLanguage() {
-        val languageOptions =
-            LanguageMapper.Companion.Language.entries.map { entry ->
-                entry.name.lowercase().replace("_", " ")
-                    .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
-            }.toTypedArray()
-        val listOrder: String = PrefManager.getVal(PrefName.LangSort)
-        val index = LanguageMapper.Companion.Language.entries.toTypedArray()
-            .indexOfFirst { it.code == listOrder }
+        val entries = LanguageMapper.Companion.Language.entries
+        val options = entries.map { ChoiceOption(languageLabel(it)) }
+        val current: String = PrefManager.getVal(PrefName.LangSort)
+        val index = entries.indexOfFirst { it.code == current }.coerceAtLeast(0)
         ChoiceSheet.single(
-            this, getString(R.string.extensions_menu_language), languageOptions.map { ChoiceOption(it) }, index,
+            this, getString(R.string.extensions_menu_language), options, index,
         ) { selected ->
-            PrefManager.setVal(
-                PrefName.LangSort,
-                LanguageMapper.Companion.Language.entries[selected].code
-            )
+            PrefManager.setVal(PrefName.LangSort, entries[selected].code)
+            updateLanguageChip()
             (currentPageFragment() as? SearchQueryHandler)?.notifyDataChanged()
         }
     }
 
     fun showAvailable() {
-        binding.extensionsStatusChips.check(R.id.extensionsChipAvailable)
+        binding.extensionsStatusToggle.check(R.id.extensionsStatusAvailable)
     }
 
     fun openRepositories(type: MediaType) {
@@ -232,11 +317,21 @@ class ExtensionsActivity : AppCompatActivity() {
     fun showSourcePreferences(show: Boolean, title: String?) {
         if (isFinishing || isDestroyed) return
         binding.viewPager.isVisible = !show
+        binding.extensionsTypeTabs.isVisible = !show
+        binding.extensionsTabsDivider.isVisible = !show
         binding.extensionsFilterBar.isVisible = !show
+        binding.extensionsReposButton.isVisible = !show
         binding.extensionsMenuButton.isVisible = !show
-        binding.searchView.isVisible = !show
         binding.fragmentExtensionsContainer.isGone = !show
         binding.extensions.text = if (show && title != null) title else getString(R.string.extensions)
+        if (show) binding.searchViewText.clearFocus()
+        updateBackCallback()
+    }
+
+    private fun typeLabel(type: MediaType): Int = when (type) {
+        MediaType.ANIME -> R.string.extensions_type_anime
+        MediaType.MANGA -> R.string.extensions_type_manga
+        MediaType.NOVEL -> R.string.extensions_type_novel
     }
 
     private fun searchHint(type: MediaType): Int = when (type) {
@@ -247,7 +342,7 @@ class ExtensionsActivity : AppCompatActivity() {
 
     private companion object {
         const val KEY_PAGE = "extensions_page"
-        const val MENU_REPOS = 1
+        const val MENU_REFRESH = 1
         const val MENU_LANGUAGE = 2
         const val MENU_TEST = 3
     }

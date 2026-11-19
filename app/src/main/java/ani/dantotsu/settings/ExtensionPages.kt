@@ -3,8 +3,8 @@ package ani.dantotsu.settings
 import ani.dantotsu.media.MediaType
 
 /**
- * Page model of the extensions screen: a media type (segmented control)
- * times installed/available (chips). The ViewPager keeps its original six
+ * Page model of the extensions screen: a media type (primary tabs) times
+ * installed/available (segmented toggle). The ViewPager keeps its original six
  * pages in this order: installed anime, available anime, installed manga,
  * available manga, installed novels, available novels.
  */
@@ -18,4 +18,8 @@ object ExtensionPages {
     fun typeOf(page: Int): MediaType = TYPES[page.coerceIn(0, PAGE_COUNT - 1) / 2]
 
     fun isInstalled(page: Int): Boolean = page.coerceIn(0, PAGE_COUNT - 1) % 2 == 0
+
+    fun tabIndexOf(type: MediaType): Int = TYPES.indexOf(type).coerceAtLeast(0)
+
+    fun typeForTab(index: Int): MediaType = TYPES[index.coerceIn(0, TYPES.lastIndex)]
 }

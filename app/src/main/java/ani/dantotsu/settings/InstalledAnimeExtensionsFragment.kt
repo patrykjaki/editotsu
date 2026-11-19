@@ -169,7 +169,12 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
 
         lifecycleScope.launch {
             animeExtensionManager.installedExtensionsFlow.collect { extensions ->
-                extensionsAdapter.updateData(sortToAnimeSourcesList(extensions))
+                val sorted = sortToAnimeSourcesList(extensions)
+                if (searchQuery.isNotEmpty()) {
+                    extensionsAdapter.filter(searchQuery, sorted)
+                } else {
+                    extensionsAdapter.updateData(sorted)
+                }
                 ExtensionUpdateAll.bind(
                     _binding?.updateAllButton ?: return@collect,
                     ExtensionUpdateAll.pending(extensions) { it.hasUpdate },
@@ -204,7 +209,8 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
     }
 
     private fun emptyViews(b: FragmentExtensionsBinding) = ExtensionEmptyState.Views(
-        b.extensionsEmpty, b.extensionsEmptyText, b.extensionsEmptyAction
+        b.extensionsEmpty, b.extensionsEmptyIcon, b.extensionsEmptyText,
+        b.extensionsEmptySubtitle, b.extensionsEmptyAction, b.extensionsLoading,
     )
 
     override fun updateContentBasedOnQuery(query: String?) {
@@ -267,6 +273,7 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
             val repo = extension.repoName ?: extension.repository?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) } ?: ani.dantotsu.parsers.ExtensionRepoMetaHelper.getInstalledRepo(extension.pkgName)?.let { ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(it) }
             val versionText = ExtensionRowText.versionLine(lang, displayVersion, extension.isNsfw, repo)
             holder.extensionVersionTextView.text = versionText
+            holder.extensionIconImageView.isGone = skipIcons
             if (!skipIcons) {
                 holder.extensionIconImageView.setImageDrawable(extension.icon)
             }
@@ -300,8 +307,7 @@ class InstalledAnimeExtensionsFragment : Fragment(), SearchQueryHandler {
                     filteredList.add(extension)
                 }
             }
-            if (filteredList != currentList)
-                submitList(filteredList)
+            submitList(filteredList)
         }
 
         inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {

@@ -3,6 +3,7 @@ package ani.dantotsu.settings
 import android.content.Context
 import android.content.ContextWrapper
 import android.view.View
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.paging.CombinedLoadStates
@@ -13,7 +14,7 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import com.google.android.material.button.MaterialButton
 
-/** Text and action shown in place of an empty extension list. */
+/** Icon, copy, loading skeleton and action shown in place of an empty extension list. */
 object ExtensionEmptyState {
     enum class Kind { NONE, NO_MATCH, NO_INSTALLED, NO_REPOS, NO_AVAILABLE }
 
@@ -47,9 +48,16 @@ object ExtensionEmptyState {
         return null
     }
 
-    class Views(val root: View, val text: TextView, val action: MaterialButton)
+    class Views(
+        val root: View,
+        val icon: ImageView,
+        val text: TextView,
+        val subtitle: TextView,
+        val action: MaterialButton,
+        val loading: View? = null,
+    )
 
-    /** Paging lists: shown only once a refresh has finished. */
+    /** Paging lists: show skeleton while initial refresh loads; empty state once finished. */
     fun onLoadStates(
         views: Views,
         states: CombinedLoadStates,
@@ -58,13 +66,16 @@ object ExtensionEmptyState {
         query: String,
     ) {
         if (states.refresh is LoadState.Loading) {
+            views.loading?.isVisible = itemCount == 0
             views.root.isVisible = false
             return
         }
+        views.loading?.isVisible = false
         render(views, type, query, kind(itemCount, query, false, repositories(type).isNotEmpty()))
     }
 
     fun onInstalledList(views: Views, itemCount: Int, type: MediaType, query: String) {
+        views.loading?.isVisible = false
         render(views, type, query, kind(itemCount, query, true, true))
     }
 
@@ -72,6 +83,13 @@ object ExtensionEmptyState {
         views.root.isVisible = kind != Kind.NONE
         if (kind == Kind.NONE) return
         val context = views.root.context
+        views.icon.setImageResource(
+            when (kind) {
+                Kind.NO_MATCH -> R.drawable.ic_round_search_24
+                Kind.NO_REPOS -> R.drawable.ic_round_source_24
+                else -> R.drawable.ic_extension
+            }
+        )
         views.text.text = when (kind) {
             Kind.NO_MATCH -> context.getString(R.string.extensions_empty_search, query.trim())
             Kind.NO_INSTALLED -> context.getString(
@@ -90,6 +108,14 @@ object ExtensionEmptyState {
             )
             else -> context.getString(R.string.extensions_empty_available)
         }
+        views.subtitle.text = context.getString(
+            when (kind) {
+                Kind.NO_MATCH -> R.string.extensions_empty_search_subtitle
+                Kind.NO_INSTALLED -> R.string.extensions_empty_installed_subtitle
+                Kind.NO_REPOS -> R.string.extensions_empty_repos_subtitle
+                else -> R.string.extensions_empty_available_subtitle
+            }
+        )
         val activity = context.extensionsActivity()
         when (kind) {
             Kind.NO_INSTALLED -> views.action.setAction(
@@ -98,9 +124,12 @@ object ExtensionEmptyState {
             Kind.NO_REPOS -> views.action.setAction(
                 R.drawable.ic_add, R.string.extensions_empty_add_repository
             ) { activity?.openRepositories(type) }
+            Kind.NO_AVAILABLE -> views.action.setAction(
+                R.drawable.ic_round_source_24, R.string.extensions_menu_repositories
+            ) { activity?.openRepositories(type) }
             else -> views.action.setOnClickListener(null)
         }
         views.action.isVisible = activity != null &&
-            (kind == Kind.NO_INSTALLED || kind == Kind.NO_REPOS)
+            (kind == Kind.NO_INSTALLED || kind == Kind.NO_REPOS || kind == Kind.NO_AVAILABLE)
     }
 }

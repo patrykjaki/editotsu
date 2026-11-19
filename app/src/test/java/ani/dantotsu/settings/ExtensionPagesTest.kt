@@ -35,4 +35,14 @@ class ExtensionPagesTest {
         assertEquals(MediaType.NOVEL, ExtensionPages.typeOf(42))
         assertFalse(ExtensionPages.isInstalled(42))
     }
+
+    @Test
+    fun `tab index round-trips with media type and clamps out of range`() {
+        assertEquals(0, ExtensionPages.tabIndexOf(MediaType.ANIME))
+        assertEquals(1, ExtensionPages.tabIndexOf(MediaType.MANGA))
+        assertEquals(2, ExtensionPages.tabIndexOf(MediaType.NOVEL))
+        assertEquals(MediaType.ANIME, ExtensionPages.typeForTab(-1))
+        assertEquals(MediaType.MANGA, ExtensionPages.typeForTab(1))
+        assertEquals(MediaType.NOVEL, ExtensionPages.typeForTab(99))
+    }
 }
