@@ -1,10 +1,16 @@
 package ani.dantotsu.settings.paging
 
 import ani.dantotsu.settings.ExtensionRowText
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
 import android.widget.ImageView
+import androidx.core.view.isGone
+import androidx.core.widget.ImageViewCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -23,20 +29,14 @@ import ani.dantotsu.others.LanguageMapper
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import com.bumptech.glide.Glide
+import com.google.android.material.color.MaterialColors
 import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import eu.kanade.tachiyomi.extension.manga.model.MangaExtension
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @Suppress("UNCHECKED_CAST")
 class MangaExtensionsViewModelFactory(
@@ -132,6 +132,14 @@ class MangaExtensionAdapter(private val clickListener: OnMangaInstallClickListen
     ) {
 
     private val skipIcons: Boolean = PrefManager.getVal(PrefName.SkipExtensionIcons)
+    private val installingKeys = HashSet<String>()
+
+    fun clearInstalling(pkgName: String, repository: String) {
+        if (installingKeys.remove("$pkgName|$repository")) {
+            val index = snapshot().indexOfFirst { it?.pkgName == pkgName && it.repository == repository }
+            if (index >= 0) notifyItemChanged(index)
+        }
+    }
 
     companion object {
         private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<MangaExtension.Available>() {
@@ -161,6 +169,7 @@ class MangaExtensionAdapter(private val clickListener: OnMangaInstallClickListen
     override fun onBindViewHolder(holder: MangaExtensionViewHolder, position: Int) {
         val extension = getItem(position)
         if (extension != null) {
+            holder.extensionIconImageView.isGone = skipIcons
             if (!skipIcons) {
                 Glide.with(holder.itemView.context)
                     .load(extension.iconUrl)
@@ -173,28 +182,16 @@ class MangaExtensionAdapter(private val clickListener: OnMangaInstallClickListen
     inner class MangaExtensionViewHolder(private val binding: ItemExtensionAllBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
-        private val job = Job()
-        private val scope = CoroutineScope(Dispatchers.Main + job)
+        private var spinAnimator: ObjectAnimator? = null
 
         init {
             binding.closeTextView.setOnClickListener {
                 if (bindingAdapterPosition == RecyclerView.NO_POSITION) return@setOnClickListener
                 val extension = getItem(bindingAdapterPosition)
                 if (extension != null) {
+                    installingKeys += "${extension.pkgName}|${extension.repository}"
                     clickListener.onInstallClick(extension)
-                    binding.closeTextView.setImageResource(R.drawable.ic_sync)
-                    scope.launch {
-                        while (isActive) {
-                            withContext(Dispatchers.Main) {
-                                binding.closeTextView.animate()
-                                    .rotationBy(360f)
-                                    .setDuration(1000)
-                                    .setInterpolator(LinearInterpolator())
-                                    .start()
-                            }
-                            delay(1000)
-                        }
-                    }
+                    setInstalling(true)
                 }
             }
         }
@@ -214,10 +211,36 @@ class MangaExtensionAdapter(private val clickListener: OnMangaInstallClickListen
             val repo = extension.repoName ?: ani.dantotsu.parsers.ExtensionRepoMetaHelper.getRepoBadgeName(extension.repository)
             val versionText = ExtensionRowText.versionLine(lang, displayVersion, extension.isNsfw, repo)
             binding.extensionVersionTextView.text = versionText
+            setInstalling(installingKeys.contains("${extension.pkgName}|${extension.repository}"))
+        }
+
+        private fun setInstalling(installing: Boolean) {
+            spinAnimator?.cancel()
+            spinAnimator = null
+            binding.closeTextView.rotation = 0f
+            val tintAttr = if (installing) androidx.appcompat.R.attr.colorPrimary
+            else com.google.android.material.R.attr.colorOnSurfaceVariant
+            ImageViewCompat.setImageTintList(
+                binding.closeTextView,
+                ColorStateList.valueOf(MaterialColors.getColor(binding.closeTextView, tintAttr))
+            )
+            if (installing) {
+                binding.closeTextView.setImageResource(R.drawable.ic_round_sync_24)
+                spinAnimator = ObjectAnimator.ofFloat(binding.closeTextView, View.ROTATION, 0f, 360f).apply {
+                    duration = 1000L
+                    repeatCount = ValueAnimator.INFINITE
+                    interpolator = LinearInterpolator()
+                    start()
+                }
+            } else {
+                binding.closeTextView.setImageResource(R.drawable.ic_download_24)
+            }
         }
 
         fun clear() {
-            job.cancel() // Cancel the coroutine when the view is recycled
+            spinAnimator?.cancel()
+            spinAnimator = null
+            binding.closeTextView.rotation = 0f
         }
     }
 

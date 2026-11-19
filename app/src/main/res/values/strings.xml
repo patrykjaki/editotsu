@@ -354,7 +354,9 @@
     <string name="extensions_filter_available">Available</string>
     <string name="extensions_more_options">More options</string>
     <string name="extensions_menu_repositories">Repositories</string>
+    <string name="extensions_menu_refresh">Check for updates</string>
     <string name="extensions_menu_language">Language</string>
+    <string name="extensions_language_all">All languages</string>
     <string name="extensions_menu_test">Test extensions</string>
     <string name="extensions_row_settings">Settings</string>
     <string name="extensions_row_uninstall">Uninstall</string>
@@ -396,8 +398,13 @@
     <string name="extensions_empty_repos_novel">No novel repositories</string>
     <string name="extensions_empty_available">No extensions found</string>
     <string name="extensions_empty_search">No results for “%1$s”</string>
+    <string name="extensions_empty_installed_subtitle">Browse available extensions to install a source.</string>
+    <string name="extensions_empty_repos_subtitle">Add a repository to browse and install extensions.</string>
+    <string name="extensions_empty_available_subtitle">Pull down to refresh, or check your language filter and repositories.</string>
+    <string name="extensions_empty_search_subtitle">Try a different search term.</string>
     <string name="extensions_empty_show_available">Show available</string>
     <string name="extensions_empty_add_repository">Add repository</string>
+    <string name="repositories_empty">No repositories added yet</string>
     <plurals name="extensions_refresh_updates">
         <item quantity="one">%1$d extension update</item>
         <item quantity="other">%1$d extension updates</item>

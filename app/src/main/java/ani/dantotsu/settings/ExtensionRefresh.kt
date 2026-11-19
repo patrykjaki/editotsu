@@ -1,5 +1,7 @@
 package ani.dantotsu.settings
 
+import android.content.Context
+import android.content.res.Resources
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -50,7 +52,7 @@ object ExtensionRefresh {
                 val updates = job.await()
                 swipe.isRefreshing = false
                 // null: no repository answered; the manager already showed why.
-                if (updates != null) snackString(message(swipe, updates))
+                if (updates != null) snackString(message(swipe.resources, updates))
             }
         }
         // A refresh started from the other tab of this type, or before a rotation.
@@ -63,8 +65,16 @@ object ExtensionRefresh {
         }
     }
 
-    private fun message(swipe: SwipeRefreshLayout, updates: Int): String {
-        val res = swipe.resources
+    /** Triggers the same deduplicated repository refresh from a menu action. */
+    fun refresh(context: Context, owner: LifecycleOwner, type: MediaType) {
+        val job = refreshes.start(type) { checkRepos(type) }
+        owner.lifecycleScope.launch {
+            val updates = job.await()
+            if (updates != null) snackString(message(context.resources, updates))
+        }
+    }
+
+    private fun message(res: Resources, updates: Int): String {
         return if (updates == 0) res.getString(R.string.extensions_refresh_none)
         else res.getQuantityString(R.plurals.extensions_refresh_updates, updates, updates)
     }

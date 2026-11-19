@@ -188,7 +188,12 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
 
         lifecycleScope.launch {
             novelExtensionManager.allInstalledExtensionsFlow.collect { extensions ->
-                extensionsAdapter.updateData(sortToNovelSourcesList(extensions))
+                val sorted = sortToNovelSourcesList(extensions)
+                if (searchQuery.isNotEmpty()) {
+                    extensionsAdapter.filter(searchQuery, sorted)
+                } else {
+                    extensionsAdapter.updateData(sorted)
+                }
                 ExtensionUpdateAll.bind(
                     _binding?.updateAllButton ?: return@collect,
                     ExtensionUpdateAll.pending(extensions, ExtensionUpdateAll::novelHasUpdate),
@@ -243,7 +248,8 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
     }
 
     private fun emptyViews(b: FragmentNovelExtensionsBinding) = ExtensionEmptyState.Views(
-        b.extensionsEmpty, b.extensionsEmptyText, b.extensionsEmptyAction
+        b.extensionsEmpty, b.extensionsEmptyIcon, b.extensionsEmptyText,
+        b.extensionsEmptySubtitle, b.extensionsEmptyAction, b.extensionsLoading,
     )
 
     override fun updateContentBasedOnQuery(query: String?) {
@@ -299,6 +305,7 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val extension = getItem(position)
             holder.extensionNameTextView.text = extension.name
+            holder.extensionIconImageView.isGone = skipIcons
 
             when (extension) {
                 is NovelExtension.Installed -> {
@@ -351,8 +358,7 @@ class InstalledNovelExtensionsFragment : Fragment(), SearchQueryHandler {
                     filteredList.add(extension)
                 }
             }
-            if (filteredList != currentList)
-                submitList(filteredList)
+            submitList(filteredList)
         }
 
         inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {

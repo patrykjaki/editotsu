@@ -2,13 +2,17 @@ package ani.dantotsu.settings
 
 import android.content.Context
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
-import androidx.core.view.isGone
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
+import androidx.core.view.updatePadding
 import androidx.recyclerview.widget.LinearLayoutManager
 import ani.dantotsu.BottomSheetDialogFragment
 import ani.dantotsu.R
@@ -141,6 +145,22 @@ class AddRepositoryBottomSheet : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        binding.addRepositoryText.setText(
+            when (mediaType) {
+                MediaType.ANIME -> R.string.anime_add_repository
+                MediaType.MANGA -> R.string.manga_add_repository
+                MediaType.NOVEL -> R.string.novel_add_repository
+            }
+        )
+
+        val baseBottomPadding = binding.root.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
+            val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            v.updatePadding(bottom = baseBottomPadding + nav)
+            insets
+        }
+        ViewCompat.requestApplyInsets(binding.root)
+
         binding.repositoriesRecyclerView.adapter = adapter
         binding.repositoriesRecyclerView.layoutManager = LinearLayoutManager(
             context,
@@ -149,41 +169,55 @@ class AddRepositoryBottomSheet : BottomSheetDialogFragment() {
         )
         adapter.addAll(repositories.map { RepoItem(it, mediaType, ::onRepositoryRemoved) })
         binding.repositoriesRecyclerView.addItemDecoration(ExtensionCardDecoration())
-        binding.currentRepositoriesText.isVisible = repositories.isNotEmpty()
+        updateRepoSectionVisibility()
 
         binding.repositoryInput.hint = getString(R.string.add_repository_hint)
+        binding.repositoryInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                if (binding.repositoryInputLayout.error != null) {
+                    binding.repositoryInputLayout.error = null
+                    binding.repositoryInputLayout.isErrorEnabled = false
+                }
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
 
         binding.addButton.setOnClickListener {
-            val input = binding.repositoryInput.text.toString()
+            val input = binding.repositoryInput.text?.toString()?.trim().orEmpty()
             val error = isValidUrl(input)
             if (error == null) {
                 acceptUrl(input)
             } else {
+                binding.repositoryInputLayout.isErrorEnabled = true
                 binding.repositoryInputLayout.error = error
             }
-        }
-
-        binding.cancelButton.setOnClickListener {
-            dismiss()
         }
 
         binding.repositoryInput.setOnEditorActionListener { textView, action, keyEvent ->
             if (action == EditorInfo.IME_ACTION_DONE ||
                 (keyEvent?.action == KeyEvent.ACTION_UP && keyEvent.keyCode == KeyEvent.KEYCODE_ENTER)
             ) {
-                val url = textView.text.toString()
+                val url = textView.text.toString().trim()
                 if (url.isNotBlank()) {
                     val error = isValidUrl(url)
                     if (error == null) {
                         acceptUrl(url)
                         return@setOnEditorActionListener true
                     } else {
+                        binding.repositoryInputLayout.isErrorEnabled = true
                         binding.repositoryInputLayout.error = error
                     }
                 }
             }
             false
         }
+    }
+
+    private fun updateRepoSectionVisibility() {
+        val hasRepos = repositories.isNotEmpty()
+        _binding?.currentRepositoriesText?.isVisible = hasRepos
+        _binding?.repositoriesEmptyText?.isVisible = !hasRepos
     }
 
     private fun acceptUrl(url: String) {
@@ -247,7 +281,7 @@ class AddRepositoryBottomSheet : BottomSheetDialogFragment() {
         onRepositoryRemoved?.invoke(url, mediaType)
         repositories.remove(url)
         adapter.update(repositories.map { RepoItem(it, mediaType, ::onRepositoryRemoved) })
-        _binding?.currentRepositoriesText?.isVisible = repositories.isNotEmpty()
+        updateRepoSectionVisibility()
     }
 
     override fun onDestroyView() {

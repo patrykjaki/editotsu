@@ -14,7 +14,7 @@
         android:layout_height="4dp"
         android:layout_gravity="center_horizontal"
         android:layout_marginTop="14dp"
-        android:layout_marginBottom="6dp"
+        android:layout_marginBottom="10dp"
         android:background="@drawable/shape_choice_handle"
         android:importantForAccessibility="no" />
 
@@ -57,6 +57,7 @@
             app:boxCornerRadiusBottomStart="16dp"
             app:boxCornerRadiusTopEnd="16dp"
             app:boxCornerRadiusTopStart="16dp"
+            app:endIconMode="clear_text"
             app:errorEnabled="false"
             app:hintEnabled="false">
 
@@ -67,33 +68,32 @@
                 android:fontFamily="@font/poppins"
                 android:imeOptions="actionDone"
                 android:inputType="textUri"
+                android:minHeight="56dp"
                 android:singleLine="true"
+                android:textColor="?attr/colorOnSurface"
+                android:textColorHint="?attr/colorOnSurfaceVariant"
                 android:textSize="16sp" />
         </com.google.android.material.textfield.TextInputLayout>
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/addButton"
-            style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
-            android:layout_width="60dp"
-            android:layout_height="match_parent"
+            style="@style/Widget.Material3.Button.IconButton.Filled"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="top"
             android:layout_marginStart="8dp"
+            android:contentDescription="@string/extensions_empty_add_repository"
             android:insetTop="0dp"
             android:insetBottom="0dp"
-            app:cornerRadius="16dp"
             android:padding="0dp"
+            android:tooltipText="@string/extensions_empty_add_repository"
+            app:cornerRadius="16dp"
+            app:icon="@drawable/ic_add"
             app:iconGravity="textStart"
             app:iconPadding="0dp"
-            android:contentDescription="@string/extensions_empty_add_repository"
-            android:tooltipText="@string/extensions_empty_add_repository"
-            app:icon="@drawable/ic_add"
+            app:iconSize="24dp"
             tools:ignore="UnusedAttribute" />
     </LinearLayout>
-
-    <Button
-        android:id="@+id/cancelButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:visibility="gone" />
 
     <TextView
         android:id="@+id/currentRepositoriesText"
@@ -101,11 +101,24 @@
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="4dp"
         android:layout_marginTop="20dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginBottom="4dp"
         android:fontFamily="@font/poppins_semi_bold"
         android:text="@string/current_repositories"
-        android:textColor="?attr/colorPrimary"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/repositoriesEmptyText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="4dp"
+        android:layout_marginTop="16dp"
+        android:fontFamily="@font/poppins"
+        android:gravity="center"
+        android:text="@string/repositories_empty"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:textSize="14sp"
+        android:visibility="gone" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/repositoriesRecyclerView"

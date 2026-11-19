@@ -34,7 +34,10 @@ class MangaExtensionsFragment : Fragment(),
     private val loadStateListener: (CombinedLoadStates) -> Unit = { states ->
         _binding?.let {
             ExtensionEmptyState.onLoadStates(
-                ExtensionEmptyState.Views(it.extensionsEmpty, it.extensionsEmptyText, it.extensionsEmptyAction),
+                ExtensionEmptyState.Views(
+                    it.extensionsEmpty, it.extensionsEmptyIcon, it.extensionsEmptyText,
+                    it.extensionsEmptySubtitle, it.extensionsEmptyAction, it.extensionsLoading,
+                ),
                 states, adapter.itemCount, MediaType.MANGA, searchQuery
             )
         }
@@ -99,8 +102,14 @@ class MangaExtensionsFragment : Fragment(),
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(
                     { installStep -> installerSteps.onInstallStep(installStep) {} },
-                    { error -> installerSteps.onError(error) {} },
-                    { installerSteps.onComplete { viewModel.invalidatePager() } }
+                    { error ->
+                        adapter.clearInstalling(pkg.pkgName, pkg.repository)
+                        installerSteps.onError(error) {}
+                    },
+                    {
+                        adapter.clearInstalling(pkg.pkgName, pkg.repository)
+                        installerSteps.onComplete { viewModel.invalidatePager() }
+                    }
                 )
         }
     }

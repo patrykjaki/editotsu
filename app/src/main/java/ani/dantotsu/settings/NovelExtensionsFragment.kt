@@ -40,7 +40,10 @@ class NovelExtensionsFragment : Fragment(),
     private val loadStateListener: (CombinedLoadStates) -> Unit = { states ->
         _binding?.let {
             ExtensionEmptyState.onLoadStates(
-                ExtensionEmptyState.Views(it.extensionsEmpty, it.extensionsEmptyText, it.extensionsEmptyAction),
+                ExtensionEmptyState.Views(
+                    it.extensionsEmpty, it.extensionsEmptyIcon, it.extensionsEmptyText,
+                    it.extensionsEmptySubtitle, it.extensionsEmptyAction, it.extensionsLoading,
+                ),
                 states, adapter.itemCount, MediaType.NOVEL, searchQuery
             )
         }
@@ -109,6 +112,7 @@ class NovelExtensionsFragment : Fragment(),
                 if (plugin != null) {
                     lifecycleScope.launch {
                         val success = novelExtensionManager.installLnReaderPlugin(plugin)
+                        adapter.clearInstalling(pkg.pkgName, pkg.repository)
                         if (success) {
                             viewModel.invalidatePager()
                             snackString("Extension installed")
@@ -135,6 +139,7 @@ class NovelExtensionsFragment : Fragment(),
                         notificationManager.notify(1, builder.build())
                     },
                     { error ->
+                        adapter.clearInstalling(pkg.pkgName, pkg.repository)
                         Injekt.get<CrashlyticsInterface>().logException(error)
                         val builder = NotificationCompat.Builder(
                             context,
@@ -148,6 +153,7 @@ class NovelExtensionsFragment : Fragment(),
                         snackString("Installation failed: ${error.message}")
                     },
                     {
+                        adapter.clearInstalling(pkg.pkgName, pkg.repository)
                         val builder = NotificationCompat.Builder(
                             context,
                             Notifications.CHANNEL_DOWNLOADER_PROGRESS
