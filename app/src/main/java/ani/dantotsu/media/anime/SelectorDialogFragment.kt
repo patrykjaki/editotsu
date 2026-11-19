@@ -1275,6 +1275,8 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             onTap: () -> Unit,
         ) = com.google.android.material.chip.Chip(group.context).apply {
             id = View.generateViewId()
+            // a chip built in code gets the library's Roboto label unless the app's appearance is set
+            setTextAppearance(R.style.TextAppearance_Editotsu_Chip)
             text = label
             isCheckable = false
             setOnClickListener { onTap() }
@@ -1293,6 +1295,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 }
                 val chip = com.google.android.material.chip.Chip(group.context).apply {
                     id = View.generateViewId()
+                    setTextAppearance(R.style.TextAppearance_Editotsu_Chip)
                     text = label
                     tag = kind
                     isCheckable = true
@@ -1795,7 +1798,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             val padV = (2 * context.resources.displayMetrics.density).toInt()
             tv.setPadding(padH, padV, padH, padV)
             tv.textSize = 11f
-            tv.typeface = android.graphics.Typeface.DEFAULT_BOLD
+            tv.typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.poppins_semi_bold)
             tv.maxLines = 1
             tv.setSingleLine(true)
             return tv

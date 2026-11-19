@@ -537,13 +537,14 @@ class MediaAdaptor(
                     media.anime?.totalEpisodes ?: media.manga?.totalChapters, media.anime != null,
                 )
                 pill.isVisible = shown != null
-                val on = color(com.google.android.material.R.attr.colorOnPrimaryContainer)
-                pill.backgroundTintList = ColorStateList.valueOf(color(com.google.android.material.R.attr.colorPrimaryContainer))
+                // solid like the score badge in the opposite corner: visible on white covers too
+                val on = color(com.google.android.material.R.attr.colorOnPrimary)
+                pill.backgroundTintList = ColorStateList.valueOf(color(androidx.appcompat.R.attr.colorPrimary))
                 pill.setTextColor(on)
                 when (shown) {
                     is CoverPill.Progress -> {
                         pill.text = SpannableString(shown.watched + shown.rest).apply {
-                            setSpan(ForegroundColorSpan(ColorUtils.setAlphaComponent(on, 0xB3)), shown.watched.length, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                            setSpan(ForegroundColorSpan(ColorUtils.setAlphaComponent(on, 0xD9)), shown.watched.length, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                         }
                         pill.contentDescription = null // reads as the text: "2 | 9 | 11"
                     }

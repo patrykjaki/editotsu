@@ -70,7 +70,7 @@
 
             </LinearLayout>
 
-            <!-- "Episode count" in appearance: "2 | 9 | 11" (or "7 ep" off the list) on secondaryContainer, or the new count on primary -->
+            <!-- "Episode count" in appearance: "2 | 9 | 11" (or "7 ep" off the list), or only the new count; solid primary like the score badge -->
             <TextView
                 android:id="@+id/itemCompactCoverCount"
                 android:layout_width="wrap_content"
@@ -84,7 +84,7 @@
                 android:minWidth="28dp"
                 android:maxLines="1"
                 android:paddingStart="8dp"
-                android:paddingEnd="9dp"
+                android:paddingEnd="12dp"
                 android:textColor="?attr/colorOnPrimary"
                 android:textSize="12sp"
                 android:visibility="gone"
