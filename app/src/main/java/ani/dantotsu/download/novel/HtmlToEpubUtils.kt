@@ -7,14 +7,23 @@ import androidx.core.content.FileProvider
 import ani.dantotsu.media.novel.novelreader.NovelReaderActivity
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.UUID
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 object HtmlToEpubUtils {
 
-    fun streamToReader(context: Context, title: String, html: String): Intent {
-        val epubBytes = createEpub(title, html)
+    internal fun epubIdentifier(seed: String): String =
+        "urn:uuid:${UUID.nameUUIDFromBytes(seed.toByteArray(Charsets.UTF_8))}"
+
+    fun streamToReader(
+        context: Context,
+        title: String,
+        html: String,
+        identifierKey: String? = null
+    ): Intent {
+        val epubBytes = createEpub(title, html, identifierKey = identifierKey)
         val cacheDir = context.cacheDir
         val staleFiles = cacheDir.listFiles { _, name -> name.startsWith("stream_novel_") }
             ?.sortedByDescending { it.lastModified() } ?: emptyList()
@@ -33,9 +42,16 @@ object HtmlToEpubUtils {
         }
     }
 
-    fun createEpub(title: String, htmlContent: String): ByteArray {
+    fun createEpub(
+        title: String,
+        htmlContent: String,
+        identifierKey: String? = null
+    ): ByteArray {
         val baos = ByteArrayOutputStream()
         val zos = ZipOutputStream(baos)
+        val bookUid = epubIdentifier(
+            identifierKey?.takeIf { it.isNotBlank() } ?: "$title\u0000$htmlContent"
+        )
         
         // uncompress
         val mimeType = "application/epub+zip".toByteArray(Charsets.UTF_8)
@@ -77,7 +93,7 @@ object HtmlToEpubUtils {
                     <dc:title>$cleanTitle</dc:title>
                     <dc:creator>Unknown</dc:creator>
                     <dc:language>en</dc:language>
-                    <dc:identifier id="BookId">urn:uuid:12345</dc:identifier>
+                    <dc:identifier id="BookId">$bookUid</dc:identifier>
                     <dc:description>$cleanTitle</dc:description>
                     <dc:publisher>Dantotsu</dc:publisher>
                     <dc:date>2024-01-01</dc:date>
@@ -101,7 +117,7 @@ object HtmlToEpubUtils {
             <?xml version="1.0" encoding="UTF-8"?>
             <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
                 <head>
-                    <meta name="dtb:uid" content="urn:uuid:12345"/>
+                    <meta name="dtb:uid" content="$bookUid"/>
                     <meta name="dtb:depth" content="1"/>
                     <meta name="dtb:totalPageCount" content="0"/>
                     <meta name="dtb:maxPageNumber" content="0"/>

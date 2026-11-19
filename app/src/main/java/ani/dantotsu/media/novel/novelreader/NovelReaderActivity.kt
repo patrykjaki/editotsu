@@ -418,7 +418,7 @@ class NovelReaderActivity : AppCompatActivity() {
             try {
                 val html = session.parser!!.loadChapterHtml(chapter.url)
                 val intent = ani.dantotsu.download.novel.HtmlToEpubUtils.streamToReader(
-                    this@NovelReaderActivity, chapterName, html
+                    this@NovelReaderActivity, chapterName, html, identifierKey = chapter.url
                 )
                 val uri = intent.data!!
                 openPublication(uri)

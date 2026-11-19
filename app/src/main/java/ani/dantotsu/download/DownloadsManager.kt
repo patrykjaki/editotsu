@@ -60,11 +60,8 @@ class DownloadsManager(private val context: Context) {
 
     private fun loadDownloads(): List<DownloadedType> {
         val jsonString = PrefManager.getVal(PrefName.DownloadsKeys, null as String?)
-        return if (jsonString != null) {
-            val type = object : TypeToken<List<DownloadedType>>() {}.type
-            gson.fromJson(jsonString, type)
-        } else {
-            emptyList()
+        return parseDownloadsJson(jsonString, gson) { e ->
+            Logger.log("DownloadsManager: failed to parse DownloadsKeys: ${e.message}")
         }
     }
 
@@ -195,22 +192,24 @@ class DownloadsManager(private val context: Context) {
                 snackString("Successfully deleted")
             } else {
                 snackString("Failed to delete directory")
+                return
             }
         } else {
             snackString("Directory does not exist")
             cleanDownloads()
         }
+        val safeTitle = title.findValidName()
         when (type) {
             MediaType.MANGA -> {
-                metadataStore.transact { it.removeAll { it.titleName == title && it.type == MediaType.MANGA } }
+                metadataStore.transact { it.removeAll { it.titleName.findValidName() == safeTitle && it.type == MediaType.MANGA } }
             }
 
             MediaType.ANIME -> {
-                metadataStore.transact { it.removeAll { it.titleName == title && it.type == MediaType.ANIME } }
+                metadataStore.transact { it.removeAll { it.titleName.findValidName() == safeTitle && it.type == MediaType.ANIME } }
             }
 
             MediaType.NOVEL -> {
-                metadataStore.transact { it.removeAll { it.titleName == title && it.type == MediaType.NOVEL } }
+                metadataStore.transact { it.removeAll { it.titleName.findValidName() == safeTitle && it.type == MediaType.NOVEL } }
             }
         }
     }
@@ -1102,6 +1101,26 @@ fun isMaintenanceDoomed(
 ): Boolean {
     if (entryType != cleanupType) return false
     return dirExists == false || titleBlank
+}
+
+/**
+ * Parses persisted `DownloadsKeys` JSON defensively. Blank, `"null"`, or
+ * truncated/malformed values return an empty list instead of throwing NPE
+ * or [com.google.gson.JsonSyntaxException] during startup.
+ */
+internal fun parseDownloadsJson(
+    jsonString: String?,
+    gson: Gson = Gson(),
+    onError: (Exception) -> Unit = {},
+): List<DownloadedType> {
+    if (jsonString.isNullOrBlank()) return emptyList()
+    return try {
+        val type = object : TypeToken<List<DownloadedType>>() {}.type
+        gson.fromJson<List<DownloadedType>?>(jsonString, type)?.filterNotNull() ?: emptyList()
+    } catch (e: Exception) {
+        onError(e)
+        emptyList()
+    }
 }
 
 data class DownloadedType(
