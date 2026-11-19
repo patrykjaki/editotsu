@@ -6,14 +6,13 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.util.AttributeSet
 import android.view.View
-import androidx.core.graphics.ColorUtils
 import com.google.android.material.color.MaterialColors
 
 /**
- * Pill-rounded two-segment storage bar:
- * - Track: device free space (`?android:attr/colorBackground`)
- * - Leading segment: Editotsu downloads (`?attr/colorPrimary`)
- * - Second segment: other phone storage used (muted `?attr/colorOnSurfaceVariant`)
+ * Pill-rounded storage bar:
+ * - Track: device free space (`?attr/colorSecondaryContainer`)
+ * - Used space: Editotsu downloads + other phone storage used (`?attr/colorPrimary`),
+ *   separated by a 2dp notch when both are non-zero.
  */
 class SegmentedStorageBarView @JvmOverloads constructor(
     context: Context,
@@ -38,14 +37,14 @@ class SegmentedStorageBarView @JvmOverloads constructor(
     }
 
     private fun refreshColors() {
-        trackPaint.color = MaterialColors.getColor(this, android.R.attr.colorBackground, 0)
-        downloadsPaint.color = MaterialColors.getColor(this, androidx.appcompat.R.attr.colorPrimary, 0)
-        val mutedBase = MaterialColors.getColor(
+        trackPaint.color = MaterialColors.getColor(
             this,
-            com.google.android.material.R.attr.colorOnSurfaceVariant,
+            com.google.android.material.R.attr.colorSecondaryContainer,
             0,
         )
-        otherUsedPaint.color = ColorUtils.setAlphaComponent(mutedBase, (255 * 0.38f).toInt())
+        val primary = MaterialColors.getColor(this, androidx.appcompat.R.attr.colorPrimary, 0)
+        downloadsPaint.color = primary
+        otherUsedPaint.color = primary
     }
 
     fun setSegments(downloadsFraction: Float, otherUsedFraction: Float) {

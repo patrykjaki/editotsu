@@ -48,7 +48,7 @@
     <string name="refresh">Refresh</string>
 
     <string name="search">Search</string>
-    <string name="search_results">Search Results</string>
+    <string name="search_results">Search results</string>
     <string name="sort_by">Sort By</string>
     <string name="genre">Genre</string>
     <string name="top_score">Top Score</string>
@@ -2113,7 +2113,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="cover_next_episode">Ep %1$d · in %2$s</string>
     <string name="airing_in_minutes">%1$dm</string>
     <string name="airing_in_hours">%1$dh</string>
-    <string name="downloads_storage_line">Downloads %1$s · Phone %2$d%% used · %3$s free</string>
+    <string name="downloads_storage_line">Downloads %1$s · %2$s free</string>
     <string name="downloads_storage_only">Downloads %1$s</string>
     <string name="search_hint_all">Search everything</string>
     <string name="search_filters">Filters</string>

@@ -225,10 +225,9 @@ class ThemesActivity : AppCompatActivity() {
                 b.themesEmptyShowAll.isVisible = filteredOut
             }
 
-            // Nothing to play or save when no matching favourites are shown.
+            // Hide play, shuffle and download actions when no matching favourites are shown.
             listOf(b.actionPlayFavourites, b.actionShuffleFavourites, b.actionDownloadAll).forEach { button ->
-                button.isEnabled = hasShown
-                button.alpha = if (hasShown) 1f else 0.38f
+                button.isVisible = hasShown
             }
 
             // The count trails the heading in the quieter colour, not glued on with a dot.

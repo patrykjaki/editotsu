@@ -39,16 +39,16 @@
             android:textSize="20sp"
             tools:ignore="UnusedAttribute" />
 
-        <ImageButton
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/searchFiltersReset"
+            style="@style/Widget.Material3.Button.IconButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/reset_filters"
             android:tooltipText="@string/reset_filters"
             android:visibility="gone"
-            app:srcCompat="@drawable/ic_round_refresh_24"
-            app:tint="?attr/colorPrimary"
+            app:icon="@drawable/ic_round_refresh_24"
+            app:iconTint="?attr/colorOnSurfaceVariant"
             tools:ignore="UnusedAttribute"
             tools:visibility="visible" />
     </LinearLayout>

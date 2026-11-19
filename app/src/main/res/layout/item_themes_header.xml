@@ -67,11 +67,15 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:ellipsize="end"
+            android:fontFamily="@font/poppins_semi_bold"
+            android:insetTop="4dp"
+            android:insetBottom="4dp"
             android:maxLines="1"
             android:minHeight="48dp"
             android:paddingHorizontal="12dp"
             android:text="@string/themes_kind_both"
-            android:textAppearance="@style/TextAppearance.Editotsu.Chip" />
+            android:textAllCaps="false"
+            android:textSize="14sp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/kindOpenings"
@@ -80,11 +84,15 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:ellipsize="end"
+            android:fontFamily="@font/poppins_semi_bold"
+            android:insetTop="4dp"
+            android:insetBottom="4dp"
             android:maxLines="1"
             android:minHeight="48dp"
             android:paddingHorizontal="12dp"
             android:text="@string/themes_kind_openings"
-            android:textAppearance="@style/TextAppearance.Editotsu.Chip" />
+            android:textAllCaps="false"
+            android:textSize="14sp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/kindEndings"
@@ -93,29 +101,33 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:ellipsize="end"
+            android:fontFamily="@font/poppins_semi_bold"
+            android:insetTop="4dp"
+            android:insetBottom="4dp"
             android:maxLines="1"
             android:minHeight="48dp"
             android:paddingHorizontal="12dp"
             android:text="@string/themes_kind_endings"
-            android:textAppearance="@style/TextAppearance.Editotsu.Chip" />
+            android:textAllCaps="false"
+            android:textSize="14sp" />
     </com.google.android.material.button.MaterialButtonToggleGroup>
 
-    <!-- Secondary radio action: extended tonal button sized to content -->
+    <!-- Secondary radio action: full-width tonal pill (16dp margins) -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/actionShuffleCompleted"
         style="@style/Widget.Material3.Button.TonalButton.Icon"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center_horizontal"
         android:layout_marginHorizontal="16dp"
         android:layout_marginTop="14dp"
+        android:fontFamily="@font/poppins_semi_bold"
         android:insetTop="0dp"
         android:insetBottom="0dp"
         android:minHeight="48dp"
-        android:paddingStart="20dp"
-        android:paddingEnd="24dp"
+        android:paddingHorizontal="20dp"
         android:text="@string/themes_shuffle_completed"
-        android:textAppearance="@style/TextAppearance.Editotsu.Chip"
+        android:textAllCaps="false"
+        android:textSize="14sp"
         app:cornerRadius="24dp"
         app:icon="@drawable/ic_shuffle_24"
         app:iconGravity="textStart"
@@ -209,8 +221,10 @@
             android:layout_height="48dp"
             android:contentDescription="@string/themes_play_favourites"
             android:tooltipText="@string/themes_play_favourites"
+            android:visibility="gone"
             app:icon="@drawable/ic_round_playlist_play_24"
-            app:iconTint="?attr/colorOnSurfaceVariant" />
+            app:iconTint="?attr/colorOnSurfaceVariant"
+            tools:visibility="visible" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/actionShuffleFavourites"
@@ -219,8 +233,10 @@
             android:layout_height="48dp"
             android:contentDescription="@string/themes_shuffle_favourites"
             android:tooltipText="@string/themes_shuffle_favourites"
+            android:visibility="gone"
             app:icon="@drawable/ic_shuffle_24"
-            app:iconTint="?attr/colorOnSurfaceVariant" />
+            app:iconTint="?attr/colorOnSurfaceVariant"
+            tools:visibility="visible" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/actionDownloadAll"
@@ -229,8 +245,10 @@
             android:layout_height="48dp"
             android:contentDescription="@string/themes_download_all"
             android:tooltipText="@string/themes_download_all"
+            android:visibility="gone"
             app:icon="@drawable/ic_download_24"
-            app:iconTint="?attr/colorOnSurfaceVariant" />
+            app:iconTint="?attr/colorOnSurfaceVariant"
+            tools:visibility="visible" />
     </LinearLayout>
 
     <!-- Empty state when there are no favourites (or none matching the OP/ED filter) -->

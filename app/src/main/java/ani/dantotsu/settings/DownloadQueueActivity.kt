@@ -263,7 +263,6 @@ class DownloadQueueActivity : AppCompatActivity() {
             getString(
                 R.string.downloads_storage_line,
                 lastDownloadsLabel,
-                breakdown.phoneUsedPercent,
                 Formatter.formatShortFileSize(this, deviceAvailableBytes),
             )
         } else {

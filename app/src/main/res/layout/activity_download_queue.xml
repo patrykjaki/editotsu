@@ -112,10 +112,10 @@
                     android:ellipsize="end"
                     android:fontFamily="@font/poppins_semi_bold"
                     android:includeFontPadding="false"
-                    android:maxLines="2"
+                    android:maxLines="1"
                     android:textColor="?attr/colorOnSurface"
                     android:textSize="14sp"
-                    tools:text="Downloads 0 B · Phone 24% used · 8.0 GB free" />
+                    tools:text="Downloads 0 B · 7.9 GB free" />
             </LinearLayout>
 
             <ani.dantotsu.settings.SegmentedStorageBarView
@@ -271,7 +271,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:fontFamily="@font/poppins_bold"
+                android:fontFamily="@font/poppins_semi_bold"
                 android:gravity="center"
                 android:text="@string/downloads_empty_title"
                 android:textColor="?attr/colorOnSurface"

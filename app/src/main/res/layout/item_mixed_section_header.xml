@@ -22,11 +22,11 @@
         android:layout_weight="1"
         android:accessibilityHeading="true"
         android:ellipsize="end"
-        android:fontFamily="@font/poppins_bold"
+        android:fontFamily="@font/poppins_semi_bold"
         android:includeFontPadding="false"
         android:maxLines="1"
         android:textColor="?attr/colorOnSurface"
-        android:textSize="20sp"
+        android:textSize="22sp"
         tools:ignore="UnusedAttribute"
         tools:text="Anime" />
 

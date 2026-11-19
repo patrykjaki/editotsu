@@ -144,9 +144,12 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         assertEquals(View.GONE, reset.visibility)
         assertEquals(2, chips(chipRow).size)
         assertEquals("Filters", chips(chipRow)[1].text.toString())
-        val firstValue = grid.findViewHolderForAdapterPosition(0)!!.itemView
+        val sortValue = grid.findViewHolderForAdapterPosition(0)!!.itemView
             .findViewById<TextView>(R.id.filterTileValue).text.toString()
-        assertEquals("Any", firstValue)
+        assertEquals(SearchFiltersSheet.sortLabel(activity, SearchFiltersSheet.DEFAULT_SORT), sortValue)
+        val genreValue = grid.findViewHolderForAdapterPosition(1)!!.itemView
+            .findViewById<TextView>(R.id.filterTileValue).text.toString()
+        assertEquals("Any", genreValue)
         sheet.dismiss()
     }
 

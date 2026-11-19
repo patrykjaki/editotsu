@@ -34,6 +34,8 @@ import java.util.Calendar
  */
 object SearchFiltersSheet {
 
+    const val DEFAULT_SORT = "POPULARITY_DESC"
+
     private val COUNTRY_CODES = listOf("JP", "KR", "CN", "TW")
     private val COUNTRY_LABEL_RES = listOf(
         R.string.country_japan,
@@ -113,12 +115,13 @@ object SearchFiltersSheet {
         val any = context.getString(R.string.chip_any)
         val tiles = ArrayList<FilterTile>(10)
 
-        // Sort
-        val sortVal = f.sort?.let { sortLabel(context, it) }
+        // Sort: when unset (null), AniList defaults to POPULARITY_DESC (and Rescue mode to members desc).
+        val effectiveSort = f.sort ?: DEFAULT_SORT
+        val sortActive = f.sort != null && f.sort != DEFAULT_SORT
         tiles += FilterTile(
             label = context.getString(R.string.chip_sort),
-            value = sortVal ?: any,
-            active = sortVal != null,
+            value = sortLabel(context, effectiveSort),
+            active = sortActive,
             onClick = { openSort(context, f, onMutated) },
         )
 
@@ -266,9 +269,13 @@ object SearchFiltersSheet {
 
     fun openSort(context: Context, f: AniMangaSearchResults, onChanged: () -> Unit) {
         val labels = context.resources.getStringArray(R.array.sort_by).toList()
-        val options = Anilist.sortBy.indices.map { labels.getOrElse(it) { Anilist.sortBy[it] } }
-        openSingle(context, R.string.chip_sort, options, Anilist.sortBy.indexOf(f.sort),
-            { f.sort = Anilist.sortBy.getOrNull(it) }, onChanged)
+        val options = Anilist.sortBy.indices.map { ChoiceOption(labels.getOrElse(it) { Anilist.sortBy[it] }) }
+        val current = Anilist.sortBy.indexOf(f.sort ?: DEFAULT_SORT).coerceAtLeast(0)
+        ChoiceSheet.single(context, context.getString(R.string.chip_sort), options, current) { picked ->
+            val key = Anilist.sortBy.getOrNull(picked)
+            f.sort = key?.takeUnless { it == DEFAULT_SORT }
+            onChanged()
+        }
     }
 
     fun openFormat(context: Context, anime: Boolean, f: AniMangaSearchResults, onChanged: () -> Unit) {
