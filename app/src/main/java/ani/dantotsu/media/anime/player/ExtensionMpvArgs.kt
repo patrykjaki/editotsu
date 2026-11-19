@@ -3,7 +3,7 @@ package ani.dantotsu.media.anime.player
 /**
  * Beta03 playback-compat seam: validated extension mpv option passthrough.
  *
- * Some extensions (current AniKoto) explicitly require an mpv demuxer option
+ * Some extensions (current SourceKay) explicitly require an mpv demuxer option
  * (`demuxer-lavf-o = force_mpegts=1`) for their streams, which Editotsu's
  * adapter previously discarded. Arbitrary extension options must NOT cross
  * the trust boundary unvalidated: only allowlisted keys with strictly

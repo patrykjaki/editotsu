@@ -13,21 +13,21 @@ import org.junit.Test
 /**
  * EXT-COMPAT-1/3/6 + adapter seam proofs for the beta03 playback-compat fix.
  *
- * Synthetic AniZone-like extension Video goes through the real
+ * Synthetic SourceZed-like extension Video goes through the real
  * [VideoServerPassthrough.extract] seam; tests fail until subtitle headers,
  * relative-URL resolution and mpv option plumbing are preserved.
  */
 class ExtensionTrackCompatTest {
 
-    private fun anizoneLikeVideo(): Video {
+    private fun sourceZedLikeVideo(): Video {
         val headers = Headers.headersOf(
             "Referer", "https://site.example/",
             "Cookie", "session=abc123",
-            "User-Agent", "AniZoneAgent/1.0"
+            "User-Agent", "SourceZedAgent/1.0"
         )
         return Video(
             videoUrl = "https://cdn.example/master.m3u8",
-            videoTitle = "AniZone - 1080p",
+            videoTitle = "SourceZed - 1080p",
             headers = headers,
             subtitleTracks = listOf(Track("/subs/en.vtt", "English")),
             audioTracks = listOf(Track("https://cdn.example/audio/en.m3u8", "English")),
@@ -37,7 +37,7 @@ class ExtensionTrackCompatTest {
 
     private fun passthrough(video: Video): VideoServerPassthrough {
         val server = VideoServer(
-            name = "AniZone",
+            name = "SourceZed",
             embedUrl = "https://site.example/embed/1",
             extraData = null,
             video = video
@@ -48,7 +48,7 @@ class ExtensionTrackCompatTest {
     // EXT-COMPAT-1: subtitle headers survive the adapter with resolved URL.
     @Test
     fun `extension subtitle keeps source headers and resolved absolute url`() = runBlocking {
-        val container = passthrough(anizoneLikeVideo()).extract()
+        val container = passthrough(sourceZedLikeVideo()).extract()
 
         assertEquals(1, container.subtitles.size)
         val sub = container.subtitles[0]
@@ -60,13 +60,13 @@ class ExtensionTrackCompatTest {
             .firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
         assertEquals("https://site.example/", header("Referer"))
         assertEquals("session=abc123", header("Cookie"))
-        assertEquals("AniZoneAgent/1.0", header("User-Agent"))
+        assertEquals("SourceZedAgent/1.0", header("User-Agent"))
     }
 
     // EXT-COMPAT-2 (adapter half): separate audio track URL survives.
     @Test
     fun `separate extension audio track url survives adapter`() = runBlocking {
-        val container = passthrough(anizoneLikeVideo()).extract()
+        val container = passthrough(sourceZedLikeVideo()).extract()
 
         assertEquals(1, container.audioTracks.size)
         assertEquals("https://cdn.example/audio/en.m3u8", container.audioTracks[0].url)
@@ -99,7 +99,7 @@ class ExtensionTrackCompatTest {
     // EXT-COMPAT-4: extension mpv HLS option is preserved in validated form.
     @Test
     fun `extension mpv demuxer option preserved`() = runBlocking {
-        val container = passthrough(anizoneLikeVideo()).extract()
+        val container = passthrough(sourceZedLikeVideo()).extract()
 
         assertTrue(container.mpvFileOptions.contains("demuxer-lavf-o=\"force_mpegts=1\""))
     }

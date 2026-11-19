@@ -776,14 +776,14 @@ class VideoServerPassthrough(private val videoServer: VideoServer) : VideoExtrac
         val vidList = listOfNotNull(videoServer.video?.let { aniVideoToSaiVideo(it) })
         // Beta03: preserve the source transport context (video headers) and
         // resolve relative track URLs against the video URL; previously both
-        // were dropped, breaking header-gated softsubs (AniZone).
+        // were dropped, breaking header-gated softsubs (SourceZed).
         val extVideo = videoServer.video
         val videoHeaders: Map<String, String> =
             extVideo?.headers?.toMultimap()?.mapValues { it.value.joinToString() } ?: emptyMap()
         val videoUrl = extVideo?.videoUrl.orEmpty()
         val subList = extVideo?.subtitleTracks?.map { trackToSubtitle(it, videoUrl, videoHeaders) } ?: emptyList()
         val audioList = extVideo?.audioTracks ?: emptyList()
-        // Beta03: validated extension mpv options (e.g. AniKoto demuxer-lavf-o).
+        // Beta03: validated extension mpv options (e.g. SourceKay demuxer-lavf-o).
         val mpvFileOptions = ExtensionMpvArgs.toFileOptions(
             ExtensionMpvArgs.sanitize(extVideo?.mpvArgs ?: emptyList())
         )

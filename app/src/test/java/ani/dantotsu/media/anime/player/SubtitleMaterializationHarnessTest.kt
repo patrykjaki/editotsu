@@ -9,7 +9,7 @@ import org.junit.Test
 
 /**
  * HIST-SUB-1/2/3 + CP3-MAT-1..7: deterministic differential reproduction of the
- * 0.2.0 -> 0.2.1 -> beta04 subtitle-selection semantics under an AniZone-like
+ * 0.2.0 -> 0.2.1 -> beta04 subtitle-selection semantics under an SourceZed-like
  * external-subtitle materialization sequence.
  *
  * A faithful mpv simulator is shared by all three policies:

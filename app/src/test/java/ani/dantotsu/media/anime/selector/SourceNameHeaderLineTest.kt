@@ -31,4 +31,27 @@ class SourceNameHeaderLineTest {
     fun `stream labels are not touched`() {
         assertEquals("Hoster 1080p", SourceRowClassifier.extractReleaseName("Hoster\n1080p"))
     }
+
+    // Stored-identity extractor: same rule, separate copy.
+
+    @Test
+    fun `extractor drops the header line of a release row`() {
+        val text = "Relayaddon\n📂 IdxOne\nShow.S01E01.1080p.HEVC-GRPb.mkv\n👤 5 💾 1 GB"
+        assertEquals(listOf("Show.S01E01.1080p.HEVC-GRPb.mkv"), StableReleaseMetadataExtractor.releaseLines(text))
+        assertEquals("GRPb", StableReleaseMetadataExtractor.extract(text).group)
+    }
+
+    @Test
+    fun `extractor drops the header before a file name without markers`() {
+        assertEquals(
+            listOf("Show.S01E01.1080p-GRPb.mkv"),
+            StableReleaseMetadataExtractor.releaseLines("Anyaddon\nShow.S01E01.1080p-GRPb.mkv"),
+        )
+    }
+
+    @Test
+    fun `extractor keeps a single line and plain stream labels`() {
+        assertEquals(listOf("Frieren"), StableReleaseMetadataExtractor.releaseLines("Frieren\n👤 3 💾 1 GB"))
+        assertEquals(listOf("Hoster", "1080p"), StableReleaseMetadataExtractor.releaseLines("Hoster\n1080p"))
+    }
 }

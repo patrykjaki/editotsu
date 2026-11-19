@@ -1227,7 +1227,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             fallbackSubLang = settingsSubtitleLanguage(),
             embedUrl = extractor?.server?.embed?.url,
             audioTracks = extractor?.audioTracks ?: emptyList(),
-            // Beta03: validated extension mpv per-file options (AniKoto etc.).
+            // Beta03: validated extension mpv per-file options (SourceKay etc.).
             mpvFileOptions = extractor?.mpvFileOptions.orEmpty()
         )
         // Beta07 styling policy: classify playback ORIGIN (extension stream

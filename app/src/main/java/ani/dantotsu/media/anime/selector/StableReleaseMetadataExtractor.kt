@@ -241,15 +241,30 @@ object StableReleaseMetadataExtractor {
         // Only release-shaped text (a resolution or codec token): plain
         // server labels like "Hostone-Main" never get a group.
         if (pickResolution(raw) == null && !CODEC.containsMatchIn(raw)) return null
-        for (rawLine in raw.lines()) {
-            val line = rawLine.trim()
-            if (line.isEmpty() || isMetadataLine(line)) continue
+        for (line in releaseLines(raw)) {
             val noExt = MEDIA_EXTENSION.replace(line, "").replace(TRAILING_NOTES, "").trimEnd()
             val token = TRAILING_SUFFIX_GROUP.find(noExt)?.groupValues?.getOrNull(1)?.trimEnd('-') ?: continue
             if (isSuffixGroupCandidate(token)) return token
         }
         return null
     }
+
+    /**
+     * The non-metadata lines of [raw], without a leading source-name header. A source
+     * may print its own name as the first line of a release row ("<Name>\n<release>\n👤 ...");
+     * a single word of letters there is dropped when more text follows and the row is
+     * release-shaped (metadata markers or a media file name). Same rule as the card
+     * parser's title lines, kept as a separate copy (no UI dependency).
+     */
+    internal fun releaseLines(raw: String): List<String> {
+        val all = raw.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val lines = all.filterNot { isMetadataLine(it) }
+        val releaseShaped = all.any { l -> METADATA_MARKERS.any { l.contains(it) } } ||
+            lines.any { MEDIA_EXTENSION.containsMatchIn(it) }
+        return if (lines.size >= 2 && releaseShaped && lines[0].matches(SOURCE_NAME_LINE)) lines.drop(1) else lines
+    }
+
+    private val SOURCE_NAME_LINE = Regex("""\p{L}{3,30}""")
 
     private fun isMetadataLine(line: String): Boolean {
         if (METADATA_MARKERS.any { line.contains(it) }) return true

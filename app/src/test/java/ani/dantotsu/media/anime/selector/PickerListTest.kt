@@ -96,7 +96,7 @@ class PickerListTest {
 
     // Phone data 2026-10-31: SiteBeeee names its servers by audio language.
     @Test
-    fun mtbbLanguageParenSplitsSubFromEnglishDub() {
+    fun grpbLanguageParenSplitsSubFromEnglishDub() {
         val rows = listOf(
             stream(0, "GRPB (English) - 1080p BD (HLS)", 1080),
             stream(1, "GRPB (Sub) - 1080p BD (HLS)", 1080),
