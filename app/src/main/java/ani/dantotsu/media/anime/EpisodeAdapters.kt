@@ -193,6 +193,8 @@ class EpisodeAdapter(
                 holder.bind(ep.number, ep.downloadProgress, desc)
 
                 val epNum = MediaNameAdapter.findEpisodeNumber(ep.number) ?: ep.number.toFloatOrNull() ?: 9999f
+                // a recycled row keeps the previous episode's long-press (and its number): clear it
+                binding.itemEpisodeCont.setOnLongClickListener(null)
                 if (media.userProgress != null) {
                     if (epNum <= media.userProgress!!.toFloat()) {
                         binding.itemEpisodeViewedCover.visibility = View.VISIBLE
@@ -260,6 +262,8 @@ class EpisodeAdapter(
                     binding.itemEpisodeFillerView.visibility = View.GONE
                 }
                 val epNum = MediaNameAdapter.findEpisodeNumber(ep.number) ?: ep.number.toFloatOrNull() ?: 9999f
+                // a recycled row keeps the previous episode's long-press (and its number): clear it
+                binding.itemEpisodeCont.setOnLongClickListener(null)
                 if (media.userProgress != null) {
                     if (epNum <= media.userProgress!!.toFloat()) {
                         binding.itemEpisodeViewedCover.visibility = View.VISIBLE
@@ -291,6 +295,8 @@ class EpisodeAdapter(
                 binding.itemEpisodeNumber.text = ep.number
                 binding.itemEpisodeFillerView.isVisible = ep.filler
                 val epNum = MediaNameAdapter.findEpisodeNumber(ep.number) ?: ep.number.toFloatOrNull() ?: 9999f
+                // a recycled row keeps the previous episode's long-press (and its number): clear it
+                binding.itemEpisodeCont.setOnLongClickListener(null)
                 if (media.userProgress != null) {
                     if (epNum <= media.userProgress!!.toFloat())
                         binding.itemEpisodeViewedCover.visibility = View.VISIBLE

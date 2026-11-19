@@ -98,11 +98,14 @@ class ThemesActivity : AppCompatActivity() {
         shuffleJob?.cancel()
         setStatus(getString(R.string.themes_finding))
         shuffleJob = lifecycleScope.launch {
-            val shows = runCatching {
-                withContext(Dispatchers.IO) { Anilist.query.getMediaLists(anime = true, userId = userId) }["All"].orEmpty()
-                    .filter { it.userStatus == "COMPLETED" }
-                    .map { RadioShow(it.id, it.idMAL, it.userPreferredName) }
-            }.getOrDefault(emptyList())
+            // null = AniList didn't return the list (rate limit, timeout): say so instead of
+            // claiming there are no completed shows
+            val lists = runCatching {
+                withContext(Dispatchers.IO) { Anilist.query.getMediaListsOrNull(anime = true, userId = userId) }
+            }.getOrNull() ?: return@launch setStatus(getString(R.string.themes_list_failed))
+            val shows = lists["All"].orEmpty()
+                .filter { it.userStatus == "COMPLETED" }
+                .map { RadioShow(it.id, it.idMAL, it.userPreferredName) }
             if (shows.isEmpty()) return@launch setStatus(getString(R.string.themes_no_completed))
             ThemeRadioSession.start(shows, kinds, MediaThemesFragment.themePrefs())
             val first = ThemeRadioSession.next()

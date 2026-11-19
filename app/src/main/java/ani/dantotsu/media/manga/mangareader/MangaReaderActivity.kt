@@ -262,7 +262,9 @@ class MangaReaderActivity : AppCompatActivity() {
             val selectedChapter = media.manga?.selectedChapter
             val chapterNum = selectedChapter?.number?.let { MediaNameAdapter.findChapterNumber(it) }
             val chapter = (chapterNum?.minus(1L) ?: 0).toString()
-            if (chapter == "0.0" && PrefManager.getVal(PrefName.ChapterZeroReader)
+            // a finished chapter 1 goes through progress() and saves 1, never 0
+            val chapterOneFinished = maxChapterPage > 0 && maxChapterPage - currentChapterPage <= 1
+            if (chapter == "0.0" && !chapterOneFinished && PrefManager.getVal(PrefName.ChapterZeroReader)
                 // Not asking individually or incognito
                 && !showProgressDialog && !PrefManager.getVal<Boolean>(PrefName.Incognito)
                 // Not ...opted out ...already? Somehow?

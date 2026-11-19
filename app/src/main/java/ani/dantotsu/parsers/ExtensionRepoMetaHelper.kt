@@ -172,10 +172,7 @@ object ExtensionRepoMetaHelper {
                 "novel-extensions", "plugins", "tachiyomi-extensions", "aniyomi-extensions"
             )
             if (genericRepos.contains(repo.lowercase())) {
-                return when (owner.lowercase()) {
-                    "aniyomiorg" -> "Aniyomi"
-                    else -> owner
-                }
+                return owner
             }
             return repo
         }

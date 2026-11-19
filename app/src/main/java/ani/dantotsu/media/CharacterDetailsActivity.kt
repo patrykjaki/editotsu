@@ -183,6 +183,7 @@ class CharacterDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChang
 
     override fun onOffsetChanged(appBar: AppBarLayout, i: Int) {
         if (mMaxScrollSize == 0) mMaxScrollSize = appBar.totalScrollRange
+        if (mMaxScrollSize == 0) return
         val percentage = abs(i) * 100 / mMaxScrollSize
         val cap = clamp((percent - percentage) / percent.toFloat(), 0f, 1f)
 

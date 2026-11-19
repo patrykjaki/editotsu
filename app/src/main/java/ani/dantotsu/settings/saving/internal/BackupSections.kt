@@ -80,6 +80,7 @@ object BackupSections {
     private val HISTORY_SKIPPED_KEYS = setOf(
         "RescueMode",
         "PendingDeletions",
+        "PendingProgressUpdates",
         "OfflineMode",
         "DownloadsKeys",
         "NovelLastExtCheck",

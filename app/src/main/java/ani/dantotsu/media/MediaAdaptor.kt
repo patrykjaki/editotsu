@@ -286,7 +286,7 @@ class MediaAdaptor(
                     if (position == mediaList.size - 2 && viewPager != null) viewPager.post {
                         val size = mediaList.size
                         mediaList.addAll(mediaList)
-                        notifyItemRangeInserted(size - 1, mediaList.size)
+                        notifyItemRangeInserted(size, size)
                     }
                 }
             }
@@ -352,7 +352,7 @@ class MediaAdaptor(
                     if (position == mediaList.size - 2 && viewPager != null) viewPager.post {
                         val size = mediaList.size
                         mediaList.addAll(mediaList)
-                        notifyItemRangeInserted(size - 1, mediaList.size)
+                        notifyItemRangeInserted(size, size)
                     }
                 }
             }

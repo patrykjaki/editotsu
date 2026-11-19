@@ -83,6 +83,7 @@ class UserInterfaceSettingsActivity : SettingsScreenActivity(), SimpleDialog.OnD
             val color = extras.getInt(SimpleColorDialog.COLOR)
             PrefManager.setVal(PrefName.CustomThemeInt, color)
             Logger.log("Custom Theme: $color")
+            reloadTheme()
         }
         return true
     }
@@ -245,13 +246,8 @@ object AppearanceScreen : SettingsScreen("appearance", R.string.settings_appeara
         val activity = host.activity as? UserInterfaceSettingsActivity ?: return
         val originalColor: Int = PrefManager.getVal(PrefName.CustomThemeInt)
 
-        class CustomColorDialog : SimpleColorDialog() {
-            override fun onPositiveButtonClick() {
-                activity.reloadTheme()
-                super.onPositiveButtonClick()
-            }
-        }
-        CustomColorDialog().title(R.string.custom_theme)
+        // a plain SimpleColorDialog survives rotation; onResult saves and reloads the theme
+        SimpleColorDialog.build().title(R.string.custom_theme)
             .colorPreset(originalColor)
             .colors(activity, SimpleColorDialog.MATERIAL_COLOR_PALLET)
             .allowCustom(true).showOutline(0x46000000).gridNumColumn(5)

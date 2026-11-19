@@ -164,8 +164,9 @@ private fun setupSocks5Proxy() {
         client,
         mapOf(
             "User-Agent" to
-                    defaultUserAgentProvider()
-                        .format(Build.VERSION.RELEASE, Build.MODEL)
+                    defaultUserAgentProvider().let { ua ->
+                        runCatching { ua.format(Build.VERSION.RELEASE, Build.MODEL) }.getOrDefault(ua)
+                    }
         ),
         defaultCacheTime = 6,
         defaultCacheTimeUnit = TimeUnit.HOURS,

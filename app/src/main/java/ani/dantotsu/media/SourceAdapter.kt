@@ -37,8 +37,9 @@ abstract class SourceAdapter(
         RecyclerView.ViewHolder(binding.root) {
         init {
             itemView.setOnClickListener {
+                val source = sources.getOrNull(bindingAdapterPosition) ?: return@setOnClickListener
                 dialogFragment.dismiss()
-                scope.launch(Dispatchers.IO) { onItemClick(sources[bindingAdapterPosition]) }
+                scope.launch(Dispatchers.IO) { onItemClick(source) }
             }
             var a = true
             itemView.setOnLongClickListener {

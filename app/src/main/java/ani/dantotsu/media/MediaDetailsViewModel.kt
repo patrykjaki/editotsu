@@ -20,6 +20,8 @@ import ani.dantotsu.others.shouldQueryLiveSkip
 import ani.dantotsu.others.suspendNullOnError
 import ani.dantotsu.media.anime.SelectorDialogFragment
 import ani.dantotsu.media.anime.getEpisode
+import ani.dantotsu.media.anime.Anime
+import ani.dantotsu.media.manga.Manga
 import ani.dantotsu.media.manga.MangaChapter
 import ani.dantotsu.media.mangaupdates.MangaAnimeUtil
 import ani.dantotsu.others.AniSkip
@@ -354,6 +356,9 @@ class MediaDetailsViewModel : ViewModel() {
                 ?.mapNotNull { it.entry }
                 ?.map {
                     Media(
+                        // without anime/manga set, opening a recommendation crashed (manga!!)
+                        anime = if (isAnime) Anime() else null,
+                        manga = if (isAnime) null else Manga(),
                         id = it.malId,
                         idMAL = it.malId,
                         name = it.title,

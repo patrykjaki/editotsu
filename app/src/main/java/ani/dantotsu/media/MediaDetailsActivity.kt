@@ -396,7 +396,7 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
                     }
                     bold { color(white) { append("${media.anime!!.totalEpisodes ?: "??"}") } }
                 } else
-                    bold { color(white) { append("${media.manga!!.totalChapters ?: "??"}") } }
+                    bold { color(white) { append("${media.manga?.totalChapters ?: "??"}") } }
             }
             binding.mediaTotal.text = text
         }
@@ -702,6 +702,7 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
     override fun onOffsetChanged(appBar: AppBarLayout, i: Int) {
         if (!::binding.isInitialized) return
         if (mMaxScrollSize == 0) mMaxScrollSize = appBar.totalScrollRange
+        if (mMaxScrollSize == 0) return
         val percentage = abs(i) * 100 / mMaxScrollSize
         // the collapsed bar draws a plain scrim under the status bar: switch the icons with it
         val scrimShown = binding.mediaCollapsing.height + i < binding.mediaCollapsing.scrimVisibleHeightTrigger

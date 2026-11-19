@@ -49,8 +49,9 @@ fun initializeNetwork() {
 
     defaultHeaders = mapOf(
         "User-Agent" to
-                defaultUserAgentProvider()
-                    .format(Build.VERSION.RELEASE, Build.MODEL)
+                defaultUserAgentProvider().let { ua ->
+                    runCatching { ua.format(Build.VERSION.RELEASE, Build.MODEL) }.getOrDefault(ua)
+                }
     )
 
     okHttpClient = networkHelper.client
