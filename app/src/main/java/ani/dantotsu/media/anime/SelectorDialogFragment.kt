@@ -8,11 +8,17 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.transition.ChangeBounds
+import android.transition.TransitionManager
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.PathInterpolator
+import androidx.activity.ComponentDialog
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -99,6 +105,7 @@ import ani.dantotsu.media.anime.selector.EpisodeStreamCarryOver
 import ani.dantotsu.media.anime.selector.PickerRebuildPolicy
 import ani.dantotsu.setSafeOnClickListener
 import ani.dantotsu.settings.SettingsGroupActivity
+import ani.dantotsu.settings.extensionprefs.AnimeSourcePreferencesFragment
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
@@ -106,7 +113,6 @@ import ani.dantotsu.toast
 import ani.dantotsu.tryWith
 import ani.dantotsu.util.Logger
 import ani.dantotsu.util.customAlertDialog
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -118,6 +124,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import tachiyomi.core.util.lang.launchIO
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.text.DecimalFormat
@@ -133,8 +140,12 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
     private var media: Media? = null
     private var episode: Episode? = null
 
-    /** The open filter panel; dismissed with the picker so it never outlives it. */
-    private var filterSheet: BottomSheetDialog? = null
+    private enum class SheetPage { AUTO, LIST, FILTER, SOURCE_FILTERS }
+
+    /** Active page inside this single bottom sheet (no stacked dialogs). */
+    private var currentPage: SheetPage = SheetPage.LIST
+    private var backCallback: OnBackPressedCallback? = null
+    private var activeAdapter: ExtractorAdapter? = null
 
     /** Coalesces list rebuilds while extractors arrive (one per callback before). */
     private val rebuildHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -210,14 +221,147 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 outRect.bottom = if (pos != RecyclerView.NO_POSITION && pos == last) inset + gap else 0
             }
         })
-        for (v in listOf(binding.selectorEmpty, binding.selectorAutoListContainer)) {
+        for (v in listOf(binding.selectorEmpty, binding.selectorAutoListContainer, binding.selectorFilterContent)) {
             v.updatePadding(bottom = v.paddingBottom + inset)
+        }
+    }
+
+    private fun setupInSheetNavigation() {
+        binding.selectorFilterBack.tooltipText = binding.selectorFilterBack.contentDescription
+        binding.selectorSourceFiltersButton.tooltipText = binding.selectorSourceFiltersButton.contentDescription
+        binding.selectorSourceFiltersBack.tooltipText = binding.selectorSourceFiltersBack.contentDescription
+        binding.selectorFilterBack.setOnClickListener { navigateBack() }
+        binding.selectorSourceFiltersBack.setOnClickListener { navigateBack() }
+        val callback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                navigateBack()
+            }
+        }
+        backCallback = callback
+        (dialog as? ComponentDialog)?.onBackPressedDispatcher
+            ?.addCallback(viewLifecycleOwner, callback)
+    }
+
+    private fun pageView(page: SheetPage): View = when (page) {
+        SheetPage.AUTO -> binding.selectorAutoListContainer
+        SheetPage.LIST -> binding.selectorListContainer
+        SheetPage.FILTER -> binding.selectorFilterContainer
+        SheetPage.SOURCE_FILTERS -> binding.selectorSourceFiltersContainer
+    }
+
+    /** Smoothly resizes the sheet container when page height or filter groups change. */
+    private fun animateSheetHeight() {
+        if (_binding == null) return
+        val sheetRoot = binding.root.parent as? ViewGroup ?: return
+        val coordinator = sheetRoot.parent as? ViewGroup ?: return
+        if (!sheetRoot.isLaidOut) return
+        TransitionManager.endTransitions(coordinator)
+        val bounds = ChangeBounds().apply {
+            duration = SHEET_MOTION_MS
+            interpolator = sheetInterpolator
+            addTarget(sheetRoot)
+            addTarget(binding.selectorContainer)
+            addTarget(binding.selectorPages)
+        }
+        TransitionManager.beginDelayedTransition(coordinator, bounds)
+    }
+
+    private fun showPage(target: SheetPage, forward: Boolean, animate: Boolean = true) {
+        if (_binding == null) return
+        val from = currentPage
+        currentPage = target
+        backCallback?.isEnabled = target == SheetPage.FILTER || target == SheetPage.SOURCE_FILTERS
+        if (from == target) {
+            for (p in SheetPage.values()) pageView(p).isVisible = p == target
+            return
+        }
+        val fromView = pageView(from)
+        val toView = pageView(target)
+        val sheetRoot = binding.root.parent as? ViewGroup
+        val canAnimate = animate && sheetRoot != null && sheetRoot.isLaidOut && sheetRoot.parent is ViewGroup
+        if (canAnimate) animateSheetHeight()
+        fromView.animate().cancel()
+        fromView.alpha = 1f
+        fromView.translationX = 0f
+        for (p in SheetPage.values()) {
+            pageView(p).visibility = if (p == target) View.VISIBLE else View.GONE
+        }
+        toView.animate().cancel()
+        if (canAnimate) {
+            val shift = (if (forward) 1f else -1f) * 28f * resources.displayMetrics.density
+            toView.alpha = 0f
+            toView.translationX = shift
+            toView.animate()
+                .alpha(1f)
+                .translationX(0f)
+                .setDuration(SHEET_MOTION_MS)
+                .setInterpolator(sheetInterpolator)
+                .start()
+        } else {
+            toView.alpha = 1f
+            toView.translationX = 0f
+        }
+    }
+
+    private fun navigateBack() {
+        if (_binding == null) return
+        when (currentPage) {
+            SheetPage.SOURCE_FILTERS -> closeSourceFilters()
+            SheetPage.FILTER -> showPage(SheetPage.LIST, forward = false)
+            else -> {
+                backCallback?.isEnabled = false
+                (dialog as? ComponentDialog)?.onBackPressedDispatcher?.onBackPressed()
+            }
+        }
+    }
+
+    private fun closeSourceFilters() {
+        if (_binding == null) return
+        activeAdapter?.onSourcePrefsClosed()
+        showPage(SheetPage.FILTER, forward = false)
+        childFragmentManager.findFragmentByTag(TAG_SOURCE_FILTERS)?.let { frag ->
+            if (!childFragmentManager.isStateSaved) {
+                childFragmentManager.beginTransaction().remove(frag).commitAllowingStateLoss()
+            }
+        }
+    }
+
+    /** Lets PreferenceFragmentCompat size to its content inside the wrap_content bottom sheet. */
+    private fun adaptSourceFiltersForSheet(fragment: androidx.preference.PreferenceFragmentCompat) {
+        fragment.view?.layoutParams = android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
+        fragment.listView?.let { rv ->
+            (rv.parent as? ViewGroup)?.layoutParams = android.widget.LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+            rv.layoutParams = android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+            rv.isNestedScrollingEnabled = true
+            val inset = navBarHeight
+            rv.addItemDecoration(object : RecyclerView.ItemDecoration() {
+                override fun getItemOffsets(
+                    outRect: android.graphics.Rect,
+                    view: View,
+                    parent: RecyclerView,
+                    state: RecyclerView.State,
+                ) {
+                    val pos = parent.getChildAdapterPosition(view)
+                    val last = (parent.adapter?.itemCount ?: 0) - 1
+                    outRect.bottom = if (pos != RecyclerView.NO_POSITION && pos == last) inset else 0
+                }
+            })
         }
     }
 
     @SuppressLint("SetTextI18n")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         applyNavBarInset()
+        setupInSheetNavigation()
         var loaded = false
         model.getMedia().observe(viewLifecycleOwner) { m ->
             media = m
@@ -243,6 +387,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                     }
                 }
                 fun initializeVideoServerSelector(ep: Episode, onEpisodeDownloadHandler: EpisodeDownloadHandler? = null) {
+                    showPage(SheetPage.LIST, forward = false, animate = false)
                     binding.selectorRecyclerView.adapter = null
                     binding.selectorProgressBar.visibility = View.VISIBLE
                     binding.selectorEmpty.visibility = View.GONE
@@ -283,6 +428,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             false
                         )
                     val adapter = ExtractorAdapter(onEpisodeDownloadHandler)
+                    activeAdapter = adapter
                     binding.selectorRecyclerView.adapter = adapter
                     reloadSources = {
                         ep.allStreams = false
@@ -541,8 +687,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                 "key=${entryKey != null} family=${entryFamily?.groupKey} remember=$makeDefault reason=${decision.reason}",
                         )
                         if (decision.entry != RememberedSelectionPolicy.AutoplayEntry.PICKER) {
-                            binding.selectorListContainer.visibility = View.GONE
-                            binding.selectorAutoListContainer.visibility = View.VISIBLE
+                            showPage(SheetPage.AUTO, forward = false, animate = false)
                             binding.selectorAutoText.text = selected?.lineSequence()?.firstOrNull { it.isNotBlank() }
                                 ?: entryFamily?.groupKey?.let { getString(R.string.picker_auto_group, it) } ?: ""
                             // Same rule as the player: a saved position resumes unless the
@@ -665,8 +810,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                                         "reason=${if (recovery is RecoveryResult.Ambiguous) "ambiguous family" else "no match"}",
                                                 )
                                                 snackString(getString(R.string.auto_select_server_error))
-                                                binding.selectorAutoListContainer.visibility = View.GONE
-                                                binding.selectorListContainer.visibility = View.VISIBLE
+                                                showPage(SheetPage.LIST, forward = false, animate = false)
                                                 initializeVideoServerSelector(ep)
                                             }
                                         }
@@ -678,8 +822,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                             else "already tried this episode",
                                     )
                                     snackString(getString(R.string.auto_select_server_error))
-                                    binding.selectorAutoListContainer.visibility = View.GONE
-                                    binding.selectorListContainer.visibility = View.VISIBLE
+                                    showPage(SheetPage.LIST, forward = false, animate = false)
                                     initializeVideoServerSelector(ep)
                                 }
                             }
@@ -779,8 +922,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             EpisodeDownloadHandler(_onFinishingUserSelection = { selectedServerName,
                                                                                  selectedSubtitles,
                                                                                  selectedAudioTracks ->
-                                binding.selectorListContainer.visibility = View.GONE
-                                binding.selectorAutoListContainer.visibility = View.VISIBLE
+                                showPage(SheetPage.AUTO, forward = false, animate = false)
                                 binding.selectorTitle.text = "Starting Download"
                                 binding.selectorAutoText.text =
                                     "Starting download using server:\n$selectedServerName"
@@ -1026,6 +1168,8 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         private var filtered = FilteredEntries(emptyList(), 0)
         /** The extension's settings were opened: offer a reload. */
         private var sourcePrefsOpened = false
+        /** Whether "+N more" release groups are expanded on the filter page. */
+        private var groupsOpen = false
         private val rowsBuilder = PickerRowsBuilder()
         /** One pass at a time; [rowsBuilder] is only touched here. */
         private val rowWorker = Dispatchers.Default.limitedParallelism(1)
@@ -1217,6 +1361,12 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 binding.selectorNotice.isClickable = false
             }
             bindFilters(showFilter)
+            if (currentPage == SheetPage.FILTER) renderFilterPage()
+        }
+
+        fun onSourcePrefsClosed() {
+            sourcePrefsOpened = true
+            onListChanged(AudioKindFilter.shouldShow(list.entries))
         }
 
         /** What the chip row showed last; the chips are only re-created when it changes. */
@@ -1231,7 +1381,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
             val audioCounts = if (show) (listOf<AudioKind?>(null) + AudioKindFilter.kinds(list.entries))
                 .map { it to AudioKindFilter.count(list.entries, it) } else emptyList()
             val activeFilters = effectiveFilter().let { f -> FilterDimension.values().sumOf { f.values(it).size } }
-            val state = listOf(show, audioCounts, filter, showFilterChip, activeFilters, sourcePrefsOpened)
+            val state = listOf(show, audioCounts, filter, showFilterChip, activeFilters, filterState.sort, sourcePrefsOpened)
             if (state == boundFilters && group.childCount > 0) return
             boundFilters = state
             group.setOnCheckedStateChangeListener(null)
@@ -1249,14 +1399,27 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
         /**
          * Filter and sort: an icon chip (filter-list icon) at the end of the audio chips,
-         * showing how many filters are on, if any. Opens the filter panel.
+         * showing how many filters are on, if any. Swaps the sheet to the filter page.
          */
         private fun filterChip(group: ViewGroup): com.google.android.material.chip.Chip {
             val n = effectiveFilter().let { f -> FilterDimension.values().sumOf { f.values(it).size } }
+            val active = n > 0 || filterState.sort != PickerSort.DEFAULT
             return actionChip(group, if (n > 0) n.toString() else "") { openFilterPanel() }.apply {
-                chipIcon = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_round_filter_list_24)
+                chipIcon = ContextCompat.getDrawable(context, R.drawable.ic_round_filter_list_24)
                 isChipIconVisible = true
-                chipIconTint = textColors
+                if (active) {
+                    chipBackgroundColor = android.content.res.ColorStateList.valueOf(
+                        context.getThemeColor(com.google.android.material.R.attr.colorSecondaryContainer)
+                    )
+                    chipStrokeWidth = 0f
+                    val onSecondary = android.content.res.ColorStateList.valueOf(
+                        context.getThemeColor(com.google.android.material.R.attr.colorOnSecondaryContainer)
+                    )
+                    setTextColor(onSecondary)
+                    chipIconTint = onSecondary
+                } else {
+                    chipIconTint = textColors
+                }
                 if (n == 0) {
                     textStartPadding = 0f
                     textEndPadding = 0f
@@ -1317,76 +1480,57 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         // ---- filter panel ---------------------------------------------------
 
         /**
-         * Filter and sort sheet. Fixed header: title, source settings icon (when the
-         * extension has settings), live "N of M releases" and a Clear chip. Below it,
-         * scrolling: sort first (changed most), then resolution, codec, HDR and release
-         * groups, each chip with its release count. Groups show the 6 biggest plus
+         * In-sheet filter and sort page. Fixed header: back button, title, source settings
+         * icon (when the extension has settings), live "N of M releases" and a Clear chip.
+         * Below it, scrolling: sort first (changed most), then resolution, codec, HDR and
+         * release groups, each chip with its release count. Groups show the 6 biggest plus
          * selected ones; "+N more" opens the rest. Every tap applies at once.
          */
         private fun openFilterPanel() {
+            if (_binding == null || !isAdded) return
+            groupsOpen = false
+            binding.selectorFilterScroll.scrollTo(0, 0)
+            renderFilterPage()
+            showPage(SheetPage.FILTER, forward = true)
+        }
+
+        private fun renderFilterPage() {
+            if (_binding == null || !isAdded) return
             val ctx = context ?: return
-            val dialog = BottomSheetDialog(ctx)
-            filterSheet?.dismiss()
-            filterSheet = dialog
             val d = ctx.resources.displayMetrics.density
             fun px(dp: Int) = (dp * d).toInt()
-            var groupsOpen = false
+            val inflater = LayoutInflater.from(ctx)
 
-            val root = android.widget.LinearLayout(ctx).apply {
-                orientation = android.widget.LinearLayout.VERTICAL
-                setPadding(px(20), px(16), px(20), 0)
-            }
-            val header = android.widget.LinearLayout(ctx).apply {
-                orientation = android.widget.LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-            }
-            header.addView(android.widget.TextView(ctx).apply {
-                text = getString(R.string.picker_filter_title)
-                textSize = 18f
-                typeface = ResourcesCompat.getFont(ctx, R.font.poppins_semi_bold)
-            }, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            configurableSource()?.let { sourceId ->
-                header.addView(android.widget.ImageButton(ctx).apply {
-                    setImageResource(R.drawable.ic_round_settings_24)
-                    val tv = android.util.TypedValue()
-                    ctx.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true)
-                    setBackgroundResource(tv.resourceId)
-                    contentDescription = getString(R.string.picker_source_filters)
-                    tooltipText = contentDescription
-                    setOnClickListener {
-                        dialog.dismiss()
-                        openSourceFilters(sourceId)
-                    }
-                }, android.widget.LinearLayout.LayoutParams(px(48), px(48)))
-            }
-            root.addView(header)
-            val summary = android.widget.LinearLayout(ctx).apply {
-                orientation = android.widget.LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                minimumHeight = px(48)
-            }
-            val resultText = android.widget.TextView(ctx).apply { textSize = 14f; alpha = 0.8f }
-            summary.addView(resultText, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            val clear = com.google.android.material.chip.Chip(ctx).apply {
-                text = getString(R.string.picker_filter_clear)
-                chipIcon = ContextCompat.getDrawable(ctx, R.drawable.ic_round_close_24)
-                isChipIconVisible = true
-                chipIconTint = textColors
-            }
-            summary.addView(clear)
-            root.addView(summary)
-            val column = android.widget.LinearLayout(ctx).apply {
-                orientation = android.widget.LinearLayout.VERTICAL
-                setPadding(0, 0, 0, px(24))
-            }
-            root.addView(androidx.core.widget.NestedScrollView(ctx).apply { addView(column) })
+            val sourceId = configurableSource()
+            binding.selectorSourceFiltersButton.isVisible = sourceId != null
+            binding.selectorSourceFiltersButton.setOnClickListener(
+                sourceId?.let { id -> View.OnClickListener { openSourceFilters(id) } }
+            )
 
-            fun title(text: String) = android.widget.TextView(ctx).apply {
+            val state = effectiveFilter()
+            binding.selectorFilterResults.text =
+                getString(R.string.picker_filter_results, filtered.entries.size, filtered.total)
+            binding.selectorFilterClear.isVisible = state.hasFilters
+            binding.selectorFilterClear.setOnClickListener {
+                setFilterState(filterState.cleared())
+            }
+
+            fun sectionTitle(text: String, first: Boolean = false) = android.widget.TextView(ctx).apply {
                 this.text = text
-                textSize = 15f
+                textSize = 14f
                 typeface = ResourcesCompat.getFont(ctx, R.font.poppins_semi_bold)
-                setPadding(0, px(16), 0, px(4))
+                setTextColor(ctx.getThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    isAccessibilityHeading = true
+                }
+                setPadding(0, if (first) 0 else px(16), 0, px(6))
             }
+
+            fun filterOptionChip(parent: ViewGroup): com.google.android.material.chip.Chip =
+                (inflater.inflate(R.layout.item_picker_filter_chip, parent, false) as com.google.android.material.chip.Chip).apply {
+                    id = View.generateViewId()
+                }
+
             val titles = mapOf(
                 FilterDimension.RESOLUTION to R.string.picker_filter_resolution,
                 FilterDimension.CODEC to R.string.picker_filter_codec,
@@ -1400,83 +1544,70 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                 PickerSort.QUALITY to R.string.picker_sort_quality,
             )
 
-            lateinit var render: () -> Unit
-            fun update(state: FilterState) {
-                setFilterState(state)
-                render()
-            }
-            render = render@{
-                if (!isAdded) return@render
-                val state = effectiveFilter()
-                resultText.text = getString(R.string.picker_filter_results, filtered.entries.size, filtered.total)
-                clear.isVisible = state.hasFilters
-                clear.setOnClickListener { update(filterState.cleared()) }
-                column.removeAllViews()
+            val column = binding.selectorFilterContent
+            column.removeAllViews()
 
-                column.addView(title(getString(R.string.picker_sort)).apply { setPadding(0, px(4), 0, px(4)) })
-                val sorts = com.google.android.material.chip.ChipGroup(ctx).apply {
-                    isSingleSelection = true
-                    isSelectionRequired = true
+            column.addView(sectionTitle(getString(R.string.picker_sort), first = true))
+            val sorts = com.google.android.material.chip.ChipGroup(ctx).apply {
+                isSingleSelection = true
+                isSelectionRequired = true
+                chipSpacingHorizontal = px(8)
+                chipSpacingVertical = px(4)
+            }
+            PickerSort.values().forEach { sort ->
+                sorts.addView(filterOptionChip(sorts).apply {
+                    text = getString(sortLabels.getValue(sort))
+                    isCheckable = true
+                    isChecked = filterState.sort == sort
+                    setOnCheckedChangeListener { _, checked ->
+                        if (checked && filterState.sort != sort) setFilterState(filterState.copy(sort = sort))
+                    }
+                })
+            }
+            column.addView(sorts)
+
+            val options = PickerFilter.options(shownRows)
+            val counts = PickerFilter.counts(list.entries, shownFacets)
+            for (dim in FilterDimension.values()) {
+                val values = options.getValue(dim)
+                val selected = state.values(dim)
+                if (values.size < 2 && selected.isEmpty()) continue
+                column.addView(sectionTitle(getString(titles.getValue(dim))))
+                val dimCounts = counts.getValue(dim)
+                val (shownValues, hiddenValues) = if (dim == FilterDimension.GROUP) {
+                    PickerFilter.groupList(values, dimCounts, selected).let {
+                        if (groupsOpen) it.shown + it.hidden to emptyList() else it.shown to it.hidden
+                    }
+                } else values to emptyList()
+                val chips = com.google.android.material.chip.ChipGroup(ctx).apply {
+                    chipSpacingHorizontal = px(8)
+                    chipSpacingVertical = px(4)
                 }
-                PickerSort.values().forEach { sort ->
-                    sorts.addView(com.google.android.material.chip.Chip(ctx).apply {
-                        id = View.generateViewId()
-                        text = getString(sortLabels.getValue(sort))
+                shownValues.forEach { value ->
+                    val label = if (dim == FilterDimension.CODEC) CodecLabel.of(value) else value
+                    chips.addView(filterOptionChip(chips).apply {
+                        text = dimCounts[value]?.let { getString(R.string.picker_filter_value_count, label, it) } ?: label
                         isCheckable = true
-                        isChecked = filterState.sort == sort
-                        setOnCheckedChangeListener { _, checked ->
-                            if (checked && filterState.sort != sort) update(filterState.copy(sort = sort))
+                        isChecked = value in selected
+                        setOnCheckedChangeListener { _, _ ->
+                            setFilterState(filterState.toggled(dim, value))
                         }
                     })
                 }
-                column.addView(sorts)
-
-                val options = PickerFilter.options(shownRows)
-                val counts = PickerFilter.counts(list.entries, shownFacets)
-                for (dim in FilterDimension.values()) {
-                    val values = options.getValue(dim)
-                    val selected = state.values(dim)
-                    if (values.size < 2 && selected.isEmpty()) continue
-                    column.addView(title(getString(titles.getValue(dim))))
-                    val dimCounts = counts.getValue(dim)
-                    val (shown, hidden) = if (dim == FilterDimension.GROUP) {
-                        PickerFilter.groupList(values, dimCounts, selected).let {
-                            if (groupsOpen) it.shown + it.hidden to emptyList() else it.shown to it.hidden
+                if (hiddenValues.isNotEmpty()) {
+                    chips.addView(filterOptionChip(chips).apply {
+                        text = getString(R.string.picker_filter_more, hiddenValues.size)
+                        isCheckable = false
+                        isCheckedIconVisible = false
+                        setOnClickListener {
+                            groupsOpen = true
+                            animateSheetHeight()
+                            renderFilterPage()
                         }
-                    } else values to emptyList()
-                    val chips = com.google.android.material.chip.ChipGroup(ctx).apply {
-                        chipSpacingVertical = px(4)
-                    }
-                    shown.forEach { value ->
-                        val label = if (dim == FilterDimension.CODEC) CodecLabel.of(value) else value
-                        chips.addView(com.google.android.material.chip.Chip(ctx).apply {
-                            text = dimCounts[value]?.let { getString(R.string.picker_filter_value_count, label, it) } ?: label
-                            isCheckable = true
-                            isChecked = value in selected
-                            setOnCheckedChangeListener { _, _ -> update(filterState.toggled(dim, value)) }
-                        })
-                    }
-                    if (hidden.isNotEmpty()) {
-                        chips.addView(com.google.android.material.chip.Chip(ctx).apply {
-                            text = getString(R.string.picker_filter_more, hidden.size)
-                            setOnClickListener {
-                                groupsOpen = true
-                                render()
-                            }
-                        })
-                    }
-                    column.addView(chips)
+                    })
                 }
+                column.addView(chips)
             }
-            render()
-            dialog.setContentView(root)
-            dialog.setOnDismissListener { if (filterSheet === dialog) filterSheet = null }
-            dialog.show()
-            // Same surface as the picker sheet behind it, not the default tinted container.
-            dialog.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.backgroundTintList =
-                android.content.res.ColorStateList.valueOf(
-                    ctx.getThemeColor(com.google.android.material.R.attr.colorSurface)
-                )
         }
 
         /** Source id of the current extension's settings screen, or null when it has none. */
@@ -1489,12 +1620,18 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
         }
 
         private fun openSourceFilters(sourceId: Long) {
+            if (_binding == null || !isAdded || childFragmentManager.isStateSaved) return
             try {
-                SourceFiltersHostDialog.newInstance(sourceId) {
-                    if (_binding == null || !isAdded) return@newInstance
-                    sourcePrefsOpened = true
-                    onListChanged(AudioKindFilter.shouldShow(list.entries))
-                }.show(childFragmentManager, SourceFiltersHostDialog.TAG)
+                val title = runCatching { Injekt.get<AnimeSourceManager>().get(sourceId)?.name }.getOrNull()
+                    ?: sourceName()?.takeIf { it.isNotBlank() }
+                    ?: getString(R.string.picker_source_filters)
+                binding.selectorSourceFiltersTitle.text = title
+                val fragment = AnimeSourcePreferencesFragment().getInstance(sourceId, headerTitle = null)
+                childFragmentManager.beginTransaction()
+                    .replace(R.id.selectorSourceFiltersHost, fragment, TAG_SOURCE_FILTERS)
+                    .commitNow()
+                adaptSourceFiltersForSheet(fragment)
+                showPage(SheetPage.SOURCE_FILTERS, forward = true)
             } catch (e: Exception) {
                 Logger.log(e)
                 toast(getString(R.string.picker_source_filters_failed))
@@ -2141,6 +2278,10 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
     }
 
     companion object {
+        private const val TAG_SOURCE_FILTERS = "picker_source_filters"
+        private const val SHEET_MOTION_MS = 250L
+        private val sheetInterpolator by lazy { PathInterpolator(0.2f, 0f, 0f, 1f) }
+
         fun newInstance(
             server: String? = null,
             la: Boolean = true,
@@ -2177,8 +2318,8 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
 
     override fun onDestroyView() {
         rebuildHandler.removeCallbacksAndMessages(null)
-        filterSheet?.dismiss()
-        filterSheet = null
+        backCallback = null
+        activeAdapter = null
         super.onDestroyView()
         _binding = null
     }

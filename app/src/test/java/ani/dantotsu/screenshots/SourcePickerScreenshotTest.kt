@@ -2,6 +2,7 @@ package ani.dantotsu.screenshots
 
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.ComponentDialog
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.R
@@ -11,7 +12,10 @@ import ani.dantotsu.media.anime.SelectorDialogFragment
 import ani.dantotsu.parsers.VideoExtractor
 import ani.dantotsu.parsers.WatchSources
 import com.google.android.material.chip.Chip
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.robolectric.Robolectric
@@ -121,5 +125,38 @@ class SourcePickerScreenshotTest : ScreenshotTest() {
         openPicker(Fixtures.releases)
         openFilterSheet()
         shot("picker/filter_sheet_font130")
+    }
+
+    @Test fun filter_panel_stays_in_sheet_and_back_returns_to_list() {
+        openPicker(Fixtures.releases)
+        val pickerDialog = picker.requireDialog()
+        val listView = picker.requireView().findViewById<View>(R.id.selectorListContainer)
+        val filterView = picker.requireView().findViewById<View>(R.id.selectorFilterContainer)
+        val recycler = picker.requireView().findViewById<RecyclerView>(R.id.selectorRecyclerView)
+        val initialCount = recycler.adapter!!.itemCount
+
+        val sheet = openFilterSheet()
+        assertSame("filter opened a second dialog", pickerDialog, ShadowDialog.getLatestDialog())
+        assertEquals(View.GONE, listView.visibility)
+        assertEquals(View.VISIBLE, filterView.visibility)
+
+        chips(sheet).first { it.text.startsWith("1080p") }.tapAndSettle()
+        val filteredCount = recycler.adapter!!.itemCount
+        assertTrue("filter did not update list live", filteredCount in 1 until initialCount)
+
+        (pickerDialog as ComponentDialog).onBackPressedDispatcher.onBackPressed()
+        idle()
+        assertTrue("back dismissed sheet instead of returning to list", pickerDialog.isShowing)
+        assertEquals(View.VISIBLE, listView.visibility)
+        assertEquals(View.GONE, filterView.visibility)
+        assertEquals("filter state lost after back", filteredCount, recycler.adapter!!.itemCount)
+
+        openFilterSheet()
+        assertEquals(View.VISIBLE, filterView.visibility)
+        picker.requireView().findViewById<View>(R.id.selectorFilterBack).performClick()
+        idle()
+        assertEquals(View.VISIBLE, listView.visibility)
+        assertFalse(filterView.visibility == View.VISIBLE)
+        assertEquals(filteredCount, recycler.adapter!!.itemCount)
     }
 }
