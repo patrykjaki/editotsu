@@ -531,6 +531,18 @@ class MediaAdaptor(
         val mode = CoverCountMode.of(PrefManager.getVal(PrefName.CoverEpisodeCount))
         val pill = b.itemCompactCoverCount
         val color = { attr: Int -> MaterialColors.getColor(pill, attr) }
+        // corner tab for the long count, a floating pill for the unseen number
+        val floating = mode == CoverCountMode.NEW
+        val dp = pill.resources.displayMetrics.density
+        pill.setBackgroundResource(if (floating) R.drawable.cover_new_bg else R.drawable.cover_count_bg)
+        pill.setPaddingRelative((8 * dp).toInt(), 0, ((if (floating) 8 else 12) * dp).toInt(), 0)
+        (pill.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+            val m = ((if (floating) 6 else 0) * dp).toInt()
+            if (lp.marginStart != m || lp.topMargin != m) {
+                lp.marginStart = m; lp.topMargin = m
+                pill.layoutParams = lp
+            }
+        }
         when (mode) {
             CoverCountMode.COVER -> {
                 val shown = if (fav) null else coverPill(
@@ -596,7 +608,8 @@ class MediaAdaptor(
         b.itemCompactTitle.maxLines = if (mode == CoverCountMode.COVER && next == null && !fav) 3 else 2
         b.itemCompactProgressContainer.visibility = when {
             fav -> View.GONE
-            mode == CoverCountMode.BELOW || next != null -> View.VISIBLE
+            // "New only" keeps the full count under the title too; the badge only adds what's unseen
+            mode == CoverCountMode.BELOW || mode == CoverCountMode.NEW || next != null -> View.VISIBLE
             else -> View.GONE
         }
     }
