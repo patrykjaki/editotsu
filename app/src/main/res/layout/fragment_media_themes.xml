@@ -1,73 +1,82 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Themes tab on anime details: openings & endings, loading, failure with retry, AniList text fallback. -->
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Themes tab on anime details: openings & endings, loading skeleton, failure/empty state with retry, AniList text fallback. -->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/themesScroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    app:cardBackgroundColor="?android:colorBackground"
-    app:cardCornerRadius="0dp"
-    app:cardElevation="0dp"
+    android:background="?android:colorBackground"
     tools:context=".animethemes.MediaThemesFragment">
 
-    <androidx.core.widget.NestedScrollView
-        android:id="@+id/themesScroll"
+    <LinearLayout
+        android:id="@+id/themesContainer"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="12dp">
 
-        <LinearLayout
-            android:id="@+id/themesContainer"
+        <ani.dantotsu.others.SkeletonView
+            android:id="@+id/themesLoading"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:contentDescription="@string/anime_themes_loading"
+            android:tag="rows" />
+
+        <LinearLayout
+            android:id="@+id/themesFailed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
             android:orientation="vertical"
-            android:paddingTop="16dp">
+            android:paddingHorizontal="32dp"
+            android:paddingVertical="32dp"
+            android:visibility="gone"
+            tools:visibility="visible">
 
-            <ani.dantotsu.others.SkeletonView
-                android:id="@+id/themesLoading"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:contentDescription="@string/anime_themes_loading"
-                android:tag="rows" />
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant"
+                app:cardCornerRadius="28dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp">
 
-            <LinearLayout
-                android:id="@+id/themesFailed"
-                android:layout_width="match_parent"
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no"
+                    app:srcCompat="@drawable/ic_round_audiotrack_24"
+                    app:tint="?attr/colorOnSurfaceVariant" />
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:id="@+id/themesFailedText"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:fontFamily="@font/poppins_semi_bold"
                 android:gravity="center"
-                android:orientation="vertical"
-                android:padding="32dp"
-                android:visibility="gone"
-                tools:visibility="visible">
+                android:text="@string/anime_themes_failed"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
 
-                <TextView
-                    android:id="@+id/themesFailedText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="@font/poppins_semi_bold"
-                    android:gravity="center"
-                    android:text="@string/anime_themes_failed"
-                    android:textColor="?attr/colorOnSurface"
-                    android:textSize="16sp" />
-
-                <ImageButton
-                    android:id="@+id/themesRetry"
-                    android:layout_width="56dp"
-                    android:layout_height="56dp"
-                    android:layout_marginTop="16dp"
-                    android:background="@drawable/theme_play_circle"
-                    android:contentDescription="@string/theme_retry"
-                    android:padding="14dp"
-                    android:scaleType="fitCenter"
-                    android:src="@drawable/ic_round_refresh_24"
-                    android:tooltipText="@string/theme_retry"
-                    app:tint="?attr/colorOnPrimary" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/themesContent"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/themesRetry"
+                style="@style/Widget.Material3.Button.IconButton.Filled"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginTop="16dp"
+                android:contentDescription="@string/theme_retry"
+                android:tooltipText="@string/theme_retry"
+                app:icon="@drawable/ic_round_refresh_24" />
         </LinearLayout>
-    </androidx.core.widget.NestedScrollView>
-</androidx.cardview.widget.CardView>
+
+        <LinearLayout
+            android:id="@+id/themesContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

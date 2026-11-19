@@ -45,6 +45,14 @@ class ThemeRadioTest {
     }
 
     @Test
+    fun filterFavouritesMatchesKindsAndKeepsOrder() {
+        val favs = listOf(FavouriteTheme(1, "a", track(1, false)), FavouriteTheme(2, "b", track(2, true)), FavouriteTheme(3, "c", track(3, false)))
+        assertEquals(listOf(1, 2, 3), ThemeRadio.filterFavourites(favs, ThemeKinds.BOTH).map { it.track.themeId })
+        assertEquals(listOf(1, 3), ThemeRadio.filterFavourites(favs, ThemeKinds.OPENINGS).map { it.track.themeId })
+        assertEquals(listOf(2), ThemeRadio.filterFavourites(favs, ThemeKinds.ENDINGS).map { it.track.themeId })
+    }
+
+    @Test
     fun favouritesQueueFiltersAndKeepsOrder() {
         val favs = listOf(FavouriteTheme(1, "a", track(1, false)), FavouriteTheme(2, "b", track(2, true)), FavouriteTheme(3, "c", track(3, false)))
         assertEquals(listOf(1, 3), ThemeRadio.favouritesQueue(favs, ThemeKinds.OPENINGS, false, Random(1)).map { it.themeId })

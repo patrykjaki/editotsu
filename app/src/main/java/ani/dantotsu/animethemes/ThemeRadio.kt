@@ -30,6 +30,12 @@ object ThemeRadio {
     fun pick(choices: List<ThemeChoice>, kinds: ThemeKinds, random: Random): ThemeTrack? =
         choices.filter { kinds.accepts(it.isEnding) }.randomOrNull(random)?.auto
 
+    /** Favourites matching [kinds], preserving order. */
+    fun filterFavourites(
+        favourites: List<FavouriteTheme>,
+        kinds: ThemeKinds,
+    ): List<FavouriteTheme> = favourites.filter { kinds.accepts(it.track.isEnding) }
+
     /** Favourites matching [kinds], shuffled when [shuffle] is on. */
     fun favouritesQueue(
         favourites: List<FavouriteTheme>,
@@ -37,7 +43,7 @@ object ThemeRadio {
         shuffle: Boolean,
         random: Random,
     ): List<ThemeTrack> {
-        val tracks = favourites.map { it.track }.filter { kinds.accepts(it.isEnding) }
+        val tracks = filterFavourites(favourites, kinds).map { it.track }
         return if (shuffle) tracks.shuffled(random) else tracks
     }
 }

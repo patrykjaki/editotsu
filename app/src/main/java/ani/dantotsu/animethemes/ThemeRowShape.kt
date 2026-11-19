@@ -12,8 +12,8 @@ import com.google.android.material.shape.ShapeAppearanceModel
  * corners on the first and last row, rounded inner corners so the rows read as one card.
  */
 object ThemeRowShape {
-    private const val OUTER_DP = 20f
-    private const val INNER_DP = 8f
+    private const val OUTER_DP = 16f
+    private const val INNER_DP = 4f
 
     fun apply(view: View, first: Boolean, last: Boolean) {
         val d = view.resources.displayMetrics.density
@@ -28,7 +28,9 @@ object ThemeRowShape {
             MaterialShapeDrawable(model).apply {
                 fillColor = ColorStateList.valueOf(MaterialColors.getColor(view, com.google.android.material.R.attr.colorSurfaceVariant))
             },
-            MaterialShapeDrawable(model),
+            MaterialShapeDrawable(model).apply {
+                fillColor = ColorStateList.valueOf(0xFFFFFFFF.toInt())
+            },
         )
         view.clipToOutline = true
     }
