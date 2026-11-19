@@ -35,9 +35,8 @@ class SearchAdapter(private val activity: SearchActivity, private val type: Sear
         applyFiltersChanged()
     }
 
-    private fun refreshChipsAndReset() {
+    private fun refreshChips() {
         chips?.build()
-        binding.searchResetFilters.isVisible = hasActiveFilters()
     }
 
     private fun searchTitle(debounceMs: Long) {
@@ -50,7 +49,7 @@ class SearchAdapter(private val activity: SearchActivity, private val type: Sear
     }
 
     private fun applyFiltersChanged() {
-        refreshChipsAndReset()
+        refreshChips()
         if (binding.searchBarText.text.toString().isBlank() && !hasActiveFilters()) {
             activity.aniMangaResult.search = null
             activity.showIdle()
@@ -97,9 +96,7 @@ class SearchAdapter(private val activity: SearchActivity, private val type: Sear
         setQueryText(activity.aniMangaResult.search)
 
         chips = bindChips(activity, type, activity.aniMangaResult) { applyFiltersChanged() }
-        binding.searchResetFilters.isVisible = hasActiveFilters()
-        binding.searchResetFilters.setOnClickListener { resetFilters() }
-        activity.updateChips = { refreshChipsAndReset() }
+        activity.updateChips = { refreshChips() }
 
         binding.searchByImage.isVisible = activity.aniMangaResult.type == "ANIME"
         binding.searchByImage.setOnClickListener {
@@ -141,7 +138,7 @@ class SearchAdapter(private val activity: SearchActivity, private val type: Sear
         bindGenres { genre ->
             activity.aniMangaResult.genres = mutableListOf(genre)
             activity.aniMangaResult.sort = Anilist.sortBy[2]
-            refreshChipsAndReset()
+            refreshChips()
             hideKeyboard(activity)
             searchTitle(debounceMs = 0L)
         }

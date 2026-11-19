@@ -44,6 +44,32 @@ class DownloadsSummaryTest {
     }
 
     @Test
+    fun `storage breakdown separates editotsu downloads from other phone usage`() {
+        val unknown = DownloadsSummary.storageBreakdown(0L, 0L, 500L)
+        assertEquals(0f, unknown.downloadsFraction, 0.0001f)
+        assertEquals(0f, unknown.otherUsedFraction, 0.0001f)
+        assertEquals(0, unknown.phoneUsedPercent)
+
+        // 0 B downloaded while phone is 24% used -> zero downloads segment, 24% other-used segment
+        val emptyDownloads = DownloadsSummary.storageBreakdown(1000L, 760L, 0L)
+        assertEquals(0f, emptyDownloads.downloadsFraction, 0.0001f)
+        assertEquals(0.24f, emptyDownloads.otherUsedFraction, 0.0001f)
+        assertEquals(24, emptyDownloads.phoneUsedPercent)
+
+        // 100 B downloaded out of 400 B total used on a 1000 B phone -> 10% downloads + 30% other = 40%
+        val mixed = DownloadsSummary.storageBreakdown(1000L, 600L, 100L)
+        assertEquals(0.10f, mixed.downloadsFraction, 0.0001f)
+        assertEquals(0.30f, mixed.otherUsedFraction, 0.0001f)
+        assertEquals(40, mixed.phoneUsedPercent)
+
+        // Cached download bytes exceeding StatFs used space clamp cleanly to total used
+        val clamped = DownloadsSummary.storageBreakdown(1000L, 800L, 500L)
+        assertEquals(0.20f, clamped.downloadsFraction, 0.0001f)
+        assertEquals(0f, clamped.otherUsedFraction, 0.0001f)
+        assertEquals(20, clamped.phoneUsedPercent)
+    }
+
+    @Test
     fun `hasQueuedWork reflects any active or queued category`() {
         assertFalse(DownloadsSummary.hasQueuedWork(0, 0, 0))
         assertTrue(DownloadsSummary.hasQueuedWork(1, 0, 0))

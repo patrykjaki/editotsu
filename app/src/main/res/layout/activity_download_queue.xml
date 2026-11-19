@@ -105,41 +105,25 @@
                     app:tint="?attr/colorPrimary" />
 
                 <TextView
-                    android:id="@+id/downloadsTotalSize"
+                    android:id="@+id/downloadsStorageLine"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:ellipsize="end"
-                    android:fontFamily="@font/poppins_bold"
-                    android:includeFontPadding="false"
-                    android:maxLines="1"
-                    android:textColor="?attr/colorOnSurface"
-                    android:textSize="20sp"
-                    tools:text="2.4 GB" />
-
-                <TextView
-                    android:id="@+id/downloadsFreeSpace"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="12dp"
                     android:fontFamily="@font/poppins_semi_bold"
                     android:includeFontPadding="false"
-                    android:textColor="?attr/colorOnSurfaceVariant"
-                    android:textSize="12sp"
-                    tools:text="42.1 GB free" />
+                    android:maxLines="2"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="14sp"
+                    tools:text="Downloads 0 B · Phone 24% used · 8.0 GB free" />
             </LinearLayout>
 
-            <com.google.android.material.progressindicator.LinearProgressIndicator
+            <ani.dantotsu.settings.SegmentedStorageBarView
                 android:id="@+id/downloadsStorageBar"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="6dp"
                 android:layout_marginTop="10dp"
-                android:importantForAccessibility="no"
-                app:indicatorColor="?attr/colorPrimary"
-                app:trackColor="?android:attr/colorBackground"
-                app:trackCornerRadius="3dp"
-                app:trackStopIndicatorSize="0dp"
-                app:trackThickness="6dp" />
+                android:importantForAccessibility="no" />
 
             <LinearLayout
                 android:layout_width="match_parent"

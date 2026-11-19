@@ -42,17 +42,22 @@ abstract class HeaderInterface(protected val binding: ActivitySearchBinding) {
     protected fun bindChrome(activity: SearchActivity, type: SearchType, onPick: (String) -> Unit) {
         binding.searchBack.setOnClickListener { activity.onBackPressedDispatcher.onBackPressed() }
 
-        val typeName = activity.getString(
-            when (type) {
-                SearchType.ANIME -> R.string.anime
-                SearchType.MANGA -> R.string.manga
-                SearchType.CHARACTER -> R.string.characters
-                SearchType.STAFF -> R.string.staff
-                SearchType.STUDIO -> R.string.studios
-                SearchType.USER -> R.string.users
-            }
-        ).lowercase()
-        val hintText = activity.getString(R.string.search_hint, typeName)
+        val hintText = if (type == SearchType.ALL) {
+            activity.getString(R.string.search_hint_all)
+        } else {
+            val typeName = activity.getString(
+                when (type) {
+                    SearchType.ALL -> R.string.all
+                    SearchType.ANIME -> R.string.anime
+                    SearchType.MANGA -> R.string.manga
+                    SearchType.CHARACTER -> R.string.characters
+                    SearchType.STAFF -> R.string.staff
+                    SearchType.STUDIO -> R.string.studios
+                    SearchType.USER -> R.string.users
+                }
+            ).lowercase()
+            activity.getString(R.string.search_hint, typeName)
+        }
         binding.searchBarText.hint = hintText
         binding.searchIdlePromptTitle.text = hintText
 

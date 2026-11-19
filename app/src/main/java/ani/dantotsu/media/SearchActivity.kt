@@ -1,6 +1,7 @@
 package ani.dantotsu.media
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.os.Bundle
 import android.os.Parcelable
 import android.view.View
@@ -18,7 +19,9 @@ import ani.dantotsu.connections.anilist.AniMangaSearchResults
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.AnilistSearch
 import ani.dantotsu.connections.anilist.AnilistSearch.SearchType
+import ani.dantotsu.connections.anilist.AnilistSearch.SearchType.Companion.toAnilistString
 import ani.dantotsu.connections.anilist.CharacterSearchResults
+import ani.dantotsu.connections.anilist.MixedSearchResults
 import ani.dantotsu.connections.anilist.StaffSearchResults
 import ani.dantotsu.connections.anilist.StudioSearchResults
 import ani.dantotsu.connections.anilist.UserSearchResults
@@ -48,6 +51,7 @@ class SearchActivity : AppCompatActivity() {
     lateinit var searchType: SearchType
     private var screenWidth: Float = 0f
 
+    private lateinit var mixedAdaptor: MixedSearchAdapter
     private lateinit var mediaAdaptor: MediaAdaptor
     private lateinit var characterAdaptor: CharacterAdapter
     private lateinit var studioAdaptor: StudioAdapter
@@ -59,6 +63,7 @@ class SearchActivity : AppCompatActivity() {
     private lateinit var headerAdaptor: HeaderInterface
     private var resultsHeaderAdapter: RecyclerView.Adapter<*>? = null
 
+    lateinit var mixedResult: MixedSearchResults
     lateinit var aniMangaResult: AniMangaSearchResults
     lateinit var characterResult: CharacterSearchResults
     lateinit var studioResult: StudioSearchResults
@@ -91,6 +96,26 @@ class SearchActivity : AppCompatActivity() {
         val notSet = model.notSet
         searchType = SearchType.fromString(intent.getStringExtra("type") ?: "ANIME")
         when (searchType) {
+            SearchType.ALL -> {
+                if (model.notSet) {
+                    model.notSet = false
+                    model.mixedSearchResults = MixedSearchResults(
+                        search = intent.getStringExtra("query"),
+                    )
+                }
+                mixedResult = model.mixedSearchResults
+                mixedAdaptor = MixedSearchAdapter(this) { targetType ->
+                    val q = headerAdaptor.currentQuery()
+                    switchToType(
+                        nextType = targetType,
+                        query = q.takeIf { it.isNotBlank() },
+                        autoSearch = q.isNotBlank(),
+                    )
+                }
+                mixedAdaptor.submit(model.mixedSearchResults)
+                binding.searchRecyclerView.updatePaddingRelative(start = 0, end = 0)
+            }
+
             SearchType.ANIME, SearchType.MANGA -> {
                 style = PrefManager.getVal(PrefName.SearchStyle)
                 var listOnly: Boolean? = intent.getBooleanExtra("listOnly", false)
@@ -204,6 +229,7 @@ class SearchActivity : AppCompatActivity() {
             override fun getSpanSize(position: Int): Int {
                 val hasHeader = resultsHeaderAdapter != null
                 return when {
+                    searchType == SearchType.ALL -> gridSize
                     hasHeader && position == 0 -> gridSize
                     position == concatAdapter.itemCount - 1 -> gridSize
                     else -> when (style) {
@@ -215,6 +241,7 @@ class SearchActivity : AppCompatActivity() {
         }
 
         val contentAdapter: RecyclerView.Adapter<*> = when (searchType) {
+            SearchType.ALL -> mixedAdaptor
             SearchType.ANIME, SearchType.MANGA -> mediaAdaptor
             SearchType.CHARACTER -> characterAdaptor
             SearchType.STUDIO -> studioAdaptor
@@ -271,6 +298,28 @@ class SearchActivity : AppCompatActivity() {
         })
 
         when (searchType) {
+            SearchType.ALL -> {
+                model.getSearch<MixedSearchResults>(searchType).observe(this) {
+                    if (it == null) {
+                        handleNullEmission()
+                        return@observe
+                    }
+                    if (uiState == UiState.IDLE) return@observe
+                    model.mixedSearchResults.apply {
+                        search = it.search
+                        clear()
+                        anime.addAll(it.anime)
+                        manga.addAll(it.manga)
+                        characters.addAll(it.characters)
+                        staff.addAll(it.staff)
+                        studios.addAll(it.studios)
+                        users.addAll(it.users)
+                    }
+                    mixedAdaptor.submit(model.mixedSearchResults)
+                    finishEmission(model.mixedSearchResults.totalCount(), hasNextPage = false)
+                }
+            }
+
             SearchType.ANIME, SearchType.MANGA -> {
                 model.getSearch<AniMangaSearchResults>(searchType).observe(this) {
                     if (it == null) {
@@ -444,7 +493,8 @@ class SearchActivity : AppCompatActivity() {
     }
 
     private fun syncSkeletonMode() {
-        val isMediaList = style == 1 && (searchType == SearchType.ANIME || searchType == SearchType.MANGA)
+        val isMediaList = searchType == SearchType.ALL ||
+            (style == 1 && (searchType == SearchType.ANIME || searchType == SearchType.MANGA))
         binding.searchLoading.setMode(if (isMediaList) "media_list" else "grid")
     }
 
@@ -524,6 +574,11 @@ class SearchActivity : AppCompatActivity() {
 
     private fun clearCurrentResults() {
         when (searchType) {
+            SearchType.ALL -> {
+                model.mixedSearchResults.clear()
+                mixedAdaptor.submit(null)
+            }
+
             SearchType.ANIME, SearchType.MANGA -> {
                 val count = model.aniMangaSearchResults.results.size
                 model.aniMangaSearchResults.results.clear()
@@ -632,6 +687,28 @@ class SearchActivity : AppCompatActivity() {
             renderState(UiState.IDLE)
             binding.searchBarText.post { headerAdaptor.requestFocus?.run() }
         }
+    }
+
+    /** Switches to another search type (e.g. from the Type chip, mixed "See all", or a genre tile in All). */
+    fun switchToType(
+        nextType: SearchType,
+        query: String? = null,
+        genre: String? = null,
+        sortBy: String? = null,
+        autoSearch: Boolean = true,
+    ) {
+        val intent = Intent(this, SearchActivity::class.java)
+            .putExtra("type", nextType.toAnilistString())
+            .apply {
+                if (!query.isNullOrBlank()) putExtra("query", query)
+                if (!genre.isNullOrBlank()) putExtra("genre", genre)
+                if (!sortBy.isNullOrBlank()) putExtra("sortBy", sortBy)
+                if (autoSearch) putExtra("search", true)
+            }
+        startActivity(intent)
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
+        finish()
     }
 
     var state: Parcelable? = null

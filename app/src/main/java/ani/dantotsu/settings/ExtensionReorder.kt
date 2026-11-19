@@ -1,42 +1,53 @@
 package ani.dantotsu.settings
 
-import android.view.MotionEvent
-import android.view.View
+import android.view.HapticFeedbackConstants
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import ani.dantotsu.R
 
 /**
- * Reordering on an installed-extensions list that also has pull-to-refresh: a touch on a row's
- * handle starts the drag at once, and the refresh gesture is off until the finger lifts, so
- * dragging the top row down moves the row instead of pulling the spinner.
+ * Long-press reordering on an installed-extensions list that also has pull-to-refresh.
+ * Disables [SwipeRefreshLayout] while a drag is active so dragging the top row down moves
+ * the row instead of pulling the refresh spinner, and re-enables it once the drag settles.
  */
 internal object ExtensionReorder {
     fun attach(callback: ItemTouchHelper.Callback, list: RecyclerView, swipe: SwipeRefreshLayout) {
-        val helper = ItemTouchHelper(callback)
-        helper.attachToRecyclerView(list)
-        list.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
-            override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
-                when (e.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        val row = rv.findChildViewUnder(e.x, e.y) ?: return false
-                        val handle = row.findViewById<View>(R.id.extensionPinImageView) ?: return false
-                        if (handle.visibility == View.VISIBLE && e.x - row.left in handle.left.toFloat()..handle.right.toFloat()) {
-                            swipe.isEnabled = false
-                            helper.startDrag(rv.getChildViewHolder(row))
-                        }
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> swipe.isEnabled = true
-                }
-                return false
+        val wrapped = object : ItemTouchHelper.Callback() {
+            override fun getMovementFlags(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+            ): Int = callback.getMovementFlags(recyclerView, viewHolder)
+
+            override fun isLongPressDragEnabled(): Boolean = true
+
+            override fun isItemViewSwipeEnabled(): Boolean = callback.isItemViewSwipeEnabled
+
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder,
+            ): Boolean = callback.onMove(recyclerView, viewHolder, target)
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                callback.onSwiped(viewHolder, direction)
             }
 
-            override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
-                if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) {
-                    swipe.isEnabled = true
+            override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+                when (actionState) {
+                    ItemTouchHelper.ACTION_STATE_DRAG -> {
+                        swipe.isEnabled = false
+                        viewHolder?.itemView?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    }
+                    ItemTouchHelper.ACTION_STATE_IDLE -> swipe.isEnabled = true
                 }
+                callback.onSelectedChanged(viewHolder, actionState)
             }
-        })
+
+            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                swipe.isEnabled = true
+                callback.clearView(recyclerView, viewHolder)
+            }
+        }
+        ItemTouchHelper(wrapped).attachToRecyclerView(list)
     }
 }

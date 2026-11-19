@@ -33,6 +33,7 @@ class SearchHistoryAdapter(
     private var searchHistoryLiveData: SharedPreferenceClassLiveData<List<SearchHistory>>? = null
     private var searchHistory: MutableList<SearchHistory>? = null
     private var historyType: PrefName = when (type) {
+        SearchType.ALL -> PrefName.SortedAllSH
         SearchType.ANIME -> PrefName.SortedAnimeSH
         SearchType.MANGA -> PrefName.SortedMangaSH
         SearchType.CHARACTER -> PrefName.SortedCharacterSH

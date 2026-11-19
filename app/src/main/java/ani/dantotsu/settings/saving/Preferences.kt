@@ -59,6 +59,7 @@ enum class PrefName(val data: Pref) {
     InstalledExtensionRepos(Pref(Location.General, String::class, "{}")),
     AnimeSourcesOrder(Pref(Location.General, List::class, listOf<String>())),
     MangaSourcesOrder(Pref(Location.General, List::class, listOf<String>())),
+    SortedAllSH(Pref(Location.General, List::class, listOf<SearchHistory>())),
     SortedAnimeSH(Pref(Location.General, List::class, listOf<SearchHistory>())),
     SortedMangaSH(Pref(Location.General, List::class, listOf<SearchHistory>())),
     SortedCharacterSH(Pref(Location.General, List::class, listOf<SearchHistory>())),

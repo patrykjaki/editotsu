@@ -28,6 +28,8 @@ import ani.dantotsu.tryWithSuspend
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -807,12 +809,13 @@ class AnilistMangaViewModel : ViewModel() {
 class AnilistSearch : ViewModel() {
 
     enum class SearchType {
-        ANIME, MANGA, CHARACTER, STAFF, STUDIO, USER;
+        ALL, ANIME, MANGA, CHARACTER, STAFF, STUDIO, USER;
 
         companion object {
 
             fun SearchType.toAnilistString(): String {
                 return when (this) {
+                    ALL -> "ALL"
                     ANIME -> "ANIME"
                     MANGA -> "MANGA"
                     CHARACTER -> "CHARACTER"
@@ -824,6 +827,7 @@ class AnilistSearch : ViewModel() {
 
             fun fromString(string: String): SearchType {
                 return when (string.uppercase()) {
+                    "ALL" -> ALL
                     "ANIME" -> ANIME
                     "MANGA" -> MANGA
                     "CHARACTER" -> CHARACTER
@@ -838,6 +842,10 @@ class AnilistSearch : ViewModel() {
 
     var searched = false
     var notSet = true
+    lateinit var mixedSearchResults: MixedSearchResults
+    private val mixedResult: MutableLiveData<MixedSearchResults?> =
+        MutableLiveData<MixedSearchResults?>(null)
+
     lateinit var aniMangaSearchResults: AniMangaSearchResults
     private val aniMangaResult: MutableLiveData<AniMangaSearchResults?> =
         MutableLiveData<AniMangaSearchResults?>(null)
@@ -860,6 +868,7 @@ class AnilistSearch : ViewModel() {
 
     fun <T> getSearch(type: SearchType): MutableLiveData<T?> {
         return when (type) {
+            SearchType.ALL -> mixedResult as MutableLiveData<T?>
             SearchType.ANIME, SearchType.MANGA -> aniMangaResult as MutableLiveData<T?>
             SearchType.CHARACTER -> characterResult as MutableLiveData<T?>
             SearchType.STUDIO -> studioResult as MutableLiveData<T?>
@@ -870,6 +879,7 @@ class AnilistSearch : ViewModel() {
 
     suspend fun loadSearch(type: SearchType) {
         when (type) {
+            SearchType.ALL -> loadMixedSearch(mixedSearchResults)
             SearchType.ANIME, SearchType.MANGA -> loadAniMangaSearch(aniMangaSearchResults)
             SearchType.CHARACTER -> loadCharacterSearch(characterSearchResults)
             SearchType.STUDIO -> loadStudiosSearch(studioSearchResults)
@@ -880,6 +890,7 @@ class AnilistSearch : ViewModel() {
 
     suspend fun loadNextPage(type: SearchType) {
         when (type) {
+            SearchType.ALL -> Unit
             SearchType.ANIME, SearchType.MANGA -> loadNextAniMangaPage(aniMangaSearchResults)
             SearchType.CHARACTER -> loadNextCharacterPage(characterSearchResults)
             SearchType.STUDIO -> loadNextStudiosPage(studioSearchResults)
@@ -890,6 +901,7 @@ class AnilistSearch : ViewModel() {
 
     fun hasNextPage(type: SearchType): Boolean {
         return when (type) {
+            SearchType.ALL -> false
             SearchType.ANIME, SearchType.MANGA -> aniMangaSearchResults.hasNextPage
             SearchType.CHARACTER -> characterSearchResults.hasNextPage
             SearchType.STUDIO -> studioSearchResults.hasNextPage
@@ -900,6 +912,7 @@ class AnilistSearch : ViewModel() {
 
     fun resultsIsNotEmpty(type: SearchType): Boolean {
         return when (type) {
+            SearchType.ALL -> !mixedSearchResults.isEmpty()
             SearchType.ANIME, SearchType.MANGA -> aniMangaSearchResults.results.isNotEmpty()
             SearchType.CHARACTER -> characterSearchResults.results.isNotEmpty()
             SearchType.STUDIO -> studioSearchResults.results.isNotEmpty()
@@ -910,6 +923,7 @@ class AnilistSearch : ViewModel() {
 
     fun size(type: SearchType): Int {
         return when (type) {
+            SearchType.ALL -> mixedSearchResults.totalCount()
             SearchType.ANIME, SearchType.MANGA -> aniMangaSearchResults.results.size
             SearchType.CHARACTER -> characterSearchResults.results.size
             SearchType.STUDIO -> studioSearchResults.results.size
@@ -920,12 +934,79 @@ class AnilistSearch : ViewModel() {
 
     fun clearResults(type: SearchType) {
         when (type) {
+            SearchType.ALL -> mixedSearchResults.clear()
             SearchType.ANIME, SearchType.MANGA -> aniMangaSearchResults.results.clear()
             SearchType.CHARACTER -> characterSearchResults.results.clear()
             SearchType.STUDIO -> studioSearchResults.results.clear()
             SearchType.STAFF -> staffSearchResults.results.clear()
             SearchType.USER -> userSearchResults.results.clear()
         }
+    }
+
+    private suspend fun loadMixedSearch(r: MixedSearchResults) {
+        val search = r.search?.trim().orEmpty()
+        if (search.isEmpty()) {
+            mixedResult.postValue(MixedSearchResults(search = null))
+            return
+        }
+        if (PrefManager.getVal<Boolean>(PrefName.RescueMode)) {
+            val result = coroutineScope {
+                val animeJob = async {
+                    tryWithSuspend {
+                        MAL.jikan.search(query = search, endpoint = "anime", page = 1, sfw = true)
+                            ?.data?.take(8)?.map { Media(it, true) }
+                    }.orEmpty()
+                }
+                val mangaJob = async {
+                    tryWithSuspend {
+                        MAL.jikan.search(query = search, endpoint = "manga", page = 1, sfw = true)
+                            ?.data?.take(8)?.map { Media(it, false) }
+                    }.orEmpty()
+                }
+                val charJob = async {
+                    tryWithSuspend {
+                        MAL.jikan.searchCharacters(search, 1)?.data?.take(4)
+                            ?.map { Character(it.malId, it.name, it.images?.jpg?.imageUrl, null, "", false) }
+                    }.orEmpty()
+                }
+                val staffJob = async {
+                    tryWithSuspend {
+                        MAL.jikan.searchStaff(search, 1)?.data?.take(4)
+                            ?.map { Author(it.malId, it.name ?: "", it.images?.jpg?.imageUrl, "STAFF") }
+                    }.orEmpty()
+                }
+                val studioJob = async {
+                    tryWithSuspend {
+                        MAL.jikan.searchStudios(search, 1)?.data?.take(4)
+                            ?.map { Studio(it.malId.toString(), it.name ?: "", false, it.favorites ?: 0, it.images?.jpg?.imageUrl) }
+                    }.orEmpty()
+                }
+                val userJob = async {
+                    tryWithSuspend {
+                        MAL.jikan.searchUsers(search, 1)?.data?.take(4)?.map {
+                            User(
+                                id = it.username.hashCode().and(0x7FFFFFFF),
+                                name = it.username ?: "",
+                                pfp = it.images?.jpg?.imageUrl,
+                                banner = "https://myanimelist.net/profile/${it.username ?: ""}",
+                            )
+                        }
+                    }.orEmpty()
+                }
+                MixedSearchResults(
+                    search = search,
+                    anime = animeJob.await().toMutableList(),
+                    manga = mangaJob.await().toMutableList(),
+                    characters = charJob.await().toMutableList(),
+                    staff = staffJob.await().toMutableList(),
+                    studios = studioJob.await().toMutableList(),
+                    users = userJob.await().toMutableList(),
+                )
+            }
+            mixedResult.postValue(result)
+            return
+        }
+        mixedResult.postValue(Anilist.query.searchAll(search, isAdult = false))
     }
 
     private suspend fun loadAniMangaSearch(r: AniMangaSearchResults) {

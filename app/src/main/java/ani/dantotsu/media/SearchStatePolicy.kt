@@ -8,24 +8,28 @@ import ani.dantotsu.connections.anilist.AniMangaSearchResults
  */
 object SearchStatePolicy {
 
-    /** True when any filter, sort order, or 18+ toggle is set (empty query still browses results). */
-    fun hasActiveFilters(filters: AniMangaSearchResults?): Boolean {
-        val f = filters ?: return false
-        return !f.genres.isNullOrEmpty() ||
-            !f.tags.isNullOrEmpty() ||
-            !f.excludedGenres.isNullOrEmpty() ||
-            !f.excludedTags.isNullOrEmpty() ||
-            f.format != null ||
-            f.status != null ||
-            f.source != null ||
-            f.countryOfOrigin != null ||
-            f.season != null ||
-            f.seasonYear != null ||
-            f.startYear != null ||
-            f.onList != null ||
-            f.sort != null ||
-            f.isAdult
+    /** Number of individual active filter items (matches the removable chips shown beside "Filters"). */
+    fun activeFilterCount(filters: AniMangaSearchResults?): Int {
+        val f = filters ?: return 0
+        var count = 0
+        if (f.sort != null) count++
+        count += f.genres?.size ?: 0
+        count += f.tags?.size ?: 0
+        count += f.excludedGenres?.size ?: 0
+        count += f.excludedTags?.size ?: 0
+        if (f.format != null) count++
+        if (f.status != null) count++
+        if (f.seasonYear != null || f.startYear != null) count++
+        if (f.season != null) count++
+        if (f.onList != null) count++
+        if (f.source != null) count++
+        if (f.countryOfOrigin != null) count++
+        if (f.isAdult) count++
+        return count
     }
+
+    /** True when any filter, sort order, or 18+ toggle is set (empty query still browses results). */
+    fun hasActiveFilters(filters: AniMangaSearchResults?): Boolean = activeFilterCount(filters) > 0
 
     /** Clears every filter and sort on [filters] while keeping [AniMangaSearchResults.search]. */
     fun clearFilters(filters: AniMangaSearchResults) {

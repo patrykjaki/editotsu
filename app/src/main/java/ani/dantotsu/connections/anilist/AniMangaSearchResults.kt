@@ -172,3 +172,27 @@ data class UserSearchResults(
     override var results: MutableList<User>,
     override var hasNextPage: Boolean,
 ) : SearchResults<User>, Serializable
+
+data class MixedSearchResults(
+    var search: String? = null,
+    val anime: MutableList<Media> = mutableListOf(),
+    val manga: MutableList<Media> = mutableListOf(),
+    val characters: MutableList<Character> = mutableListOf(),
+    val staff: MutableList<Author> = mutableListOf(),
+    val studios: MutableList<Studio> = mutableListOf(),
+    val users: MutableList<User> = mutableListOf(),
+) : Serializable {
+    fun totalCount(): Int =
+        anime.size + manga.size + characters.size + staff.size + studios.size + users.size
+
+    fun isEmpty(): Boolean = totalCount() == 0
+
+    fun clear() {
+        anime.clear()
+        manga.clear()
+        characters.clear()
+        staff.clear()
+        studios.clear()
+        users.clear()
+    }
+}

@@ -1,6 +1,7 @@
 package ani.dantotsu.media
 
 import ani.dantotsu.connections.anilist.AniMangaSearchResults
+import ani.dantotsu.connections.anilist.MixedSearchResults
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -78,5 +79,41 @@ class SearchStatePolicyTest {
         // Adding a fourth item with maxSize=3 keeps the new item and drops the oldest ("Middle").
         val capped = SearchStatePolicy.addHistoryEntry(bumped, "Fresh", 50L, maxSize = 3)
         assertEquals(listOf("Fresh", "oldest", "Newest"), capped.map { it.search })
+    }
+
+    @Test
+    fun `activeFilterCount matches individual active filter chips`() {
+        assertEquals(0, SearchStatePolicy.activeFilterCount(null))
+        val f = emptyFilters()
+        assertEquals(0, SearchStatePolicy.activeFilterCount(f))
+
+        f.genres = mutableListOf("Action", "Comedy")
+        f.excludedTags = mutableListOf("Isekai")
+        f.format = "TV"
+        f.seasonYear = 2024
+        f.sort = "POPULARITY_DESC"
+        // 2 genres + 1 excluded tag + format + year + sort = 6
+        assertEquals(6, SearchStatePolicy.activeFilterCount(f))
+
+        f.isAdult = true
+        assertEquals(7, SearchStatePolicy.activeFilterCount(f))
+
+        SearchStatePolicy.clearFilters(f)
+        assertEquals(0, SearchStatePolicy.activeFilterCount(f))
+    }
+
+    @Test
+    fun `mixed search results track emptiness and clear cleanly`() {
+        val mixed = MixedSearchResults(search = "Frieren")
+        assertTrue(mixed.isEmpty())
+        assertEquals(0, mixed.totalCount())
+
+        mixed.studios.add(Studio("11", "Madhouse", false, 0, null))
+        assertFalse(mixed.isEmpty())
+        assertEquals(1, mixed.totalCount())
+
+        mixed.clear()
+        assertTrue(mixed.isEmpty())
+        assertEquals("Frieren", mixed.search)
     }
 }

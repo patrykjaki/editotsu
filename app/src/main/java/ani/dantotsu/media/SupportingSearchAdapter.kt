@@ -1,35 +1,74 @@
 package ani.dantotsu.media
 
+import android.content.Intent
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import androidx.core.view.isVisible
+import androidx.recyclerview.widget.GridLayoutManager
+import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.AnilistSearch.SearchType
-import ani.dantotsu.connections.anilist.SearchResults
+import ani.dantotsu.others.imagesearch.ImageSearchActivity
 
-/** Controller for character, staff, studio and user search: pinned bar, type chip, recents and idle guidance. */
+/**
+ * Controller for mixed "All" search (Home) as well as character, staff, studio and user search:
+ * pinned search bar, type chip (no Filters button), recents, plus image search & browse-by-genre in All.
+ */
 class SupportingSearchAdapter(private val activity: SearchActivity, private val type: SearchType) :
     HeaderInterface(activity.binding) {
 
-    private fun currentResult(): SearchResults<*> = when (type) {
-        SearchType.CHARACTER -> activity.characterResult
-        SearchType.STUDIO -> activity.studioResult
-        SearchType.STAFF -> activity.staffResult
-        SearchType.USER -> activity.userResult
-        else -> throw IllegalArgumentException("Invalid search type")
-    }
+    private var currentSearchText: String?
+        get() = when (type) {
+            SearchType.ALL -> activity.mixedResult.search
+            SearchType.CHARACTER -> activity.characterResult.search
+            SearchType.STUDIO -> activity.studioResult.search
+            SearchType.STAFF -> activity.staffResult.search
+            SearchType.USER -> activity.userResult.search
+            else -> throw IllegalArgumentException("Invalid search type")
+        }
+        set(value) {
+            when (type) {
+                SearchType.ALL -> activity.mixedResult.search = value
+                SearchType.CHARACTER -> activity.characterResult.search = value
+                SearchType.STUDIO -> activity.studioResult.search = value
+                SearchType.STAFF -> activity.staffResult.search = value
+                SearchType.USER -> activity.userResult.search = value
+                else -> throw IllegalArgumentException("Invalid search type")
+            }
+        }
 
     private fun searchTitle(debounceMs: Long) {
         val searchText = binding.searchBarText.text?.toString()?.takeIf { it.isNotEmpty() }
-        currentResult().search = searchText
+        currentSearchText = searchText
         activity.search(debounceMs)
+    }
+
+    private fun bindGenres(onPick: (String) -> Unit) {
+        val adapter = GenreAdapter("ANIME", big = true, onPick = onPick)
+        val width = activity.resources.displayMetrics.run { widthPixels / density }
+        binding.searchGenreList.layoutManager =
+            GridLayoutManager(activity, (width / 180f).toInt().coerceAtLeast(2))
+        binding.searchGenreList.adapter = adapter
+        fun shown(genre: String) = Anilist.adult || !genre.equals("hentai", true)
+        activity.loadGenres { pair ->
+            if (shown(pair.first)) {
+                adapter.addGenre(pair)
+                updateIdleSections()
+            }
+        }?.let { known ->
+            val keep = known.filterKeys(::shown)
+            adapter.genres = keep.toMutableMap()
+            adapter.pos = ArrayList(keep.keys)
+        }
     }
 
     override fun bind() {
         if (activity.searchType == SearchType.MANGA || activity.searchType == SearchType.ANIME) {
             throw IllegalArgumentException("Invalid search type (wrong adapter)")
         }
-        showsGenres = false
+        val isAll = type == SearchType.ALL
+        showsGenres = isAll
 
         bindChrome(activity, type) { picked ->
             setQueryText(picked)
@@ -38,14 +77,31 @@ class SupportingSearchAdapter(private val activity: SearchActivity, private val 
             searchTitle(debounceMs = 0L)
         }
 
-        binding.searchByImage.visibility = View.GONE
-        binding.searchResetFilters.visibility = View.GONE
-        binding.searchGenreHeader.visibility = View.GONE
-        binding.searchGenreList.visibility = View.GONE
+        binding.searchByImage.isVisible = isAll
+        if (isAll) {
+            binding.searchByImage.setOnClickListener {
+                activity.startActivity(Intent(activity, ImageSearchActivity::class.java))
+            }
+        }
+        if (isAll) {
+            bindGenres { genre ->
+                hideKeyboard(activity)
+                activity.switchToType(
+                    nextType = SearchType.ANIME,
+                    genre = genre,
+                    sortBy = Anilist.sortBy[2],
+                    autoSearch = true,
+                )
+            }
+        } else {
+            binding.searchGenreHeader.visibility = View.GONE
+            binding.searchGenreList.visibility = View.GONE
+        }
+
         bindChips(activity, type, null) {}
 
         binding.searchBarText.removeTextChangedListener(textWatcher)
-        setQueryText(currentResult().search)
+        setQueryText(currentSearchText)
         updateIdleSections()
 
         textWatcher = object : TextWatcher {
@@ -56,7 +112,7 @@ class SupportingSearchAdapter(private val activity: SearchActivity, private val 
             override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {
                 if (programmaticTextChange) return
                 if (s.toString().isBlank()) {
-                    currentResult().search = null
+                    currentSearchText = null
                     activity.showIdle()
                 } else {
                     searchTitle(debounceMs = 400L)

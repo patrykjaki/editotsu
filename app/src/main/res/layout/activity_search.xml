@@ -110,45 +110,24 @@
             </com.google.android.material.card.MaterialCardView>
         </LinearLayout>
 
-        <!-- Type, sort and filter dropdown chips (SearchFilterChips), plus a trailing 1-tap reset icon when filtered. -->
-        <LinearLayout
+        <!-- Type chip, Filters button-chip, and removable input chips for active filters (SearchFilterChips). -->
+        <HorizontalScrollView
+            android:id="@+id/searchChipScroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingBottom="4dp">
+            android:clipToPadding="false"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="4dp"
+            android:scrollbars="none">
 
-            <HorizontalScrollView
-                android:id="@+id/searchChipScroll"
-                android:layout_width="0dp"
+            <LinearLayout
+                android:id="@+id/searchChips"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:clipToPadding="false"
-                android:paddingStart="16dp"
-                android:paddingEnd="8dp"
-                android:scrollbars="none">
-
-                <LinearLayout
-                    android:id="@+id/searchChips"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal" />
-            </HorizontalScrollView>
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/searchResetFilters"
-                style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginEnd="4dp"
-                android:contentDescription="@string/reset_filters"
-                android:tooltipText="@string/reset_filters"
-                android:visibility="gone"
-                app:icon="@drawable/ic_round_refresh_24"
-                app:iconTint="?attr/colorPrimary"
-                tools:visibility="visible" />
-        </LinearLayout>
+                android:gravity="center_vertical"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
 
         <View
             android:id="@+id/searchTopDivider"

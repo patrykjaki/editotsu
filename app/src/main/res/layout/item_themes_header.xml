@@ -100,20 +100,23 @@
             android:textAppearance="@style/TextAppearance.Editotsu.Chip" />
     </com.google.android.material.button.MaterialButtonToggleGroup>
 
-    <!-- The one filled primary action on the screen: radio from completed shows -->
+    <!-- Secondary radio action: extended tonal button sized to content -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/actionShuffleCompleted"
-        style="@style/Widget.Material3.Button"
-        android:layout_width="match_parent"
+        style="@style/Widget.Material3.Button.TonalButton.Icon"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
         android:layout_marginHorizontal="16dp"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="14dp"
         android:insetTop="0dp"
         android:insetBottom="0dp"
         android:minHeight="48dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="24dp"
         android:text="@string/themes_shuffle_completed"
         android:textAppearance="@style/TextAppearance.Editotsu.Chip"
-        app:cornerRadius="12dp"
+        app:cornerRadius="24dp"
         app:icon="@drawable/ic_shuffle_24"
         app:iconGravity="textStart"
         app:iconPadding="8dp"
