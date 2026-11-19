@@ -654,6 +654,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         val lockButton = playerView.findViewById<ImageButton>(R.id.exo_unlock)
         playerView.findViewById<ImageButton>(R.id.exo_lock).setOnClickListener {
             gestureManager.isLocked = true
+            playerView.controlsLocked = true
             screen.visibility = View.GONE
             container.visibility = View.GONE
             lockButton.visibility = View.VISIBLE
@@ -661,6 +662,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
         lockButton.setOnClickListener {
             gestureManager.isLocked = false
+            playerView.controlsLocked = false
             screen.visibility = View.VISIBLE
             container.visibility = View.VISIBLE
             it.visibility = View.GONE

@@ -174,6 +174,9 @@ class DantotsuPlayerView @JvmOverloads constructor(
         engine = null
     }
 
+    /** While the player is locked, showing the controller only brings back the unlock button. */
+    var controlsLocked = false
+
     fun showController() {
         isControllerFullyVisible = true
         val controllerCont = findViewById<View>(R.id.exo_controller_cont)
@@ -182,7 +185,7 @@ class DantotsuPlayerView @JvmOverloads constructor(
         val bottomCont = findViewById<View>(R.id.exo_bottom_cont)
         val timelineCont = findViewById<View>(R.id.exo_timeline_cont)
 
-        controllerCont?.visibility = View.VISIBLE
+        controllerCont?.visibility = if (controlsLocked) View.GONE else View.VISIBLE
         controller?.visibility = View.VISIBLE
         controller?.alpha = 1f
         topCont?.translationY = 0f
