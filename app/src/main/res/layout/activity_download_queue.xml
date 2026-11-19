@@ -1,196 +1,309 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Downloads screen: M3 top bar, storage/activity summary card, Anime/Manga/Novel segmented filter,
+     active queue + downloaded library list, and centered empty state. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/downloadQueueContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?android:attr/windowBackground">
+    android:background="?attr/colorSurface"
+    android:orientation="vertical"
+    tools:context=".settings.DownloadQueueActivity">
 
+    <!-- 64dp M3 Small Top App Bar -->
     <LinearLayout
-        android:id="@+id/downloadQueueContainer"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:layout_height="64dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp">
 
-        <!-- Toolbar / Header -->
-        <RelativeLayout
-            android:layout_width="match_parent"
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/downloadQueueBack"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/back"
+            app:icon="@drawable/ic_round_arrow_back_ios_new_24"
+            app:iconTint="?attr/colorOnSurface" />
+
+        <TextView
+            android:id="@+id/downloadQueueTitle"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:paddingHorizontal="16dp"
-            android:paddingTop="32dp">
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:accessibilityHeading="true"
+            android:ellipsize="end"
+            android:fontFamily="@font/poppins_bold"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="@string/download_queue"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="20sp"
+            tools:ignore="UnusedAttribute" />
 
-            <androidx.cardview.widget.CardView
-                android:id="@+id/downloadQueueBackCard"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentStart="true"
-                android:layout_centerVertical="true"
-                app:cardBackgroundColor="@color/nav_bg_inv"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="0dp">
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/downloadQueueClear"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/clear_queue"
+            android:tooltipText="@string/clear_queue"
+            android:visibility="gone"
+            app:icon="@drawable/ic_round_delete_24"
+            app:iconTint="?attr/colorError"
+            tools:ignore="UnusedAttribute"
+            tools:visibility="visible" />
 
-                <ImageButton
-                    android:id="@+id/downloadQueueBack"
-                    android:layout_width="64dp"
-                    android:layout_height="64dp"
-                    android:background="@color/nav_bg_inv"
-                    android:padding="16dp"
-                    app:srcCompat="@drawable/ic_round_arrow_back_ios_new_24"
-                    app:tint="?attr/colorOnBackground"
-                    tools:ignore="ContentDescription,SpeakableTextPresentCheck" />
-            </androidx.cardview.widget.CardView>
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/downloadQueueOptions"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/downloads_options"
+            android:tooltipText="@string/downloads_options"
+            app:icon="@drawable/ic_round_settings_24"
+            app:iconTint="?attr/colorOnSurfaceVariant"
+            tools:ignore="UnusedAttribute" />
+    </LinearLayout>
 
-            <androidx.cardview.widget.CardView
-                android:id="@+id/downloadQueueClearCard"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentEnd="true"
-                android:layout_centerVertical="true"
-                app:cardBackgroundColor="@color/nav_bg_inv"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="0dp">
-
-                <ImageButton
-                    android:id="@+id/downloadQueueClear"
-                    android:layout_width="64dp"
-                    android:layout_height="64dp"
-                    android:background="@color/nav_bg_inv"
-                    android:padding="16dp"
-                    app:srcCompat="@drawable/ic_round_delete_24"
-                    app:tint="?attr/colorError"
-                    tools:ignore="ContentDescription,SpeakableTextPresentCheck" />
-            </androidx.cardview.widget.CardView>
-        </RelativeLayout>
+    <!-- Storage & Activity Summary Card -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/downloadsSummaryCard"
+        style="@style/Widget.Material3.CardView.Filled"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="4dp"
+        app:cardBackgroundColor="?attr/colorSurfaceVariant"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="32dp"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="16dp"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="14dp">
 
-            <TextView
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="@font/poppins_bold"
-                android:text="@string/download_queue"
-                android:textColor="?attr/colorOnBackground"
-                android:textSize="28sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/downloadQueueStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:alpha="0.58"
-                android:fontFamily="@font/poppins_family"
-                android:text="@string/download_queue_desc"
-                android:textColor="?attr/colorOnBackground"
-                android:textSize="14sp" />
-        </LinearLayout>
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_marginEnd="10dp"
+                    android:importantForAccessibility="no"
+                    app:srcCompat="@drawable/ic_round_sd_card_24"
+                    app:tint="?attr/colorPrimary" />
 
-        <!-- Auto Delete Toggle Card -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/autoDeleteCard"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginBottom="16dp"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp"
-            app:cardBackgroundColor="?attr/colorSurfaceVariant">
-
-            <RelativeLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:padding="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <TextView
+                    android:id="@+id/downloadsTotalSize"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_toStartOf="@id/autoDeleteSwitch"
-                    android:orientation="vertical">
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:fontFamily="@font/poppins_bold"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="20sp"
+                    tools:text="2.4 GB" />
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="@font/poppins_bold"
-                        android:text="@string/auto_delete_downloads"
-                        android:textColor="?attr/colorOnSurface"
-                        android:textSize="14sp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:alpha="0.7"
-                        android:fontFamily="@font/poppins_family"
-                        android:text="@string/auto_delete_downloads_desc"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-                <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/autoDeleteSwitch"
+                <TextView
+                    android:id="@+id/downloadsFreeSpace"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_alignParentEnd="true"
-                    android:layout_centerVertical="true" />
-            </RelativeLayout>
-        </androidx.cardview.widget.CardView>
+                    android:layout_marginStart="12dp"
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:includeFontPadding="false"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="12sp"
+                    tools:text="42.1 GB free" />
+            </LinearLayout>
 
-        <!-- Section Tabs (Anime, Manga, Novel) -->
-        <com.google.android.material.tabs.TabLayout
-            android:id="@+id/downloadQueueTabLayout"
-            android:layout_width="match_parent"
+            <com.google.android.material.progressindicator.LinearProgressIndicator
+                android:id="@+id/downloadsStorageBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:importantForAccessibility="no"
+                app:indicatorColor="?attr/colorPrimary"
+                app:trackColor="?android:attr/colorBackground"
+                app:trackCornerRadius="3dp"
+                app:trackStopIndicatorSize="0dp"
+                app:trackThickness="6dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/downloadsBreakdown"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:fontFamily="@font/poppins"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="12sp"
+                    tools:text="3 anime · 2 manga" />
+
+                <TextView
+                    android:id="@+id/downloadsActiveBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="?attr/colorPrimary"
+                    android:textSize="12sp"
+                    android:visibility="gone"
+                    tools:text="1 downloading · 2 queued"
+                    tools:visibility="visible" />
+            </LinearLayout>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- M3 Segmented Category Filter (Anime / Manga / Novel) -->
+    <com.google.android.material.button.MaterialButtonToggleGroup
+        android:id="@+id/downloadsTypeToggle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="4dp"
+        app:selectionRequired="true"
+        app:singleSelection="true">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/downloadsTypeAnime"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginBottom="8dp"
-            app:tabMode="fixed"
-            app:tabGravity="fill"
-            app:tabIndicatorColor="?attr/colorPrimary"
-            app:tabSelectedTextColor="?attr/colorPrimary"
-            app:tabTextColor="?attr/colorOnSurfaceVariant"
-            style="@style/Widget.Material3.TabLayout" />
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:fontFamily="@font/poppins_semi_bold"
+            android:insetTop="4dp"
+            android:insetBottom="4dp"
+            android:maxLines="1"
+            android:minHeight="48dp"
+            android:paddingHorizontal="12dp"
+            android:text="@string/anime"
+            android:textAllCaps="false"
+            android:textSize="14sp" />
 
-        <!-- Empty State -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/downloadsTypeManga"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:fontFamily="@font/poppins_semi_bold"
+            android:insetTop="4dp"
+            android:insetBottom="4dp"
+            android:maxLines="1"
+            android:minHeight="48dp"
+            android:paddingHorizontal="12dp"
+            android:text="@string/manga"
+            android:textAllCaps="false"
+            android:textSize="14sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/downloadsTypeNovel"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:fontFamily="@font/poppins_semi_bold"
+            android:insetTop="4dp"
+            android:insetBottom="4dp"
+            android:maxLines="1"
+            android:minHeight="48dp"
+            android:paddingHorizontal="12dp"
+            android:text="@string/extensions_type_novel"
+            android:textAllCaps="false"
+            android:textSize="14sp" />
+    </com.google.android.material.button.MaterialButtonToggleGroup>
+
+    <!-- Content Area: Active Queue + Downloaded List, or Empty State -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <ani.dantotsu.FadingEdgeRecyclerView
+            android:id="@+id/downloadQueueRecyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingTop="4dp"
+            android:paddingBottom="24dp"
+            android:requiresFadingEdge="vertical"
+            tools:listitem="@layout/item_download_queue" />
+
         <LinearLayout
             android:id="@+id/downloadQueueEmptyState"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:gravity="center"
             android:orientation="vertical"
+            android:paddingHorizontal="32dp"
+            android:paddingBottom="48dp"
             android:visibility="gone"
             tools:visibility="visible">
 
-            <ImageView
-                android:layout_width="96dp"
-                android:layout_height="96dp"
-                android:alpha="0.5"
-                app:srcCompat="@drawable/ic_download_24"
-                app:tint="?attr/colorOnBackground"
-                tools:ignore="ContentDescription" />
+            <FrameLayout
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:background="@drawable/downloads_empty_icon_bg">
+
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no"
+                    app:srcCompat="@drawable/ic_download_24"
+                    app:tint="?attr/colorOnSecondaryContainer" />
+            </FrameLayout>
 
             <TextView
+                android:id="@+id/downloadQueueEmptyTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="20dp"
                 android:fontFamily="@font/poppins_bold"
-                android:text="@string/download_not_found"
-                android:textAlignment="center"
-                android:textColor="?attr/colorOnBackground"
-                android:textSize="16sp"
-                android:alpha="0.7" />
+                android:gravity="center"
+                android:text="@string/downloads_empty_title"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="20sp" />
+
+            <TextView
+                android:id="@+id/downloadQueueEmptyBody"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:fontFamily="@font/poppins"
+                android:gravity="center"
+                android:maxWidth="300dp"
+                android:text="@string/downloads_empty_anime_body"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="14sp" />
         </LinearLayout>
-
-        <!-- Active Queue & Downloaded Content List -->
-        <ani.dantotsu.FadingEdgeRecyclerView
-            android:id="@+id/downloadQueueRecyclerView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:paddingBottom="64dp"
-            android:requiresFadingEdge="vertical" />
-
-    </LinearLayout>
-</RelativeLayout>
+    </FrameLayout>
+</LinearLayout>
