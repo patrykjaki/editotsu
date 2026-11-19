@@ -34,7 +34,7 @@ object ThemeAudioToggle {
         val ctx = button.context
         button.setImageResource(R.drawable.ic_round_audiotrack_24)
         ImageViewCompat.setImageTintList(button, ColorStateList.valueOf(
-            ctx.getThemeColor(if (on) com.google.android.material.R.attr.colorOnSecondaryContainer else com.google.android.material.R.attr.colorOnSurfaceVariant)
+            ctx.getThemeColor(if (on) androidx.appcompat.R.attr.colorPrimary else com.google.android.material.R.attr.colorOnSurfaceVariant)
         ))
         // M3 toggle icon button: a 40dp tonal circle when on, no container when off; 48dp touch.
         val inset = (4 * ctx.resources.displayMetrics.density).toInt()

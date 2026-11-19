@@ -85,9 +85,9 @@ class ThemeQueueTest {
 
     @Test
     fun episodesLabel() {
-        assertEquals("Eps 1–47", ThemeQueue.episodesLabel("1-47"))
-        assertEquals("Ep 1000", ThemeQueue.episodesLabel("1000"))
-        assertEquals("Eps 2–13, 24", ThemeQueue.episodesLabel("2-13, 24"))
+        assertEquals("Eps\u00A01–47", ThemeQueue.episodesLabel("1-47"))
+        assertEquals("Ep\u00A01000", ThemeQueue.episodesLabel("1000"))
+        assertEquals("Eps\u00A02–13, 24", ThemeQueue.episodesLabel("2-13, 24"))
         assertNull(ThemeQueue.episodesLabel(" "))
     }
 

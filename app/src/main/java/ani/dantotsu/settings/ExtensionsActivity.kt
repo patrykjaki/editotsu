@@ -227,6 +227,8 @@ class ExtensionsActivity : AppCompatActivity() {
                 isVisible = true
                 number = count
                 maxCharacterCount = 3
+                // Default anchoring puts the badge over the label's last letters; move it past the text.
+                horizontalOffsetWithText = -(8 * resources.displayMetrics.density).toInt()
             }
         } else {
             tab.removeBadge()
