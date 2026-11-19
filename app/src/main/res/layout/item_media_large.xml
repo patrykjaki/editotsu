@@ -1,18 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/itemContainer"
+    style="@style/Widget.Material3.CardView.Filled"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="8dp"
-    app:cardBackgroundColor="@color/nav_bg"
-    app:cardCornerRadius="28dp">
+    android:layout_marginVertical="4dp"
+    app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
 
     <ImageView
         android:id="@+id/itemCompactBanner"
         android:layout_width="match_parent"
-        android:layout_height="152dp"
+        android:layout_height="100dp"
+        android:alpha="0.5"
         android:scaleType="centerCrop"
         tools:ignore="ContentDescription"
         tools:srcCompat="@tools:sample/backgrounds/scenic" />
@@ -20,37 +24,37 @@
     <ImageView
         android:id="@+id/imageView"
         android:layout_width="match_parent"
-        android:layout_height="153dp"
-        app:srcCompat="@drawable/linear_gradient_nav"
+        android:layout_height="102dp"
+        app:srcCompat="@drawable/bg_media_card_scrim"
         tools:ignore="ContentDescription" />
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="8dp">
+        android:padding="12dp">
 
         <FrameLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:clipToPadding="false"
-            android:padding="8dp">
+            android:layout_height="wrap_content">
 
-            <androidx.cardview.widget.CardView
+            <com.google.android.material.card.MaterialCardView
                 android:id="@+id/itemCompactCard"
+                style="@style/Widget.Material3.CardView.Filled"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:translationZ="8dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="4dp">
+                app:cardBackgroundColor="?attr/colorSurfaceContainerHighest"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp">
 
                 <com.google.android.material.imageview.ShapeableImageView
                     android:id="@+id/itemCompactImage"
-                    android:layout_width="108dp"
-                    android:layout_height="160dp"
+                    android:layout_width="88dp"
+                    android:layout_height="132dp"
                     android:scaleType="centerCrop"
                     android:transitionName="mediaCover"
-                    app:shapeAppearanceOverlay="@style/roundedImageView"
                     tools:ignore="ContentDescription,ImageContrastCheck"
                     tools:srcCompat="@tools:sample/backgrounds/scenic" />
 
@@ -76,7 +80,7 @@
                         android:textColor="?attr/colorOnPrimary"
                         android:textSize="12sp"
                         tools:ignore="TextContrastCheck"
-                        tools:text="0.0" />
+                        tools:text="8.5" />
 
                     <ImageView
                         android:id="@+id/imageView2"
@@ -88,65 +92,70 @@
 
                 </LinearLayout>
 
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
 
-            <androidx.cardview.widget.CardView
+            <com.google.android.material.card.MaterialCardView
                 android:id="@+id/itemCompactOngoing"
-                android:layout_width="16dp"
-                android:layout_height="16dp"
-                android:layout_gravity="bottom"
-                android:alpha="0.8"
-                android:translationZ="8dp"
-                app:cardCornerRadius="8dp"
-                app:cardElevation="4dp">
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_gravity="bottom|start"
+                android:layout_margin="4dp"
+                android:alpha="0.9"
+                app:cardCornerRadius="7dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp">
 
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:background="@drawable/item_ongoing" />
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
         </FrameLayout>
 
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
             android:orientation="vertical"
-            android:padding="8dp">
+            android:paddingBottom="4dp">
 
             <TextView
                 android:id="@+id/itemCompactTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:fontFamily="@font/poppins_bold"
+                android:fontFamily="@font/poppins_semi_bold"
                 android:maxLines="3"
-                android:textSize="14dp"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp"
                 android:transitionName="mediaTitle"
-                tools:ignore="SpUsage"
                 tools:text="@string/slogan" />
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
                 android:orientation="horizontal">
 
                 <TextView
                     android:id="@+id/itemCompactTotal"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textSize="14dp"
-                    tools:ignore="SpUsage,TextContrastCheck"
-                    tools:text="/??" />
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="14sp"
+                    tools:text="24" />
 
                 <TextView
                     android:id="@+id/itemTotal"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:alpha="0.66"
+                    android:fontFamily="@font/poppins"
                     android:text="@string/eps"
-                    android:textSize="14dp"
-                    tools:ignore="SpUsage" />
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="14sp" />
 
             </LinearLayout>
 
@@ -154,41 +163,39 @@
                 android:id="@+id/itemCompactType"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="end"
-                android:layout_marginBottom="4dp"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:visibility="gone"
                 tools:ignore="UseCompoundDrawables">
 
                 <ImageView
                     android:id="@+id/itemCompactTypeImage"
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
-                    android:alpha="0.58"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
                     app:srcCompat="@drawable/ic_round_import_contacts_24"
+                    app:tint="?attr/colorOnSurfaceVariant"
                     tools:ignore="ContentDescription" />
 
                 <TextView
                     android:id="@+id/itemCompactRelation"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:alpha="0.58"
                     android:ellipsize="end"
+                    android:fontFamily="@font/poppins_semi_bold"
                     android:maxLines="1"
                     android:paddingStart="4dp"
                     android:paddingEnd="4dp"
                     android:singleLine="true"
-                    android:textAlignment="textEnd"
                     android:textAllCaps="true"
+                    android:textColor="?attr/colorOnSurfaceVariant"
                     android:textSize="12sp"
-                    android:textStyle="italic"
                     android:transitionName="mediaTitle"
-                    tools:ignore="TextContrastCheck"
-                    tools:text="Relation  " />
+                    tools:text="Relation" />
 
             </LinearLayout>
         </LinearLayout>
 
     </LinearLayout>
 
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>

@@ -2017,6 +2017,13 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="country_taiwan">Taiwan</string>
     <string name="search_type">Search for</string>
     <string name="search_type_of">Searching %1$s</string>
+    <string name="reset_filters">Reset filters</string>
+    <string name="remove_recent_search">Remove %1$s</string>
+    <string name="search_empty_title">No results</string>
+    <string name="search_empty_query">Try a different spelling or another search type.</string>
+    <string name="search_empty_filtered">Try different keywords or reset your filters.</string>
+    <string name="search_failed">Couldn\'t load results. Check your connection and try again.</string>
+    <string name="search_idle_subtitle">Type a name to start searching.</string>
     <string name="watch_order_role_coming">%1$s, %2$s</string>
     <string name="watch_order_finished_cd">%1$s, completed</string>
 </resources>

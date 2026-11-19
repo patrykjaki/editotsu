@@ -2,7 +2,9 @@ package ani.dantotsu.media
 
 import ani.dantotsu.others.setDropdownText
 import android.content.Intent
+import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.View
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import ani.dantotsu.R
@@ -15,7 +17,9 @@ import ani.dantotsu.settings.rows.ChoiceSheet
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import com.google.android.material.chip.Chip
+import com.google.android.material.color.MaterialColors
 import java.util.Calendar
+import kotlin.math.roundToInt
 
 /**
  * The row under the search bar: every filter is a dropdown chip (the calendar's pattern) that opens a
@@ -38,6 +42,7 @@ class SearchFilterChips(
         row.removeAllViews()
         typeChip()
         val f = filters ?: return
+        addDivider()
         val sortLabels = activity.resources.getStringArray(R.array.sort_by).toList()
         single(R.string.chip_sort, Anilist.sortBy.indices.map { sortLabels.getOrElse(it) { Anilist.sortBy[it] } },
             Anilist.sortBy.indexOf(f.sort)) { f.sort = Anilist.sortBy.getOrNull(it) }
@@ -88,12 +93,31 @@ class SearchFilterChips(
         setFiltersFirst(f)
     }
 
+    /** Subtle 1dp vertical rule between the search-type scope chip and the filter chips. */
+    private fun addDivider() {
+        val d = activity.resources.displayMetrics.density
+        val divider = View(activity).apply {
+            setBackgroundColor(
+                MaterialColors.getColor(row, com.google.android.material.R.attr.colorOutlineVariant)
+            )
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val lp = LinearLayout.LayoutParams(
+            (1 * d).roundToInt().coerceAtLeast(1),
+            (20 * d).roundToInt(),
+        ).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            marginEnd = (8 * d).roundToInt()
+        }
+        row.addView(divider, lp)
+    }
+
     /**
      * Ten filters don't fit on a phone, so the ones in use move to the front (right after the type
-     * chip): a set filter is never scrolled out of sight. Each sheet's "Any" clears its filter.
+     * chip and its divider): a set filter is never scrolled out of sight. Each sheet's "Any" clears its filter.
      */
     private fun setFiltersFirst(@Suppress("UNUSED_PARAMETER") f: AniMangaSearchResults) {
-        val chips = (1 until row.childCount).map { row.getChildAt(it) as Chip }
+        val chips = (1 until row.childCount).mapNotNull { row.getChildAt(it) as? Chip }
         val set = chips.filter { it.isChecked }
         if (set.isEmpty()) return
         chips.forEach(row::removeView)

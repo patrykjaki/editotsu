@@ -1,81 +1,52 @@
 package ani.dantotsu.media
 
-import android.annotation.SuppressLint
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
-import androidx.appcompat.app.AppCompatActivity
 import ani.dantotsu.connections.anilist.AnilistSearch.SearchType
 import ani.dantotsu.connections.anilist.SearchResults
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
+/** Controller for character, staff, studio and user search: pinned bar, type chip, recents and idle guidance. */
 class SupportingSearchAdapter(private val activity: SearchActivity, private val type: SearchType) :
-    HeaderInterface() {
+    HeaderInterface(activity.binding) {
 
-    @SuppressLint("ClickableViewAccessibility")
-    override fun onBindViewHolder(holder: SearchHeaderViewHolder, position: Int) {
-        binding = holder.binding
+    private fun currentResult(): SearchResults<*> = when (type) {
+        SearchType.CHARACTER -> activity.characterResult
+        SearchType.STUDIO -> activity.studioResult
+        SearchType.STAFF -> activity.staffResult
+        SearchType.USER -> activity.userResult
+        else -> throw IllegalArgumentException("Invalid search type")
+    }
 
-        bindChrome(activity, type) {
-            binding.searchBarText.setText(it)
-            binding.searchBarText.setSelection(it.length)
-        }
+    private fun searchTitle(debounceMs: Long) {
+        val searchText = binding.searchBarText.text?.toString()?.takeIf { it.isNotEmpty() }
+        currentResult().search = searchText
+        activity.search(debounceMs)
+    }
 
-        val imm: InputMethodManager =
-            activity.getSystemService(AppCompatActivity.INPUT_METHOD_SERVICE) as InputMethodManager
-
+    override fun bind() {
         if (activity.searchType == SearchType.MANGA || activity.searchType == SearchType.ANIME) {
             throw IllegalArgumentException("Invalid search type (wrong adapter)")
         }
+        showsGenres = false
+
+        bindChrome(activity, type) { picked ->
+            setQueryText(picked)
+            hideKeyboard(activity)
+            addHistory()
+            searchTitle(debounceMs = 0L)
+        }
 
         binding.searchByImage.visibility = View.GONE
-        binding.searchResultGrid.visibility = View.GONE
-        binding.searchResultList.visibility = View.GONE
-        bindChips(activity, type, null) {}
+        binding.searchResetFilters.visibility = View.GONE
         binding.searchGenreHeader.visibility = View.GONE
         binding.searchGenreList.visibility = View.GONE
+        bindChips(activity, type, null) {}
 
         binding.searchBarText.removeTextChangedListener(textWatcher)
-        when (type) {
-            SearchType.CHARACTER -> {
-                binding.searchBarText.setText(activity.characterResult.search)
-            }
-
-            SearchType.STUDIO -> {
-                binding.searchBarText.setText(activity.studioResult.search)
-            }
-
-            SearchType.STAFF -> {
-                binding.searchBarText.setText(activity.staffResult.search)
-            }
-
-            SearchType.USER -> {
-                binding.searchBarText.setText(activity.userResult.search)
-            }
-
-            else -> throw IllegalArgumentException("Invalid search type")
-        }
-
-        updateClearHistoryVisibility()
-        fun searchTitle() {
-            val searchText = binding.searchBarText.text.toString().takeIf { it.isNotEmpty() }
-
-            val result: SearchResults<*> = when (type) {
-                SearchType.CHARACTER -> activity.characterResult
-                SearchType.STUDIO -> activity.studioResult
-                SearchType.STAFF -> activity.staffResult
-                SearchType.USER -> activity.userResult
-                else -> throw IllegalArgumentException("Invalid search type")
-            }
-
-            result.search = searchText
-            activity.search()
-        }
+        setQueryText(currentResult().search)
+        updateIdleSections()
 
         textWatcher = object : TextWatcher {
             override fun afterTextChanged(s: Editable) {}
@@ -83,28 +54,25 @@ class SupportingSearchAdapter(private val activity: SearchActivity, private val 
             override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {}
 
             override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {
+                if (programmaticTextChange) return
                 if (s.toString().isBlank()) {
-                    activity.emptyMediaAdapter()
-                    CoroutineScope(Dispatchers.IO).launch {
-                        delay(200)
-                        activity.runOnUiThread {
-                            setHistoryVisibility(true)
-                        }
-                    }
+                    currentResult().search = null
+                    activity.showIdle()
                 } else {
-                    setHistoryVisibility(false)
-                    searchTitle()
+                    searchTitle(debounceMs = 400L)
                 }
             }
         }
         binding.searchBarText.addTextChangedListener(textWatcher)
 
         binding.searchBarText.setOnEditorActionListener { _, actionId, _ ->
-            return@setOnEditorActionListener when (actionId) {
+            when (actionId) {
                 EditorInfo.IME_ACTION_SEARCH -> {
-                    searchTitle()
-                    binding.searchBarText.clearFocus()
-                    imm.hideSoftInputFromWindow(binding.searchBarText.windowToken, 0)
+                    addHistory()
+                    if (binding.searchBarText.text.toString().isNotBlank()) {
+                        searchTitle(debounceMs = 0L)
+                    }
+                    hideKeyboard(activity)
                     true
                 }
 
@@ -112,7 +80,7 @@ class SupportingSearchAdapter(private val activity: SearchActivity, private val 
             }
         }
 
-        search = Runnable { searchTitle() }
+        search = { debounceMs -> searchTitle(debounceMs) }
         requestFocus = Runnable { binding.searchBarText.requestFocus() }
     }
 }

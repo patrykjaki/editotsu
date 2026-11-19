@@ -203,6 +203,7 @@ class MediaAdaptor(
                     b.itemCompactOngoing.isVisible =
                         media.status == b.root.context.getString(R.string.status_releasing)
                     b.itemCompactTitle.text = media.userPreferredName
+                    b.itemCompactScoreBG.isVisible = media.userScore != 0 || (media.meanScore ?: 0) > 0
                     b.itemCompactScore.text =
                         ani.dantotsu.connections.anilist.cardScoreText(media.userScore, media.meanScore)
                     b.itemCompactScoreBG.background = ContextCompat.getDrawable(

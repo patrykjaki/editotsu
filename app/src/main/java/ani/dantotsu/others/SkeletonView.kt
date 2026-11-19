@@ -39,7 +39,7 @@ class SkeletonView @JvmOverloads constructor(
     private val ink = context.getThemeColor(com.google.android.material.R.attr.colorOnSurface)
 
     /** Blocks on a card are a tone darker than the card; blocks on the page are the card tone. */
-    private val onCard get() = tag == null || tag == PAGE || tag == ORDER
+    private val onCard get() = tag == null || tag == PAGE || tag == ORDER || tag == MEDIA_LIST
 
     // On the bare page the tone comes from the text colour over the surface, which reads in
     // every theme; a card keeps the card colour the real rows use.
@@ -60,10 +60,20 @@ class SkeletonView @JvmOverloads constructor(
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
+    /** Switches the skeleton shape at runtime and refreshes the card/surface shader. */
+    fun setMode(mode: String) {
+        if (tag == mode) return
+        tag = mode
+        if (width > 0) rebuildShader(width)
+        requestLayout()
+        invalidate()
+    }
+
     private fun wantedDp() = when (tag) {
         COVERS -> COVER_ROW_DP
         CIRCLES -> CIRCLE_ROW_DP
         GRID -> 2 * GRID_ROW_DP
+        MEDIA_LIST -> 4 * (MEDIA_LIST_CARD_DP + 8)
         LINES -> LINE_COUNT * LINE_DP
         ROWS -> ROW_COUNT * ROW_DP
         TABS -> 48
@@ -82,6 +92,10 @@ class SkeletonView @JvmOverloads constructor(
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        rebuildShader(w)
+    }
+
+    private fun rebuildShader(w: Int) {
         // a wide soft band, leaning; the matrix slides it left to right
         shader = LinearGradient(
             0f, 0f, w * BAND, w * BAND * 0.35f,
@@ -103,6 +117,7 @@ class SkeletonView @JvmOverloads constructor(
             ROWS -> drawRows(canvas)
             CIRCLES -> drawCircles(canvas)
             GRID -> drawGrid(canvas)
+            MEDIA_LIST -> drawMediaList(canvas)
             LINES -> drawLines(canvas)
             TABS -> drawTabs(canvas)
             AGENDA -> drawAgenda(canvas)
@@ -344,6 +359,33 @@ class SkeletonView @JvmOverloads constructor(
         cardPaint.alpha = 255
     }
 
+    /** item_media_large: 16dp side gutter, 16dp card, 88x132dp cover (12dp corners) + title & metadata bars. */
+    private fun drawMediaList(canvas: Canvas) {
+        val side = 16 * dp
+        val end = width - side
+        val cardH = MEDIA_LIST_CARD_DP * dp
+        val gap = 8 * dp
+        val pad = 12 * dp
+        val coverW = 88 * dp
+        val coverH = 132 * dp
+        val textStart = side + pad + coverW + 16 * dp
+        val textWidth = (end - pad - textStart).coerceAtLeast(48 * dp)
+        val rows = ceil(height / (cardH + gap)).toInt().coerceIn(1, 5)
+        for (i in 0 until rows) {
+            val top = 8 * dp + i * (cardH + gap)
+            val fade = (255 - i * (255 / (rows + 1))).coerceAtLeast(45)
+            cardPaint.alpha = fade
+            blockPaint.alpha = fade
+            canvas.drawRoundRect(side, top, end, top + cardH, 16 * dp, 16 * dp, cardPaint)
+            canvas.drawRoundRect(side + pad, top + pad, side + pad + coverW, top + pad + coverH, 12 * dp, 12 * dp, blockPaint)
+            val bottom = top + cardH - pad - 4 * dp
+            pill(canvas, textStart, bottom - 12 * dp, textStart + textWidth * 0.38f, 12 * dp)
+            pill(canvas, textStart, bottom - 34 * dp, textStart + textWidth * 0.65f, 14 * dp)
+            pill(canvas, textStart, bottom - 56 * dp, textStart + textWidth * 0.9f, 14 * dp)
+        }
+        cardPaint.alpha = 255
+    }
+
     private val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
     private fun pill(canvas: Canvas, left: Float, top: Float, right: Float, height: Float) {
@@ -362,6 +404,8 @@ class SkeletonView @JvmOverloads constructor(
         const val ROWS = "rows"
         const val CIRCLES = "circles"
         const val GRID = "grid"
+        const val MEDIA_LIST = "media_list"
+        const val MEDIA_LIST_CARD_DP = 156
         const val LINES = "lines"
         const val TABS = "tabs"
         const val AGENDA = "agenda"

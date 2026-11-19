@@ -3,12 +3,14 @@ package ani.dantotsu.media
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.AnilistSearch.SearchType
 import ani.dantotsu.databinding.ItemSearchHistoryBinding
+import ani.dantotsu.settings.rows.SettingsCards
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefManager.asLiveClass
 import ani.dantotsu.settings.saving.PrefName
@@ -21,10 +23,13 @@ data class SearchHistory(val search: String, val time: Long) : Serializable {
     }
 }
 
-class SearchHistoryAdapter(type: SearchType, private val searchClicked: (String) -> Unit) :
-    ListAdapter<String, SearchHistoryAdapter.SearchHistoryViewHolder>(
-        DIFF_CALLBACK_INSTALLED
-    ) {
+class SearchHistoryAdapter(
+    type: SearchType,
+    lifecycleOwner: LifecycleOwner? = null,
+    private val searchClicked: (String) -> Unit,
+) : ListAdapter<String, SearchHistoryAdapter.SearchHistoryViewHolder>(
+    DIFF_CALLBACK_INSTALLED
+) {
     private var searchHistoryLiveData: SharedPreferenceClassLiveData<List<SearchHistory>>? = null
     private var searchHistory: MutableList<SearchHistory>? = null
     private var historyType: PrefName = when (type) {
@@ -41,7 +46,15 @@ class SearchHistoryAdapter(type: SearchType, private val searchClicked: (String)
 
     var onListChanged: (() -> Unit)? = null
 
-    override fun onCurrentListChanged(previousList: MutableList<String>, currentList: MutableList<String>) {
+    override fun onCurrentListChanged(
+        previousList: MutableList<String>,
+        currentList: MutableList<String>,
+    ) {
+        // Refresh grouped-card outer corners whenever the first or last row changes.
+        if (currentList.isNotEmpty()) {
+            notifyItemChanged(0)
+            if (currentList.size > 1) notifyItemChanged(currentList.lastIndex)
+        }
         onListChanged?.invoke()
     }
 
@@ -51,9 +64,14 @@ class SearchHistoryAdapter(type: SearchType, private val searchClicked: (String)
     init {
         searchHistoryLiveData =
             PrefManager.getLiveVal(historyType, mutableListOf<SearchHistory>()).asLiveClass()
-        searchHistoryLiveData?.observeForever { data ->
+        val observer: (List<SearchHistory>) -> Unit = { data ->
             searchHistory = data.toMutableList()
             submitList(shown())
+        }
+        if (lifecycleOwner != null) {
+            searchHistoryLiveData?.observe(lifecycleOwner, observer)
+        } else {
+            searchHistoryLiveData?.observeForever(observer)
         }
     }
 
@@ -66,15 +84,15 @@ class SearchHistoryAdapter(type: SearchType, private val searchClicked: (String)
     }
 
     fun add(item: String) {
-        val maxSize = 25
-        if (searchHistory?.any { it.search == item } == true || item.isBlank()) return
-        if (PrefManager.getVal(PrefName.Incognito)) return
-        searchHistory?.add(SearchHistory(item, System.currentTimeMillis()))
-        if ((searchHistory?.size ?: 0) > maxSize) {
-            searchHistory?.removeAt(
-                searchHistory?.sorted()?.lastIndex ?: 0
-            )
-        }
+        if (PrefManager.getVal(PrefName.Incognito) || item.isBlank()) return
+        val updated = SearchStatePolicy.addHistoryEntry(
+            existing = searchHistory.orEmpty(),
+            rawQuery = item,
+            now = System.currentTimeMillis(),
+            maxSize = 25,
+        ).toMutableList()
+        if (updated == searchHistory) return
+        searchHistory = updated
         submitList(shown())
         PrefManager.setVal(historyType, searchHistory)
     }
@@ -87,25 +105,34 @@ class SearchHistoryAdapter(type: SearchType, private val searchClicked: (String)
 
     override fun onCreateViewHolder(
         parent: ViewGroup,
-        viewType: Int
-    ): SearchHistoryAdapter.SearchHistoryViewHolder {
+        viewType: Int,
+    ): SearchHistoryViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_search_history, parent, false)
         return SearchHistoryViewHolder(view)
     }
 
     override fun onBindViewHolder(
-        holder: SearchHistoryAdapter.SearchHistoryViewHolder,
-        position: Int
+        holder: SearchHistoryViewHolder,
+        position: Int,
     ) {
         val item = getItem(position)
         holder.binding.searchHistoryTextView.text = item
+        holder.binding.closeTextView.contentDescription =
+            holder.itemView.context.getString(R.string.remove_recent_search, item)
+
+        SettingsCards.apply(
+            holder.itemView,
+            first = position == 0,
+            last = position == itemCount - 1,
+        )
+
         holder.binding.closeTextView.setOnClickListener {
             val currentPosition = holder.bindingAdapterPosition
             if (currentPosition >= itemCount || currentPosition < 0) return@setOnClickListener
             remove(getItem(currentPosition))
         }
-        holder.binding.searchHistoryTextView.setOnClickListener {
+        holder.itemView.setOnClickListener {
             val currentPosition = holder.bindingAdapterPosition
             if (currentPosition >= itemCount || currentPosition < 0) return@setOnClickListener
             searchClicked(getItem(currentPosition))
@@ -120,17 +147,13 @@ class SearchHistoryAdapter(type: SearchType, private val searchClicked: (String)
         val DIFF_CALLBACK_INSTALLED = object : DiffUtil.ItemCallback<String>() {
             override fun areItemsTheSame(
                 oldItem: String,
-                newItem: String
-            ): Boolean {
-                return oldItem == newItem
-            }
+                newItem: String,
+            ): Boolean = oldItem == newItem
 
             override fun areContentsTheSame(
                 oldItem: String,
-                newItem: String
-            ): Boolean {
-                return oldItem == newItem
-            }
+                newItem: String,
+            ): Boolean = oldItem == newItem
         }
     }
 }

@@ -1,15 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- One recent search row inside the grouped recents card (SettingsCards sets fill, corners and ripple). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="48dp"
+    android:layout_height="wrap_content"
+    android:clickable="true"
+    android:focusable="true"
     android:gravity="center_vertical"
-    android:orientation="horizontal">
+    android:minHeight="56dp"
+    android:orientation="horizontal"
+    android:paddingStart="16dp"
+    android:paddingEnd="4dp">
 
     <ImageView
-        android:layout_width="20dp"
-        android:layout_height="20dp"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
         android:importantForAccessibility="no"
         android:src="@drawable/ic_round_history_24"
         app:tint="?attr/colorOnSurfaceVariant" />
@@ -17,26 +23,23 @@
     <TextView
         android:id="@+id/searchHistoryTextView"
         android:layout_width="0dp"
-        android:layout_height="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
         android:layout_weight="1"
-        android:background="?attr/selectableItemBackground"
         android:ellipsize="end"
         android:fontFamily="@font/poppins_family"
-        android:gravity="center_vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="8dp"
-        android:singleLine="true"
-        android:textColor="?attr/colorOnBackground"
+        android:maxLines="1"
+        android:textColor="?attr/colorOnSurface"
         android:textSize="16sp"
         tools:text="Made in Abyss" />
 
-    <ImageButton
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/closeTextView"
+        style="@style/Widget.Material3.Button.IconButton"
         android:layout_width="48dp"
         android:layout_height="48dp"
-        android:layout_marginEnd="-12dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/clear"
-        android:src="@drawable/ic_round_close_24"
-        app:tint="?attr/colorOnSurfaceVariant" />
+        android:tooltipText="@string/clear"
+        app:icon="@drawable/ic_round_close_24"
+        app:iconTint="?attr/colorOnSurfaceVariant" />
 </LinearLayout>

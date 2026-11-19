@@ -1,225 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Search header: pill bar, type chips, filter chips, then either recents + genre tiles (empty query) or the results header. -->
+<!-- Scrollable results header for anime/manga search: section heading + M3 segmented grid/list toggle. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/searchResultLayout"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginStart="-16dp"
-    android:layout_marginEnd="-16dp"
-    android:clipToPadding="false"
-    android:orientation="vertical"
-    android:paddingTop="8dp">
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
 
-    <LinearLayout
-        android:layout_width="match_parent"
+    <TextView
+        android:id="@+id/searchResultTitle"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="4dp"
-        android:paddingEnd="16dp">
+        android:layout_weight="1"
+        android:accessibilityHeading="true"
+        android:fontFamily="@font/poppins_bold"
+        android:text="@string/search_results"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="20sp" />
 
-        <ImageButton
-            android:id="@+id/searchBack"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/back"
-            android:src="@drawable/ic_round_arrow_back_ios_new_24"
-            app:tint="?attr/colorOnBackground" />
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/searchBar"
-            style="@style/Widget.Material3.CardView.Filled"
-            android:layout_width="0dp"
-            android:layout_height="56dp"
-            android:layout_marginStart="4dp"
-            android:layout_weight="1"
-            android:transitionName="@string/search"
-            app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
-            app:cardCornerRadius="28dp"
-            app:cardElevation="0dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="16dp"
-                android:paddingEnd="4dp">
-
-                <ImageView
-                    android:id="@+id/searchLeadIcon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:importantForAccessibility="no"
-                    android:src="@drawable/ic_round_search_24"
-                    app:tint="?attr/colorOnSurfaceVariant" />
-
-                <AutoCompleteTextView
-                    android:id="@+id/searchBarText"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_marginStart="12dp"
-                    android:layout_weight="1"
-                    android:background="@null"
-                    android:fontFamily="@font/poppins_family"
-                    android:imeOptions="actionSearch"
-                    android:inputType="text"
-                    android:selectAllOnFocus="true"
-                    android:singleLine="true"
-                    android:textColor="?attr/colorOnSurface"
-                    android:textColorHint="?attr/colorOnSurfaceVariant"
-                    android:textSize="16sp"
-                    tools:hint="Search anime"
-                    tools:ignore="LabelFor" />
-
-                <ImageButton
-                    android:id="@+id/searchClear"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/clear"
-                    android:src="@drawable/ic_round_close_24"
-                    android:visibility="gone"
-                    app:tint="?attr/colorOnSurfaceVariant" />
-
-                <ImageButton
-                    android:id="@+id/searchByImage"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/search_by_image"
-                    android:src="@drawable/ic_round_image_search_24"
-                    app:tint="?attr/colorOnSurfaceVariant" />
-
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-    </LinearLayout>
-
-    <!-- type, sort and every filter as dropdown chips; built in SearchFilterChips -->
-    <HorizontalScrollView
-        android:id="@+id/searchChipScroll"
-        android:layout_width="match_parent"
+    <com.google.android.material.button.MaterialButtonToggleGroup
+        android:id="@+id/searchViewToggle"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:clipToPadding="false"
-        android:paddingStart="16dp"
-        android:paddingEnd="8dp"
-        android:scrollbars="none">
+        app:selectionRequired="true"
+        app:singleSelection="true">
 
-        <LinearLayout
-            android:id="@+id/searchChips"
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/searchResultGrid"
+            style="?attr/materialButtonOutlinedStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal" />
-    </HorizontalScrollView>
-
-    <LinearLayout
-        android:id="@+id/searchResultLayout"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="8dp"
-        android:visibility="gone">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:fontFamily="@font/poppins_bold"
-            android:text="@string/search_results"
-            android:textSize="20sp" />
-
-        <ImageButton
-            android:id="@+id/searchResultList"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:alpha="0.33"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/list_view"
-            android:src="@drawable/ic_round_view_list_24"
-            app:tint="?attr/colorOnBackground" />
-
-        <ImageButton
-            android:id="@+id/searchResultGrid"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:alpha="0.33"
-            android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/grid_view"
-            android:src="@drawable/ic_round_grid_view_24"
-            app:tint="?attr/colorOnBackground" />
-    </LinearLayout>
+            android:minWidth="48dp"
+            android:minHeight="48dp"
+            android:paddingHorizontal="12dp"
+            android:tooltipText="@string/grid_view"
+            app:icon="@drawable/ic_round_grid_view_24"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconSize="20dp" />
 
-    <LinearLayout
-        android:id="@+id/searchIdle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
-
-        <LinearLayout
-            android:id="@+id/searchHistoryHeader"
-            android:layout_width="match_parent"
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/searchResultList"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="16dp"
-            android:paddingEnd="8dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:fontFamily="@font/poppins_bold"
-                android:text="@string/recent_searches"
-                android:textSize="20sp" />
-
-            <ImageButton
-                android:id="@+id/clearHistory"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/clear_history"
-                android:src="@drawable/ic_round_delete_24"
-                app:tint="?attr/colorOnSurfaceVariant" />
-        </LinearLayout>
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/searchHistoryList"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:nestedScrollingEnabled="false"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            tools:listitem="@layout/item_search_history" />
-
-        <TextView
-            android:id="@+id/searchGenreHeader"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:fontFamily="@font/poppins_bold"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:text="@string/browse_genres"
-            android:textSize="20sp" />
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/searchGenreList"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:clipToPadding="false"
-            android:nestedScrollingEnabled="false"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            tools:itemCount="6"
-            tools:listitem="@layout/item_genre" />
-    </LinearLayout>
+            android:contentDescription="@string/list_view"
+            android:minWidth="48dp"
+            android:minHeight="48dp"
+            android:paddingHorizontal="12dp"
+            android:tooltipText="@string/list_view"
+            app:icon="@drawable/ic_round_view_list_24"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconSize="20dp" />
+    </com.google.android.material.button.MaterialButtonToggleGroup>
 
 </LinearLayout>
