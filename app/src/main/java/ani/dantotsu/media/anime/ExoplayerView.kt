@@ -35,6 +35,7 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
@@ -119,7 +120,6 @@ import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.toast
 import ani.dantotsu.util.Logger
 import ani.dantotsu.util.customAlertDialog
-import com.bumptech.glide.Glide
 import com.google.android.material.slider.Slider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -495,11 +495,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             isPlayerPlaying = isPlaying
             updatePipActions(isPlaying)
             playerView.keepScreenOn = isPlaying
-            if (!isDestroyed) {
-                Glide.with(this)
-                    .load(if (isPlaying) R.drawable.anim_play_to_pause else R.drawable.anim_pause_to_play)
-                    .into(exoPlay)
-            }
+            setPlayIcon(isPlaying)
             if (this::media.isInitialized && this::episode.isInitialized) {
                 discordManager.updatePresence(
                     media, episode,
@@ -618,6 +614,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         // Play/Pause
         exoPlay.setOnClickListener {
             if (this::playerManager.isInitialized && playerManager.isInitialized) {
+                // Flip the icon on the tap itself; the engine answers a few frames later
+                // and onIsPlayingChanged corrects it if the toggle did not take.
+                setPlayIcon(!(playIconPlaying ?: isPlayerPlaying))
                 if (this::castManager.isInitialized && castManager.isCasting()) {
                     if (castManager.isRemotePlaying()) {
                         castManager.pause()
@@ -1657,17 +1656,27 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
     }
 
+    /** Shown play/pause state; null until the first icon is set. */
+    private var playIconPlaying: Boolean? = null
+
+    /** Sets the play/pause icon on the main thread at once and morphs it; no-op when unchanged. */
+    private fun setPlayIcon(playing: Boolean) {
+        if (isDestroyed || !this::exoPlay.isInitialized || playIconPlaying == playing) return
+        playIconPlaying = playing
+        val icon = AppCompatResources.getDrawable(
+            this,
+            if (playing) R.drawable.anim_play_to_pause else R.drawable.anim_pause_to_play
+        ) ?: return
+        exoPlay.setImageDrawable(icon)
+        (icon as? Animatable)?.start()
+    }
+
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         if (!isBuffering) {
             isPlayerPlaying = isPlaying
             updatePipActions(isPlaying)
             playerView.keepScreenOn = isPlaying
-            (exoPlay.drawable as? Animatable)?.start()
-            if (!isDestroyed) {
-                Glide.with(this)
-                    .load(if (isPlaying) R.drawable.anim_play_to_pause else R.drawable.anim_pause_to_play)
-                    .into(exoPlay)
-            }
+            setPlayIcon(isPlaying)
             if (this::episode.isInitialized && discordThrottle.onPlayPause()) {
                 discordManager.updatePresence(
                     media, episode,
