@@ -52,7 +52,52 @@ class MediaAdaptor(
     private val viewPager: ViewPager2? = null,
     private val fav: Boolean = false,
     private val isOtherUser: Boolean = false,
+    private val onPlayClick: ((Media) -> Unit)? = null,
+    showPlayButton: Boolean = onPlayClick != null,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+    private var showPlayButton: Boolean = showPlayButton && onPlayClick != null
+    private var loadingPlayMediaId: Int? = null
+
+    fun setShowPlayButton(enabled: Boolean) {
+        val next = enabled && onPlayClick != null
+        if (showPlayButton == next) return
+        showPlayButton = next
+        val count = mediaList?.size ?: 0
+        if (count > 0) notifyItemRangeChanged(0, count, PAYLOAD_PLAY_STATE)
+    }
+
+    fun setLoadingPlayMediaId(mediaId: Int?) {
+        val prev = loadingPlayMediaId
+        if (prev == mediaId) return
+        loadingPlayMediaId = mediaId
+        val list = mediaList ?: return
+        if (prev != null) {
+            list.forEachIndexed { idx, item ->
+                if (item.id == prev) notifyItemChanged(idx, PAYLOAD_PLAY_STATE)
+            }
+        }
+        if (mediaId != null) {
+            list.forEachIndexed { idx, item ->
+                if (item.id == mediaId) notifyItemChanged(idx, PAYLOAD_PLAY_STATE)
+            }
+        }
+    }
+
+    override fun onBindViewHolder(
+        holder: RecyclerView.ViewHolder,
+        position: Int,
+        payloads: MutableList<Any>,
+    ) {
+        if (type == 0 && payloads.contains(PAYLOAD_PLAY_STATE)) {
+            val media = mediaList?.getOrNull(position)
+            if (media != null && holder is MediaViewHolder) {
+                bindPlayButton(holder.binding, media)
+                return
+            }
+        }
+        super.onBindViewHolder(holder, position, payloads)
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return when (type) {
@@ -122,6 +167,8 @@ class MediaAdaptor(
                         b.itemCompactTotal.text = ""
                         b.itemCompactScoreBG.isVisible = false
                         b.itemCompactOngoing.isVisible = false
+                        b.itemCompactPlayContainer.isVisible = false
+                        b.itemCompactPlayProgress.isVisible = false
                         b.itemCompactType.isVisible = false
                         b.itemCompactReason.isVisible = false
                         b.itemCompactImage.setImageResource(R.drawable.skeleton_cover_placeholder)
@@ -143,8 +190,7 @@ class MediaAdaptor(
                         // nothing to show for an unscored title (unaired, too new): no "0.0" badge
                         b.itemCompactScoreBG.isVisible = media.userScore != 0 || (media.meanScore ?: 0) > 0
                         b.itemCompactImage.loadImage(media.cover)
-                        b.itemCompactOngoing.isVisible =
-                            media.status == b.root.context.getString(R.string.status_releasing)
+                        bindPlayButton(b, media)
                         b.itemCompactTitle.text = media.userPreferredName
                         val watchNextReason = media.watchNextReason?.takeIf { it.isNotBlank() }
                         b.itemCompactReason.isVisible = watchNextReason != null
@@ -643,10 +689,44 @@ class MediaAdaptor(
         }
     }
 
+    private fun bindPlayButton(b: ItemMediaCompactBinding, media: Media) {
+        val canShow = showPlayButton && onPlayClick != null && media.id >= 0 && media.anime != null
+        b.itemCompactPlayContainer.isVisible = canShow
+        // Hide the bottom-left releasing dot when the play button occupies that corner.
+        b.itemCompactOngoing.isVisible = !canShow && media.id >= 0 &&
+            media.status == b.root.context.getString(R.string.status_releasing)
+        if (!canShow) {
+            b.itemCompactPlayProgress.isVisible = false
+            return
+        }
+        val loading = loadingPlayMediaId == media.id
+        b.itemCompactPlayProgress.isVisible = loading
+        if (loading) {
+            b.itemCompactPlayButton.icon = null
+        } else {
+            b.itemCompactPlayButton.setIconResource(R.drawable.ic_round_play_arrow_24)
+        }
+        val desc = b.root.context.getString(
+            if (loading) R.string.one_tap_play_loading else R.string.one_tap_play_title,
+            media.userPreferredName,
+        )
+        b.itemCompactPlayButton.contentDescription = desc
+        androidx.appcompat.widget.TooltipCompat.setTooltipText(b.itemCompactPlayButton, desc)
+    }
+
     inner class MediaViewHolder(val binding: ItemMediaCompactBinding) :
         RecyclerView.ViewHolder(binding.root) {
         init {
             if (matchParent) itemView.updateLayoutParams { width = -1 }
+            binding.itemCompactPlayButton.setSafeOnClickListener {
+                val pos = bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION) return@setSafeOnClickListener
+                val currentAdapter = bindingAdapter as? MediaAdaptor ?: this@MediaAdaptor
+                val media = currentAdapter.mediaList?.getOrNull(pos)
+                if (media == null || media.id < 0 || media.anime == null) return@setSafeOnClickListener
+                if (!currentAdapter.showPlayButton) return@setSafeOnClickListener
+                currentAdapter.onPlayClick?.invoke(media)
+            }
             itemView.setSafeOnClickListener {
                 val pos = bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setSafeOnClickListener
@@ -835,4 +915,7 @@ class MediaAdaptor(
         return Bitmap.createScaledBitmap(source, newWidth, newHeight, true)
     }
 
+    companion object {
+        private const val PAYLOAD_PLAY_STATE = "play_state"
+    }
 }

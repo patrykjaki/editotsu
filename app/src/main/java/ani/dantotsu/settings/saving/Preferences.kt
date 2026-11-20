@@ -360,4 +360,6 @@ enum class PrefName(val data: Pref) {
     PlayerBufferSize(Pref(Location.Player, Int::class, 0)),
     /** 0: unseen count as a badge on covers; 1: the "2 | 11" line under covers. */
     CoverEpisodeCount(Pref(Location.UI, Int::class, 0)),
+    /** Show a one-tap play button on anime continue-watching cards on Home. */
+    ContinueWatchingPlayButton(Pref(Location.UI, Boolean::class, true)),
 }

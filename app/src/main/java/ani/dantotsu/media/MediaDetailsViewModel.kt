@@ -129,6 +129,10 @@ class MediaDetailsViewModel : ViewModel() {
     }
 
     var continueMedia: Boolean? = null
+    /** One-tap play fallback: open the episode's source picker as soon as the episode list loads. */
+    var pendingPickerOpen: Boolean = false
+    var pendingPickerEpisode: String? = null
+    var pendingForcePicker: Boolean = false
     var loading = false
 
     private val media: MutableLiveData<Media> = MutableLiveData<Media>(null)

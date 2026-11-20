@@ -198,6 +198,8 @@ object AppearanceScreen : SettingsScreen("appearance", R.string.settings_appeara
             actionRow(PrefName.HomeLayout.name, R.string.home_layout_show, icon = R.drawable.ic_round_playlist_add_24,
                 keys = listOf(PrefName.HomeLayout, PrefName.HomeLayoutOrder),
                 onClick = { host, _ -> editHomeLayout(host) }),
+            switchRow(PrefName.ContinueWatchingPlayButton, R.string.continue_watching_play_button,
+                R.string.continue_watching_play_button_desc, R.drawable.ic_round_play_arrow_24),
             switchRow(PrefName.SmallView, R.string.small_view, icon = R.drawable.ic_round_art_track_24, onChange = restart),
             // Where covers show the episode count: progress pill on the cover, the line below it,
             // or only what's out and unseen. One place at a time.

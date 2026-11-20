@@ -541,7 +541,16 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
                 else -> watchTab
             })
         }
-        if (model.continueMedia == null && media.cameFromContinue) {
+        if (intent.getBooleanExtra(EXTRA_OPEN_PICKER, false)) {
+            model.pendingPickerOpen = true
+            model.pendingPickerEpisode = intent.getStringExtra(EXTRA_PICKER_EPISODE)
+            model.pendingForcePicker = intent.getBooleanExtra(EXTRA_FORCE_PICKER, true)
+            model.continueMedia = false
+            selected = MediaTabs.MAIN
+            intent.removeExtra(EXTRA_OPEN_PICKER)
+            intent.removeExtra(EXTRA_PICKER_EPISODE)
+            intent.removeExtra(EXTRA_FORCE_PICKER)
+        } else if (model.continueMedia == null && media.cameFromContinue) {
             model.continueMedia = PrefManager.getVal(PrefName.ContinueMedia)
             selected = MediaTabs.MAIN
         }
@@ -828,5 +837,8 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
 
     companion object {
         var mediaSingleton: Media? = null
+        const val EXTRA_OPEN_PICKER = "openPicker"
+        const val EXTRA_PICKER_EPISODE = "pickerEpisode"
+        const val EXTRA_FORCE_PICKER = "forcePicker"
     }
 }

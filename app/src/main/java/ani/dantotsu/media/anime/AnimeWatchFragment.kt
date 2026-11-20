@@ -432,8 +432,45 @@ class AnimeWatchFragment : Fragment(), AnimeWatchAdapter.ScanlatorSelectionListe
                 }
                 headerAdapter.subscribeButton(true)
                 reload()
+                maybeOpenPendingPicker(filteredEpisodes)
             }
         }
+    }
+
+    private fun maybeOpenPendingPicker(episodes: Map<String, Episode>) {
+        if (!model.pendingPickerOpen) return
+        model.pendingPickerOpen = false
+        val requested = model.pendingPickerEpisode
+        val forcePicker = model.pendingForcePicker
+        model.pendingPickerEpisode = null
+        model.pendingForcePicker = false
+        if (episodes.isEmpty() || !isAdded) return
+        val fm = requireActivity().supportFragmentManager
+        if (fm.isStateSaved || fm.isDestroyed) return
+
+        val targetKey = requested?.let { episodes.getEpisodeKey(it) }
+            ?: headerAdapter.continueEpisodeKey?.takeIf { it in episodes }
+            ?: ani.dantotsu.home.OneTapPlayCoordinator.pickTarget(
+                episodes = episodes,
+                mediaId = media.id,
+                userProgress = media.userProgress,
+                currentEpKey = PrefManager.getNullableCustomVal(
+                    "${media.id}_current_ep",
+                    null,
+                    String::class.java,
+                ),
+                watchPercentage = PrefManager.getVal(PrefName.WatchPercentage),
+            )?.key
+            ?: return
+
+        model.continueMedia = false
+        model.saveSelected(media.id, media.selected!!, media)
+        model.onEpisodeClick(
+            media = media,
+            i = targetKey,
+            manager = fm,
+            forcePicker = forcePicker,
+        )
     }
 
     //implement Multi download

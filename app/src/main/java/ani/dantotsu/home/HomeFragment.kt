@@ -69,6 +69,10 @@ import kotlin.math.min
 class HomeFragment : Fragment() {
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
+    private val oneTapPlay = OneTapPlayCoordinator { loadingId ->
+        (_binding?.homeWatchingRecyclerView?.adapter as? MediaAdaptor)?.setLoadingPlayMediaId(loadingId)
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -78,7 +82,13 @@ class HomeFragment : Fragment() {
         return binding.root
     }
 
+    override fun onStop() {
+        oneTapPlay.cancel()
+        super.onStop()
+    }
+
     override fun onDestroyView() {
+        oneTapPlay.cancel()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             _binding?.homeScroll?.setOnScrollChangeListener(null as View.OnScrollChangeListener?)
         }
@@ -312,7 +322,8 @@ class HomeFragment : Fragment() {
             empty: View,
             title: View,
             more: View,
-            string: String
+            string: String,
+            onPlayClick: ((Media) -> Unit)? = null,
         ) {
             container.visibility = if (rowEnabled(container)) View.VISIBLE else View.GONE
             // Until the row loads: the drawn skeleton with its sweep, like every other loading
@@ -354,10 +365,26 @@ class HomeFragment : Fragment() {
                         recyclerView.visibility = View.VISIBLE
                         val currentAdapter = recyclerView.adapter as? MediaAdaptor
                         if (currentAdapter != null && currentAdapter.type == 0 && currentAdapter.mediaList === it && recyclerView.tag == "loaded") {
+                            if (onPlayClick != null) {
+                                currentAdapter.setShowPlayButton(PrefManager.getVal(PrefName.ContinueWatchingPlayButton))
+                                currentAdapter.setLoadingPlayMediaId(oneTapPlay.loadingMediaId)
+                            }
                             currentAdapter.notifyDataSetChanged()
                         } else {
                             recyclerView.tag = "loaded"
-                            recyclerView.adapter = MediaAdaptor(0, it, requireActivity())
+                            val showPlay = onPlayClick != null &&
+                                PrefManager.getVal<Boolean>(PrefName.ContinueWatchingPlayButton)
+                            val adapter = MediaAdaptor(
+                                0,
+                                it,
+                                requireActivity(),
+                                onPlayClick = onPlayClick,
+                                showPlayButton = showPlay,
+                            )
+                            if (onPlayClick != null) {
+                                adapter.setLoadingPlayMediaId(oneTapPlay.loadingMediaId)
+                            }
+                            recyclerView.adapter = adapter
                             recyclerView.layoutManager = LinearLayoutManager(
                                 requireContext(),
                                 LinearLayoutManager.HORIZONTAL,
@@ -398,7 +425,15 @@ class HomeFragment : Fragment() {
             binding.homeWatchingEmpty,
             binding.homeContinueWatch,
             binding.homeContinueWatchMore,
-            getString(R.string.continue_watching)
+            getString(R.string.continue_watching),
+            onPlayClick = { media ->
+                oneTapPlay.play(
+                    activity = requireActivity(),
+                    scope = viewLifecycleOwner.lifecycleScope,
+                    media = media,
+                    isHostActive = { isAdded && _binding != null },
+                )
+            },
         )
         binding.homeWatchingBrowseButton.setOnClickListener {
             bottomBarOrNull?.selectTabAt(0)
@@ -748,6 +783,8 @@ class HomeFragment : Fragment() {
                     && Anilist.unreadNotificationCount > 0
                     && PrefManager.getVal<Boolean>(PrefName.ShowNotificationRedDot) == true
             binding.homeNotificationCount.text = Anilist.unreadNotificationCount.toString()
+            (binding.homeWatchingRecyclerView.adapter as? MediaAdaptor)
+                ?.setShowPlayButton(PrefManager.getVal(PrefName.ContinueWatchingPlayButton))
         }
         super.onResume()
     }

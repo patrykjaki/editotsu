@@ -91,6 +91,51 @@
                 tools:text="9"
                 tools:visibility="visible" />
 
+            <!-- One-tap play on Home Continue Watching anime cards: 40dp visual circle in a 48dp touch target -->
+            <FrameLayout
+                android:id="@+id/itemCompactPlayContainer"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="bottom|start"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/itemCompactPlayButton"
+                    style="@style/Widget.Material3.Button.IconButton.Filled"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:contentDescription="@string/one_tap_play"
+                    android:insetLeft="4dp"
+                    android:insetTop="4dp"
+                    android:insetRight="4dp"
+                    android:insetBottom="4dp"
+                    android:padding="8dp"
+                    app:icon="@drawable/ic_round_play_arrow_24"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="24dp" />
+
+                <com.google.android.material.progressindicator.CircularProgressIndicator
+                    android:id="@+id/itemCompactPlayProgress"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:clickable="false"
+                    android:elevation="1dp"
+                    android:focusable="false"
+                    android:importantForAccessibility="no"
+                    android:indeterminate="true"
+                    android:visibility="gone"
+                    app:indicatorColor="?attr/colorOnPrimary"
+                    app:indicatorInset="0dp"
+                    app:indicatorSize="18dp"
+                    app:trackColor="@android:color/transparent"
+                    app:trackCornerRadius="2dp"
+                    app:trackThickness="2.5dp" />
+
+            </FrameLayout>
+
         </androidx.cardview.widget.CardView>
 
         <androidx.cardview.widget.CardView

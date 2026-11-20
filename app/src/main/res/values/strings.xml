@@ -2134,4 +2134,9 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="watch_next_sequel">Sequel</string>
     <string name="watch_next_sequel_to">Sequel to %1$s</string>
     <string name="watch_next_on_your_list">On your list</string>
+    <string name="continue_watching_play_button">Play button on continue watching</string>
+    <string name="continue_watching_play_button_desc">Start the next episode directly from the home row</string>
+    <string name="one_tap_play">Play</string>
+    <string name="one_tap_play_title">Play %1$s</string>
+    <string name="one_tap_play_loading">Loading %1$s</string>
 </resources>
