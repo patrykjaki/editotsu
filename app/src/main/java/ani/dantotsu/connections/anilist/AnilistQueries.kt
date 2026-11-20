@@ -27,6 +27,7 @@ import ani.dantotsu.home.WatchNextReason
 import ani.dantotsu.home.WatchNextRelation
 import ani.dantotsu.home.buildWatchNext
 import ani.dantotsu.home.completedTimestampSec
+import ani.dantotsu.home.sameSeriesName
 import ani.dantotsu.isOnline
 import ani.dantotsu.logError
 import ani.dantotsu.home.status.sortUserStatusList
@@ -1086,7 +1087,9 @@ class AnilistQueries {
                 val media = plannedMediaById[candidate.mediaId] ?: fetchedById[candidate.mediaId] ?: continue
                 media.watchNextReason = when (val reason = candidate.reason) {
                     is WatchNextReason.SequelTo ->
-                        if (reason.sourceTitle.isNotBlank()) {
+                        if (sameSeriesName(reason.sourceTitle, media.userPreferredName)) {
+                            ctx?.getString(R.string.watch_next_sequel) ?: "Sequel"
+                        } else if (reason.sourceTitle.isNotBlank()) {
                             ctx?.getString(R.string.watch_next_sequel_to, reason.sourceTitle)
                                 ?: "Sequel to ${reason.sourceTitle}"
                         } else {

@@ -317,4 +317,13 @@ class WatchNextTest {
             watchNextRowVisibility(items = listOf(1), enabled = true, rescueMode = true),
         )
     }
+
+    @Test
+    fun sequelCaptionSkipsTheRepeatedName() {
+        assertTrue(sameSeriesName("Dr. STONE", "Dr. STONE: STONE WARS"))
+        assertTrue(sameSeriesName("The Apothecary Diaries", "The Apothecary Diaries Season 2"))
+        assertTrue(sameSeriesName("Re:ZERO -Starting Life in Another World-", "Re:ZERO -Starting Life in Another World- Season 2"))
+        assertFalse(sameSeriesName("Fate/Zero", "Fate/stay night: Unlimited Blade Works"))
+        assertFalse(sameSeriesName("", "Anything"))
+    }
 }

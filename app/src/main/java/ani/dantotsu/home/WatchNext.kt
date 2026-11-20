@@ -307,3 +307,16 @@ fun watchNextRowVisibility(
         recyclerVisible = true,
     )
 }
+
+/**
+ * True when [sequelTitle] obviously continues [sourceTitle] by name ("Dr. STONE" -> "Dr. STONE: STONE WARS"),
+ * so "Sequel to <source>" would only repeat the card title. Compares letters and digits, case-insensitive.
+ */
+fun sameSeriesName(sourceTitle: String, sequelTitle: String): Boolean {
+    fun norm(t: String) = t.lowercase().filter { it.isLetterOrDigit() }
+    val a = norm(sourceTitle)
+    val b = norm(sequelTitle)
+    if (a.isEmpty() || b.isEmpty()) return false
+    val common = a.zip(b).takeWhile { (x, y) -> x == y }.size
+    return common >= minOf(6, a.length, b.length)
+}

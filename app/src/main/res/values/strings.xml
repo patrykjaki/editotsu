@@ -2129,6 +2129,7 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="remove_filter">Remove %1$s</string>
     <string name="airing_in_days">%1$dd</string>
     <string name="watch_next">Watch next</string>
+    <string name="watch_next_sequel">Sequel</string>
     <string name="watch_next_sequel_to">Sequel to %1$s</string>
     <string name="watch_next_on_your_list">On your list</string>
 </resources>
