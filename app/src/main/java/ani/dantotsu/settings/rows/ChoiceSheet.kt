@@ -2,6 +2,7 @@ package ani.dantotsu.settings.rows
 
 import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -62,8 +63,14 @@ object ChoiceSheet {
         show(context, title, options, state, multi = false, note = note, onCancel = onCancel) { sheet, index ->
             sheet.confirmed = true
             if (index != selected) onPick(index)
-            // Let the radio animate before the sheet goes.
-            sheet.list.postDelayed({ sheet.dialog.dismiss() }, PICK_DISMISS_MS)
+            if (context.isLeaving()) {
+                // onPick closed the screen (e.g. search switching type): its windows go with
+                // it, so close now instead of after the radio animation.
+                sheet.dismissIfAttached()
+            } else {
+                // Let the radio animate before the sheet goes.
+                sheet.list.postDelayed({ sheet.dismissIfAttached() }, PICK_DISMISS_MS)
+            }
         }
     }
 
@@ -118,6 +125,22 @@ object ChoiceSheet {
     private class Sheet(val dialog: BottomSheetDialog, val binding: SheetChoiceBinding) {
         val list: RecyclerView get() = binding.choiceList
         var confirmed = false
+
+        /** A dismiss after the owning screen is gone throws "not attached to window manager". */
+        fun dismissIfAttached() {
+            if (dialog.isShowing && dialog.window?.decorView?.isAttachedToWindow == true) {
+                dialog.dismiss()
+            }
+        }
+    }
+
+    private fun Context.isLeaving(): Boolean {
+        var c: Context? = this
+        while (c is ContextWrapper) {
+            if (c is Activity) return c.isFinishing || c.isDestroyed
+            c = c.baseContext
+        }
+        return false
     }
 
     private fun show(
