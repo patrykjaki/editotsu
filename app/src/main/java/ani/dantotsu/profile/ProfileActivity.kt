@@ -18,6 +18,7 @@ import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.adapter.FragmentStateAdapter
+import androidx.viewpager2.widget.ViewPager2
 import ani.dantotsu.R
 import ani.dantotsu.blurImage
 import ani.dantotsu.connections.anilist.Anilist
@@ -73,7 +74,6 @@ class ProfileActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedListene
         navBar.addTab(feedTab)
         navBar.addTab(statsTab)
         navBar.visibility = View.GONE
-        binding.profileViewPager.isUserInputEnabled = false
 
         lifecycleScope.launch(Dispatchers.IO) {
             val userid = intent.getIntExtra("userId", -1)
@@ -95,6 +95,14 @@ class ProfileActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedListene
                 binding.profileViewPager.setCurrentItem(selected, false)
                 navBar.visibility = View.VISIBLE
                 navBar.selectTabAt(selected)
+                // swiping between pages moves the tab bar with it
+                binding.profileViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+                    override fun onPageSelected(position: Int) {
+                        if (position == selected) return
+                        selected = position
+                        navBar.selectTabAt(position)
+                    }
+                })
                 navBar.setOnTabSelectListener(object : AnimatedBottomBar.OnTabSelectListener {
                     override fun onTabSelected(
                         lastIndex: Int,

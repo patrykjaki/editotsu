@@ -96,7 +96,6 @@ class NotificationActivity : AppCompatActivity() {
         binding.notificationBack.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         val getOne = intent.getIntExtra("activityId", -1)
         if (getOne != -1) navBar.isVisible = false
-        binding.notificationViewPager.isUserInputEnabled = false
         binding.notificationViewPager.adapter =
             ViewPagerAdapter(supportFragmentManager, lifecycle, getOne, CommentsEnabled) { type, reset ->
                 if (reset) {
@@ -127,6 +126,11 @@ class NotificationActivity : AppCompatActivity() {
                 override fun onPageSelected(position: Int) {
                     super.onPageSelected(position)
                     fragments[position]?.onVisible()
+                    // swiping between pages moves the tab bar with it
+                    if (position != selected) {
+                        selected = position
+                        navBar.selectTabAt(position)
+                    }
                 }
             }
         )
