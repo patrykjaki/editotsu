@@ -278,6 +278,7 @@ class ThemesActivity : AppCompatActivity() {
             b.favHeart.setOnClickListener { ThemeFavourites.remove(t.themeId) }
             b.root.contentDescription = listOf(b.favTag.text, b.favSong.text, b.favMeta.text, b.favSaved.text.takeIf { b.favSaved.isVisible })
                 .filterNotNull().joinToString(", ")
+            b.favPlay.setOnClickListener { b.root.performClick() }
             b.root.setOnClickListener {
                 ThemeRadioSession.stop()
                 val queue = ThemeRadio.favouritesQueue(favourites, kinds, false, Random.Default)

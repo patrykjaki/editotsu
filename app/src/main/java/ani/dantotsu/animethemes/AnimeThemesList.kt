@@ -136,6 +136,7 @@ class AnimeThemesList(
             context.getString(if (hidden) R.string.theme_reveal else R.string.theme_play),
             null,
         )
+        row.themePlay.setOnClickListener { row.themeMain.performClick() }
         row.themeMain.setOnClickListener {
             if (isShielded(shown[i]) && i !in revealed) {
                 revealed += i
