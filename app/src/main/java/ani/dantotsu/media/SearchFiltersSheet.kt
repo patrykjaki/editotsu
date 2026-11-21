@@ -3,34 +3,38 @@ package ani.dantotsu.media
 import android.app.Activity
 import android.content.Context
 import android.content.res.ColorStateList
+import android.os.Build
+import android.text.TextUtils
 import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
-import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.AniMangaSearchResults
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.AnilistSearch.SearchType
-import ani.dantotsu.databinding.ItemSearchFilterTileBinding
 import ani.dantotsu.databinding.SheetSearchFiltersBinding
+import ani.dantotsu.others.setDropdownText
 import ani.dantotsu.settings.rows.ChoiceOption
 import ani.dantotsu.settings.rows.ChoiceSheet
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.color.MaterialColors
 import java.util.Calendar
 
 /**
- * Unified Search Filters bottom sheet: every filter for anime/manga at a glance in a 2-column
- * tile grid. Each tile opens its existing ChoiceSheet or GenreTagSheet (or toggles Adult), and
- * changes update both the tiles and the live search results immediately.
+ * Unified Search Filters bottom sheet, all chips: Sort and Genres & tags as dropdown chips that open
+ * their own sheet, Adult as an on/off chip, then the short-choice filters (format, status, season,
+ * year, source, country, list) as single-select chip sections. Changes update the live results at once.
  */
 object SearchFiltersSheet {
 
@@ -57,19 +61,15 @@ object SearchFiltersSheet {
         val dialog = BottomSheetDialog(context)
         val b = SheetSearchFiltersBinding.inflate(LayoutInflater.from(context))
 
-        lateinit var adapter: TileAdapter
         fun sync() {
             b.searchFiltersReset.isVisible = SearchStatePolicy.hasActiveFilters(filters)
-            adapter.submit(buildTiles(context, anime, filters, rescue) {
+            val mutated = {
                 sync()
                 onChanged()
-            })
+            }
+            buildTop(context, b.searchFiltersTop, filters, rescue, mutated)
+            buildSections(context, b.searchFiltersSections, anime, filters, rescue, mutated)
         }
-
-        adapter = TileAdapter()
-        b.searchFiltersGrid.layoutManager = GridLayoutManager(context, 2)
-        b.searchFiltersGrid.adapter = adapter
-        b.searchFiltersGrid.itemAnimator = null
 
         b.searchFiltersReset.setOnClickListener {
             SearchStatePolicy.clearFilters(filters)
@@ -98,34 +98,55 @@ object SearchFiltersSheet {
         return dialog
     }
 
-    private data class FilterTile(
-        val label: String,
-        val value: String,
-        val active: Boolean,
-        val onClick: () -> Unit,
-    )
+    /** A chip from the shared filter-chip layout; [dropdown] chips draw ▾ after the label and open a sheet. */
+    private fun filterChip(
+        inflater: LayoutInflater,
+        group: ChipGroup,
+        label: CharSequence,
+        checked: Boolean,
+        dropdown: Boolean = false,
+        onClick: () -> Unit,
+    ): Chip {
+        val chip = inflater.inflate(R.layout.item_picker_filter_chip, group, false) as Chip
+        chip.id = View.generateViewId()
+        if (dropdown) chip.setDropdownText(label) else chip.text = label
+        chip.isChecked = checked
+        chip.setOnClickListener {
+            // the state comes from the filters, not from the tap: a cancelled sheet leaves it as it was
+            chip.isChecked = checked
+            onClick()
+        }
+        group.addView(chip)
+        return chip
+    }
 
-    private fun buildTiles(
+    /**
+     * The top row: Sort and Genres & tags as dropdown chips (they open their own sheet), Adult as an
+     * on/off chip. Same chip family as the sections below, so the sheet reads as one set of controls.
+     */
+    private fun buildTop(
         context: Context,
-        anime: Boolean,
+        group: ChipGroup,
         f: AniMangaSearchResults,
         rescue: Boolean,
         onMutated: () -> Unit,
-    ): List<FilterTile> {
-        val any = context.getString(R.string.chip_any)
-        val tiles = ArrayList<FilterTile>(10)
+    ) {
+        group.removeAllViews()
+        val inflater = LayoutInflater.from(context)
 
         // Sort: when unset (null), AniList defaults to POPULARITY_DESC (and Rescue mode to members desc).
-        val effectiveSort = f.sort ?: DEFAULT_SORT
+        // It always has a value, so the sort icon names the chip while it shows the default.
         val sortActive = f.sort != null && f.sort != DEFAULT_SORT
-        tiles += FilterTile(
-            label = context.getString(R.string.chip_sort),
-            value = sortLabel(context, effectiveSort),
-            active = sortActive,
-            onClick = { openSort(context, f, onMutated) },
-        )
+        filterChip(inflater, group, sortLabel(context, f.sort ?: DEFAULT_SORT), sortActive, dropdown = true) {
+            openSort(context, f, onMutated)
+        }.apply {
+            if (!sortActive) {
+                setChipIconResource(R.drawable.ic_round_sort_24)
+                isChipIconVisible = true
+                chipIconTint = textColors
+            }
+        }
 
-        // Genres & tags
         val hasGenreData = !Anilist.genres.isNullOrEmpty() ||
             (!rescue && !Anilist.tags?.get(f.isAdult).isNullOrEmpty()) ||
             !f.genres.isNullOrEmpty() || !f.tags.isNullOrEmpty() ||
@@ -134,96 +155,123 @@ object SearchFiltersSheet {
             val inc = f.genres.orEmpty() + f.tags.orEmpty()
             val exc = f.excludedGenres.orEmpty() + f.excludedTags.orEmpty()
             val summary = GenreTagGroups.summary(inc, exc)
-            tiles += FilterTile(
-                label = context.getString(R.string.genres_and_tags),
-                value = summary ?: any,
-                active = summary != null,
-                onClick = { GenreTagSheet.show(context, f, rescue, onMutated) },
-            )
+            filterChip(inflater, group, summary ?: context.getString(R.string.genres_and_tags), summary != null, dropdown = true) {
+                GenreTagSheet.show(context, f, rescue, onMutated)
+            }.apply {
+                ellipsize = TextUtils.TruncateAt.END
+                maxWidth = (240 * context.resources.displayMetrics.density).toInt()
+            }
         }
 
-        // Format
-        val formatVal = f.format?.let(::pretty)
-        tiles += FilterTile(
-            label = context.getString(R.string.format),
-            value = formatVal ?: any,
-            active = formatVal != null,
-            onClick = { openFormat(context, anime, f, onMutated) },
-        )
-
-        // Status
-        val statusVal = f.status?.let(::pretty)
-        tiles += FilterTile(
-            label = context.getString(R.string.chip_status),
-            value = statusVal ?: any,
-            active = statusVal != null,
-            onClick = { openStatus(context, anime, f, onMutated) },
-        )
-
-        // Year
-        val year = if (anime) f.seasonYear else f.startYear
-        tiles += FilterTile(
-            label = context.getString(R.string.year),
-            value = year?.toString() ?: any,
-            active = year != null,
-            onClick = { openYear(context, anime, f, onMutated) },
-        )
-
-        // Season (anime only, non-rescue)
-        if (anime && !rescue) {
-            val seasonVal = f.season?.let(::pretty)
-            tiles += FilterTile(
-                label = context.getString(R.string.season),
-                value = seasonVal ?: any,
-                active = seasonVal != null,
-                onClick = { openSeason(context, f, onMutated) },
-            )
-        }
-
-        // List (logged-in non-rescue)
-        if (Anilist.userid != null && !rescue) {
-            val listVal = listLabel(context, f.onList)
-            tiles += FilterTile(
-                label = context.getString(R.string.list),
-                value = listVal ?: any,
-                active = listVal != null,
-                onClick = { openList(context, f, onMutated) },
-            )
-        }
-
-        // Source & Country (non-rescue)
-        if (!rescue) {
-            val sourceVal = f.source?.let(::pretty)
-            tiles += FilterTile(
-                label = context.getString(R.string.source),
-                value = sourceVal ?: any,
-                active = sourceVal != null,
-                onClick = { openSource(context, f, onMutated) },
-            )
-
-            val countryVal = countryLabel(context, f.countryOfOrigin)
-            tiles += FilterTile(
-                label = context.getString(R.string.chip_country),
-                value = countryVal ?: any,
-                active = countryVal != null,
-                onClick = { openCountry(context, f, onMutated) },
-            )
-        }
-
-        // 18+ Adult toggle
         if (Anilist.adult) {
-            tiles += FilterTile(
-                label = context.getString(R.string.adult),
-                value = context.getString(if (f.isAdult) R.string.filter_on else R.string.filter_off),
-                active = f.isAdult,
-                onClick = {
-                    f.isAdult = !f.isAdult
+            filterChip(inflater, group, context.getString(R.string.adult), f.isAdult) {
+                f.isAdult = !f.isAdult
+                onMutated()
+            }
+        }
+    }
+
+    /** Recent years shown as chips; with the "Older" chip they make two rows of four on a phone. */
+    private const val YEARS_FIRST = 7
+
+    /**
+     * The short-choice filters as chip sections inside the sheet, instead of a sheet per filter
+     * with one long list. One chip per option; tapping the chosen chip again goes back to Any.
+     */
+    private fun buildSections(
+        context: Context,
+        container: LinearLayout,
+        anime: Boolean,
+        f: AniMangaSearchResults,
+        rescue: Boolean,
+        onMutated: () -> Unit,
+    ) {
+        container.removeAllViews()
+        val inflater = LayoutInflater.from(context)
+        val dp = context.resources.displayMetrics.density
+        fun px(v: Int) = (v * dp).toInt()
+
+        fun section(titleRes: Int, labels: List<String>, selected: Int, pick: (Int?) -> Unit): ChipGroup {
+            container.addView(TextView(context).apply {
+                text = context.getString(titleRes)
+                textSize = 13f
+                typeface = ResourcesCompat.getFont(context, R.font.poppins_semi_bold)
+                setTextColor(MaterialColors.getColor(container, com.google.android.material.R.attr.colorOnSurfaceVariant))
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) isAccessibilityHeading = true
+                // same 16dp keyline as the title and the chips
+                setPaddingRelative(px(16), px(if (container.childCount == 0) 8 else 12), px(16), px(2))
+            })
+            val group = ChipGroup(context).apply {
+                isSingleSelection = true
+                isSelectionRequired = false
+                chipSpacingHorizontal = px(8)
+                // the chips keep a 48dp touch target, which already leaves 16dp between rows
+                chipSpacingVertical = 0
+                setPaddingRelative(px(16), 0, px(16), 0)
+            }
+            labels.forEachIndexed { i, label ->
+                filterChip(inflater, group, label, i == selected) {
+                    pick(if (i == selected) null else i)
                     onMutated()
-                },
-            )
+                }
+            }
+            container.addView(group)
+            return group
         }
 
-        return tiles
+        val formats = if (anime) Anilist.animeFormats else Anilist.mangaFormats
+        section(R.string.format, formats.map(::pretty), formats.indexOf(f.format)) {
+            f.format = it?.let(formats::getOrNull)
+        }
+
+        val statuses = if (anime) Anilist.animeStatus else Anilist.mangaStatus
+        section(R.string.chip_status, statuses.map(::pretty), statuses.indexOf(f.status?.replace("_", " "))) {
+            f.status = it?.let(statuses::getOrNull)?.replace(" ", "_")
+        }
+
+        if (anime && !rescue) {
+            section(R.string.season, Anilist.seasons.map(::pretty), Anilist.seasons.indexOf(f.season)) {
+                f.season = it?.let(Anilist.seasons::getOrNull)
+            }
+        }
+
+        val years = (1970..Calendar.getInstance().get(Calendar.YEAR) + 1).reversed().toList()
+        val year = if (anime) f.seasonYear else f.startYear
+        val recent = years.take(YEARS_FIRST)
+        val group = section(R.string.year, recent.map(Int::toString), recent.indexOf(year)) {
+            val y = it?.let(recent::getOrNull)
+            if (anime) f.seasonYear = y else f.startYear = y
+        }
+        // Older years: one dropdown chip opening the full list; shows the year once one is picked from it.
+        val older = year != null && year !in recent
+        filterChip(inflater, group, if (older) year.toString() else context.getString(R.string.filter_older_years), older, dropdown = true) {
+            openYear(context, anime, f, onMutated)
+        }
+
+        if (!rescue) {
+            section(R.string.source, Anilist.source.map(::pretty), Anilist.source.indexOf(f.source?.replace("_", " "))) {
+                f.source = it?.let(Anilist.source::getOrNull)?.replace(" ", "_")
+            }
+            section(R.string.chip_country, COUNTRY_LABEL_RES.map(context::getString), COUNTRY_CODES.indexOf(f.countryOfOrigin)) {
+                f.countryOfOrigin = it?.let(COUNTRY_CODES::getOrNull)
+            }
+        }
+
+        if (Anilist.userid != null && !rescue) {
+            val lists = listOf(R.string.filter_on_list_in, R.string.filter_on_list_not_in).map(context::getString)
+            val sel = when (f.onList) {
+                true -> 0
+                false -> 1
+                null -> -1
+            }
+            section(R.string.list, lists, sel) {
+                f.onList = when (it) {
+                    0 -> true
+                    1 -> false
+                    else -> null
+                }
+            }
+        }
     }
 
     // ---- Shared pickers & formatters (used by both SearchFiltersSheet and SearchFilterChips) ----
@@ -249,7 +297,9 @@ object SearchFiltersSheet {
     /** "NOT_YET_RELEASED" -> "Not yet released"; short codes (TV, OVA, ONA) stay as they are. */
     fun pretty(raw: String): String {
         val s = raw.replace('_', ' ')
-        return if (s.length <= 3) s else s.lowercase().replaceFirstChar { it.uppercase() }
+        if (s.length <= 3) return s
+        // "TV SHORT" reads "TV short", not "Tv short"
+        return s.lowercase().replaceFirstChar { it.uppercase() }.replace(Regex("^Tv\\b"), "TV")
     }
 
     private fun openSingle(
@@ -330,55 +380,5 @@ object SearchFiltersSheet {
         val names = COUNTRY_LABEL_RES.map(context::getString)
         openSingle(context, R.string.chip_country, names, COUNTRY_CODES.indexOf(f.countryOfOrigin),
             { f.countryOfOrigin = COUNTRY_CODES.getOrNull(it) }, onChanged)
-    }
-
-    private class TileHolder(val binding: ItemSearchFilterTileBinding) :
-        RecyclerView.ViewHolder(binding.root)
-
-    private class TileAdapter : RecyclerView.Adapter<TileHolder>() {
-        private var items: List<FilterTile> = emptyList()
-
-        fun submit(next: List<FilterTile>) {
-            items = next
-            notifyDataSetChanged()
-        }
-
-        override fun getItemCount(): Int = items.size
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TileHolder =
-            TileHolder(
-                ItemSearchFilterTileBinding.inflate(
-                    LayoutInflater.from(parent.context),
-                    parent,
-                    false,
-                )
-            )
-
-        override fun onBindViewHolder(holder: TileHolder, position: Int) {
-            val tile = items[position]
-            val b = holder.binding
-            b.filterTileLabel.text = tile.label
-            b.filterTileValue.text = tile.value
-            val bgAttr = if (tile.active) {
-                com.google.android.material.R.attr.colorSecondaryContainer
-            } else {
-                com.google.android.material.R.attr.colorSurfaceVariant
-            }
-            val labelAttr = if (tile.active) {
-                com.google.android.material.R.attr.colorOnSecondaryContainer
-            } else {
-                com.google.android.material.R.attr.colorOnSurfaceVariant
-            }
-            val valueAttr = if (tile.active) {
-                com.google.android.material.R.attr.colorOnSecondaryContainer
-            } else {
-                com.google.android.material.R.attr.colorOnSurface
-            }
-            b.filterTileCard.setCardBackgroundColor(MaterialColors.getColor(b.root, bgAttr))
-            b.filterTileLabel.setTextColor(MaterialColors.getColor(b.root, labelAttr))
-            b.filterTileValue.setTextColor(MaterialColors.getColor(b.root, valueAttr))
-            b.filterTileCard.contentDescription = "${tile.label}: ${tile.value}"
-            b.filterTileCard.setOnClickListener { tile.onClick() }
-        }
     }
 }

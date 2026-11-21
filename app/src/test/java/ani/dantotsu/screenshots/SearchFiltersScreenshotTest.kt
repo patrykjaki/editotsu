@@ -170,7 +170,7 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
     }
 
     @Test
-    fun `filters sheet displays all filters in a grid and reset clears them live`() {
+    fun `filters sheet shows a dropdown chip row and chip sections and reset clears them live`() {
         val activity = Robolectric.buildActivity(SearchActivity::class.java).setup().get()
         activity.aniMangaResult.genres = mutableListOf("Action")
         activity.aniMangaResult.format = "TV"
@@ -187,9 +187,30 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         }!!
         idle()
 
-        val grid = sheet.findViewById<RecyclerView>(R.id.searchFiltersGrid)!!
-        settle(grid)
-        assertTrue("grid shows every anime filter tile", grid.adapter!!.itemCount >= 6)
+        // Top row: Sort and Genres & tags as dropdown chips (label kept as the content description).
+        val top = sheet.findViewById<ChipGroup>(R.id.searchFiltersTop)!!
+        fun topChips() = (0 until top.childCount).map { top.getChildAt(it) as Chip }
+        val defaultSort = SearchFiltersSheet.sortLabel(activity, SearchFiltersSheet.DEFAULT_SORT)
+        assertEquals(listOf(defaultSort, "Action"), topChips().take(2).map { it.contentDescription.toString() })
+        assertEquals(listOf(false, true), topChips().take(2).map { it.isChecked })
+
+        // Format, status, season, year, ... are chip sections in the sheet; the set ones are checked.
+        val sections = sheet.findViewById<LinearLayout>(R.id.searchFiltersSections)!!
+        fun sectionChips() = (0 until sections.childCount).map { sections.getChildAt(it) }
+            .filterIsInstance<ChipGroup>().flatMap { g -> (0 until g.childCount).map { g.getChildAt(it) as Chip } }
+        fun checked() = sectionChips().filter { it.isChecked }.map { it.text.toString() }
+        assertEquals(listOf("TV", "2024"), checked())
+        // older years sit behind one dropdown chip after the recent ones
+        assertTrue(sectionChips().any { it.contentDescription?.toString() == "Older" })
+
+        // Tapping the chosen chip again goes back to Any; tapping another picks it.
+        sectionChips().first { it.text.toString() == "TV" }.performClick()
+        idle()
+        assertEquals(null, activity.aniMangaResult.format)
+        sectionChips().first { it.text.toString() == "Movie" }.performClick()
+        idle()
+        assertEquals("MOVIE", activity.aniMangaResult.format)
+        assertEquals(listOf("Movie", "2024"), checked())
 
         val reset = sheet.findViewById<View>(R.id.searchFiltersReset)!!
         assertEquals(View.VISIBLE, reset.visibility)
@@ -197,14 +218,11 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         idle()
 
         assertEquals(View.GONE, reset.visibility)
+        assertEquals(emptyList<String>(), checked())
         assertEquals(2, chips(chipRow).size)
         assertEquals("Filters", chips(chipRow)[1].text.toString())
-        val sortValue = grid.findViewHolderForAdapterPosition(0)!!.itemView
-            .findViewById<TextView>(R.id.filterTileValue).text.toString()
-        assertEquals(SearchFiltersSheet.sortLabel(activity, SearchFiltersSheet.DEFAULT_SORT), sortValue)
-        val genreValue = grid.findViewHolderForAdapterPosition(1)!!.itemView
-            .findViewById<TextView>(R.id.filterTileValue).text.toString()
-        assertEquals("Any", genreValue)
+        assertEquals(listOf(defaultSort, "Genres & tags"), topChips().take(2).map { it.contentDescription.toString() })
+        assertTrue(topChips().none { it.isChecked })
         sheet.dismiss()
     }
 
