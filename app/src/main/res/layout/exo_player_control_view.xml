@@ -489,19 +489,21 @@
 
                 </LinearLayout>
 
-                <LinearLayout
+                <!-- As wide as the icon row only: the status line wraps inside it, so a long status
+                     ("AnimeThemes error 503, try 3 of 3") can't push the source picker's icon around. -->
+                <androidx.constraintlayout.widget.ConstraintLayout
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="vertical">
+                    android:layout_height="wrap_content">
 
                     <LinearLayout
+                        android:id="@+id/exo_top_actions"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_gravity="end"
                         android:layout_marginBottom="-6dp"
                         android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                        android:orientation="horizontal"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintTop_toTopOf="parent">
 
                         <ImageButton
                             android:id="@+id/exo_theme_favourite"
@@ -535,17 +537,21 @@
 
                     <TextView
                         android:id="@+id/exo_video_info"
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_gravity="end"
                         android:layout_marginEnd="16dp"
                         android:alpha="0.75"
+                        android:ellipsize="end"
+                        android:maxLines="2"
                         android:textAlignment="textEnd"
                         android:textColor="@color/bg_white"
                         android:textSize="12sp"
+                        app:layout_constraintEnd_toEndOf="@id/exo_top_actions"
+                        app:layout_constraintStart_toStartOf="@id/exo_top_actions"
+                        app:layout_constraintTop_toBottomOf="@id/exo_top_actions"
                         tools:ignore="TextContrastCheck"
                         tools:text="720x1080" />
-                </LinearLayout>
+                </androidx.constraintlayout.widget.ConstraintLayout>
             </LinearLayout>
         </FrameLayout>
 
