@@ -1,25 +1,26 @@
 package ani.dantotsu.connections.discord.rpc
 
 /**
- * Pure (Android-free, JVM-testable) construction of the Rich Presence deep-link buttons.
+ * Pure (Android-free, JVM-testable) construction of the Rich Presence buttons.
  *
- * Discord allows at most two buttons. The final pair is **AniList + MyAnimeList**, both fail-closed:
- *  - AniList button is emitted only when the AniList media id is valid (`> 0`), so we never build a
- *    `https://anilist.co/.../0/` URL.
- *  - MyAnimeList button is emitted only when a valid MAL id (`> 0`) is known.
- * This avoids synthesizing invalid `/0` profile links (review v2, product polish).
+ * Discord allows at most two: one for the show and one for the app.
+ *  - The show button opens AniList when the AniList id is valid (`> 0`), otherwise MyAnimeList
+ *    when a valid MAL id is known, so we never build a `/0` link.
+ *  - The app button goes to the releases page, not `/releases/latest`: every 0.x tag is a
+ *    pre-release, and `latest` skips pre-releases.
  */
 object DiscordButtonBuilder {
 
+    const val APP_BUTTON_LABEL = "Get Editotsu"
+    const val APP_BUTTON_URL = "https://github.com/patrykjaki/editotsu/releases"
+
     fun mediaButtons(anilistId: Int, kind: String, malId: Int?): List<DiscordPresenceButton> {
-        val buttons = mutableListOf<DiscordPresenceButton>()
-        if (anilistId > 0) {
-            buttons.add(DiscordPresenceButton("View on AniList", "https://anilist.co/$kind/$anilistId/"))
+        val noun = if (kind == "manga") "Manga" else "Anime"
+        val show = when {
+            anilistId > 0 -> DiscordPresenceButton("View $noun", "https://anilist.co/$kind/$anilistId/")
+            malId != null && malId > 0 -> DiscordPresenceButton("View $noun", "https://myanimelist.net/$kind/$malId")
+            else -> null
         }
-        val mal = malId
-        if (mal != null && mal > 0) {
-            buttons.add(DiscordPresenceButton("View on MyAnimeList", "https://myanimelist.net/$kind/$mal"))
-        }
-        return buttons
+        return listOfNotNull(show, DiscordPresenceButton(APP_BUTTON_LABEL, APP_BUTTON_URL))
     }
 }
