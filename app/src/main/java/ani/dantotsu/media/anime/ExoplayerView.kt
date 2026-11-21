@@ -40,6 +40,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.withStarted
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.TimeBar
@@ -2541,6 +2542,12 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             if (ThemeReach.needsCheck(next.url)) {
                 val reach = ThemeReach.check(next.url, defaultHeaders)
                 if (reach != ThemeReachResult.Ok) return@launch onThemeFailed("check: $reach", reach)
+            }
+            if (!(this@ExoplayerView::playerManager.isInitialized && playerManager.isInitialized)) {
+                // Nothing plays yet: when the player was left while the first theme was still
+                // loading, the media service can't start from the background, so it would play
+                // with no notification to stop it. Start once the player is on screen again.
+                lifecycle.withStarted { }
             }
             loadTheme(track, next.url, themeLastPositionMs)
         }
