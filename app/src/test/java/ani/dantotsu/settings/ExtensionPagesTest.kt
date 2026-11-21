@@ -45,4 +45,41 @@ class ExtensionPagesTest {
         assertEquals(MediaType.MANGA, ExtensionPages.typeForTab(1))
         assertEquals(MediaType.NOVEL, ExtensionPages.typeForTab(99))
     }
+
+    @Test
+    fun `status index maps installed and available within a type`() {
+        assertEquals(ExtensionPages.STATUS_INSTALLED, ExtensionPages.statusIndexOf(installed = true))
+        assertEquals(ExtensionPages.STATUS_AVAILABLE, ExtensionPages.statusIndexOf(installed = false))
+        assertTrue(ExtensionPages.isInstalledStatusIndex(ExtensionPages.STATUS_INSTALLED))
+        assertFalse(ExtensionPages.isInstalledStatusIndex(ExtensionPages.STATUS_AVAILABLE))
+
+        for (type in ExtensionPages.TYPES) {
+            val installedPage = ExtensionPages.pageOfStatus(type, ExtensionPages.STATUS_INSTALLED)
+            val availablePage = ExtensionPages.pageOfStatus(type, ExtensionPages.STATUS_AVAILABLE)
+            assertEquals(ExtensionPages.pageOf(type, installed = true), installedPage)
+            assertEquals(ExtensionPages.pageOf(type, installed = false), availablePage)
+            assertEquals(ExtensionPages.STATUS_INSTALLED, ExtensionPages.statusIndexOf(installedPage))
+            assertEquals(ExtensionPages.STATUS_AVAILABLE, ExtensionPages.statusIndexOf(availablePage))
+            assertTrue(ExtensionPages.belongsToType(installedPage.toLong(), type))
+            assertTrue(ExtensionPages.belongsToType(availablePage.toLong(), type))
+            for (other in ExtensionPages.TYPES) {
+                if (other != type) {
+                    assertFalse(ExtensionPages.belongsToType(installedPage.toLong(), other))
+                    assertFalse(ExtensionPages.belongsToType(availablePage.toLong(), other))
+                }
+            }
+        }
+        assertFalse(ExtensionPages.belongsToType(-1L, MediaType.ANIME))
+        assertFalse(ExtensionPages.belongsToType(ExtensionPages.PAGE_COUNT.toLong(), MediaType.NOVEL))
+    }
+
+    @Test
+    fun `swipe axis classification protects vertical scrolling`() {
+        val slop = 24f
+        assertEquals(ExtensionPages.SwipeAxis.NONE, ExtensionPages.classifySwipeAxis(5f, 5f, slop))
+        assertEquals(ExtensionPages.SwipeAxis.VERTICAL, ExtensionPages.classifySwipeAxis(10f, 15f, slop))
+        assertEquals(ExtensionPages.SwipeAxis.VERTICAL, ExtensionPages.classifySwipeAxis(15f, 15f, slop))
+        assertEquals(ExtensionPages.SwipeAxis.HORIZONTAL, ExtensionPages.classifySwipeAxis(30f, 10f, slop))
+        assertEquals(ExtensionPages.SwipeAxis.NONE, ExtensionPages.classifySwipeAxis(20f, 10f, slop))
+    }
 }

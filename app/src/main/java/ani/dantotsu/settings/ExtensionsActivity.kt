@@ -1,10 +1,13 @@
 package ani.dantotsu.settings
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.AutoCompleteTextView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -19,6 +22,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.viewpager2.adapter.FragmentStateAdapter
+import androidx.viewpager2.widget.ViewPager2
 import ani.dantotsu.R
 import ani.dantotsu.databinding.ActivityExtensionsBinding
 import ani.dantotsu.initActivity
@@ -42,12 +46,22 @@ import eu.kanade.tachiyomi.extension.manga.MangaExtensionManager
 import kotlinx.coroutines.launch
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlin.math.abs
 
 class ExtensionsActivity : AppCompatActivity() {
     lateinit var binding: ActivityExtensionsBinding
 
     // Predictive back needs the callback disabled unless it will clear an active search query.
     private lateinit var clearSearchBackCallback: OnBackPressedCallback
+    private var currentType: MediaType = MediaType.ANIME
+
+    private var swipeAxis = ExtensionPages.SwipeAxis.NONE
+    private var swipePointerId = MotionEvent.INVALID_POINTER_ID
+    private var swipeDownX = 0f
+    private var swipeDownY = 0f
+    private var reorderDragging = false
+    private var verticalSwipeLocked = false
+    private val swipeTouchSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop.toFloat() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,27 +77,21 @@ class ExtensionsActivity : AppCompatActivity() {
             if (!hasPrefFragment) showSourcePreferences(false, null)
         }
 
+        val startPage = savedInstanceState?.getInt(KEY_PAGE) ?: 0
+        currentType = ExtensionPages.typeOf(startPage)
+        val startInstalled = ExtensionPages.isInstalled(startPage)
+        val startStatus = ExtensionPages.statusIndexOf(startInstalled)
+
+        // Single 2-page pager scoped to the active MediaType (Installed / Available) using
+        // stable 0..5 page ids. Chosen over: (a) 6-page boundary clamping, which visibly leaks
+        // the next type before snapping back; (b) nested 2-page pagers, which break Installed*
+        // fragments' parentFragmentManager transaction onto R.id.fragmentExtensionsContainer;
+        // (c) a GestureDetector fling, which lacks live finger-tracking and fights list touches.
         val viewPager = binding.viewPager
+        val pagerAdapter = StatusPagerAdapter(this, currentType)
         viewPager.offscreenPageLimit = 1
-        // Type and status are chosen with the controls; swiping between six
-        // pages would skip across types and fight the drag-to-reorder lists.
-        viewPager.isUserInputEnabled = false
-
-        viewPager.adapter = object : FragmentStateAdapter(this) {
-            override fun getItemCount(): Int = ExtensionPages.PAGE_COUNT
-
-            override fun createFragment(position: Int): Fragment {
-                return when (position) {
-                    0 -> InstalledAnimeExtensionsFragment()
-                    1 -> AnimeExtensionsFragment()
-                    2 -> InstalledMangaExtensionsFragment()
-                    3 -> MangaExtensionsFragment()
-                    4 -> InstalledNovelExtensionsFragment()
-                    5 -> NovelExtensionsFragment()
-                    else -> AnimeExtensionsFragment()
-                }
-            }
-        }
+        viewPager.isUserInputEnabled = true
+        viewPager.adapter = pagerAdapter
 
         val searchView: AutoCompleteTextView = binding.searchViewText
 
@@ -93,11 +101,7 @@ class ExtensionsActivity : AppCompatActivity() {
             tabs.addTab(tabs.newTab().setText(typeLabel(type)), false)
         }
 
-        val startPage = savedInstanceState?.getInt(KEY_PAGE) ?: 0
-        val startType = ExtensionPages.typeOf(startPage)
-        val startInstalled = ExtensionPages.isInstalled(startPage)
-
-        tabs.getTabAt(ExtensionPages.tabIndexOf(startType))?.select()
+        tabs.getTabAt(ExtensionPages.tabIndexOf(currentType))?.select()
         binding.extensionsStatusToggle.check(
             if (startInstalled) R.id.extensionsStatusInstalled else R.id.extensionsStatusAvailable
         )
@@ -105,28 +109,66 @@ class ExtensionsActivity : AppCompatActivity() {
             markSegment(button, null, button.isChecked)
         }
 
-        fun selectPage() {
-            val type = ExtensionPages.typeForTab(tabs.selectedTabPosition)
-            val installed = binding.extensionsStatusToggle.checkedButtonId != R.id.extensionsStatusAvailable
-            val page = ExtensionPages.pageOf(type, installed)
-            if (viewPager.currentItem != page) {
-                if (searchView.text.isNotEmpty()) searchView.setText("")
-                searchView.clearFocus()
-                viewPager.setCurrentItem(page, false)
-            }
+        var lastDisplayedPage = startPage
+
+        fun applyPageChrome(type: MediaType, installed: Boolean) {
             searchView.hint = getString(searchHint(type))
             binding.extensionsLanguageBar.isVisible = !installed
             if (!installed) updateLanguageChip()
         }
 
-        viewPager.setCurrentItem(startPage, false)
-        searchView.hint = getString(searchHint(startType))
-        binding.extensionsLanguageBar.isVisible = !startInstalled
-        updateLanguageChip()
+        fun selectPage(smoothStatusSwitch: Boolean) {
+            val type = ExtensionPages.typeForTab(tabs.selectedTabPosition)
+            val installed = binding.extensionsStatusToggle.checkedButtonId != R.id.extensionsStatusAvailable
+            val statusIndex = ExtensionPages.statusIndexOf(installed)
+            val page = ExtensionPages.pageOf(type, installed)
+            val previousPage = lastDisplayedPage
+
+            val typeChanged = pagerAdapter.setType(type)
+            currentType = type
+
+            if (page != previousPage) {
+                lastDisplayedPage = page
+                if (searchView.text.isNotEmpty()) {
+                    // During a swipe ViewPager2 has already moved to the new page, so reset
+                    // the outgoing page's filter too before clearing the search box.
+                    (supportFragmentManager.findFragmentByTag("f$previousPage") as? SearchQueryHandler)
+                        ?.updateContentBasedOnQuery("")
+                    searchView.setText("")
+                }
+                searchView.clearFocus()
+            }
+
+            if (typeChanged) {
+                viewPager.setCurrentItem(statusIndex, false)
+            } else if (viewPager.currentItem != statusIndex) {
+                viewPager.setCurrentItem(statusIndex, smoothStatusSwitch)
+            }
+            applyPageChrome(type, installed)
+        }
+
+        viewPager.setCurrentItem(startStatus, false)
+        applyPageChrome(currentType, startInstalled)
+
+        viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                val installed = ExtensionPages.isInstalledStatusIndex(position)
+                val targetButton = if (installed) {
+                    R.id.extensionsStatusInstalled
+                } else {
+                    R.id.extensionsStatusAvailable
+                }
+                if (binding.extensionsStatusToggle.checkedButtonId != targetButton) {
+                    binding.extensionsStatusToggle.check(targetButton)
+                } else {
+                    selectPage(smoothStatusSwitch = false)
+                }
+            }
+        })
 
         tabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
-                selectPage()
+                selectPage(smoothStatusSwitch = false)
             }
 
             override fun onTabUnselected(tab: TabLayout.Tab?) = Unit
@@ -135,7 +177,7 @@ class ExtensionsActivity : AppCompatActivity() {
 
         binding.extensionsStatusToggle.addOnButtonCheckedListener { group, id, isChecked ->
             markSegment(group.findViewById(id), null, isChecked)
-            if (isChecked) selectPage()
+            if (isChecked) selectPage(smoothStatusSwitch = true)
         }
 
         binding.extensionsLanguageChip.setOnClickListener {
@@ -145,7 +187,7 @@ class ExtensionsActivity : AppCompatActivity() {
         }
 
         binding.extensionsReposButton.setOnClickListener {
-            openRepositories(ExtensionPages.typeOf(binding.viewPager.currentItem))
+            openRepositories(currentType)
         }
         binding.extensionsMenuButton.setOnClickListener { showMenu(it) }
 
@@ -242,14 +284,92 @@ class ExtensionsActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putInt(KEY_PAGE, binding.viewPager.currentItem)
+        outState.putInt(KEY_PAGE, currentPage())
     }
 
+    private fun currentPage(): Int =
+        ExtensionPages.pageOfStatus(currentType, binding.viewPager.currentItem)
+
     private fun currentPageFragment(): Fragment? =
-        supportFragmentManager.findFragmentByTag("f${binding.viewPager.currentItem}")
+        supportFragmentManager.findFragmentByTag("f${currentPage()}")
+
+    private fun updatePagerUserInput() {
+        binding.viewPager.isUserInputEnabled = !reorderDragging && !verticalSwipeLocked
+    }
+
+    internal fun setReorderDragging(dragging: Boolean) {
+        if (reorderDragging == dragging) return
+        reorderDragging = dragging
+        if (::binding.isInitialized) updatePagerUserInput()
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (::binding.isInitialized && binding.viewPager.isVisible) {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    swipePointerId = ev.getPointerId(0)
+                    swipeDownX = ev.getX(0)
+                    swipeDownY = ev.getY(0)
+                    swipeAxis = if (binding.viewPager.scrollState != ViewPager2.SCROLL_STATE_IDLE) {
+                        ExtensionPages.SwipeAxis.HORIZONTAL
+                    } else {
+                        ExtensionPages.SwipeAxis.NONE
+                    }
+                    if (verticalSwipeLocked) {
+                        verticalSwipeLocked = false
+                        updatePagerUserInput()
+                    }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (swipeAxis == ExtensionPages.SwipeAxis.NONE && swipePointerId != MotionEvent.INVALID_POINTER_ID) {
+                        val idx = ev.findPointerIndex(swipePointerId)
+                        if (idx >= 0) {
+                            val dx = abs(ev.getX(idx) - swipeDownX)
+                            val dy = abs(ev.getY(idx) - swipeDownY)
+                            val axis = ExtensionPages.classifySwipeAxis(dx, dy, swipeTouchSlop)
+                            if (axis != ExtensionPages.SwipeAxis.NONE) {
+                                swipeAxis = axis
+                                if (axis == ExtensionPages.SwipeAxis.VERTICAL) {
+                                    verticalSwipeLocked = true
+                                    updatePagerUserInput()
+                                }
+                            }
+                        }
+                    }
+                }
+                MotionEvent.ACTION_POINTER_UP -> {
+                    val liftedIndex = ev.actionIndex
+                    if (ev.getPointerId(liftedIndex) == swipePointerId) {
+                        val replacementIndex = if (liftedIndex == 0) 1 else 0
+                        if (replacementIndex < ev.pointerCount) {
+                            swipePointerId = ev.getPointerId(replacementIndex)
+                            swipeDownX = ev.getX(replacementIndex)
+                            swipeDownY = ev.getY(replacementIndex)
+                        } else {
+                            swipePointerId = MotionEvent.INVALID_POINTER_ID
+                        }
+                    }
+                }
+            }
+        }
+        val shouldReset =
+            ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL
+        return try {
+            super.dispatchTouchEvent(ev)
+        } finally {
+            if (shouldReset) {
+                swipeAxis = ExtensionPages.SwipeAxis.NONE
+                swipePointerId = MotionEvent.INVALID_POINTER_ID
+                if (verticalSwipeLocked) {
+                    verticalSwipeLocked = false
+                    if (::binding.isInitialized) updatePagerUserInput()
+                }
+            }
+        }
+    }
 
     private fun showMenu(anchor: View) {
-        val page = binding.viewPager.currentItem
+        val page = currentPage()
         val type = ExtensionPages.typeOf(page)
         PopupMenu(this, anchor).apply {
             menu.add(0, MENU_REFRESH, 0, R.string.extensions_menu_refresh)
@@ -326,7 +446,14 @@ class ExtensionsActivity : AppCompatActivity() {
         binding.extensionsMenuButton.isVisible = !show
         binding.fragmentExtensionsContainer.isGone = !show
         binding.extensions.text = if (show && title != null) title else getString(R.string.extensions)
-        if (show) binding.searchViewText.clearFocus()
+        if (show) {
+            binding.searchViewText.clearFocus()
+            swipeAxis = ExtensionPages.SwipeAxis.NONE
+            swipePointerId = MotionEvent.INVALID_POINTER_ID
+            verticalSwipeLocked = false
+            reorderDragging = false
+            updatePagerUserInput()
+        }
         updateBackCallback()
     }
 
@@ -340,6 +467,38 @@ class ExtensionsActivity : AppCompatActivity() {
         MediaType.ANIME -> R.string.extensions_search_anime
         MediaType.MANGA -> R.string.extensions_search_manga
         MediaType.NOVEL -> R.string.extensions_search_novel
+    }
+
+    private class StatusPagerAdapter(
+        activity: AppCompatActivity,
+        private var type: MediaType,
+    ) : FragmentStateAdapter(activity) {
+        @SuppressLint("NotifyDataSetChanged")
+        fun setType(newType: MediaType): Boolean {
+            if (type == newType) return false
+            type = newType
+            notifyDataSetChanged()
+            return true
+        }
+
+        override fun getItemCount(): Int = ExtensionPages.STATUS_PAGE_COUNT
+
+        override fun getItemId(position: Int): Long =
+            ExtensionPages.pageOfStatus(type, position).toLong()
+
+        override fun containsItem(itemId: Long): Boolean =
+            ExtensionPages.belongsToType(itemId, type)
+
+        override fun createFragment(position: Int): Fragment =
+            when (ExtensionPages.pageOfStatus(type, position)) {
+                0 -> InstalledAnimeExtensionsFragment()
+                1 -> AnimeExtensionsFragment()
+                2 -> InstalledMangaExtensionsFragment()
+                3 -> MangaExtensionsFragment()
+                4 -> InstalledNovelExtensionsFragment()
+                5 -> NovelExtensionsFragment()
+                else -> AnimeExtensionsFragment()
+            }
     }
 
     private companion object {
