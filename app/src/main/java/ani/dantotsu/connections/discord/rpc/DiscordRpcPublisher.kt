@@ -175,7 +175,8 @@ object DiscordRpcPublisher {
         val number = DiscordProgressText.number(chapter.number)
         val details = chapter.title?.takeIf { it.isNotEmpty() }
             ?: ctx.getString(R.string.chapter_num, number)
-        val state = DiscordProgressText.progress("Chapter", number, media.manga?.totalChapters)
+        // Discord has no "Reading" activity type, so the card says it in the state line.
+        val state = DiscordProgressText.progress("Reading chapter", number, media.manga?.totalChapters)
 
         val presence = DiscordPresenceMapper.mangaPresence(
             name = media.userPreferredName,
