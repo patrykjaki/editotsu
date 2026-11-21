@@ -104,7 +104,7 @@ class MediaAdaptor(
                     val density = activity.resources.displayMetrics.density
                     if (media.id < 0) {
                         b.itemCompactTitle.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                            width = (108 * density).toInt()
+                            width = (102 * density).toInt()
                             height = (12 * density).toInt()
                             bottomMargin = (4 * density).toInt()
                             topMargin = (4 * density).toInt()
@@ -127,7 +127,7 @@ class MediaAdaptor(
                         b.itemCompactImage.setImageResource(R.drawable.skeleton_cover_placeholder)
                     } else {
                         b.itemCompactTitle.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                            width = (108 * density).toInt()
+                            width = (102 * density).toInt()
                             height = ViewGroup.LayoutParams.WRAP_CONTENT
                             bottomMargin = 0
                             topMargin = 0
@@ -537,11 +537,14 @@ class MediaAdaptor(
         val mode = CoverCountMode.of(PrefManager.getVal(PrefName.CoverEpisodeCount))
         val pill = b.itemCompactCoverCount
         val color = { attr: Int -> MaterialColors.getColor(pill, attr) }
-        // corner tab for the long count, a floating pill for the unseen number
+        // corner tab for the long count, a floating rounded square for the unseen number
         val floating = mode == CoverCountMode.NEW
         val dp = pill.resources.displayMetrics.density
         pill.setBackgroundResource(if (floating) R.drawable.cover_new_bg else R.drawable.cover_count_bg)
-        pill.setPaddingRelative((8 * dp).toInt(), 0, ((if (floating) 8 else 12) * dp).toInt(), 0)
+        pill.setPaddingRelative(((if (floating) 6 else 8) * dp).toInt(), 0, ((if (floating) 6 else 12) * dp).toInt(), 0)
+        // the new count is a square for one digit and grows wider for more
+        pill.minWidth = ((if (floating) 22 else 28) * dp).toInt()
+        pill.minimumWidth = pill.minWidth
         (pill.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
             val m = ((if (floating) 6 else 0) * dp).toInt()
             if (lp.marginStart != m || lp.topMargin != m) {
