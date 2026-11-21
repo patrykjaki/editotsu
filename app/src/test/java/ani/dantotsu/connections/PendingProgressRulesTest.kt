@@ -107,4 +107,17 @@ class PendingProgressRulesTest {
         val out = PendingProgressRules.applySyncResults(current, mapOf(a to null, b to null))
         assertEquals(listOf(newerA, c), out)
     }
+
+    @Test
+    fun `rescue mode without any account tracks nothing`() {
+        assertFalse(PendingProgressRules.tracksProgress(rescueMode = true, malSignedIn = false, anilistSignedIn = false))
+        assertFalse(PendingProgressRules.tracksProgress(rescueMode = false, malSignedIn = true, anilistSignedIn = false))
+    }
+
+    @Test
+    fun `rescue mode with either account keeps tracking`() {
+        assertTrue(PendingProgressRules.tracksProgress(rescueMode = true, malSignedIn = true, anilistSignedIn = false))
+        assertTrue(PendingProgressRules.tracksProgress(rescueMode = true, malSignedIn = false, anilistSignedIn = true))
+        assertTrue(PendingProgressRules.tracksProgress(rescueMode = false, malSignedIn = false, anilistSignedIn = true))
+    }
 }

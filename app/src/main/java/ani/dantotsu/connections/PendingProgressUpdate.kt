@@ -54,6 +54,13 @@ object PendingProgressRules {
     )
 
     /**
+     * Whether a watched episode is tracked at all. Rescue mode without any account is
+     * watch-only: nothing is queued, so signing in later can't write old progress to a list.
+     */
+    fun tracksProgress(rescueMode: Boolean, malSignedIn: Boolean, anilistSignedIn: Boolean): Boolean =
+        anilistSignedIn || (rescueMode && malSignedIn)
+
+    /**
      * Result of one progress update.
      *
      * Normal mode: AniList is the primary tracker, so local progress advances

@@ -72,7 +72,7 @@ fun updateProgress(media: Media, number: String) {
         ?: return
 
     if (!incognito) {
-        if (rescueMode || Anilist.userid != null) {
+        if (PendingProgressRules.tracksProgress(rescueMode, MAL.token != null, Anilist.token != null || Anilist.userid != null)) {
             val a = progressInt
             val status = if (media.userStatus == "REPEATING") media.userStatus!! else "CURRENT"
             CoroutineScope(Dispatchers.IO).launch {
@@ -125,7 +125,7 @@ fun updateProgress(media: Media, number: String) {
                 Anilist.query.invalidateUserStatusCache()
                 Refresh.all()
             }
-        } else {
+        } else if (!rescueMode) {
             toast(currContext()?.getString(R.string.login_anilist_account))
         }
     } else {

@@ -128,23 +128,9 @@ class SettingsDialogFragment : BottomSheetDialogFragment() {
             }
         }
 
-        val rescueModeOn: Boolean = PrefManager.getVal(PrefName.RescueMode)
-        binding.settingsRescueMode.isChecked = rescueModeOn
-        // without a MAL account the row stays greyed, but a tap starts MAL sign-in instead of doing nothing
-        val rescueAvailable = rescueSwitchEnabled(MAL.isLoggedIn(), rescueModeOn)
-        binding.settingsRescueMode.alpha = if (rescueAvailable) 1f else 0.38f
-        if (!rescueAvailable) {
-            androidx.core.view.ViewCompat.setStateDescription(
-                binding.settingsRescueMode, getString(R.string.rescue_mode_needs_mal)
-            )
-        }
-        binding.settingsRescueMode.setOnCheckedChangeListener { button, isChecked ->
-            if (!rescueAvailable) {
-                button.isChecked = false
-                MAL.loginIntent(requireContext())
-                dismiss()
-                return@setOnCheckedChangeListener
-            }
+        // Works signed out: browsing uses public MAL data, a MAL account only adds lists and tracking.
+        binding.settingsRescueMode.isChecked = PrefManager.getVal(PrefName.RescueMode)
+        binding.settingsRescueMode.setOnCheckedChangeListener { _, isChecked ->
             PrefManager.setVal(PrefName.RescueMode, isChecked)
             val main = activity as? MainActivity
             dismiss()
