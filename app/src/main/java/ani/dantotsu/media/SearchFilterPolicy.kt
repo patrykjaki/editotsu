@@ -209,7 +209,7 @@ object SearchFilterPolicy {
     /** Descending list of unique years from [maxYear] down to [minYear] (inclusive). */
     fun yearsDescending(maxYear: Int, minYear: Int = MIN_YEAR): List<Int> {
         if (maxYear < minYear) return emptyList()
-        return (minYear..maxYear).reversed()
+        return (maxYear downTo minYear).toList()
     }
 
     fun decadeOf(year: Int): Int = (year / 10) * 10

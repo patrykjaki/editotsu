@@ -49,7 +49,7 @@
                     android:layout_width="20dp"
                     android:layout_height="20dp"
                     android:contentDescription="@string/profile_view_all_stats"
-                    app:srcCompat="@drawable/ic_round_arrow_forward_ios_new_24"
+                    app:srcCompat="@drawable/ic_round_arrow_forward_ios_24"
                     app:tint="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
 
