@@ -13,31 +13,52 @@
         android:layout_width="32dp"
         android:layout_height="4dp"
         android:layout_gravity="center_horizontal"
-        android:layout_marginTop="14dp"
+        android:layout_marginTop="12dp"
         android:background="@drawable/shape_choice_handle"
         android:importantForAccessibility="no" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="4dp"
         android:gravity="center_vertical"
         android:minHeight="48dp"
         android:orientation="horizontal"
-        android:paddingStart="24dp"
-        android:paddingEnd="8dp">
+        android:paddingStart="16dp"
+        android:paddingEnd="4dp">
 
         <TextView
             android:id="@+id/genreTagTitle"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:accessibilityHeading="true"
             android:fontFamily="@font/poppins_bold"
             android:text="@string/genres_and_tags"
             android:textColor="?attr/colorOnSurface"
             android:textSize="20sp"
             tools:ignore="UnusedAttribute" />
+
+        <TextView
+            android:id="@+id/genreTagCount"
+            android:layout_width="wrap_content"
+            android:layout_height="22dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_genre_tag_count_pill"
+            android:fontFamily="@font/poppins_semi_bold"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:minWidth="24dp"
+            android:paddingHorizontal="8dp"
+            android:textColor="?attr/colorOnSecondaryContainer"
+            android:textSize="12sp"
+            android:visibility="gone"
+            tools:text="2"
+            tools:visibility="visible" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/genreTagReset"

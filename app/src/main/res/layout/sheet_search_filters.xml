@@ -1,87 +1,206 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Unified Search Filters bottom sheet: primary handle, title + reset icon, a chip row for Sort / Genres & tags / Adult, a divider, then chip sections (all filled in code). -->
+<!-- Compact single-screen Search Filters bottom sheet: handle, title + count badge + conditional reset icon,
+     primary dropdowns + adult toggle, common facet dropdowns, collapsible "More" rare facets, and one primary CTA. -->
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/searchFiltersRoot"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingBottom="16dp"
-    android:clipToPadding="false">
-
-<LinearLayout
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical">
-
-    <View
-        android:id="@+id/searchFiltersHandle"
-        android:layout_width="32dp"
-        android:layout_height="4dp"
-        android:layout_gravity="center_horizontal"
-        android:layout_marginTop="14dp"
-        android:background="@drawable/shape_choice_handle"
-        android:importantForAccessibility="no" />
+    android:clipToPadding="false"
+    android:paddingBottom="16dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:gravity="center_vertical"
-        android:minHeight="48dp"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="4dp">
+        android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/searchFiltersTitle"
-            android:layout_width="0dp"
+        <View
+            android:id="@+id/searchFiltersHandle"
+            android:layout_width="32dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/shape_choice_handle"
+            android:importantForAccessibility="no" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:accessibilityHeading="true"
-            android:fontFamily="@font/poppins_bold"
-            android:text="@string/search_filters"
-            android:textColor="?attr/colorOnSurface"
-            android:textSize="20sp"
-            tools:ignore="UnusedAttribute" />
+            android:layout_marginTop="4dp"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="4dp">
+
+            <TextView
+                android:id="@+id/searchFiltersTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:accessibilityHeading="true"
+                android:fontFamily="@font/poppins_bold"
+                android:text="@string/search_filters"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="20sp"
+                tools:ignore="UnusedAttribute" />
+
+            <TextView
+                android:id="@+id/searchFiltersCount"
+                android:layout_width="wrap_content"
+                android:layout_height="22dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_genre_tag_count_pill"
+                android:fontFamily="@font/poppins_semi_bold"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="24dp"
+                android:paddingHorizontal="8dp"
+                android:textColor="?attr/colorOnSecondaryContainer"
+                android:textSize="12sp"
+                android:visibility="gone"
+                tools:text="3"
+                tools:visibility="visible" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/searchFiltersReset"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/reset_filters"
+                android:tooltipText="@string/reset_filters"
+                android:visibility="gone"
+                app:icon="@drawable/ic_round_refresh_24"
+                app:iconTint="?attr/colorOnSurfaceVariant"
+                tools:ignore="UnusedAttribute"
+                tools:visibility="visible" />
+        </LinearLayout>
+
+        <!-- Primary controls: Sort, Genres & tags, and (when enabled) Adult toggle -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/searchFiltersPrimary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:paddingHorizontal="16dp"
+            app:chipSpacingHorizontal="8dp"
+            app:chipSpacingVertical="0dp" />
+
+        <View
+            android:id="@+id/searchFiltersDivider"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp"
+            android:background="?attr/colorOutlineVariant"
+            android:importantForAccessibility="no" />
+
+        <!-- Common facets: Format, Status, Year, Season (media-type aware) -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/searchFiltersCommon"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp"
+            app:chipSpacingHorizontal="8dp"
+            app:chipSpacingVertical="0dp" />
+
+        <!-- Rare facets (Source, Country, List): tucked behind one quiet disclosure row -->
+        <LinearLayout
+            android:id="@+id/searchFiltersMoreContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="4dp"
+                android:background="?attr/colorOutlineVariant"
+                android:importantForAccessibility="no" />
+
+            <LinearLayout
+                android:id="@+id/searchFiltersMoreHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:minHeight="48dp"
+                android:orientation="horizontal"
+                android:paddingStart="16dp"
+                android:paddingEnd="12dp">
+
+                <TextView
+                    android:id="@+id/searchFiltersMoreTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:includeFontPadding="false"
+                    android:text="@string/search_filters_more"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/searchFiltersMoreCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="22dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_genre_tag_count_pill"
+                    android:fontFamily="@font/poppins_semi_bold"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:minWidth="24dp"
+                    android:paddingHorizontal="8dp"
+                    android:textColor="?attr/colorOnSecondaryContainer"
+                    android:textSize="12sp"
+                    android:visibility="gone"
+                    tools:text="1"
+                    tools:visibility="visible" />
+
+                <ImageView
+                    android:id="@+id/searchFiltersMoreChevron"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="8dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_round_expand_more_24"
+                    app:tint="?attr/colorOnSurfaceVariant" />
+            </LinearLayout>
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/searchFiltersMoreGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="16dp"
+                android:visibility="gone"
+                app:chipSpacingHorizontal="8dp"
+                app:chipSpacingVertical="0dp"
+                tools:visibility="visible" />
+        </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/searchFiltersReset"
-            style="@style/Widget.Material3.Button.IconButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="@string/reset_filters"
-            android:tooltipText="@string/reset_filters"
-            android:visibility="gone"
-            app:icon="@drawable/ic_round_refresh_24"
-            app:iconTint="?attr/colorOnSurfaceVariant"
-            tools:ignore="UnusedAttribute"
-            tools:visibility="visible" />
+            android:id="@+id/searchFiltersApply"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:fontFamily="@font/poppins_semi_bold"
+            android:minHeight="48dp"
+            android:text="@string/search_show_results"
+            android:textAllCaps="false"
+            app:icon="@drawable/ic_check"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="18dp" />
     </LinearLayout>
-
-    <com.google.android.material.chip.ChipGroup
-        android:id="@+id/searchFiltersTop"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:paddingHorizontal="16dp"
-        app:chipSpacingHorizontal="8dp"
-        app:chipSpacingVertical="0dp" />
-
-    <View
-        android:id="@+id/searchFiltersDivider"
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginHorizontal="16dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="4dp"
-        android:background="?attr/colorOutlineVariant"
-        android:importantForAccessibility="no" />
-
-    <LinearLayout
-        android:id="@+id/searchFiltersSections"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical" />
-</LinearLayout>
 </androidx.core.widget.NestedScrollView>

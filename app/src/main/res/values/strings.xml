@@ -627,8 +627,8 @@
     <string name="filter">Filter</string>
     <string name="filter_on_list">List Filter</string>
     <string name="filter_on_list_all">All</string>
-    <string name="filter_on_list_in">In My List</string>
-    <string name="filter_on_list_not_in">Not In My List</string>
+    <string name="filter_on_list_in">In my list</string>
+    <string name="filter_on_list_not_in">Not in my list</string>
     <string name="filter_dubbed">Filter dubbed shows</string>
     <string name="carousel_clearlogo">Use Clearlogo in Carousel</string>
     <string name="carousel_clearlogo_desc">Displays clearlogo instead of anime title in the anime tab carousel when available</string>
@@ -2125,6 +2125,16 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="search_filters">Filters</string>
     <string name="search_filters_count">Filters · %1$d</string>
     <string name="search_filter_sort_chip">Sort: %1$s</string>
+    <string name="search_show_results">Show results</string>
+    <string name="search_filters_more">More</string>
+    <string name="search_filters_more_sources">More sources</string>
+    <string name="search_filter_selected_cd">%1$s: %2$s</string>
+    <string name="search_filter_clear_cd">Clear %1$s</string>
+    <string name="search_filter_decade">%1$ds</string>
+    <plurals name="search_filters_active_count_cd">
+        <item quantity="one">%d active filter</item>
+        <item quantity="other">%d active filters</item>
+    </plurals>
     <string name="search_see_all">See all %1$s</string>
     <string name="filter_on">On</string>
     <string name="filter_off">Off</string>

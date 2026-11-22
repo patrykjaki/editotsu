@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Compact 4-column Year grid picker with decade quick-jump chips and zero repeated years. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingBottom="12dp">
+
+    <View
+        android:id="@+id/yearPickerHandle"
+        android:layout_width="32dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/shape_choice_handle"
+        android:importantForAccessibility="no" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:gravity="center_vertical"
+        android:minHeight="48dp"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="4dp">
+
+        <TextView
+            android:id="@+id/yearPickerTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:accessibilityHeading="true"
+            android:fontFamily="@font/poppins_bold"
+            android:text="@string/year"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="20sp"
+            tools:ignore="UnusedAttribute" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/yearPickerClear"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/clear"
+            android:tooltipText="@string/clear"
+            android:visibility="gone"
+            app:icon="@drawable/ic_round_close_24"
+            app:iconTint="?attr/colorOnSurfaceVariant"
+            tools:ignore="UnusedAttribute"
+            tools:visibility="visible" />
+    </LinearLayout>
+
+    <HorizontalScrollView
+        android:id="@+id/yearPickerDecadesScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/yearPickerDecades"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/yearPickerGrid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:clipToPadding="false"
+        android:overScrollMode="ifContentScrolls"
+        android:paddingHorizontal="12dp"
+        android:paddingBottom="4dp"
+        android:scrollbars="vertical"
+        tools:listitem="@layout/item_year_cell" />
+</LinearLayout>
