@@ -2,7 +2,19 @@ package ani.dantotsu.media.anime.player
 
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.util.UnstableApi
+import android.os.Bundle
+import androidx.media3.common.Player
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import ani.dantotsu.R
+import ani.dantotsu.media.anime.pipSeekMs
+import ani.dantotsu.settings.saving.PrefManager
+import ani.dantotsu.settings.saving.PrefName
+import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import ani.dantotsu.defaultHeaders
 import ani.dantotsu.parsers.Subtitle
 import ani.dantotsu.parsers.Video
@@ -190,12 +202,26 @@ class DantotsuPlayerManager(
         becomingNoisyReceiver?.register(activity)
 
         try {
-            val adapter = PlaybackEngineMedia3Player(engine, coord, queue = mediaQueue)
+            // Episodes get seek back/forward on the session; theme mode keeps prev/next.
+            val episodeSeek = mediaQueue == null
+            val adapter = PlaybackEngineMedia3Player(
+                engine, coord, queue = mediaQueue,
+                seekIncrementMs = if (episodeSeek) {
+                    { pipSeekMs(PrefManager.getVal(PrefName.SeekTime)) }
+                } else null,
+            )
             this.media3PlayerAdapter = adapter
             val rightNow = Calendar.getInstance()
-            mediaSession = MediaSession.Builder(activity, adapter)
+            val builder = MediaSession.Builder(activity, adapter)
                 .setId(rightNow.timeInMillis.toString())
-                .build()
+            if (episodeSeek) {
+                // System controls drawn from the session (the PiP window on newer Android,
+                // media controls) only show prev/play/next and custom actions, never the
+                // rewind/fast-forward actions, so seek goes in as two custom buttons.
+                builder.setCallback(SeekButtonsCallback)
+                    .setMediaButtonPreferences(seekButtons())
+            }
+            mediaSession = builder.build()
         } catch (e: Exception) {
             toast(e.toString())
         }
@@ -241,4 +267,59 @@ class DantotsuPlayerManager(
     }
 
     fun isPlaying(): Boolean = playbackEngine?.isPlaying == true
+
+    private fun seekButtons(): ImmutableList<CommandButton> {
+        val seconds = ani.dantotsu.media.anime.pipSeekSeconds(PrefManager.getVal(PrefName.SeekTime))
+        return ImmutableList.of(
+            CommandButton.Builder(CommandButton.ICON_SKIP_BACK)
+                .setCustomIconResId(R.drawable.ic_round_fast_rewind_24)
+                .setDisplayName(activity.getString(R.string.pip_rewind, seconds))
+                .setSessionCommand(SEEK_BACK_COMMAND)
+                .setSlots(CommandButton.SLOT_BACK)
+                .build(),
+            CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD)
+                .setCustomIconResId(R.drawable.ic_round_fast_forward_24)
+                .setDisplayName(activity.getString(R.string.pip_forward, seconds))
+                .setSessionCommand(SEEK_FORWARD_COMMAND)
+                .setSlots(CommandButton.SLOT_FORWARD)
+                .build(),
+        )
+    }
+
+    private object SeekButtonsCallback : MediaSession.Callback {
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult =
+            MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(
+                    MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                        .add(SEEK_BACK_COMMAND)
+                        .add(SEEK_FORWARD_COMMAND)
+                        .build()
+                )
+                .build()
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<SessionResult> {
+            val player = session.player
+            when (customCommand.customAction) {
+                SEEK_BACK_COMMAND.customAction ->
+                    if (player.isCommandAvailable(Player.COMMAND_SEEK_BACK)) player.seekBack()
+                SEEK_FORWARD_COMMAND.customAction ->
+                    if (player.isCommandAvailable(Player.COMMAND_SEEK_FORWARD)) player.seekForward()
+                else -> return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+            }
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+    }
+
+    private companion object {
+        val SEEK_BACK_COMMAND = SessionCommand("ani.editotsu.SEEK_BACK", Bundle.EMPTY)
+        val SEEK_FORWARD_COMMAND = SessionCommand("ani.editotsu.SEEK_FORWARD", Bundle.EMPTY)
+    }
 }

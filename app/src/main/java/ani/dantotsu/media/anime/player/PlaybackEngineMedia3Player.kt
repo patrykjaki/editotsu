@@ -29,6 +29,11 @@ class PlaybackEngineMedia3Player(
     private val coordinator: PlaybackCoordinator? = null,
     looper: Looper = Looper.getMainLooper(),
     private val queue: MediaQueue? = null,
+    /**
+     * Seek-back/forward step for system controls (PiP window, media controls). Null leaves
+     * them out. Read per state build, so a changed seek setting applies without a restart.
+     */
+    private val seekIncrementMs: (() -> Long)? = null,
 ) : SimpleBasePlayer(looper), PlaybackListener {
 
     private val availableCommands = Commands.Builder()
@@ -46,6 +51,10 @@ class PlaybackEngineMedia3Player(
                 add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
                 add(Player.COMMAND_SEEK_TO_NEXT)
                 add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+            }
+            if (seekIncrementMs != null) {
+                add(Player.COMMAND_SEEK_BACK)
+                add(Player.COMMAND_SEEK_FORWARD)
             }
         }
         .build()
@@ -143,6 +152,10 @@ class PlaybackEngineMedia3Player(
             .setPlaybackState(playerState)
             .setPlaybackParameters(PlaybackParameters(engine.playbackSpeed))
             .setPlaylist(playlist)
+        seekIncrementMs?.invoke()?.takeIf { it > 0L }?.let { step ->
+            stateBuilder.setSeekBackIncrementMs(step)
+            stateBuilder.setSeekForwardIncrementMs(step)
+        }
 
         if (playlist.isNotEmpty()) {
             stateBuilder.setCurrentMediaItemIndex(if (playlist.size > 1) queueIndex else 0)

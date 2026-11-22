@@ -674,6 +674,7 @@ class MpvPlaybackEngine(
                 mpvClient.attachSurface(surface)
                 mpvClient.setPropertyString("force-window", "yes")
                 applyOutput(desiredOutput)
+                schedulePausedRedraw()
             } catch (_: Exception) {}
         } else {
             try {
@@ -701,7 +702,35 @@ class MpvPlaybackEngine(
     private fun setVideoSurfaceSizeInternal(width: Int, height: Int) {
         try {
             mpvClient.setPropertyString("android-surface-size", "${width}x${height}")
+            schedulePausedRedraw()
         } catch (_: Exception) {}
+    }
+
+    /** Engine thread. Set while a paused-frame redraw is queued, so a burst of surface events draws once. */
+    private var pausedRedrawQueued = false
+
+    /**
+     * mpv draws only when it has a new frame. While paused there is none, so after the surface
+     * is recreated (vo re-init) or resized (PiP enter/exit, the PiP menu) the window kept
+     * whatever the new buffer held: black or a garbled frame until playback moved. An exact
+     * seek to the current position decodes the paused frame again and draws it at the new size.
+     * Queued behind the surface events already posted, so it runs after the last of them.
+     */
+    private fun schedulePausedRedraw() {
+        if (pausedRedrawQueued) return
+        pausedRedrawQueued = true
+        engineDispatcher.post {
+            pausedRedrawQueued = false
+            if (releaseRequested.get() || !isInitialized) return@post
+            if (!isPausedInternal || pendingSurface?.isValid != true) return@post
+            if (currentSnapshot.playbackState !is PlaybackState.Ready) return@post
+            try {
+                val pos = mpvClient.getPropertyDouble("time-pos") ?: return@post
+                mpvClient.command("seek", pos.toString(), "absolute+exact")
+            } catch (e: Exception) {
+                ani.dantotsu.util.Logger.log("MpvPlaybackEngine: paused redraw failed: ${e.message}")
+            }
+        }
     }
 
     override fun setResizeMode(mode: ResizeMode) {

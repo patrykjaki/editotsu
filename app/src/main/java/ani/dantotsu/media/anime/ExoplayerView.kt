@@ -1779,13 +1779,30 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         }
     }
 
+    /** Play state and aspect ratio last sent to the PiP window; null = send on next update. */
+    private var sentPipState: Pair<Boolean, Rational>? = null
+
+    /**
+     * While in PiP, only the actions and aspect ratio change, and only when they differ from
+     * what the window has: every params update makes the system re-apply the window, and a
+     * pause/resume used to send three (one with a source-rect hint measured inside the small
+     * window, and an auto-enter flip), which could show a broken frame on the paused surface.
+     */
     private fun updatePipActions(isPlaying: Boolean = isPlayerPlaying) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) {
-            val params = android.app.PictureInPictureParams.Builder()
-                .setAspectRatio(getClampedAspectRatio(aspectRatio))
-                .setActions(buildPipActions(isPlaying))
-                .build()
-            setPictureInPictureParams(params)
+            val ratio = getClampedAspectRatio(aspectRatio)
+            val state = isPlaying to ratio
+            if (sentPipState == state) return
+            sentPipState = state
+            try {
+                val params = android.app.PictureInPictureParams.Builder()
+                    .setAspectRatio(ratio)
+                    .setActions(buildPipActions(isPlaying))
+                    .build()
+                setPictureInPictureParams(params)
+            } catch (e: Exception) {
+                Logger.log("updatePipActions failed: ${e.message}")
+            }
         }
     }
 
@@ -1862,6 +1879,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     private fun updatePipParams() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // The source-rect hint and auto-enter only matter for entering PiP.
+            if (isInPictureInPictureMode) {
+                updatePipActions(isPlayerPlaying)
+                return
+            }
             try {
                 val clampedRatio = getClampedAspectRatio(aspectRatio)
                 val builder = android.app.PictureInPictureParams.Builder()
@@ -2156,6 +2178,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        sentPipState = null
         if (isInPictureInPictureMode) {
             if (this::playerManager.isInitialized && playerManager.isInitialized) {
                 playerManager.playbackCoordinator?.setLifecycleSuppressed(false)
