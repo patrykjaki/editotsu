@@ -309,7 +309,7 @@ class MediaListDialogFragment : BottomSheetDialogFragment() {
                                         customList = media?.inCustomListsOf?.mapNotNull { if (it.value) it.key else null }
                                     )
                                 }
-                                MAL.query.editList(
+                                if (ani.dantotsu.connections.malUpdatesEnabled()) MAL.query.editList(
                                     media!!.idMAL,
                                     media!!.anime != null,
                                     progress,

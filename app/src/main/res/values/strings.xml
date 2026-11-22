@@ -1962,6 +1962,8 @@ Non quae tempore quo provident laudantium qui illo dolor vel quia dolor et exerc
     <string name="player_mode_not_available_drm">%1$s: not available for DRM playback</string>
     <string name="screenshot_not_ready">Player not ready</string>
     <string name="source_link_checking">Checking for a direct link…</string>
+    <string name="mal_follows_anilist">Update MyAnimeList too</string>
+    <string name="mal_follows_anilist_desc">Send episodes and list edits to both accounts</string>
     <string name="list_sync">Sync lists</string>
     <string name="list_sync_desc">Make your AniList and MyAnimeList lists match</string>
     <string name="list_sync_from">Copy from</string>

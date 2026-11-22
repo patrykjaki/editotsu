@@ -60,6 +60,10 @@ object PendingProgressRules {
     fun tracksProgress(rescueMode: Boolean, malSignedIn: Boolean, anilistSignedIn: Boolean): Boolean =
         anilistSignedIn || (rescueMode && malSignedIn)
 
+    /** Rescue mode has MAL as its primary tracker, so it always writes there. */
+    fun sendsToMal(rescueMode: Boolean, followsAniList: Boolean): Boolean =
+        rescueMode || followsAniList
+
     /**
      * Result of one progress update.
      *

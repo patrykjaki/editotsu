@@ -213,7 +213,7 @@ class MediaListDialogSmallFragment : BottomSheetDialogFragment() {
                             private = media.isListPrivate
                         )
                     }
-                    MAL.query.editList(
+                    if (ani.dantotsu.connections.malUpdatesEnabled()) MAL.query.editList(
                         media.idMAL,
                         media.anime != null,
                         progress,

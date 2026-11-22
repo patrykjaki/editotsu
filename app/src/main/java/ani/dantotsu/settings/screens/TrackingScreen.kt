@@ -79,6 +79,8 @@ object TrackingScreen : SettingsScreen("tracking", R.string.settings_tracking, R
                 keywords = listOf(R.string.accounts_keywords)) { host, view ->
                 bindAccounts(host, ItemSettingAccountsBinding.bind(view))
             },
+            switchRow(PrefName.MalFollowsAniList, R.string.mal_follows_anilist, R.string.mal_follows_anilist_desc,
+                R.drawable.ic_myanimelist, visible = { loggedIn() && MAL.isLoggedIn() }),
             actionRow("list_sync", R.string.list_sync, R.string.list_sync_desc, R.drawable.ic_round_sync_24,
                 visible = { loggedIn() && MAL.isLoggedIn() },
                 onClick = { host, _ ->

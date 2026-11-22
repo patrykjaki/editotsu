@@ -812,7 +812,7 @@ fun Media?.deleteFromList(
                     val removeList = PrefManager.getCustomVal<Set<String>>("removeList", emptySet())
                     PrefManager.setCustomVal("removeList", removeList.minus(media.id.toString()))
                     try {
-                        MAL.query.deleteList(media.anime != null, media.idMAL)
+                        if (ani.dantotsu.connections.malUpdatesEnabled()) MAL.query.deleteList(media.anime != null, media.idMAL)
                     } catch (_: Exception) { /* MAL delete failed; AniList sync still queued */ }
                     onSuccess()
                 } else {
@@ -820,7 +820,7 @@ fun Media?.deleteFromList(
                     _id?.let { listId ->
                         try {
                             Anilist.mutation.deleteList(listId)
-                            MAL.query.deleteList(media.anime != null, media.idMAL)
+                            if (ani.dantotsu.connections.malUpdatesEnabled()) MAL.query.deleteList(media.anime != null, media.idMAL)
 
                             val removeList = PrefManager.getCustomVal<Set<String>>("removeList", emptySet())
                             PrefManager.setCustomVal(

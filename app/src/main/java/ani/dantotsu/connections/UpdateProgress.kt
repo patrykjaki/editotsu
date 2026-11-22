@@ -21,6 +21,12 @@ import ani.dantotsu.download.findValidName
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
+/** Whether progress and list edits made in the app should also be written to MAL. */
+fun malUpdatesEnabled(): Boolean = PendingProgressRules.sendsToMal(
+    PrefManager.getVal(PrefName.RescueMode),
+    PrefManager.getVal(PrefName.MalFollowsAniList),
+)
+
 fun updateProgress(media: Media, number: String) {
     // M7A G2: unlinked synthetic entries never sync — first line, before any
     // prefs/network touch, so this holds for every caller even logged in.
@@ -83,7 +89,7 @@ fun updateProgress(media: Media, number: String) {
                         a,
                         status = status
                     )
-                    val malOk = MAL.query.editList(
+                    val malOk = !malUpdatesEnabled() || MAL.query.editList(
                         media.idMAL,
                         media.anime != null,
                         a, null,
@@ -224,7 +230,7 @@ private val pendingSyncRunning = java.util.concurrent.atomic.AtomicBoolean(false
 fun syncPendingProgressUpdates() {
     val rescueMode = PrefManager.getVal<Boolean>(PrefName.RescueMode)
     val canAnilist = !rescueMode && Anilist.userid != null
-    val canMal = MAL.token != null
+    val canMal = MAL.token != null && malUpdatesEnabled()
     if (!canAnilist && !canMal) return
     val work = PendingProgressStore.read().filter {
         (canAnilist && !it.anilistDone) || (canMal && it.malPending)

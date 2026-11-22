@@ -13,6 +13,13 @@ class PendingProgressRulesTest {
     )
 
     @Test
+    fun `mal gets updates only when enabled or in rescue mode`() {
+        assertTrue(PendingProgressRules.sendsToMal(rescueMode = false, followsAniList = true))
+        assertFalse(PendingProgressRules.sendsToMal(rescueMode = false, followsAniList = false))
+        assertTrue(PendingProgressRules.sendsToMal(rescueMode = true, followsAniList = false))
+    }
+
+    @Test
     fun `already ahead or equal is not sent`() {
         assertFalse(PendingProgressRules.shouldSend(4, 5))
         assertFalse(PendingProgressRules.shouldSend(5, 5))
