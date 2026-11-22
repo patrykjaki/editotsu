@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M3 dropdown chip for multi-state search filter facets (one touch target, arrow drawn in the label). -->
+<com.google.android.material.chip.Chip xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/Widget.Editotsu.Chip.Dropdown"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content" />

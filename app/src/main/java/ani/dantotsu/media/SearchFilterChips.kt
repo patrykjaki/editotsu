@@ -270,7 +270,7 @@ class SearchFilterChips(
         f.source?.let { src ->
             activeInputChip(
                 text = SearchFiltersSheet.pretty(src),
-                onTap = { SearchFiltersSheet.openSource(activity, f, onChanged) },
+                onTap = { SearchFiltersSheet.openSource(activity, f, onChanged, anime) },
                 onClear = {
                     f.source = null
                     onChanged()

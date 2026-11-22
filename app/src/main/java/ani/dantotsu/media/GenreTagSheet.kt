@@ -76,8 +76,14 @@ object GenreTagSheet {
         val dialog = BottomSheetDialog(context)
         val inflater = LayoutInflater.from(context)
         val b = SheetGenreTagBinding.inflate(inflater)
+        if (rescue) {
+            val genresWord = context.getString(R.string.genres)
+            b.genreTagTitle.text = genresWord
+            b.genreTagSearchText.hint = context.getString(R.string.search_hint, genresWord.lowercase())
+        }
 
-        fun hasAny() = incGenres.isNotEmpty() || excGenres.isNotEmpty() || incTags.isNotEmpty() || excTags.isNotEmpty()
+        fun selectedTotal() = incGenres.size + excGenres.size + incTags.size + excTags.size
+        fun hasAny() = selectedTotal() > 0
 
         fun markOf(entry: Entry): Mark = when (entry.kind) {
             Kind.GENRE -> GenreTagGroups.markOf(entry.name, incGenres, excGenres)
@@ -108,6 +114,13 @@ object GenreTagSheet {
                 ) as Chip
                 val isExclude = item.mark == Mark.EXCLUDE
                 chip.text = if (isExclude) "\u2212${item.entry.name}" else item.entry.name
+                if (isExclude) {
+                    val bg = MaterialColors.getColor(chip, com.google.android.material.R.attr.colorErrorContainer)
+                    val fg = MaterialColors.getColor(chip, com.google.android.material.R.attr.colorOnErrorContainer)
+                    chip.chipBackgroundColor = ColorStateList.valueOf(bg)
+                    chip.setTextColor(fg)
+                    chip.closeIconTint = ColorStateList.valueOf(fg)
+                }
                 chip.contentDescription = context.getString(
                     if (isExclude) R.string.genre_tag_excluded else R.string.genre_tag_included,
                     item.entry.name,
@@ -125,12 +138,26 @@ object GenreTagSheet {
             }
         }
 
+        fun renderHeaderCount() {
+            val total = selectedTotal()
+            b.genreTagReset.isVisible = total > 0
+            b.genreTagCount.isVisible = total > 0
+            if (total > 0) {
+                b.genreTagCount.text = total.toString()
+                b.genreTagCount.contentDescription = context.resources.getQuantityString(
+                    R.plurals.search_filters_active_count_cd,
+                    total,
+                    total,
+                )
+            }
+        }
+
         syncToFilters = { refreshList ->
             filters.genres = incGenres.toMutableList()
             filters.excludedGenres = excGenres.toMutableList()
             filters.tags = incTags.toMutableList()
             filters.excludedTags = excTags.toMutableList()
-            b.genreTagReset.isVisible = hasAny()
+            renderHeaderCount()
             renderSelectedRow()
             if (refreshList) adapter.notifyDataSetChanged()
             onChanged()
@@ -159,7 +186,7 @@ object GenreTagSheet {
         b.genreTagList.adapter = adapter
         b.genreTagList.itemAnimator = null
 
-        b.genreTagReset.isVisible = hasAny()
+        renderHeaderCount()
         renderSelectedRow()
         b.genreTagReset.setOnClickListener {
             incGenres.clear()
@@ -235,9 +262,9 @@ object GenreTagSheet {
                 chip.contentDescription = ctx.getString(R.string.genre_tag_included, entry.name)
             }
             Mark.EXCLUDE -> {
-                val fg = MaterialColors.getColor(chip, com.google.android.material.R.attr.colorOnSecondaryContainer)
+                val fg = MaterialColors.getColor(chip, com.google.android.material.R.attr.colorOnErrorContainer)
                 chip.chipBackgroundColor = ColorStateList.valueOf(
-                    MaterialColors.getColor(chip, com.google.android.material.R.attr.colorSecondaryContainer),
+                    MaterialColors.getColor(chip, com.google.android.material.R.attr.colorErrorContainer),
                 )
                 chip.chipStrokeWidth = 0f
                 chip.setTextColor(fg)

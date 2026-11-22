@@ -11,6 +11,7 @@ import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.AnilistSearch.SearchType
 import ani.dantotsu.media.GenreTagSheet
 import ani.dantotsu.media.SearchActivity
+import ani.dantotsu.media.SearchFilterPolicy
 import ani.dantotsu.media.SearchFiltersSheet
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
@@ -48,6 +49,7 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
 
     @After
     fun restoreThemePrefs() {
+        SearchFilterPolicy.resetSessionMemory()
         PrefManager.setVal(PrefName.Theme, "OCEAN")
         PrefManager.setVal(PrefName.UseOLED, false)
         PrefManager.setVal(PrefName.UseCustomTheme, false)
@@ -170,7 +172,7 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
     }
 
     @Test
-    fun `filters sheet shows a dropdown chip row and chip sections and reset clears them live`() {
+    fun `filters sheet shows compact dropdown facets, collapsible more, long-press clear, reset and commits on dismiss`() {
         val activity = Robolectric.buildActivity(SearchActivity::class.java).setup().get()
         activity.aniMangaResult.genres = mutableListOf("Action")
         activity.aniMangaResult.format = "TV"
@@ -182,48 +184,101 @@ class SearchFiltersScreenshotTest : ScreenshotTest() {
         assertEquals("Filters · 3", chips(chipRow)[1].text.toString())
         assertEquals(listOf("Action", "TV", "2024"), chips(chipRow).drop(2).map { it.text.toString() })
 
+        var commitCount = 0
         val sheet = SearchFiltersSheet.show(activity, SearchType.ANIME, activity.aniMangaResult) {
+            commitCount++
             activity.updateChips()
         }!!
         idle()
 
-        // Top row: Sort and Genres & tags as dropdown chips (label kept as the content description).
-        val top = sheet.findViewById<ChipGroup>(R.id.searchFiltersTop)!!
-        fun topChips() = (0 until top.childCount).map { top.getChildAt(it) as Chip }
-        val defaultSort = SearchFiltersSheet.sortLabel(activity, SearchFiltersSheet.DEFAULT_SORT)
-        assertEquals(listOf(defaultSort, "Action"), topChips().take(2).map { it.contentDescription.toString() })
-        assertEquals(listOf(false, true), topChips().take(2).map { it.isChecked })
+        val countBadge = sheet.findViewById<TextView>(R.id.searchFiltersCount)!!
+        assertEquals(View.VISIBLE, countBadge.visibility)
+        assertEquals("3", countBadge.text.toString())
 
-        // Format, status, season, year, ... are chip sections in the sheet; the set ones are checked.
-        val sections = sheet.findViewById<LinearLayout>(R.id.searchFiltersSections)!!
-        fun sectionChips() = (0 until sections.childCount).map { sections.getChildAt(it) }
-            .filterIsInstance<ChipGroup>().flatMap { g -> (0 until g.childCount).map { g.getChildAt(it) as Chip } }
-        fun checked() = sectionChips().filter { it.isChecked }.map { it.text.toString() }
-        assertEquals(listOf("TV", "2024"), checked())
-        // older years sit behind one dropdown chip after the recent ones
-        assertTrue(sectionChips().any { it.contentDescription?.toString() == "Older" })
+        val primary = sheet.findViewById<ChipGroup>(R.id.searchFiltersPrimary)!!
+        fun groupChips(group: ChipGroup) = (0 until group.childCount).map { group.getChildAt(it) as Chip }
+        assertEquals(listOf("Sort", "Genres & tags: Action"), groupChips(primary).take(2).map { it.contentDescription.toString() })
+        assertEquals(listOf(false, true), groupChips(primary).take(2).map { it.isChecked })
 
-        // Tapping the chosen chip again goes back to Any; tapping another picks it.
-        sectionChips().first { it.text.toString() == "TV" }.performClick()
+        val common = sheet.findViewById<ChipGroup>(R.id.searchFiltersCommon)!!
+        assertEquals(
+            listOf("Format: TV", "Status", "Year: 2024", "Season"),
+            groupChips(common).map { it.contentDescription.toString() },
+        )
+        assertEquals(listOf(true, false, true, false), groupChips(common).map { it.isChecked })
+
+        // Rare filters stay collapsed behind "More" by default when none are set.
+        val moreGroup = sheet.findViewById<ChipGroup>(R.id.searchFiltersMoreGroup)!!
+        assertEquals(View.GONE, moreGroup.visibility)
+        sheet.findViewById<View>(R.id.searchFiltersMoreHeader)!!.performClick()
+        idle()
+        assertEquals(View.VISIBLE, moreGroup.visibility)
+        assertTrue(groupChips(moreGroup).map { it.contentDescription.toString() }.containsAll(listOf("Source", "Country")))
+
+        // Long-pressing an active dropdown chip clears just that filter.
+        groupChips(common).first { it.contentDescription.toString() == "Format: TV" }.performLongClick()
         idle()
         assertEquals(null, activity.aniMangaResult.format)
-        sectionChips().first { it.text.toString() == "Movie" }.performClick()
-        idle()
-        assertEquals("MOVIE", activity.aniMangaResult.format)
-        assertEquals(listOf("Movie", "2024"), checked())
+        assertEquals("2", countBadge.text.toString())
+        assertEquals("Format", groupChips(common)[0].contentDescription.toString())
+        assertFalse(groupChips(common)[0].isChecked)
 
+        // Reset clears all filters inside the sheet and hides the reset icon and count pill.
         val reset = sheet.findViewById<View>(R.id.searchFiltersReset)!!
         assertEquals(View.VISIBLE, reset.visibility)
         reset.performClick()
         idle()
-
         assertEquals(View.GONE, reset.visibility)
-        assertEquals(emptyList<String>(), checked())
+        assertEquals(View.GONE, countBadge.visibility)
+        assertTrue(groupChips(common).none { it.isChecked })
+        assertTrue(groupChips(primary).none { it.isChecked })
+
+        // Primary CTA ("Show results") commits once and dismisses.
+        assertEquals(0, commitCount)
+        sheet.findViewById<View>(R.id.searchFiltersApply)!!.performClick()
+        idle()
+        assertEquals(1, commitCount)
         assertEquals(2, chips(chipRow).size)
         assertEquals("Filters", chips(chipRow)[1].text.toString())
-        assertEquals(listOf(defaultSort, "Genres & tags"), topChips().take(2).map { it.contentDescription.toString() })
-        assertTrue(topChips().none { it.isChecked })
-        sheet.dismiss()
+    }
+
+    @Test
+    fun `filters sheet hides non-applicable facets on manga and rescue, and swipe dismiss preserves choices`() {
+        val mangaIntent = Intent().putExtra("type", "MANGA")
+        val activity = Robolectric.buildActivity(SearchActivity::class.java, mangaIntent).setup().get()
+        idle()
+
+        var commits = 0
+        val mangaSheet = SearchFiltersSheet.show(activity, SearchType.MANGA, activity.aniMangaResult, rescue = false) {
+            commits++
+            activity.updateChips()
+        }!!
+        idle()
+
+        val common = mangaSheet.findViewById<ChipGroup>(R.id.searchFiltersCommon)!!
+        val commonLabels = (0 until common.childCount).map { (common.getChildAt(it) as Chip).contentDescription.toString() }
+        assertEquals(listOf("Format", "Status", "Year"), commonLabels)
+
+        // Pick a year via the compact 4-column Year grid picker (no duplicate years) and swipe-dismiss the sheet.
+        val yearPicker = SearchFiltersSheet.openYear(activity, anime = false, activity.aniMangaResult) {}!!
+        idle()
+        val yearGrid = yearPicker.findViewById<RecyclerView>(R.id.yearPickerGrid)!!
+        settle(yearGrid)
+        yearGrid.findViewHolderForAdapterPosition(0)!!.itemView.performClick()
+        idle()
+        assertNotNull(activity.aniMangaResult.startYear)
+
+        // Dismissing the main sheet without tapping "Show results" still preserves and commits choices.
+        mangaSheet.dismiss()
+        idle()
+        assertEquals(1, commits)
+        assertNotNull(activity.aniMangaResult.startYear)
+
+        // Rescue mode hides the entire "More" section (Source, Country, List).
+        val rescueSheet = SearchFiltersSheet.show(activity, SearchType.ANIME, activity.aniMangaResult, rescue = true) {}!!
+        idle()
+        assertEquals(View.GONE, rescueSheet.findViewById<View>(R.id.searchFiltersMoreContainer)!!.visibility)
+        rescueSheet.dismiss()
     }
 
     @Test

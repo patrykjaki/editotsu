@@ -3,13 +3,11 @@ package ani.dantotsu.media
 import android.app.Activity
 import android.content.Context
 import android.content.res.ColorStateList
-import android.os.Build
 import android.text.TextUtils
+import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
 import android.view.View
-import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.core.content.res.ResourcesCompat
+import androidx.annotation.DrawableRes
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
@@ -19,9 +17,8 @@ import ani.dantotsu.connections.anilist.AniMangaSearchResults
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.AnilistSearch.SearchType
 import ani.dantotsu.databinding.SheetSearchFiltersBinding
+import ani.dantotsu.media.SearchFilterPolicy.Facet
 import ani.dantotsu.others.setDropdownText
-import ani.dantotsu.settings.rows.ChoiceOption
-import ani.dantotsu.settings.rows.ChoiceSheet
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -29,16 +26,21 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.color.MaterialColors
-import java.util.Calendar
 
 /**
- * Unified Search Filters bottom sheet, all chips: Sort and Genres & tags as dropdown chips that open
- * their own sheet, Adult as an on/off chip, then the short-choice filters (format, status, season,
- * year, source, country, list) as single-select chip sections. Changes update the live results at once.
+ * Compact single-screen Search Filters bottom sheet:
+ * - Primary row: Sort, Genres & tags (dropdown chips) and Adult (binary filter chip, when enabled).
+ * - Common facets: Format, Status, Year, Season (dropdown chips, hidden when not applicable to type/mode).
+ * - Collapsible "More": Source, Country, List (hidden in Rescue mode; auto-expanded if any is set).
+ * - Single primary "Show results" CTA and conditional header Reset icon button.
+ *
+ * Choices stay live on [filters] as you pick facets and commit once when the sheet closes (via
+ * "Show results", swipe-down, scrim tap, or Back), so swiping down never loses choices and picking
+ * multiple facets fires at most one search. Back from any facet picker returns to this sheet.
  */
 object SearchFiltersSheet {
 
-    const val DEFAULT_SORT = "POPULARITY_DESC"
+    const val DEFAULT_SORT = SearchFilterPolicy.DEFAULT_SORT
 
     private val COUNTRY_CODES = listOf("JP", "KR", "CN", "TW")
     private val COUNTRY_LABEL_RES = listOf(
@@ -57,24 +59,276 @@ object SearchFiltersSheet {
     ): BottomSheetDialog? {
         if (context is Activity && (context.isFinishing || context.isDestroyed)) return null
         val anime = type == SearchType.ANIME
+        val signedIn = Anilist.userid != null
+        val adultEnabled = Anilist.adult
+        val initialSnapshot = SearchFilterPolicy.FilterSnapshot.from(filters)
+        var moreExpanded = SearchFilterPolicy.shouldExpandMore(
+            filters = filters,
+            userExpanded = SearchFilterPolicy.moreExpanded,
+            rescue = rescue,
+            signedIn = signedIn,
+        )
+        var committed = false
 
         val dialog = BottomSheetDialog(context)
         val b = SheetSearchFiltersBinding.inflate(LayoutInflater.from(context))
 
-        fun sync() {
-            b.searchFiltersReset.isVisible = SearchStatePolicy.hasActiveFilters(filters)
-            val mutated = {
-                sync()
-                onChanged()
+        fun hasGenreData(): Boolean = !Anilist.genres.isNullOrEmpty() ||
+            (!rescue && !Anilist.tags?.get(filters.isAdult).isNullOrEmpty()) ||
+            !filters.genres.isNullOrEmpty() || !filters.tags.isNullOrEmpty() ||
+            !filters.excludedGenres.isNullOrEmpty() || !filters.excludedTags.isNullOrEmpty()
+
+        lateinit var sync: () -> Unit
+
+        fun openFacet(facet: Facet) {
+            when (facet) {
+                Facet.SORT -> openSort(context, filters, sync)
+                Facet.GENRES_TAGS -> GenreTagSheet.show(context, filters, rescue, sync)
+                Facet.ADULT -> {
+                    filters.isAdult = !filters.isAdult
+                    sync()
+                }
+                Facet.FORMAT -> openFormat(context, anime, filters, sync)
+                Facet.STATUS -> openStatus(context, anime, filters, sync)
+                Facet.YEAR -> openYear(context, anime, filters, sync)
+                Facet.SEASON -> openSeason(context, filters, sync)
+                Facet.SOURCE -> openSource(context, filters, sync, anime)
+                Facet.COUNTRY -> openCountry(context, filters, sync)
+                Facet.LIST -> openList(context, filters, sync)
             }
-            buildTop(context, b.searchFiltersTop, filters, rescue, mutated)
-            buildSections(context, b.searchFiltersSections, anime, filters, rescue, mutated)
+        }
+
+        fun clearFacet(facet: Facet) {
+            when (facet) {
+                Facet.SORT -> filters.sort = null
+                Facet.GENRES_TAGS -> {
+                    filters.genres = null
+                    filters.excludedGenres = null
+                    filters.tags = null
+                    filters.excludedTags = null
+                }
+                Facet.ADULT -> filters.isAdult = false
+                Facet.FORMAT -> filters.format = null
+                Facet.STATUS -> filters.status = null
+                Facet.YEAR -> if (anime) filters.seasonYear = null else filters.startYear = null
+                Facet.SEASON -> filters.season = null
+                Facet.SOURCE -> filters.source = null
+                Facet.COUNTRY -> filters.countryOfOrigin = null
+                Facet.LIST -> filters.onList = null
+            }
+            sync()
+        }
+
+        fun addFacetChip(inflater: LayoutInflater, group: ChipGroup, facet: Facet) {
+            when (facet) {
+                Facet.ADULT -> {
+                    val label = context.getString(R.string.adult)
+                    binaryChip(inflater, group, label, filters.isAdult) {
+                        openFacet(Facet.ADULT)
+                    }
+                }
+                Facet.SORT -> {
+                    val active = SearchFilterPolicy.normalizeSort(filters.sort) != null
+                    val label = sortLabel(context, filters.sort ?: DEFAULT_SORT)
+                    dropdownChip(
+                        inflater = inflater,
+                        group = group,
+                        facetName = context.getString(R.string.chip_sort),
+                        label = label,
+                        selected = active,
+                        unselectedIcon = R.drawable.ic_round_sort_24,
+                        onTap = { openFacet(Facet.SORT) },
+                        onClear = if (active) ({ clearFacet(Facet.SORT) }) else null,
+                    )
+                }
+                Facet.GENRES_TAGS -> {
+                    val inc = filters.genres.orEmpty() + if (rescue) emptyList() else filters.tags.orEmpty()
+                    val exc = filters.excludedGenres.orEmpty() + if (rescue) emptyList() else filters.excludedTags.orEmpty()
+                    val summary = GenreTagGroups.summary(inc, exc)
+                    val facetName = context.getString(if (rescue) R.string.genres else R.string.genres_and_tags)
+                    val selected = summary != null
+                    dropdownChip(
+                        inflater = inflater,
+                        group = group,
+                        facetName = facetName,
+                        label = summary ?: facetName,
+                        selected = selected,
+                        unselectedIcon = R.drawable.ic_label_24,
+                        onTap = { openFacet(Facet.GENRES_TAGS) },
+                        onClear = if (selected) ({ clearFacet(Facet.GENRES_TAGS) }) else null,
+                    ).apply {
+                        ellipsize = TextUtils.TruncateAt.END
+                        maxWidth = (260 * context.resources.displayMetrics.density).toInt()
+                    }
+                }
+                Facet.FORMAT -> {
+                    val facetName = context.getString(R.string.format)
+                    val value = filters.format?.let(::pretty)
+                    dropdownChip(
+                        inflater = inflater,
+                        group = group,
+                        facetName = facetName,
+                        label = value ?: facetName,
+                        selected = value != null,
+                        onTap = { openFacet(Facet.FORMAT) },
+                        onClear = if (value != null) ({ clearFacet(Facet.FORMAT) }) else null,
+                    )
+                }
+                Facet.STATUS -> {
+                    val facetName = context.getString(R.string.chip_status)
+                    val value = filters.status?.let(::pretty)
+                    dropdownChip(
+                        inflater = inflater,
+                        group = group,
+                        facetName = facetName,
+                        label = value ?: facetName,
+                        selected = value != null,
+                        onTap = { openFacet(Facet.STATUS) },
+                        onClear = if (value != null) ({ clearFacet(Facet.STATUS) }) else null,
+                    )
+                }
+                Facet.YEAR -> {
+                    val facetName = context.getString(R.string.year)
+                    val year = if (anime) filters.seasonYear else filters.startYear
+                    dropdownChip(
+                        inflater = inflater,
+                        group = group,
+                        facetName = facetName,
+                        label = year?.toString() ?: facetName,
+                        selected = year != null,
+                        onTap = { openFacet(Facet.YEAR) },
+                        onClear = if (year != null) ({ clearFacet(Facet.YEAR) }) else null,
+                    )
+                }
+                Facet.SEASON -> {
+                    val facetName = context.getString(R.string.season)
+                    val value = filters.season?.let(::pretty)
+                    dropdownChip(
+                        inflater = inflater,
+                        group = group,
+                        facetName = facetName,
+                        label = value ?: facetName,
+                        selected = value != null,
+                        onTap = { openFacet(Facet.SEASON) },
+                        onClear = if (value != null) ({ clearFacet(Facet.SEASON) }) else null,
+                    )
+                }
+                Facet.SOURCE -> {
+                    val facetName = context.getString(R.string.source)
+                    val value = filters.source?.let(::pretty)
+                    dropdownChip(
+                        inflater = inflater,
+                        group = group,
+                        facetName = facetName,
+                        label = value ?: facetName,
+                        selected = value != null,
+                        onTap = { openFacet(Facet.SOURCE) },
+                        onClear = if (value != null) ({ clearFacet(Facet.SOURCE) }) else null,
+                    )
+                }
+                Facet.COUNTRY -> {
+                    val facetName = context.getString(R.string.chip_country)
+                    val value = countryLabel(context, filters.countryOfOrigin)
+                    dropdownChip(
+                        inflater = inflater,
+                        group = group,
+                        facetName = facetName,
+                        label = value ?: facetName,
+                        selected = value != null,
+                        onTap = { openFacet(Facet.COUNTRY) },
+                        onClear = if (value != null) ({ clearFacet(Facet.COUNTRY) }) else null,
+                    )
+                }
+                Facet.LIST -> {
+                    val facetName = context.getString(R.string.list)
+                    val value = listLabel(context, filters.onList)
+                    dropdownChip(
+                        inflater = inflater,
+                        group = group,
+                        facetName = facetName,
+                        label = value ?: facetName,
+                        selected = value != null,
+                        onTap = { openFacet(Facet.LIST) },
+                        onClear = if (value != null) ({ clearFacet(Facet.LIST) }) else null,
+                    )
+                }
+            }
+        }
+
+        sync = sync@{
+            if (context is Activity && (context.isFinishing || context.isDestroyed)) return@sync
+            val inflater = LayoutInflater.from(context)
+            val activeCount = SearchFilterPolicy.applicableActiveCount(
+                filters = filters,
+                anime = anime,
+                rescue = rescue,
+                signedIn = signedIn,
+                adultEnabled = adultEnabled,
+            )
+            b.searchFiltersCount.isVisible = activeCount > 0
+            if (activeCount > 0) {
+                b.searchFiltersCount.text = activeCount.toString()
+                b.searchFiltersCount.contentDescription = context.resources.getQuantityString(
+                    R.plurals.search_filters_active_count_cd,
+                    activeCount,
+                    activeCount,
+                )
+            }
+            b.searchFiltersReset.isVisible = activeCount > 0 || SearchStatePolicy.hasActiveFilters(filters)
+
+            b.searchFiltersPrimary.removeAllViews()
+            SearchFilterPolicy.visiblePrimaryFacets(hasGenreData(), adultEnabled).forEach { facet ->
+                addFacetChip(inflater, b.searchFiltersPrimary, facet)
+            }
+
+            b.searchFiltersCommon.removeAllViews()
+            SearchFilterPolicy.visibleCommonFacets(anime, rescue).forEach { facet ->
+                addFacetChip(inflater, b.searchFiltersCommon, facet)
+            }
+
+            val moreFacets = SearchFilterPolicy.visibleMoreFacets(rescue, signedIn)
+            b.searchFiltersMoreContainer.isVisible = moreFacets.isNotEmpty()
+            if (moreFacets.isNotEmpty()) {
+                val moreActive = SearchFilterPolicy.activeMoreCount(filters, rescue, signedIn)
+                b.searchFiltersMoreCount.isVisible = !moreExpanded && moreActive > 0
+                if (moreActive > 0) b.searchFiltersMoreCount.text = moreActive.toString()
+                b.searchFiltersMoreChevron.rotation = if (moreExpanded) 180f else 0f
+                ViewCompat.setStateDescription(
+                    b.searchFiltersMoreHeader,
+                    context.getString(if (moreExpanded) R.string.genre_tag_expanded else R.string.genre_tag_collapsed),
+                )
+                b.searchFiltersMoreGroup.isVisible = moreExpanded
+                b.searchFiltersMoreGroup.removeAllViews()
+                if (moreExpanded) {
+                    moreFacets.forEach { facet ->
+                        addFacetChip(inflater, b.searchFiltersMoreGroup, facet)
+                    }
+                }
+            }
+        }
+
+        b.searchFiltersMoreHeader.setOnClickListener {
+            moreExpanded = !moreExpanded
+            SearchFilterPolicy.moreExpanded = moreExpanded
+            sync()
         }
 
         b.searchFiltersReset.setOnClickListener {
             SearchStatePolicy.clearFilters(filters)
             sync()
-            onChanged()
+        }
+
+        b.searchFiltersApply.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialog.setOnDismissListener {
+            if (!committed) {
+                committed = true
+                if (initialSnapshot.differsFrom(filters)) {
+                    onChanged()
+                }
+            }
         }
 
         sync()
@@ -98,21 +352,20 @@ object SearchFiltersSheet {
         return dialog
     }
 
-    /** A chip from the shared filter-chip layout; [dropdown] chips draw ▾ after the label and open a sheet. */
-    private fun filterChip(
+    /** Binary on/off M3 filter chip (e.g. Adult). */
+    private fun binaryChip(
         inflater: LayoutInflater,
         group: ChipGroup,
         label: CharSequence,
         checked: Boolean,
-        dropdown: Boolean = false,
         onClick: () -> Unit,
     ): Chip {
         val chip = inflater.inflate(R.layout.item_picker_filter_chip, group, false) as Chip
         chip.id = View.generateViewId()
-        if (dropdown) chip.setDropdownText(label) else chip.text = label
+        chip.text = label
+        chip.contentDescription = label
         chip.isChecked = checked
         chip.setOnClickListener {
-            // the state comes from the filters, not from the tap: a cancelled sheet leaves it as it was
             chip.isChecked = checked
             onClick()
         }
@@ -120,158 +373,52 @@ object SearchFiltersSheet {
         return chip
     }
 
-    /**
-     * The top row: Sort and Genres & tags as dropdown chips (they open their own sheet), Adult as an
-     * on/off chip. Same chip family as the sections below, so the sheet reads as one set of controls.
-     */
-    private fun buildTop(
-        context: Context,
+    /** M3 dropdown chip with one touch target: unselected = [unselectedIcon] + label + ▾; selected = ✓ + value + ▾. */
+    private fun dropdownChip(
+        inflater: LayoutInflater,
         group: ChipGroup,
-        f: AniMangaSearchResults,
-        rescue: Boolean,
-        onMutated: () -> Unit,
-    ) {
-        group.removeAllViews()
-        val inflater = LayoutInflater.from(context)
-
-        // Sort: when unset (null), AniList defaults to POPULARITY_DESC (and Rescue mode to members desc).
-        // It always has a value, so the sort icon names the chip while it shows the default.
-        val sortActive = f.sort != null && f.sort != DEFAULT_SORT
-        filterChip(inflater, group, sortLabel(context, f.sort ?: DEFAULT_SORT), sortActive, dropdown = true) {
-            openSort(context, f, onMutated)
-        }.apply {
-            if (!sortActive) {
-                setChipIconResource(R.drawable.ic_round_sort_24)
-                isChipIconVisible = true
-                chipIconTint = textColors
+        facetName: String,
+        label: CharSequence,
+        selected: Boolean,
+        @DrawableRes unselectedIcon: Int? = null,
+        onTap: () -> Unit,
+        onClear: (() -> Unit)? = null,
+    ): Chip {
+        val chip = inflater.inflate(R.layout.item_filter_dropdown_chip, group, false) as Chip
+        chip.id = View.generateViewId()
+        chip.setDropdownText(label)
+        chip.isChecked = selected
+        chip.isCheckedIconVisible = selected
+        if (!selected && unselectedIcon != null) {
+            chip.setChipIconResource(unselectedIcon)
+            chip.isChipIconVisible = true
+            chip.chipIconTint = ColorStateList.valueOf(
+                MaterialColors.getColor(chip, com.google.android.material.R.attr.colorOnSurfaceVariant),
+            )
+        } else {
+            chip.isChipIconVisible = false
+        }
+        chip.contentDescription = if (selected) {
+            chip.context.getString(R.string.search_filter_selected_cd, facetName, label)
+        } else {
+            facetName
+        }
+        chip.setOnClickListener {
+            // Selection comes from filters, not from the tap: cancelling a picker keeps current state.
+            chip.isChecked = selected
+            onTap()
+        }
+        if (onClear != null) {
+            chip.setOnLongClickListener { view ->
+                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                onClear()
+                true
             }
+        } else {
+            chip.isLongClickable = false
         }
-
-        val hasGenreData = !Anilist.genres.isNullOrEmpty() ||
-            (!rescue && !Anilist.tags?.get(f.isAdult).isNullOrEmpty()) ||
-            !f.genres.isNullOrEmpty() || !f.tags.isNullOrEmpty() ||
-            !f.excludedGenres.isNullOrEmpty() || !f.excludedTags.isNullOrEmpty()
-        if (hasGenreData) {
-            val inc = f.genres.orEmpty() + f.tags.orEmpty()
-            val exc = f.excludedGenres.orEmpty() + f.excludedTags.orEmpty()
-            val summary = GenreTagGroups.summary(inc, exc)
-            filterChip(inflater, group, summary ?: context.getString(R.string.genres_and_tags), summary != null, dropdown = true) {
-                GenreTagSheet.show(context, f, rescue, onMutated)
-            }.apply {
-                ellipsize = TextUtils.TruncateAt.END
-                maxWidth = (240 * context.resources.displayMetrics.density).toInt()
-            }
-        }
-
-        if (Anilist.adult) {
-            filterChip(inflater, group, context.getString(R.string.adult), f.isAdult) {
-                f.isAdult = !f.isAdult
-                onMutated()
-            }
-        }
-    }
-
-    /** Recent years shown as chips; with the "Older" chip they make two rows of four on a phone. */
-    private const val YEARS_FIRST = 7
-
-    /**
-     * The short-choice filters as chip sections inside the sheet, instead of a sheet per filter
-     * with one long list. One chip per option; tapping the chosen chip again goes back to Any.
-     */
-    private fun buildSections(
-        context: Context,
-        container: LinearLayout,
-        anime: Boolean,
-        f: AniMangaSearchResults,
-        rescue: Boolean,
-        onMutated: () -> Unit,
-    ) {
-        container.removeAllViews()
-        val inflater = LayoutInflater.from(context)
-        val dp = context.resources.displayMetrics.density
-        fun px(v: Int) = (v * dp).toInt()
-
-        fun section(titleRes: Int, labels: List<String>, selected: Int, pick: (Int?) -> Unit): ChipGroup {
-            container.addView(TextView(context).apply {
-                text = context.getString(titleRes)
-                textSize = 13f
-                typeface = ResourcesCompat.getFont(context, R.font.poppins_semi_bold)
-                setTextColor(MaterialColors.getColor(container, com.google.android.material.R.attr.colorOnSurfaceVariant))
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) isAccessibilityHeading = true
-                // same 16dp keyline as the title and the chips
-                setPaddingRelative(px(16), px(if (container.childCount == 0) 8 else 12), px(16), px(2))
-            })
-            val group = ChipGroup(context).apply {
-                isSingleSelection = true
-                isSelectionRequired = false
-                chipSpacingHorizontal = px(8)
-                // the chips keep a 48dp touch target, which already leaves 16dp between rows
-                chipSpacingVertical = 0
-                setPaddingRelative(px(16), 0, px(16), 0)
-            }
-            labels.forEachIndexed { i, label ->
-                filterChip(inflater, group, label, i == selected) {
-                    pick(if (i == selected) null else i)
-                    onMutated()
-                }
-            }
-            container.addView(group)
-            return group
-        }
-
-        val formats = if (anime) Anilist.animeFormats else Anilist.mangaFormats
-        section(R.string.format, formats.map(::pretty), formats.indexOf(f.format)) {
-            f.format = it?.let(formats::getOrNull)
-        }
-
-        val statuses = if (anime) Anilist.animeStatus else Anilist.mangaStatus
-        section(R.string.chip_status, statuses.map(::pretty), statuses.indexOf(f.status?.replace("_", " "))) {
-            f.status = it?.let(statuses::getOrNull)?.replace(" ", "_")
-        }
-
-        if (anime && !rescue) {
-            section(R.string.season, Anilist.seasons.map(::pretty), Anilist.seasons.indexOf(f.season)) {
-                f.season = it?.let(Anilist.seasons::getOrNull)
-            }
-        }
-
-        val years = (1970..Calendar.getInstance().get(Calendar.YEAR) + 1).reversed().toList()
-        val year = if (anime) f.seasonYear else f.startYear
-        val recent = years.take(YEARS_FIRST)
-        val group = section(R.string.year, recent.map(Int::toString), recent.indexOf(year)) {
-            val y = it?.let(recent::getOrNull)
-            if (anime) f.seasonYear = y else f.startYear = y
-        }
-        // Older years: one dropdown chip opening the full list; shows the year once one is picked from it.
-        val older = year != null && year !in recent
-        filterChip(inflater, group, if (older) year.toString() else context.getString(R.string.filter_older_years), older, dropdown = true) {
-            openYear(context, anime, f, onMutated)
-        }
-
-        if (!rescue) {
-            section(R.string.source, Anilist.source.map(::pretty), Anilist.source.indexOf(f.source?.replace("_", " "))) {
-                f.source = it?.let(Anilist.source::getOrNull)?.replace(" ", "_")
-            }
-            section(R.string.chip_country, COUNTRY_LABEL_RES.map(context::getString), COUNTRY_CODES.indexOf(f.countryOfOrigin)) {
-                f.countryOfOrigin = it?.let(COUNTRY_CODES::getOrNull)
-            }
-        }
-
-        if (Anilist.userid != null && !rescue) {
-            val lists = listOf(R.string.filter_on_list_in, R.string.filter_on_list_not_in).map(context::getString)
-            val sel = when (f.onList) {
-                true -> 0
-                false -> 1
-                null -> -1
-            }
-            section(R.string.list, lists, sel) {
-                f.onList = when (it) {
-                    0 -> true
-                    1 -> false
-                    else -> null
-                }
-            }
-        }
+        group.addView(chip)
+        return chip
     }
 
     // ---- Shared pickers & formatters (used by both SearchFiltersSheet and SearchFilterChips) ----
@@ -294,91 +441,143 @@ object SearchFiltersSheet {
         return if (idx >= 0) context.getString(COUNTRY_LABEL_RES[idx]) else code
     }
 
-    /** "NOT_YET_RELEASED" -> "Not yet released"; short codes (TV, OVA, ONA) stay as they are. */
-    fun pretty(raw: String): String {
-        val s = raw.replace('_', ' ')
-        if (s.length <= 3) return s
-        // "TV SHORT" reads "TV short", not "Tv short"
-        return s.lowercase().replaceFirstChar { it.uppercase() }.replace(Regex("^Tv\\b"), "TV")
-    }
+    fun pretty(raw: String): String = SearchFilterPolicy.pretty(raw)
 
-    private fun openSingle(
-        context: Context,
-        titleRes: Int,
-        options: List<String>,
-        selected: Int,
-        set: (Int) -> Unit,
-        onChanged: () -> Unit,
-    ) {
-        val all = listOf(ChoiceOption(context.getString(R.string.chip_any))) + options.map { ChoiceOption(it) }
-        ChoiceSheet.single(context, context.getString(titleRes), all, selected + 1) { picked ->
-            set(picked - 1)
-            onChanged()
-        }
-    }
-
-    fun openSort(context: Context, f: AniMangaSearchResults, onChanged: () -> Unit) {
+    fun openSort(context: Context, f: AniMangaSearchResults, onChanged: () -> Unit): BottomSheetDialog? {
         val labels = context.resources.getStringArray(R.array.sort_by).toList()
-        val options = Anilist.sortBy.indices.map { ChoiceOption(labels.getOrElse(it) { Anilist.sortBy[it] }) }
-        val current = Anilist.sortBy.indexOf(f.sort ?: DEFAULT_SORT).coerceAtLeast(0)
-        ChoiceSheet.single(context, context.getString(R.string.chip_sort), options, current) { picked ->
-            val key = Anilist.sortBy.getOrNull(picked)
-            f.sort = key?.takeUnless { it == DEFAULT_SORT }
+        val options = Anilist.sortBy.indices.map { i ->
+            SearchFilterPickers.Option(
+                key = Anilist.sortBy[i],
+                label = labels.getOrElse(i) { Anilist.sortBy[i] },
+            )
+        }
+        val current = f.sort ?: DEFAULT_SORT
+        return SearchFilterPickers.showOptions(
+            context = context,
+            title = context.getString(R.string.chip_sort),
+            primaryOptions = options,
+            selectedKey = current,
+            allowClear = false,
+        ) { picked ->
+            f.sort = SearchFilterPolicy.normalizeSort(picked)
             onChanged()
         }
     }
 
-    fun openFormat(context: Context, anime: Boolean, f: AniMangaSearchResults, onChanged: () -> Unit) {
+    fun openFormat(context: Context, anime: Boolean, f: AniMangaSearchResults, onChanged: () -> Unit): BottomSheetDialog? {
         val formats = if (anime) Anilist.animeFormats else Anilist.mangaFormats
-        openSingle(context, R.string.format, formats.map(::pretty), formats.indexOf(f.format),
-            { f.format = formats.getOrNull(it) }, onChanged)
-    }
-
-    fun openStatus(context: Context, anime: Boolean, f: AniMangaSearchResults, onChanged: () -> Unit) {
-        val statuses = if (anime) Anilist.animeStatus else Anilist.mangaStatus
-        openSingle(context, R.string.chip_status, statuses.map(::pretty), statuses.indexOf(f.status?.replace("_", " ")),
-            { f.status = statuses.getOrNull(it)?.replace(" ", "_") }, onChanged)
-    }
-
-    fun openYear(context: Context, anime: Boolean, f: AniMangaSearchResults, onChanged: () -> Unit) {
-        val years = (1970..Calendar.getInstance().get(Calendar.YEAR) + 1).reversed().toList()
-        val year = if (anime) f.seasonYear else f.startYear
-        openSingle(context, R.string.year, years.map { it.toString() }, years.indexOf(year), {
-            val y = years.getOrNull(it)
-            if (anime) f.seasonYear = y else f.startYear = y
-        }, onChanged)
-    }
-
-    fun openSeason(context: Context, f: AniMangaSearchResults, onChanged: () -> Unit) {
-        openSingle(context, R.string.season, Anilist.seasons.map(::pretty), Anilist.seasons.indexOf(f.season),
-            { f.season = Anilist.seasons.getOrNull(it) }, onChanged)
-    }
-
-    fun openList(context: Context, f: AniMangaSearchResults, onChanged: () -> Unit) {
-        val lists = listOf(R.string.filter_on_list_in, R.string.filter_on_list_not_in).map(context::getString)
-        val sel = when (f.onList) {
-            true -> 0
-            false -> 1
-            null -> -1
+        val options = formats.map { SearchFilterPickers.Option(it, pretty(it)) }
+        val selected = SearchFilterPolicy.findMatchingKey(formats, f.format)
+        return SearchFilterPickers.showOptions(
+            context = context,
+            title = context.getString(R.string.format),
+            primaryOptions = options,
+            selectedKey = selected,
+        ) { picked ->
+            f.format = picked
+            onChanged()
         }
-        openSingle(context, R.string.list, lists, sel, {
-            f.onList = when (it) {
-                0 -> true
-                1 -> false
+    }
+
+    fun openStatus(context: Context, anime: Boolean, f: AniMangaSearchResults, onChanged: () -> Unit): BottomSheetDialog? {
+        val statuses = if (anime) Anilist.animeStatus else Anilist.mangaStatus
+        val options = statuses.map { SearchFilterPickers.Option(it.replace(" ", "_"), pretty(it)) }
+        val selected = f.status?.replace(" ", "_")
+        return SearchFilterPickers.showOptions(
+            context = context,
+            title = context.getString(R.string.chip_status),
+            primaryOptions = options,
+            selectedKey = selected,
+        ) { picked ->
+            f.status = picked
+            onChanged()
+        }
+    }
+
+    fun openYear(context: Context, anime: Boolean, f: AniMangaSearchResults, onChanged: () -> Unit): BottomSheetDialog? {
+        val current = if (anime) f.seasonYear else f.startYear
+        return SearchFilterPickers.showYearGrid(
+            context = context,
+            selectedYear = current,
+        ) { picked ->
+            if (anime) f.seasonYear = picked else f.startYear = picked
+            onChanged()
+        }
+    }
+
+    fun openSeason(context: Context, f: AniMangaSearchResults, onChanged: () -> Unit): BottomSheetDialog? {
+        val options = Anilist.seasons.map { SearchFilterPickers.Option(it, pretty(it)) }
+        return SearchFilterPickers.showOptions(
+            context = context,
+            title = context.getString(R.string.season),
+            primaryOptions = options,
+            selectedKey = f.season,
+        ) { picked ->
+            f.season = picked
+            onChanged()
+        }
+    }
+
+    fun openList(context: Context, f: AniMangaSearchResults, onChanged: () -> Unit): BottomSheetDialog? {
+        val options = listOf(
+            SearchFilterPickers.Option("IN", context.getString(R.string.filter_on_list_in)),
+            SearchFilterPickers.Option("NOT_IN", context.getString(R.string.filter_on_list_not_in)),
+        )
+        val selected = when (f.onList) {
+            true -> "IN"
+            false -> "NOT_IN"
+            null -> null
+        }
+        return SearchFilterPickers.showOptions(
+            context = context,
+            title = context.getString(R.string.list),
+            primaryOptions = options,
+            selectedKey = selected,
+        ) { picked ->
+            f.onList = when (picked) {
+                "IN" -> true
+                "NOT_IN" -> false
                 else -> null
             }
-        }, onChanged)
+            onChanged()
+        }
     }
 
-    fun openSource(context: Context, f: AniMangaSearchResults, onChanged: () -> Unit) {
-        openSingle(context, R.string.source, Anilist.source.map(::pretty),
-            Anilist.source.indexOf(f.source?.replace("_", " ")),
-            { f.source = Anilist.source.getOrNull(it)?.replace(" ", "_") }, onChanged)
+    fun openSource(
+        context: Context,
+        f: AniMangaSearchResults,
+        onChanged: () -> Unit,
+        anime: Boolean = true,
+    ): BottomSheetDialog? {
+        val partition = SearchFilterPolicy.sourceGroups(Anilist.source, anime)
+        val primary = partition.common.map { SearchFilterPickers.Option(it.replace(" ", "_"), pretty(it)) }
+        val more = partition.more.map { SearchFilterPickers.Option(it.replace(" ", "_"), pretty(it)) }
+        val selected = f.source?.replace(" ", "_")
+        return SearchFilterPickers.showOptions(
+            context = context,
+            title = context.getString(R.string.source),
+            primaryOptions = primary,
+            selectedKey = selected,
+            moreOptions = more,
+            moreTitle = context.getString(R.string.search_filters_more_sources),
+        ) { picked ->
+            f.source = picked
+            onChanged()
+        }
     }
 
-    fun openCountry(context: Context, f: AniMangaSearchResults, onChanged: () -> Unit) {
-        val names = COUNTRY_LABEL_RES.map(context::getString)
-        openSingle(context, R.string.chip_country, names, COUNTRY_CODES.indexOf(f.countryOfOrigin),
-            { f.countryOfOrigin = COUNTRY_CODES.getOrNull(it) }, onChanged)
+    fun openCountry(context: Context, f: AniMangaSearchResults, onChanged: () -> Unit): BottomSheetDialog? {
+        val options = COUNTRY_CODES.indices.map { i ->
+            SearchFilterPickers.Option(COUNTRY_CODES[i], context.getString(COUNTRY_LABEL_RES[i]))
+        }
+        return SearchFilterPickers.showOptions(
+            context = context,
+            title = context.getString(R.string.chip_country),
+            primaryOptions = options,
+            selectedKey = f.countryOfOrigin,
+        ) { picked ->
+            f.countryOfOrigin = picked
+            onChanged()
+        }
     }
 }
