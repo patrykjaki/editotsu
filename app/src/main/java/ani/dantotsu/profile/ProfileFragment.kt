@@ -1,5 +1,6 @@
 package ani.dantotsu.profile
 
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -8,7 +9,6 @@ import android.view.animation.LayoutAnimationController
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -16,7 +16,6 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.ProfileViewModel
 import ani.dantotsu.connections.anilist.api.Query
@@ -32,10 +31,10 @@ import ani.dantotsu.setBaseline
 import ani.dantotsu.setSlideIn
 import ani.dantotsu.setSlideUp
 import ani.dantotsu.util.AniMarkdown.Companion.getFullAniHTML
+import com.google.android.material.color.MaterialColors
 import eu.kanade.tachiyomi.util.system.getSerializableCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
 
 class ProfileFragment : Fragment() {
     lateinit var binding: FragmentProfileBinding
@@ -43,6 +42,7 @@ class ProfileFragment : Fragment() {
     private lateinit var user: Query.UserProfile
     private val favStaff = arrayListOf<Author>()
     private val favCharacter = arrayListOf<Character>()
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -53,6 +53,7 @@ class ProfileFragment : Fragment() {
     }
 
     val model: ProfileViewModel by activityViewModels()
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         activity = requireActivity() as ProfileActivity
@@ -63,57 +64,54 @@ class ProfileFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             model.setData(user.id)
         }
-        binding.profileUserBio.settings.loadWithOverviewMode = true
-        binding.profileUserBio.settings.useWideViewPort = true
-        binding.profileUserBio.setInitialScale(1)
-        val styledHtml = getFullAniHTML(
-            user.about ?: "",
-            ContextCompat.getColor(activity, R.color.bg_opp)
-        )
-        binding.profileUserBio.loadDataWithBaseURL(
-            null,
-            styledHtml,
-            "text/html; charset=utf-8",
-            "UTF-8",
-            null
-        )
-        binding.profileUserBio.setBackgroundColor(
-            ContextCompat.getColor(
-                activity,
-                android.R.color.transparent
-            )
-        )
-        binding.profileUserBio.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-        binding.profileUserBio.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                binding.profileUserBio.setBackgroundColor(
-                    ContextCompat.getColor(
-                        activity,
-                        android.R.color.transparent
-                    )
-                )
-            }
 
-            override fun shouldOverrideUrlLoading(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): Boolean {
-                openOrCopyAnilistLink(request?.url.toString())
-                return true
+        val hasAbout = !user.about.isNullOrBlank()
+        binding.userInfoContainer.isVisible = hasAbout
+        if (hasAbout) {
+            val textColor = MaterialColors.getColor(
+                binding.profileUserBio,
+                com.google.android.material.R.attr.colorOnSurface
+            )
+            binding.profileUserBio.settings.loadWithOverviewMode = true
+            binding.profileUserBio.settings.useWideViewPort = true
+            binding.profileUserBio.setInitialScale(1)
+            val styledHtml = getFullAniHTML(user.about ?: "", textColor)
+            binding.profileUserBio.loadDataWithBaseURL(
+                null,
+                styledHtml,
+                "text/html; charset=utf-8",
+                "UTF-8",
+                null
+            )
+            binding.profileUserBio.setBackgroundColor(Color.TRANSPARENT)
+            binding.profileUserBio.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            binding.profileUserBio.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    binding.profileUserBio.setBackgroundColor(Color.TRANSPARENT)
+                }
+
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?,
+                    request: WebResourceRequest?
+                ): Boolean {
+                    openOrCopyAnilistLink(request?.url.toString())
+                    return true
+                }
             }
         }
 
-        binding.userInfoContainer.isVisible = user.about != null
+        binding.statsEpisodesWatched.text = ChartBuilder.formatInt(user.statistics.anime.episodesWatched)
+        binding.statsDaysWatched.text = ChartBuilder.formatDays(user.statistics.anime.minutesWatched)
+        binding.statsAnimeMeanScore.text = ChartBuilder.formatScore(user.statistics.anime.meanScore)
+        binding.statsChaptersRead.text = ChartBuilder.formatInt(user.statistics.manga.chaptersRead)
+        binding.statsVolumeRead.text = ChartBuilder.formatInt(user.statistics.manga.volumesRead)
+        binding.statsMangaMeanScore.text = ChartBuilder.formatScore(user.statistics.manga.meanScore)
 
+        val openStats = View.OnClickListener { activity.openStatsTab() }
+        binding.profileStatsHeader.setOnClickListener(openStats)
+        binding.profileStatsCard.setOnClickListener(openStats)
 
-        binding.statsEpisodesWatched.text = user.statistics.anime.episodesWatched.toString()
-        binding.statsDaysWatched.text =
-            (user.statistics.anime.minutesWatched / (24 * 60)).toString()
-        binding.statsAnimeMeanScore.text = user.statistics.anime.meanScore.toString()
-        binding.statsChaptersRead.text = user.statistics.manga.chaptersRead.toString()
-        binding.statsVolumeRead.text = (user.statistics.manga.volumesRead).toString()
-        binding.statsMangaMeanScore.text = user.statistics.manga.meanScore.toString()
         initRecyclerView(
             model.getAnimeFav(),
             binding.profileFavAnimeContainer,
@@ -130,10 +128,12 @@ class ProfileFragment : Fragment() {
             binding.profileFavManga
         )
 
+        favCharacter.clear()
         user.favourites?.characters?.nodes?.forEach { i ->
             favCharacter.add(Character(i.id, i.name.full, i.image.large, i.image.large, "", i.isFavourite))
         }
 
+        favStaff.clear()
         user.favourites?.staff?.nodes?.forEach { i ->
             favStaff.add(Author(i.id, i.name.full, i.image.large, "", isFav = i.isFavourite))
         }
@@ -153,6 +153,7 @@ class ProfileFragment : Fragment() {
         if (favStaff.isEmpty()) {
             binding.profileFavStaffContainer.visibility = View.GONE
         } else {
+            binding.profileFavStaffContainer.visibility = View.VISIBLE
             binding.profileFavStaffRecycler.adapter = AuthorAdapter(favStaff)
             binding.profileFavStaffRecycler.layoutManager = LinearLayoutManager(
                 activity, LinearLayoutManager.HORIZONTAL, false
@@ -164,6 +165,7 @@ class ProfileFragment : Fragment() {
         if (favCharacter.isEmpty()) {
             binding.profileFavCharactersContainer.visibility = View.GONE
         } else {
+            binding.profileFavCharactersContainer.visibility = View.VISIBLE
             binding.profileFavCharactersRecycler.adapter = CharacterAdapter(favCharacter)
             binding.profileFavCharactersRecycler.layoutManager = LinearLayoutManager(
                 activity, LinearLayoutManager.HORIZONTAL, false
@@ -199,7 +201,6 @@ class ProfileFragment : Fragment() {
                     recyclerView.visibility = View.VISIBLE
                     recyclerView.layoutAnimation =
                         LayoutAnimationController(setSlideIn(), 0.25f)
-
                 } else {
                     container.visibility = View.GONE
                 }
@@ -220,5 +221,4 @@ class ProfileFragment : Fragment() {
             }
         }
     }
-
 }

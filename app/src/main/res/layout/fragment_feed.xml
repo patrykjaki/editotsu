@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -12,10 +13,10 @@
         android:gravity="center"
         tools:visibility="gone">
 
-        <ProgressBar
-            style="?android:attr/progressBarStyle"
+        <com.google.android.material.progressindicator.CircularProgressIndicator
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:indeterminate="true" />
     </LinearLayout>
 
     <LinearLayout
@@ -28,38 +29,50 @@
             android:id="@+id/titleBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="4dp"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
             android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="4dp"
             android:visibility="gone"
-            tools:ignore="UseCompoundDrawables">
+            tools:visibility="visible">
 
             <TextView
                 android:id="@+id/titleText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center"
                 android:layout_weight="1"
-                android:fontFamily="@font/poppins_bold"
-                android:textSize="14sp" />
+                android:ellipsize="end"
+                android:fontFamily="@font/poppins_semi_bold"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="15sp"
+                tools:text="Create new activity" />
 
-            <ImageView
+            <ImageButton
                 android:id="@+id/filterButton"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:layout_marginEnd="4dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/filter"
-                android:padding="8dp"
+                android:padding="12dp"
+                android:scaleType="centerInside"
                 android:src="@drawable/ic_round_filter_alt_24"
-                app:tint="?attr/colorPrimary" />
+                android:tooltipText="@string/filter"
+                app:tint="?attr/colorOnSurfaceVariant" />
 
-            <ImageView
+            <ImageButton
                 android:id="@+id/titleImage"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:contentDescription="@string/reply"
-                android:fontFamily="@font/poppins_bold"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/create_new_activity"
+                android:padding="12dp"
+                android:scaleType="centerInside"
                 android:src="@drawable/ic_add"
+                android:tooltipText="@string/create_new_activity"
                 app:tint="?attr/colorPrimary" />
         </LinearLayout>
 
@@ -69,14 +82,15 @@
             android:layout_height="match_parent"
             android:fontFamily="@font/poppins_semi_bold"
             android:gravity="center"
+            android:paddingHorizontal="32dp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="14sp"
             android:visibility="gone" />
 
         <ani.dantotsu.others.ThemedSwipeRefreshLayout
             android:id="@+id/feedSwipeRefresh"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="12dp"
             android:layout_weight="1"
             android:clipChildren="false"
             android:clipToPadding="false">
@@ -85,21 +99,21 @@
                 android:id="@+id/listRecyclerView"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
+                android:clipToPadding="false"
                 android:nestedScrollingEnabled="true"
+                android:paddingTop="4dp"
+                android:paddingBottom="16dp"
                 android:requiresFadingEdge="vertical"
                 tools:listitem="@layout/item_activity" />
-
         </ani.dantotsu.others.ThemedSwipeRefreshLayout>
 
         <ani.dantotsu.others.SkeletonView
             android:id="@+id/feedRefresh"
-        android:tag="rows"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
             android:layout_marginBottom="32dp"
+            android:tag="rows"
             android:visibility="gone" />
-
     </LinearLayout>
-
 </LinearLayout>

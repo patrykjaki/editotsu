@@ -4,6 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="?attr/colorSurface"
     android:orientation="vertical">
 
     <LinearLayout
@@ -13,10 +14,10 @@
         android:gravity="center"
         tools:visibility="gone">
 
-        <ProgressBar
-            style="?android:attr/progressBarStyle"
+        <com.google.android.material.progressindicator.CircularProgressIndicator
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:indeterminate="true" />
     </LinearLayout>
 
     <include layout="@layout/item_profile_app_bar" />
@@ -35,13 +36,12 @@
             tools:ignore="SpeakableTextPresentCheck" />
     </LinearLayout>
 
-
     <LinearLayout
         android:id="@+id/profileNavBarContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:background="?attr/colorSurface"
+        android:background="?attr/colorSurfaceContainer"
         android:orientation="vertical">
 
         <nl.joery.animatedbottombar.AnimatedBottomBar

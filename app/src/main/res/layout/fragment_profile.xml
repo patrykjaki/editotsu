@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -11,217 +11,332 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:nestedScrollingEnabled="true"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:paddingTop="8dp"
+        android:paddingBottom="16dp">
 
-
+        <!-- Compact stats overview (taps through to full Stats tab) -->
         <LinearLayout
             android:id="@+id/userStatsContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/profileUserStatsTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_marginTop="8dp"
-                android:layout_marginEnd="32dp"
-                android:fontFamily="@font/poppins_bold"
-                android:padding="8dp"
-                android:text="@string/stats"
-                android:textSize="18sp"
-                tools:ignore="HardcodedText" />
-
-            <TableLayout
+            <LinearLayout
+                android:id="@+id/profileStatsHeader"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical"
-                android:paddingStart="32dp"
-                android:paddingTop="16dp"
-                android:paddingEnd="32dp"
-                android:paddingBottom="16dp">
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackground"
+                android:gravity="center_vertical"
+                android:minHeight="48dp"
+                android:orientation="horizontal"
+                android:paddingStart="16dp"
+                android:paddingEnd="12dp">
 
-                <TableRow
+                <TextView
+                    android:id="@+id/profileUserStatsTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:accessibilityHeading="true"
+                    android:fontFamily="@font/poppins_bold"
+                    android:includeFontPadding="false"
+                    android:text="@string/profile_overview"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="16sp" />
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:contentDescription="@string/profile_view_all_stats"
+                    app:srcCompat="@drawable/ic_round_arrow_forward_ios_new_24"
+                    app:tint="?attr/colorOnSurfaceVariant" />
+            </LinearLayout>
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/profileStatsCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardBackgroundColor="?attr/colorSurfaceContainerLow"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp">
+
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="24dp"
-                    android:orientation="horizontal">
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:alpha="0.58"
-                        android:text="@string/episodes_watched"
-                        android:textStyle="bold" />
+                        android:fontFamily="@font/poppins_semi_bold"
+                        android:includeFontPadding="false"
+                        android:text="@string/anime"
+                        android:textColor="?attr/colorPrimary"
+                        android:textSize="12sp" />
 
-                    <TextView
-                        android:id="@+id/statsEpisodesWatched"
-                        android:layout_width="0dp"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/poppins_bold"
-                        android:textAlignment="textEnd" />
+                        android:layout_marginTop="8dp"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
 
-                </TableRow>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
 
-                <TableRow
-                    android:layout_width="match_parent"
-                    android:layout_height="24dp"
-                    android:orientation="horizontal">
+                            <TextView
+                                android:id="@+id/statsEpisodesWatched"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/poppins_bold"
+                                android:includeFontPadding="false"
+                                android:textColor="?attr/colorOnSurface"
+                                android:textSize="16sp"
+                                tools:text="6,842" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:alpha="0.58"
-                        android:text="@string/days_watched"
-                        android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:fontFamily="@font/poppins"
+                                android:text="@string/profile_episodes"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                android:textSize="12sp" />
+                        </LinearLayout>
 
-                    <TextView
-                        android:id="@+id/statsDaysWatched"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/poppins_bold"
-                        android:textAlignment="textEnd" />
-                </TableRow>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
 
-                <TableRow
-                    android:layout_width="match_parent"
-                    android:layout_height="24dp"
-                    android:orientation="horizontal">
+                            <TextView
+                                android:id="@+id/statsDaysWatched"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/poppins_bold"
+                                android:includeFontPadding="false"
+                                android:textColor="?attr/colorOnSurface"
+                                android:textSize="16sp"
+                                tools:text="114.2" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:alpha="0.58"
-                        android:text="@string/anime_mean_score"
-                        android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:fontFamily="@font/poppins"
+                                android:text="@string/profile_days"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                android:textSize="12sp" />
+                        </LinearLayout>
 
-                    <TextView
-                        android:id="@+id/statsAnimeMeanScore"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/poppins_bold"
-                        android:textAlignment="textEnd" />
-                </TableRow>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
 
-                <TableRow
-                    android:layout_width="match_parent"
-                    android:layout_height="24dp"
-                    android:orientation="horizontal">
+                            <TextView
+                                android:id="@+id/statsAnimeMeanScore"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/poppins_bold"
+                                android:includeFontPadding="false"
+                                android:textColor="?attr/colorOnSurface"
+                                android:textSize="16sp"
+                                tools:text="76.4" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:alpha="0.58"
-                        android:text="@string/chapters_read"
-                        android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:fontFamily="@font/poppins"
+                                android:text="@string/profile_mean_score"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+                    </LinearLayout>
 
-                    <TextView
-                        android:id="@+id/statsChaptersRead"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/poppins_bold"
-                        android:textAlignment="textEnd" />
-                </TableRow>
-
-                <TableRow
-                    android:layout_width="match_parent"
-                    android:layout_height="24dp"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:alpha="0.58"
-                        android:text="@string/volume_read"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/statsVolumeRead"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/poppins_bold"
-                        android:textAlignment="textEnd" />
-                </TableRow>
-
-
-                <TableRow
-                    android:layout_width="match_parent"
-                    android:layout_height="24dp"
-                    android:orientation="horizontal">
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="12dp"
+                        android:alpha="0.45"
+                        android:background="?attr/colorOutlineVariant" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:alpha="0.58"
-                        android:text="@string/manga_mean_score"
-                        android:textStyle="bold" />
+                        android:fontFamily="@font/poppins_semi_bold"
+                        android:includeFontPadding="false"
+                        android:text="@string/manga"
+                        android:textColor="?attr/colorPrimary"
+                        android:textSize="12sp" />
 
-                    <TextView
-                        android:id="@+id/statsMangaMeanScore"
-                        android:layout_width="0dp"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/poppins_bold"
-                        android:textAlignment="textEnd" />
-                </TableRow>
-            </TableLayout>
+                        android:layout_marginTop="8dp"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/statsChaptersRead"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/poppins_bold"
+                                android:includeFontPadding="false"
+                                android:textColor="?attr/colorOnSurface"
+                                android:textSize="16sp"
+                                tools:text="1,240" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:fontFamily="@font/poppins"
+                                android:text="@string/profile_chapters"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/statsVolumeRead"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/poppins_bold"
+                                android:includeFontPadding="false"
+                                android:textColor="?attr/colorOnSurface"
+                                android:textSize="16sp"
+                                tools:text="84" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:fontFamily="@font/poppins"
+                                android:text="@string/profile_volumes"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/statsMangaMeanScore"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/poppins_bold"
+                                android:includeFontPadding="false"
+                                android:textColor="?attr/colorOnSurface"
+                                android:textSize="16sp"
+                                tools:text="78.1" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:fontFamily="@font/poppins"
+                                android:text="@string/profile_mean_score"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
         </LinearLayout>
 
+        <!-- About section (hidden when blank) -->
         <LinearLayout
             android:id="@+id/userInfoContainer"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            tools:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:orientation="vertical">
 
             <TextView
                 android:id="@+id/profileUserBioTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_marginTop="8dp"
-                android:layout_marginEnd="32dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginBottom="8dp"
+                android:accessibilityHeading="true"
                 android:fontFamily="@font/poppins_bold"
-                android:padding="8dp"
-                android:text="@string/about_me"
-                android:textSize="18sp" />
+                android:includeFontPadding="false"
+                android:text="@string/profile_about"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
 
-            <WebView
-                android:id="@+id/profileUserBio"
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_marginTop="16dp"
-                android:layout_marginEnd="16dp"
-                android:ellipsize="end"
-                android:nestedScrollingEnabled="true"
-                android:padding="16dp"
-                android:textAlignment="textStart"
-                tools:text="@string/slogan" />
+                android:layout_marginHorizontal="16dp"
+                app:cardBackgroundColor="?attr/colorSurfaceContainerLow"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp">
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="16dp">
+
+                    <WebView
+                        android:id="@+id/profileUserBio"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:nestedScrollingEnabled="true" />
+                </FrameLayout>
+            </com.google.android.material.card.MaterialCardView>
         </LinearLayout>
 
+        <!-- Favourite anime -->
         <LinearLayout
             android:id="@+id/profileFavAnimeContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
             android:orientation="vertical"
-            android:visibility="gone">
-
+            android:visibility="gone"
+            tools:visibility="visible">
 
             <TextView
                 android:id="@+id/profileFavAnime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginBottom="8dp"
+                android:accessibilityHeading="true"
                 android:fontFamily="@font/poppins_bold"
-                android:padding="8dp"
-                android:text="@string/fav_anime"
-                android:textSize="18sp" />
+                android:includeFontPadding="false"
+                android:text="@string/profile_fav_anime"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
 
             <FrameLayout
                 android:layout_width="match_parent"
@@ -229,18 +344,17 @@
 
                 <ani.dantotsu.others.SkeletonView
                     android:id="@+id/profileFavAnimeProgressBar"
-        android:tag="covers"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center" />
+                    android:layout_gravity="center"
+                    android:tag="covers" />
 
                 <ani.dantotsu.FadingEdgeRecyclerView
                     android:id="@+id/profileFavAnimeRecyclerView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:clipToPadding="false"
-                    android:paddingStart="20dp"
-                    android:paddingEnd="20dp"
+                    android:paddingHorizontal="16dp"
                     android:requiresFadingEdge="horizontal"
                     tools:itemCount="4"
                     tools:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
@@ -249,22 +363,28 @@
             </FrameLayout>
         </LinearLayout>
 
+        <!-- Favourite manga -->
         <LinearLayout
             android:id="@+id/profileFavMangaContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
             android:orientation="vertical"
-            android:visibility="gone">
+            android:visibility="gone"
+            tools:visibility="visible">
 
             <TextView
                 android:id="@+id/profileFavManga"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginBottom="8dp"
+                android:accessibilityHeading="true"
                 android:fontFamily="@font/poppins_bold"
-                android:padding="8dp"
-                android:text="@string/fav_manga"
-                android:textSize="18sp" />
+                android:includeFontPadding="false"
+                android:text="@string/profile_fav_manga"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
 
             <FrameLayout
                 android:layout_width="match_parent"
@@ -272,18 +392,17 @@
 
                 <ani.dantotsu.others.SkeletonView
                     android:id="@+id/profileFavMangaProgressBar"
-        android:tag="covers"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center" />
+                    android:layout_gravity="center"
+                    android:tag="covers" />
 
                 <ani.dantotsu.FadingEdgeRecyclerView
                     android:id="@+id/profileFavMangaRecyclerView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:clipToPadding="false"
-                    android:paddingStart="20dp"
-                    android:paddingEnd="20dp"
+                    android:paddingHorizontal="16dp"
                     android:requiresFadingEdge="horizontal"
                     tools:itemCount="4"
                     tools:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
@@ -292,68 +411,72 @@
             </FrameLayout>
         </LinearLayout>
 
+        <!-- Favourite characters -->
         <LinearLayout
             android:id="@+id/profileFavCharactersContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
             android:orientation="vertical"
             tools:visibility="gone">
 
             <TextView
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_marginTop="8dp"
-                android:layout_marginEnd="32dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginBottom="8dp"
+                android:accessibilityHeading="true"
                 android:fontFamily="@font/poppins_bold"
-                android:padding="8dp"
-                android:text="@string/fav_character"
-                android:textSize="18sp" />
+                android:includeFontPadding="false"
+                android:text="@string/profile_fav_characters"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
 
             <ani.dantotsu.FadingEdgeRecyclerView
                 android:id="@+id/profileFavCharactersRecycler"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:clipToPadding="false"
                 android:nestedScrollingEnabled="true"
-                android:paddingStart="20dp"
-                android:paddingEnd="20dp"
+                android:paddingHorizontal="16dp"
                 android:requiresFadingEdge="horizontal"
                 tools:itemCount="4"
-                tools:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
+                tools:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
                 tools:listitem="@layout/item_media_compact"
                 tools:orientation="horizontal" />
         </LinearLayout>
 
+        <!-- Favourite staff -->
         <LinearLayout
             android:id="@+id/profileFavStaffContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
             android:orientation="vertical"
             tools:visibility="gone">
 
             <TextView
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_marginTop="8dp"
-                android:layout_marginEnd="32dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginBottom="8dp"
+                android:accessibilityHeading="true"
                 android:fontFamily="@font/poppins_bold"
-                android:padding="8dp"
-                android:text="@string/fav_staff"
-                android:textSize="18sp" />
+                android:includeFontPadding="false"
+                android:text="@string/profile_fav_staff"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
 
             <ani.dantotsu.FadingEdgeRecyclerView
                 android:id="@+id/profileFavStaffRecycler"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:clipToPadding="false"
                 android:nestedScrollingEnabled="true"
-                android:paddingStart="20dp"
-                android:paddingEnd="20dp"
+                android:paddingHorizontal="16dp"
                 android:requiresFadingEdge="horizontal"
                 tools:itemCount="4"
-                tools:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
+                tools:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
                 tools:listitem="@layout/item_media_compact"
                 tools:orientation="horizontal" />
         </LinearLayout>

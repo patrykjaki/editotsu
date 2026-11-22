@@ -1,9 +1,12 @@
 package ani.dantotsu.profile.activity
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.view.View
 import androidx.core.content.ContextCompat
+import androidx.core.view.isNotEmpty
 import androidx.core.view.isVisible
+import androidx.core.widget.ImageViewCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import ani.dantotsu.R
@@ -22,6 +25,7 @@ import ani.dantotsu.util.ActivityMarkdownCreator
 import ani.dantotsu.util.AniMarkdown.Companion.getBasicAniHTML
 import ani.dantotsu.util.AnilistLinkParser
 import ani.dantotsu.util.customAlertDialog
+import com.google.android.material.color.MaterialColors
 import com.xwray.groupie.GroupieAdapter
 import com.xwray.groupie.viewbinding.BindableItem
 import kotlinx.coroutines.CoroutineScope
@@ -30,7 +34,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.core.view.isNotEmpty
+import java.util.Locale
 
 class ActivityItem(
     private val activity: Activity,
@@ -50,29 +54,51 @@ class ActivityItem(
         val context = binding.root.context
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         setAnimation(binding.root.context, binding.root)
+
+        val primaryColor = MaterialColors.getColor(binding.root, androidx.appcompat.R.attr.colorPrimary)
+        val variantColor = MaterialColors.getColor(binding.root, com.google.android.material.R.attr.colorOnSurfaceVariant)
+        val likeColor = ContextCompat.getColor(context, R.color.yt_red)
+
         binding.activityUserName.text = activity.user?.name ?: activity.messenger?.name
         binding.activityUserAvatar.loadImage(
             activity.user?.avatar?.medium ?: activity.messenger?.avatar?.medium
         )
         binding.activityTime.text = ActivityItemBuilder.getDateTime(activity.createdAt)
-        val likeColor = ContextCompat.getColor(binding.root.context, R.color.yt_red)
-        val notLikeColor = ContextCompat.getColor(binding.root.context, R.color.bg_opp)
-        binding.activityLike.setColorFilter(if (activity.isLiked == true) likeColor else notLikeColor)
+
+        fun renderLikeState() {
+            val liked = activity.isLiked == true
+            binding.activityLike.setImageResource(
+                if (liked) R.drawable.ic_round_favorite_24 else R.drawable.ic_round_favorite_border_24
+            )
+            ImageViewCompat.setImageTintList(
+                binding.activityLike,
+                ColorStateList.valueOf(if (liked) likeColor else variantColor)
+            )
+            binding.activityLikeCount.text = (activity.likeCount ?: 0).toString()
+        }
+
+        renderLikeState()
+
         val userList = arrayListOf<User>()
         activity.likes?.forEach { i ->
-            userList.add(User(i.id, i.name.toString(), i.avatar?.medium, i.bannerImage, isFollowing = i.isFollowing, isFollower = i.isFollower))
+            userList.add(
+                User(
+                    i.id,
+                    i.name.toString(),
+                    i.avatar?.medium,
+                    i.bannerImage,
+                    isFollowing = i.isFollowing,
+                    isFollower = i.isFollower
+                )
+            )
         }
         binding.activityRepliesContainer.setOnClickListener {
             RepliesBottomDialog.newInstance(activity.id)
                 .show((context as FragmentActivity).supportFragmentManager, "replies")
         }
         binding.replyCount.text = activity.replyCount.toString()
-        binding.activityReplies.setColorFilter(
-            ContextCompat.getColor(
-                binding.root.context,
-                R.color.bg_opp
-            )
-        )
+        ImageViewCompat.setImageTintList(binding.activityReplies, ColorStateList.valueOf(variantColor))
+
         binding.activityLikeContainer.setOnLongClickListener {
             UsersDialogFragment().apply {
                 userList(userList)
@@ -80,7 +106,6 @@ class ActivityItem(
             }
             true
         }
-        binding.activityLikeCount.text = (activity.likeCount ?: 0).toString()
         binding.activityLikeContainer.setOnClickListener {
             scope.launch {
                 val res = Anilist.mutation.toggleLike(activity.id, "ACTIVITY")
@@ -91,16 +116,18 @@ class ActivityItem(
                         } else {
                             activity.likeCount = activity.likeCount?.plus(1)
                         }
-                        binding.activityLikeCount.text = (activity.likeCount ?: 0).toString()
-                        activity.isLiked = !activity.isLiked!!
-                        binding.activityLike.setColorFilter(if (activity.isLiked == true) likeColor else notLikeColor)
-
+                        activity.isLiked = !(activity.isLiked ?: false)
+                        renderLikeState()
                     } else {
                         snackString(R.string.activity_like_failed)
                     }
                 }
             }
         }
+
+        ImageViewCompat.setImageTintList(binding.activityEdit, ColorStateList.valueOf(variantColor))
+        ImageViewCompat.setImageTintList(binding.activityDelete, ColorStateList.valueOf(variantColor))
+
         binding.activityDelete.isVisible =
             activity.userId == Anilist.userid ||
             activity.messenger?.id == Anilist.userid ||
@@ -128,8 +155,20 @@ class ActivityItem(
             }
         }
 
+        fun renderPinState() {
+            val pinned = activity.isPinned == true
+            val label = context.getString(if (pinned) R.string.feed_unpin else R.string.feed_pin)
+            binding.activityPin.contentDescription = label
+            binding.activityPin.tooltipText = label
+            binding.activityPin.alpha = if (pinned) 1f else 0.7f
+            ImageViewCompat.setImageTintList(
+                binding.activityPin,
+                ColorStateList.valueOf(if (pinned) primaryColor else variantColor)
+            )
+        }
+
         binding.activityPin.isVisible = activity.userId == Anilist.userid
-        binding.activityPin.text = if (activity.isPinned == true) "Unpin" else "Pin"
+        renderPinState()
         binding.activityPin.setOnClickListener {
             scope.launch {
                 val newPinned = !(activity.isPinned ?: false)
@@ -137,7 +176,7 @@ class ActivityItem(
                 withContext(Dispatchers.Main) {
                     if (success) {
                         activity.isPinned = newPinned
-                        binding.activityPin.text = if (activity.isPinned == true) "Unpin" else "Pin"
+                        renderPinState()
                         snackString(if (newPinned) "Pinned activity" else "Unpinned activity")
                     } else {
                         snackString(R.string.activity_pin_failed)
@@ -146,8 +185,23 @@ class ActivityItem(
             }
         }
 
+        fun renderSubscribeState() {
+            val sub = activity.isSubscribed == true
+            val label = context.getString(if (sub) R.string.feed_unsubscribe else R.string.feed_subscribe)
+            binding.activitySubscribe.setImageResource(
+                if (sub) R.drawable.ic_round_notifications_active_24
+                else R.drawable.ic_round_notifications_none_24
+            )
+            binding.activitySubscribe.contentDescription = label
+            binding.activitySubscribe.tooltipText = label
+            ImageViewCompat.setImageTintList(
+                binding.activitySubscribe,
+                ColorStateList.valueOf(if (sub) primaryColor else variantColor)
+            )
+        }
+
         binding.activitySubscribe.isVisible = Anilist.token != null
-        binding.activitySubscribe.text = if (activity.isSubscribed == true) "Unsubscribe" else "Subscribe"
+        renderSubscribeState()
         binding.activitySubscribe.setOnClickListener {
             scope.launch {
                 val newSub = !(activity.isSubscribed ?: false)
@@ -155,7 +209,7 @@ class ActivityItem(
                 withContext(Dispatchers.Main) {
                     if (success) {
                         activity.isSubscribed = newSub
-                        binding.activitySubscribe.text = if (activity.isSubscribed == true) "Unsubscribe" else "Subscribe"
+                        renderSubscribeState()
                         snackString(if (newSub) "Subscribed to activity" else "Unsubscribed from activity")
                     } else {
                         snackString(R.string.activity_subscription_failed)
@@ -163,6 +217,7 @@ class ActivityItem(
                 }
             }
         }
+
         when (activity.typename) {
             "ListActivity" -> {
                 val cover = activity.media?.coverImage?.large
@@ -171,11 +226,14 @@ class ActivityItem(
                 binding.activityBannerContainer.visibility = View.VISIBLE
                 binding.activityPrivate.visibility = View.GONE
                 binding.activityMediaName.text = activity.media?.title?.userPreferred
-                val activityText = "${activity.user!!.name} ${activity.status} ${
-                    activity.progress
-                        ?: activity.media?.title?.userPreferred
-                }"
-                binding.activityText.text = activityText
+                val statusText = activity.status.orEmpty()
+                    .trim()
+                    .replaceFirstChar { it.titlecase(Locale.getDefault()) }
+                binding.activityText.text = if (!activity.progress.isNullOrBlank()) {
+                    "$statusText ${activity.progress}"
+                } else {
+                    statusText
+                }
                 binding.activityCover.loadImage(cover)
                 blurImage(binding.activityBannerImage, banner ?: cover)
                 binding.activityAvatarContainer.setOnClickListener {
@@ -188,6 +246,9 @@ class ActivityItem(
                     clickCallback(activity.media?.id ?: -1, "MEDIA")
                 }
                 binding.activityMediaName.setOnClickListener {
+                    clickCallback(activity.media?.id ?: -1, "MEDIA")
+                }
+                binding.activityBannerContainer.setOnClickListener {
                     clickCallback(activity.media?.id ?: -1, "MEDIA")
                 }
                 binding.activityEdit.isVisible = false
@@ -216,9 +277,9 @@ class ActivityItem(
                 binding.activityEdit.setOnClickListener {
                     context.startActivity(
                         Intent(context, ActivityMarkdownCreator::class.java).apply {
-                            putExtra("type","activity")
-                            putExtra("other",activity.text)
-                            putExtra("edit",activity.id)
+                            putExtra("type", "activity")
+                            putExtra("other", activity.text)
+                            putExtra("edit", activity.id)
                         }
                     )
                 }
@@ -244,15 +305,14 @@ class ActivityItem(
                 binding.activityUserName.setOnClickListener {
                     clickCallback(activity.messengerId ?: -1, "USER")
                 }
-                binding.activityEdit.isVisible = false
                 binding.activityEdit.isVisible = activity.messenger?.id == Anilist.userid
                 binding.activityEdit.setOnClickListener {
                     context.startActivity(
-                        Intent(context, ActivityMarkdownCreator::class.java).apply{
-                            putExtra("type","message")
-                            putExtra("other",activity.message)
-                            putExtra("edit",activity.id)
-                            putExtra("userId",activity.recipientId)
+                        Intent(context, ActivityMarkdownCreator::class.java).apply {
+                            putExtra("type", "message")
+                            putExtra("other", activity.message)
+                            putExtra("edit", activity.id)
+                            putExtra("userId", activity.recipientId)
                         }
                     )
                 }
@@ -273,10 +333,8 @@ class ActivityItem(
             val mediaList = withContext(Dispatchers.IO) {
                 Anilist.query.getMediaList(mediaIds)
             }
-            // Check that the view hasn't been recycled since we started
             if (!fragmentActivity.isDestroyed) {
                 val mediaMap = mediaList?.associateBy { it.id } ?: emptyMap()
-                // Re-render the text view: replace AniList URLs with media titles
                 if (mediaMap.isNotEmpty()) {
                     val titleMap = mediaMap.mapValues { (_, media) -> media.userPreferredName }
                     val htmlWithTitles = AnilistLinkParser.replaceAnilistUrlsInHtml(
@@ -285,7 +343,6 @@ class ActivityItem(
                     val markwon = buildMarkwon(fragmentActivity, false)
                     markwon.setMarkdown(binding.activityContent, htmlWithTitles)
                 }
-                // Add preview cards
                 binding.activityLinkPreviewContainer.removeAllViews()
                 links.forEach { link ->
                     val media = mediaMap[link.id]
@@ -302,11 +359,8 @@ class ActivityItem(
         }
     }
 
-    override fun getLayout(): Int {
-        return R.layout.item_activity
-    }
+    override fun getLayout(): Int = R.layout.item_activity
 
-    override fun initializeViewBinding(view: View): ItemActivityBinding {
-        return ItemActivityBinding.bind(view)
-    }
+    override fun initializeViewBinding(view: View): ItemActivityBinding =
+        ItemActivityBinding.bind(view)
 }

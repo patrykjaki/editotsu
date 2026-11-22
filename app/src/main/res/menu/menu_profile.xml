@@ -19,7 +19,7 @@
 
     <item
         android:id="@+id/action_block_user"
-        android:title="Block User"
+        android:title="@string/profile_block_user"
         app:showAsAction="never" />
 
 </menu>

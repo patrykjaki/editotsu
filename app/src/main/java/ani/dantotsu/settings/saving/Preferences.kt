@@ -301,6 +301,8 @@ enum class PrefName(val data: Pref) {
     LocalDir(Pref(Location.Irrelevant, String::class, "")),
     OC(Pref(Location.Irrelevant, Boolean::class, false)),
     RefreshStatus(Pref(Location.Irrelevant, Boolean::class, false)),
+    StatsMediaType(Pref(Location.Irrelevant, Int::class, 0)),
+    StatsMetric(Pref(Location.Irrelevant, Int::class, 0)),
     // Phase 2 user-facing Rich Presence master switch (tokenless). Default OFF so presence is strictly
     // opt-in. This is the sole persisted enable gate for Discord presence publishing.
     DiscordRichPresenceEnabled(Pref(Location.Irrelevant, Boolean::class, false)),
