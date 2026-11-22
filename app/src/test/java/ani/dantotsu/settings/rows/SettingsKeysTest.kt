@@ -58,6 +58,7 @@ class SettingsKeysTest {
         g(PrefName.CommentsEnabled, Location.General, Int::class, 0),
         g(PrefName.ContinueMedia, Location.General, Boolean::class, true),
         g(PrefName.ContinueWatchingPlayButton, Location.UI, Boolean::class, true),
+        g(PrefName.MalFollowsAniList, Location.General, Boolean::class, true),
         g(PrefName.CoverEpisodeCount, Location.UI, Int::class, 0),
         g(PrefName.CropBorders, Location.Reader, Boolean::class, false),
         g(PrefName.CursedSpeeds, Location.Player, Boolean::class, false),
