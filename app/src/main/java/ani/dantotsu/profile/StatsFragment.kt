@@ -1,11 +1,11 @@
 package ani.dantotsu.profile
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
-import androidx.core.view.updateLayoutParams
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -13,778 +13,288 @@ import ani.dantotsu.R
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.anilist.api.Query
 import ani.dantotsu.databinding.FragmentStatisticsBinding
-import ani.dantotsu.profile.ChartBuilder.Companion.ChartPacket
-import ani.dantotsu.profile.ChartBuilder.Companion.ChartType
-import ani.dantotsu.profile.ChartBuilder.Companion.MediaType
-import ani.dantotsu.profile.ChartBuilder.Companion.StatType
+import ani.dantotsu.others.setDropdownText
+import ani.dantotsu.profile.ChartBuilder.MediaType
+import ani.dantotsu.profile.ChartBuilder.StatType
 import ani.dantotsu.setBaseline
-import ani.dantotsu.statusBarHeight
-import com.github.aachartmodel.aainfographics.aachartcreator.AAChartType
-import com.xwray.groupie.GroupieAdapter
+import ani.dantotsu.settings.rows.ChoiceOption
+import ani.dantotsu.settings.rows.ChoiceSheet
+import ani.dantotsu.settings.rows.markSegment
+import ani.dantotsu.settings.saving.PrefManager
+import ani.dantotsu.settings.saving.PrefName
+import ani.dantotsu.snackString
 import eu.kanade.tachiyomi.util.system.getSerializableCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Locale
 
-class StatsFragment :
-    Fragment() {
-    private lateinit var binding: FragmentStatisticsBinding
-    private var adapter: GroupieAdapter = GroupieAdapter()
-    private var stats: MutableList<Query.StatisticsUser?> = mutableListOf()
-    private var type: MediaType = MediaType.ANIME
-    private var statType: StatType = StatType.COUNT
-    private lateinit var user: Query.UserProfile
+class StatsFragment : Fragment() {
+    private var _binding: FragmentStatisticsBinding? = null
+    private val binding get() = _binding!!
+
     private lateinit var activity: ProfileActivity
-    private var loadedFirstTime = false
+    private lateinit var user: Query.UserProfile
+    private lateinit var adapter: StatsAdapter
+
+    private var primaryStats: Query.StatisticsUser? = null
+    private var compareStats: Query.StatisticsUser? = null
+    private var isComparing: Boolean = false
+    private var hasLoadedOnce: Boolean = false
+
+    private var mediaType: MediaType = MediaType.ANIME
+    private var statType: StatType = StatType.COUNT
+
+    private var fetchJob: Job? = null
+    private var buildJob: Job? = null
+    private var compareJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        binding = FragmentStatisticsBinding.inflate(inflater, container, false)
+        _binding = FragmentStatisticsBinding.inflate(inflater, container, false)
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         activity = requireActivity() as ProfileActivity
-
         user = arguments?.getSerializableCompat<Query.UserProfile>("user") as Query.UserProfile
 
-        binding.statisticList.setBaseline(activity.binding.profileNavBarContainer!!)
+        mediaType = MediaType.fromOrdinal(PrefManager.getVal(PrefName.StatsMediaType))
+        statType = StatType.fromOrdinal(PrefManager.getVal(PrefName.StatsMetric))
 
-        binding.statisticList.adapter = adapter
-        binding.statisticList.recycledViewPool.setMaxRecycledViews(0, 0)
-        binding.statisticList.isNestedScrollingEnabled = true
-        binding.statisticList.layoutManager =
-            LinearLayoutManager(requireContext(), LinearLayoutManager.VERTICAL, false)
-        binding.statisticProgressBar.visibility = View.VISIBLE
-        binding.compare.visibility = if (user.id == Anilist.userid) View.GONE else View.VISIBLE
-        binding.filterContainer.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-            topMargin = statusBarHeight
+        adapter = StatsAdapter { section ->
+            SingleStatActivity.chartSection = section
+            startActivity(Intent(requireContext(), SingleStatActivity::class.java))
         }
 
-        binding.sourceType.setAdapter(
-            ArrayAdapter(
-                requireContext(),
-                R.layout.item_dropdown,
-                MediaType.entries.map { it.name.uppercase(Locale.ROOT).replace("_", " ") }
-            )
-        )
-        binding.sourceFilter.setAdapter(
-            ArrayAdapter(
-                requireContext(),
-                R.layout.item_dropdown,
-                StatType.entries.map { it.name.uppercase(Locale.ROOT).replace("_", " ") }
-            )
-        )
+        binding.statisticList.apply {
+            layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.VERTICAL, false)
+            adapter = this@StatsFragment.adapter
+            itemAnimator = null
+            isNestedScrollingEnabled = true
+            setBaseline(activity.binding.profileNavBarContainer)
+        }
 
-        binding.compare.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                // FINAL-PORT C1 (upstream 22b3fc10): fragment scope (not
-                // activity scope) so back-navigation cancels the load, plus
-                // a view-alive guard so dead-view touches cannot crash.
-                lifecycleScope.launch {
-                    if (Anilist.userid != null) {
-                        withContext(Dispatchers.Main) {
-                            view ?: return@withContext
-                            binding.statisticProgressBar.visibility = View.VISIBLE
-                            binding.statisticList.visibility = View.GONE
-                        }
-                        val userStats =
-                            Anilist.query.getUserStatistics(Anilist.userid!!)?.data?.user
-                        if (userStats != null) {
-                            stats.add(userStats)
-                            withContext(Dispatchers.Main) {
-                                view ?: return@withContext
-                                loadStats(type == MediaType.ANIME)
-                                binding.statisticProgressBar.visibility = View.GONE
-                                binding.statisticList.visibility = View.VISIBLE
-                            }
-                        }
-                    }
-                }
-            } else {
-                stats.removeAll(
-                    stats.filter { it?.id == Anilist.userid }.toSet()
-                )
-                loadStats(type == MediaType.ANIME)
+        setupControls()
+
+        binding.statsSwipeRefresh.setOnRefreshListener {
+            fetchStatistics(forceRefresh = true)
+        }
+
+        fetchStatistics(forceRefresh = false)
+    }
+
+    private fun setupControls() {
+        val b = binding
+        val initialSegmentId = if (mediaType == MediaType.ANIME) R.id.segmentAnime else R.id.segmentManga
+        b.mediaTypeGroup.check(initialSegmentId)
+        listOf(b.segmentAnime, b.segmentManga).forEach { markSegment(it, null, it.isChecked) }
+
+        b.mediaTypeGroup.addOnButtonCheckedListener { group, checkedId, isChecked ->
+            group.findViewById<com.google.android.material.button.MaterialButton>(checkedId)?.let {
+                markSegment(it, null, isChecked)
+            }
+            if (!isChecked) return@addOnButtonCheckedListener
+            val next = if (checkedId == R.id.segmentManga) MediaType.MANGA else MediaType.ANIME
+            if (next != mediaType) {
+                mediaType = next
+                PrefManager.setVal(PrefName.StatsMediaType, mediaType.ordinal)
+                updateMetricChipLabel()
+                rebuildCharts()
             }
         }
 
-        binding.filterContainer.visibility = View.GONE
+        updateMetricChipLabel()
+        b.metricChip.setOnClickListener {
+            b.metricChip.isChecked = true
+            val options = StatType.entries.map { ChoiceOption(metricLabel(it)) }
+            ChoiceSheet.single(
+                requireContext(),
+                getString(R.string.stats_view_by),
+                options,
+                statType.ordinal,
+            ) { picked ->
+                val next = StatType.fromOrdinal(picked)
+                if (next != statType) {
+                    statType = next
+                    PrefManager.setVal(PrefName.StatsMetric, statType.ordinal)
+                    updateMetricChipLabel()
+                    rebuildCharts()
+                }
+            }
+        }
+
+        val canCompare = Anilist.userid != null && user.id != Anilist.userid
+        b.compareChip.isVisible = canCompare
+        b.compareChip.isChecked = isComparing
+        b.compareChip.setOnCheckedChangeListener { _, checked ->
+            if (checked == isComparing) return@setOnCheckedChangeListener
+            if (checked) {
+                enableCompare()
+            } else {
+                compareJob?.cancel()
+                isComparing = false
+                rebuildCharts()
+            }
+        }
     }
 
-    override fun onPause() {
-        super.onPause()
-        binding.statisticList.visibility = View.GONE
+    private fun metricLabel(metric: StatType): String = when (metric) {
+        StatType.COUNT -> getString(R.string.stats_metric_count)
+        StatType.TIME -> getString(
+            if (mediaType == MediaType.ANIME) R.string.stats_metric_hours
+            else R.string.stats_metric_chapters
+        )
+        StatType.AVG_SCORE -> getString(R.string.stats_metric_score)
+    }
+
+    private fun updateMetricChipLabel() {
+        val label = metricLabel(statType)
+        binding.metricChip.setDropdownText(label)
+        binding.metricChip.isChecked = true
+    }
+
+    private fun fetchStatistics(forceRefresh: Boolean) {
+        if (!forceRefresh && hasLoadedOnce && primaryStats != null) {
+            binding.filterContainer.isVisible = true
+            binding.statisticProgressBar.isVisible = false
+            rebuildCharts()
+            return
+        }
+        fetchJob?.cancel()
+        if (!forceRefresh) {
+            binding.statisticProgressBar.isVisible = true
+            binding.statsEmptyContainer.isVisible = false
+        }
+        fetchJob = viewLifecycleOwner.lifecycleScope.launch {
+            val fetchedPrimary = withContext(Dispatchers.IO) {
+                runCatching { Anilist.query.getUserStatistics(user.id)?.data?.user }.getOrNull()
+            }
+            val fetchedCompare = if (isComparing && Anilist.userid != null && Anilist.userid != user.id) {
+                withContext(Dispatchers.IO) {
+                    runCatching { Anilist.query.getUserStatistics(Anilist.userid!!)?.data?.user }.getOrNull()
+                }
+            } else {
+                compareStats
+            }
+            val b = _binding ?: return@launch
+            b.statsSwipeRefresh.isRefreshing = false
+            b.statisticProgressBar.isVisible = false
+            hasLoadedOnce = true
+
+            if (fetchedPrimary != null) {
+                primaryStats = fetchedPrimary
+                if (isComparing) compareStats = fetchedCompare
+                b.filterContainer.isVisible = true
+                rebuildCharts()
+            } else if (primaryStats == null) {
+                b.filterContainer.isVisible = false
+                showErrorState()
+            } else {
+                snackString(R.string.stats_error_title)
+            }
+        }
+    }
+
+    private fun enableCompare() {
+        val selfId = Anilist.userid ?: return
+        if (compareStats != null) {
+            isComparing = true
+            rebuildCharts()
+            return
+        }
+        compareJob?.cancel()
+        binding.statisticProgressBar.isVisible = true
+        compareJob = viewLifecycleOwner.lifecycleScope.launch {
+            val selfStats = withContext(Dispatchers.IO) {
+                runCatching { Anilist.query.getUserStatistics(selfId)?.data?.user }.getOrNull()
+            }
+            val b = _binding ?: return@launch
+            b.statisticProgressBar.isVisible = false
+            if (selfStats != null) {
+                compareStats = selfStats
+                isComparing = true
+                rebuildCharts()
+            } else {
+                isComparing = false
+                b.compareChip.isChecked = false
+                snackString(R.string.stats_compare_failed)
+            }
+        }
+    }
+
+    private fun rebuildCharts() {
+        val primary = primaryStats ?: return
+        val compare = if (isComparing) compareStats else null
+        val activeMedia = mediaType
+        val activeMetric = statType
+        val youLabel = getString(R.string.stats_compare_you)
+
+        buildJob?.cancel()
+        buildJob = viewLifecycleOwner.lifecycleScope.launch {
+            val payload = withContext(Dispatchers.Default) {
+                ChartBuilder.buildProfileStats(
+                    users = listOfNotNull(primary, compare),
+                    mediaType = activeMedia,
+                    statType = activeMetric,
+                    compareLabelOverride = youLabel,
+                )
+            }
+            val b = _binding ?: return@launch
+            if (payload.isEmpty) {
+                adapter.submit(null, emptyList())
+                b.statisticList.isVisible = false
+                showEmptyMediaState(payload.hasOtherMediaStats)
+            } else {
+                b.statsEmptyContainer.isVisible = false
+                b.statisticList.isVisible = true
+                adapter.submit(payload.summary, payload.sections)
+            }
+        }
+    }
+
+    private fun showEmptyMediaState(hasOtherMediaStats: Boolean) {
+        val b = binding
+        val isAnime = mediaType == MediaType.ANIME
+        b.statsEmptyTitle.setText(if (isAnime) R.string.stats_empty_anime_title else R.string.stats_empty_manga_title)
+        b.statsEmptyBody.setText(R.string.stats_empty_body)
+        b.statsEmptyAction.isVisible = hasOtherMediaStats
+        if (hasOtherMediaStats) {
+            b.statsEmptyAction.setText(if (isAnime) R.string.stats_switch_to_manga else R.string.stats_switch_to_anime)
+            b.statsEmptyAction.setOnClickListener {
+                b.mediaTypeGroup.check(if (isAnime) R.id.segmentManga else R.id.segmentAnime)
+            }
+        }
+        b.statsEmptyContainer.isVisible = true
+    }
+
+    private fun showErrorState() {
+        val b = binding
+        b.statisticList.isVisible = false
+        b.statsEmptyTitle.setText(R.string.stats_error_title)
+        b.statsEmptyBody.setText(R.string.stats_error_body)
+        b.statsEmptyAction.setText(R.string.stats_retry)
+        b.statsEmptyAction.isVisible = true
+        b.statsEmptyAction.setOnClickListener { fetchStatistics(forceRefresh = true) }
+        b.statsEmptyContainer.isVisible = true
     }
 
     override fun onResume() {
         super.onResume()
-        if (this::binding.isInitialized) {
-            binding.statisticList.visibility = View.VISIBLE
-            binding.statisticList.setBaseline(activity.binding.profileNavBarContainer!!)
-            binding.root.requestLayout()
-            if (!loadedFirstTime) {
-                activity.lifecycleScope.launch {
-                    stats.clear()
-                    stats.add(Anilist.query.getUserStatistics(user.id)?.data?.user)
-                    withContext(Dispatchers.Main) {
-                        binding.filterContainer.visibility = View.VISIBLE
-                        binding.sourceType.setOnItemClickListener { _, _, i, _ ->
-                            type = MediaType.entries.toTypedArray()[i]
-                            loadStats(type == MediaType.ANIME)
-                        }
-                        binding.sourceFilter.setOnItemClickListener { _, _, i, _ ->
-                            statType = StatType.entries.toTypedArray()[i]
-                            loadStats(type == MediaType.ANIME)
-                        }
-                        loadStats(type == MediaType.ANIME)
-                        binding.statisticProgressBar.visibility = View.GONE
-                    }
-                }
-                loadedFirstTime = true
-            } else {
-                loadStats(type == MediaType.ANIME)
-            }
-        }
+        _binding?.statisticList?.setBaseline(activity.binding.profileNavBarContainer)
     }
 
-    private fun standardizeChartPackets(
-        packets: MutableList<ChartPacket>
-    ): MutableList<ChartPacket> {
-        if (packets.size <= 1) return packets
-        val allNames = linkedSetOf<String>()
-        packets.forEach { p -> p.names.forEach { allNames.add(it.toString()) } }
-        val referenceNames = allNames.toList()
-        val standardized = packets.map { packet ->
-            val valuesMap = packet.names.map { it.toString() }.zip(packet.statData).toMap()
-            val standardizedValues = referenceNames.map { name -> valuesMap[name] ?: 0 }
-            ChartPacket(packet.username, referenceNames, standardizedValues)
-        }.toMutableList()
-        packets.clear()
-        packets.addAll(standardized)
-        return packets
+    override fun onDestroyView() {
+        fetchJob?.cancel()
+        buildJob?.cancel()
+        compareJob?.cancel()
+        _binding = null
+        super.onDestroyView()
     }
-
-    private fun loadStats(anime: Boolean) {
-        binding.statisticProgressBar.visibility = View.VISIBLE
-        binding.statisticList.visibility = View.GONE
-        adapter.clear()
-        loadFormatChart(anime)
-        loadScoreChart(anime)
-        loadStatusChart(anime)
-        loadReleaseYearChart(anime)
-        loadStartYearChart(anime)
-        loadLengthChart(anime)
-        loadGenreChart(anime)
-        loadTagChart(anime)
-        loadCountryChart(anime)
-        loadVoiceActorsChart(anime)
-        loadStudioChart(anime)
-        loadStaffChart(anime)
-        binding.statisticProgressBar.visibility = View.GONE
-        binding.statisticList.visibility = View.VISIBLE
-    }
-
-    private fun loadFormatChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<String> = if (anime) {
-                stat?.statistics?.anime?.formats?.map { it.format } ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.formats?.map { it.format } ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.formats?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.formats?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.formats?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.formats?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.formats?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.formats?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() && values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            standardizeChartPackets(chartPackets)
-            val formatChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.OneDimensional,
-                AAChartType.Pie,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Format",
-            )
-            adapter.add(ChartItem("Format", formatChart, activity))
-        }
-    }
-
-    private fun loadStatusChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<String> = if (anime) {
-                stat?.statistics?.anime?.statuses?.map { it.status } ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.statuses?.map { it.status } ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.statuses?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.statuses?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.statuses?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.statuses?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.statuses?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.statuses?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() && values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            standardizeChartPackets(chartPackets)
-            val statusChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.OneDimensional,
-                AAChartType.Funnel,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Status",
-            )
-            adapter.add(ChartItem("Status", statusChart, activity))
-        }
-    }
-
-    private fun loadScoreChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<Int> = if (anime) {
-                stat?.statistics?.anime?.scores?.map {
-                    convertScore(
-                        it.score,
-                        stat.mediaListOptions.scoreFormat.toString()
-                    )
-                } ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.scores?.map {
-                    convertScore(
-                        it.score,
-                        stat.mediaListOptions.scoreFormat.toString()
-                    )
-                } ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.scores?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.scores?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.scores?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.scores?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.scores?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.scores?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() || values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            standardizeChartPackets(chartPackets)
-            val scoreChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.TwoDimensional,
-                AAChartType.Column,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Score",
-            )
-            adapter.add(ChartItem("Score", scoreChart, activity))
-        }
-    }
-
-    private fun loadLengthChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<String> = if (anime) {
-                stat?.statistics?.anime?.lengths?.map { it.length ?: "unknown" }
-                    ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.lengths?.map { it.length ?: "unknown" }
-                    ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.lengths?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.lengths?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.lengths?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.lengths?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.lengths?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.lengths?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() || values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            standardizeChartPackets(chartPackets)
-            val lengthChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.OneDimensional,
-                AAChartType.Pyramid,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Length",
-            )
-            adapter.add(ChartItem("Length", lengthChart, activity))
-        }
-    }
-
-    private fun loadReleaseYearChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<Number> = if (anime) {
-                stat?.statistics?.anime?.releaseYears?.map { it.releaseYear }
-                    ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.releaseYears?.map { it.releaseYear }
-                    ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.releaseYears?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.releaseYears?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.releaseYears?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.releaseYears?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.releaseYears?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.releaseYears?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() || values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            standardizeChartPackets(chartPackets)
-            val releaseYearChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.TwoDimensional,
-                AAChartType.Bubble,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Year",
-                scrollPos = 0.0f
-            )
-            adapter.add(ChartItem("Release Year", releaseYearChart, activity))
-        }
-    }
-
-    private fun loadStartYearChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<Number> = if (anime) {
-                stat?.statistics?.anime?.startYears?.map { it.startYear } ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.startYears?.map { it.startYear } ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.startYears?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.startYears?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.startYears?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.startYears?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.startYears?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.startYears?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() || values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            standardizeChartPackets(chartPackets)
-            val startYearChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.TwoDimensional,
-                AAChartType.Bar,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Year",
-            )
-            adapter.add(ChartItem("Start Year", startYearChart, activity))
-        }
-    }
-
-    private fun loadGenreChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<String> = if (anime) {
-                stat?.statistics?.anime?.genres?.map { it.genre } ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.genres?.map { it.genre } ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.genres?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.genres?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.genres?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.genres?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.genres?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.genres?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() || values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            val referenceNames = chartPackets.first().names.map { it.toString() }
-            val standardizedPackets = chartPackets.map { packet ->
-                val valuesMap = packet.names.map { it.toString() }.zip(packet.statData).toMap()
-                val standardizedValues = referenceNames.map { name ->
-                    valuesMap[name] ?: 0
-                }
-
-                // Create a new ChartPacket with standardized names and values.
-                ChartPacket(packet.username, referenceNames, standardizedValues)
-            }.toMutableList()
-            chartPackets.clear()
-            chartPackets.addAll(standardizedPackets)
-            @Suppress("UNCHECKED_CAST")
-            val genreChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.TwoDimensional,
-                AAChartType.Areaspline,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Genre",
-                polar = true,
-                passedCategories = chartPackets[0].names as List<String>,
-                normalize = true
-            )
-            adapter.add(ChartItem("Genre", genreChart, activity))
-        }
-    }
-
-    private fun loadTagChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<String> = if (anime) {
-                stat?.statistics?.anime?.tags?.map { it.tag.name } ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.tags?.map { it.tag.name } ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.tags?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.tags?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.tags?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.tags?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.tags?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.tags?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() || values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            val referenceNames = chartPackets.first().names.map { it.toString() }
-            val standardizedPackets = chartPackets.map { packet ->
-                val valuesMap = packet.names.map { it.toString() }.zip(packet.statData).toMap()
-                val standardizedValues = referenceNames.map { name ->
-                    valuesMap[name] ?: 0
-                }
-
-                // Create a new ChartPacket with standardized names and values.
-                ChartPacket(packet.username, referenceNames, standardizedValues)
-            }.toMutableList()
-            chartPackets.clear()
-            chartPackets.addAll(standardizedPackets)
-            @Suppress("UNCHECKED_CAST")
-            val tagChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.TwoDimensional,
-                AAChartType.Areaspline,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Tag",
-                polar = false,
-                passedCategories = chartPackets[0].names as List<String>,
-                scrollPos = 0.0f
-            )
-            adapter.add(ChartItem("Tag", tagChart, activity))
-        }
-    }
-
-    private fun loadCountryChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<String> = if (anime) {
-                stat?.statistics?.anime?.countries?.map { it.country } ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.countries?.map { it.country } ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.countries?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.countries?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.countries?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.countries?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.countries?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.countries?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() || values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            val referenceNames = chartPackets.first().names.map { it.toString() }
-            val standardizedPackets = chartPackets.map { packet ->
-                val valuesMap = packet.names.map { it.toString() }.zip(packet.statData).toMap()
-                val standardizedValues = referenceNames.map { name ->
-                    valuesMap[name] ?: 0
-                }
-
-                // Create a new ChartPacket with standardized names and values.
-                ChartPacket(packet.username, referenceNames, standardizedValues)
-            }.toMutableList()
-            chartPackets.clear()
-            chartPackets.addAll(standardizedPackets)
-            @Suppress("UNCHECKED_CAST")
-            val countryChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.OneDimensional,
-                AAChartType.Pie,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Country",
-                polar = false,
-                passedCategories = chartPackets[0].names as List<String>,
-                scrollPos = null
-            )
-            adapter.add(ChartItem("Country", countryChart, activity))
-        }
-    }
-
-    private fun loadVoiceActorsChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<String> = if (anime) {
-                stat?.statistics?.anime?.voiceActors?.map { it.voiceActor.name.full ?: "unknown" }
-                    ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.voiceActors?.map { it.voiceActor.name.full ?: "unknown" }
-                    ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.voiceActors?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.voiceActors?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.voiceActors?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.voiceActors?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.voiceActors?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.voiceActors?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() || values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            val referenceNames = chartPackets.first().names.map { it.toString() }
-            val standardizedPackets = chartPackets.map { packet ->
-                val valuesMap = packet.names.map { it.toString() }.zip(packet.statData).toMap()
-                val standardizedValues = referenceNames.map { name ->
-                    valuesMap[name] ?: 0
-                }
-
-                // Create a new ChartPacket with standardized names and values.
-                ChartPacket(packet.username, referenceNames, standardizedValues)
-            }.toMutableList()
-            chartPackets.clear()
-            chartPackets.addAll(standardizedPackets)
-            @Suppress("UNCHECKED_CAST")
-            val voiceActorsChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.TwoDimensional,
-                AAChartType.Column,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Voice Actor",
-                polar = false,
-                passedCategories = chartPackets[0].names as List<String>,
-                scrollPos = 0.0f
-            )
-            adapter.add(ChartItem("Voice Actor", voiceActorsChart, activity))
-        }
-    }
-
-    private fun loadStudioChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<String> = if (anime) {
-                stat?.statistics?.anime?.studios?.map { it.studio.name } ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.studios?.map { it.studio.name } ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.studios?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.studios?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.studios?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.studios?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.studios?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.studios?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() || values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            val referenceNames = chartPackets.first().names.map { it.toString() }
-            val standardizedPackets = chartPackets.map { packet ->
-                val valuesMap = packet.names.map { it.toString() }.zip(packet.statData).toMap()
-                val standardizedValues = referenceNames.map { name ->
-                    valuesMap[name] ?: 0
-                }
-
-                // Create a new ChartPacket with standardized names and values.
-                ChartPacket(packet.username, referenceNames, standardizedValues)
-            }.toMutableList()
-            chartPackets.clear()
-            chartPackets.addAll(standardizedPackets)
-            @Suppress("UNCHECKED_CAST")
-            val studioChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.TwoDimensional,
-                AAChartType.Spline,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Studio",
-                polar = true,
-                passedCategories = chartPackets[0].names as List<String>,
-                scrollPos = null,
-                normalize = true
-            )
-            adapter.add(ChartItem("Studio", studioChart, activity))
-        }
-    }
-
-    private fun loadStaffChart(anime: Boolean) {
-        val chartPackets = mutableListOf<ChartPacket>()
-        stats.forEach { stat ->
-            val names: List<String> = if (anime) {
-                stat?.statistics?.anime?.staff?.map { it.staff.name.full ?: "unknown" }
-                    ?: emptyList()
-            } else {
-                stat?.statistics?.manga?.staff?.map { it.staff.name.full ?: "unknown" }
-                    ?: emptyList()
-            }
-            val values: List<Number> = if (anime) {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.anime?.staff?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.anime?.staff?.map { it.minutesWatched / 60 }
-                    StatType.AVG_SCORE -> stat?.statistics?.anime?.staff?.map { it.meanScore }
-                } ?: emptyList()
-            } else {
-                when (statType) {
-                    StatType.COUNT -> stat?.statistics?.manga?.staff?.map { it.count }
-                    StatType.TIME -> stat?.statistics?.manga?.staff?.map { it.chaptersRead }
-                    StatType.AVG_SCORE -> stat?.statistics?.manga?.staff?.map { it.meanScore }
-                } ?: emptyList()
-            }
-            if (names.isNotEmpty() || values.isNotEmpty()) {
-                chartPackets.add(ChartPacket(stat?.name ?: "Unknown", names, values))
-            }
-        }
-        if (chartPackets.isNotEmpty()) {
-            val referenceNames = chartPackets.first().names.map { it.toString() }
-            val standardizedPackets = chartPackets.map { packet ->
-                val valuesMap = packet.names.map { it.toString() }.zip(packet.statData).toMap()
-                val standardizedValues = referenceNames.map { name ->
-                    valuesMap[name] ?: 0
-                }
-
-                // Create a new ChartPacket with standardized names and values.
-                ChartPacket(packet.username, referenceNames, standardizedValues)
-            }.toMutableList()
-            chartPackets.clear()
-            chartPackets.addAll(standardizedPackets)
-            @Suppress("UNCHECKED_CAST")
-            val staffChart = ChartBuilder.buildChart(
-                activity,
-                ChartType.TwoDimensional,
-                AAChartType.Line,
-                statType,
-                type,
-                chartPackets,
-                xAxisName = "Staff",
-                polar = false,
-                passedCategories = chartPackets[0].names as List<String>,
-                scrollPos = 0.0f
-            )
-            adapter.add(ChartItem("Staff", staffChart, activity))
-        }
-    }
-
-    private fun convertScore(score: Int, type: String?): Int =
-        ani.dantotsu.connections.anilist.ScoreFormats.statsBucketToRaw(
-            score,
-            ani.dantotsu.connections.anilist.ScoreFormats.parse(type)
-        )
 
     companion object {
         fun newInstance(user: Query.UserProfile): StatsFragment {

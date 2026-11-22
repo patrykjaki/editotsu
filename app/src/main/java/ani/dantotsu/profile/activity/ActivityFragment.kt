@@ -1,6 +1,7 @@
 package ani.dantotsu.profile.activity
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -8,6 +9,7 @@ import android.view.ViewGroup
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
+import androidx.core.widget.ImageViewCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -19,7 +21,9 @@ import ani.dantotsu.databinding.FragmentFeedBinding
 import ani.dantotsu.media.MediaDetailsActivity
 import ani.dantotsu.navBarHeight
 import ani.dantotsu.profile.ProfileActivity
+import ani.dantotsu.setBaseline
 import ani.dantotsu.util.ActivityMarkdownCreator
+import com.google.android.material.color.MaterialColors
 import com.xwray.groupie.GroupieAdapter
 import eu.kanade.tachiyomi.util.system.getSerializableCompat
 import kotlinx.coroutines.launch
@@ -52,7 +56,6 @@ class ActivityFragment : Fragment() {
             userId = if (it.containsKey("userId")) it.getInt("userId").takeIf { id -> id != 0 } else null
             activityId = if (it.containsKey("activityId")) it.getInt("activityId").takeIf { id -> id != 0 } else null
         }
-        val isUserActivity = type == ActivityType.USER || type == ActivityType.GLOBAL || userId == null || userId == Anilist.userid
         binding.titleBar.visibility =
             if (type != ActivityType.ONE) View.VISIBLE else View.GONE
         binding.titleText.text = when (type) {
@@ -66,15 +69,19 @@ class ActivityFragment : Fragment() {
             else -> View.GONE
         }
 
-        // Set up filter icon visibility
+        // Set up filter icon visibility & active tint
         binding.filterButton.visibility = if (type != ActivityType.ONE) View.VISIBLE else View.GONE
+        updateFilterButtonTint()
         binding.filterButton.setOnClickListener {
             showFilterBottomSheet()
         }
-        
+
         binding.titleImage.setOnClickListener { handleTitleImageClick() }
         binding.listRecyclerView.adapter = adapter
         binding.listRecyclerView.layoutManager = LinearLayoutManager(context)
+        (activity as? ProfileActivity)?.let { profileActivity ->
+            binding.listRecyclerView.setBaseline(profileActivity.binding.profileNavBarContainer)
+        }
         binding.listProgressBar.isVisible = true
 
         binding.feedRefresh.updateLayoutParams<ViewGroup.MarginLayoutParams> {
@@ -106,9 +113,20 @@ class ActivityFragment : Fragment() {
         })
     }
 
+    private fun updateFilterButtonTint() {
+        val attr = if (currentFilter == ActivityFilterType.ALL) {
+            com.google.android.material.R.attr.colorOnSurfaceVariant
+        } else {
+            androidx.appcompat.R.attr.colorPrimary
+        }
+        val tint = MaterialColors.getColor(binding.filterButton, attr)
+        ImageViewCompat.setImageTintList(binding.filterButton, ColorStateList.valueOf(tint))
+    }
+
     private fun showFilterBottomSheet() {
         ActivityFilterBottomSheet.newInstance(currentFilter) { filterType ->
             currentFilter = filterType
+            updateFilterButtonTint()
             lifecycleScope.launch {
                 binding.listProgressBar.isVisible = true
                 adapter.clear()
@@ -123,10 +141,10 @@ class ActivityFragment : Fragment() {
 
     private fun applyFilter() {
         val filteredActivities = getFilteredActivities()
-        
+
         adapter.clear()
         adapter.addAll(filteredActivities.map { ActivityItem(it, adapter, ::onActivityClick) })
-        
+
         binding.emptyTextView.isVisible = filteredActivities.isEmpty()
         binding.emptyTextView.text = when (currentFilter) {
             ActivityFilterType.ALL -> getString(R.string.nothing_here)
@@ -245,7 +263,6 @@ class ActivityFragment : Fragment() {
                 !binding.listRecyclerView.canScrollVertically(1) &&
                 !binding.feedRefresh.isVisible && adapter?.itemCount != 0 &&
                 layoutManager == (adapter!!.itemCount - 1)
-
     }
 
     private fun onActivityClick(id: Int, type: String) {
@@ -264,6 +281,9 @@ class ActivityFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         if (this::binding.isInitialized) {
+            (activity as? ProfileActivity)?.let { profileActivity ->
+                binding.listRecyclerView.setBaseline(profileActivity.binding.profileNavBarContainer)
+            }
             binding.root.requestLayout()
             if (shouldRefreshOnResume) {
                 shouldRefreshOnResume = false
