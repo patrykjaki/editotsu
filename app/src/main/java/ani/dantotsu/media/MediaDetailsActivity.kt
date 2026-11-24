@@ -599,6 +599,11 @@ class MediaDetailsActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedLi
         outContent?.intent = null
     }
 
+    override fun onDestroy() {
+        Refresh.activity.remove(this.hashCode())
+        super.onDestroy()
+    }
+
     override fun onResume() {
         super.onResume()
         if (!::binding.isInitialized) return

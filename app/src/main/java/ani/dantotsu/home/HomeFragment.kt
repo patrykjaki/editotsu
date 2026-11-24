@@ -18,9 +18,11 @@ import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import ani.dantotsu.MainActivity
@@ -611,6 +613,7 @@ class HomeFragment : Fragment() {
                 binding.homeRescueModeBanner.visibility =
                     if (inRescueMode) View.VISIBLE else View.GONE
                 if (inRescueMode) {
+                    binding.homeRateLimitBanner.visibility = View.GONE
                     alOnlySections.forEach { it.visibility = View.GONE }
 
                     listOf(
@@ -636,10 +639,38 @@ class HomeFragment : Fragment() {
                 }
             }
 
+        // Quiet inline status while AniList rate-limits or retries in the background.
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                Anilist.rateLimitState.collect { state ->
+                    val b = _binding ?: return@collect
+                    val inRescueMode: Boolean = PrefManager.getVal(PrefName.RescueMode)
+                    val showBanner = !inRescueMode && (state.waiting || state.exhausted)
+                    b.homeRateLimitBanner.isVisible = showBanner
+                    if (showBanner) {
+                        val remainingSec = ((state.retryAtEpochMs - System.currentTimeMillis() + 999L) / 1000L).coerceAtLeast(0L)
+                        b.homeRateLimitProgress.isVisible = state.waiting
+                        b.homeRateLimitText.text = when {
+                            state.waiting && remainingSec > 0L ->
+                                getString(R.string.anilist_rate_limit_waiting, remainingSec)
+                            state.waiting ->
+                                getString(R.string.anilist_rate_limit_waiting_short)
+                            else ->
+                                getString(R.string.anilist_rate_limit_exhausted)
+                        }
+                    }
+                }
+            }
+        }
+
         live.observe(viewLifecycleOwner) { shouldRefresh ->
             if (!running && shouldRefresh) {
                 running = true
                 scope.launch {
+                    val ctx = context ?: run {
+                        running = false
+                        return@launch
+                    }
                     withContext(Dispatchers.IO) {
                         val rescueMode: Boolean = PrefManager.getVal(PrefName.RescueMode)
                         if (rescueMode) {
@@ -651,21 +682,10 @@ class HomeFragment : Fragment() {
                             Anilist.userid =
                                 PrefManager.getNullableVal<String>(PrefName.AnilistUserId, null)
                                     ?.toIntOrNull()
-                            if (Anilist.userid == null) {
-                                withContext(Dispatchers.Main) {
-                                    getUserId(requireContext()) {
-                                        load()
-                                    }
-                                }
-                            } else {
-                                launch(Dispatchers.Main) {
-                                    getUserId(requireContext()) {
-                                        load()
-                                    }
-                                }
+                            getUserId(ctx) {
+                                load()
                             }
                         }
-                        model.loaded = true
                     }
 
                     if (Anilist.anilistDisabledSignal && !PrefManager.getVal<Boolean>(PrefName.RescueMode)
@@ -721,13 +741,18 @@ class HomeFragment : Fragment() {
 
                     val rescueMode: Boolean = PrefManager.getVal(PrefName.RescueMode)
                     val isPullToRefresh = _binding?.homeRefresh?.isRefreshing == true
-                    val initHomePage = async(Dispatchers.IO) { model.initHomePage(forceRefresh = isPullToRefresh) }
-                    async(Dispatchers.IO) { model.setListImages() }
-                    if (!rescueMode) {
+                    val homeLoaded = withContext(Dispatchers.IO) {
+                        model.initHomePage(forceRefresh = isPullToRefresh)
+                    }
+                    model.loaded = homeLoaded
+                    // Run after initHomePage so seeded banners reuse already-fetched home data.
+                    val bannerJob = async(Dispatchers.IO) { model.setListImages() }
+                    val statusJob = if (!rescueMode) {
                         // Upstream 5ffa682b: PTR bypasses the stories cache.
                         async(Dispatchers.IO) { model.initUserStatus(forceRefresh = isPullToRefresh) }
-                    }
-                    initHomePage.await()
+                    } else null
+                    bannerJob.await()
+                    statusJob?.await()
 
                     withContext(Dispatchers.Main) {
                         model.empty.postValue(empty)

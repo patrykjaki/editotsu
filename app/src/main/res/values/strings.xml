@@ -1121,6 +1121,9 @@
     <string name="widget_continue_empty_detail">Open Editotsu to start</string>
     <string name="widget_continue_chapter">Chapter %1$s (%2$d/%3$d)</string>
     <string name="anilist_rate_limited">Rate limited. Try after %1$d seconds</string>
+    <string name="anilist_rate_limit_waiting">AniList is busy — retrying in %1$ds…</string>
+    <string name="anilist_rate_limit_waiting_short">AniList is busy — retrying shortly…</string>
+    <string name="anilist_rate_limit_exhausted">AniList rate limit reached — showing saved data</string>
     <string name="anilist_token_expired">AniList login expired, log in again</string>
     <string name="anilist_error_fetching">Error fetching AniList data: %1$s</string>
     <string name="activity_like_failed">Failed to like activity</string>
