@@ -154,14 +154,15 @@ class AnimeFragment : Fragment() {
 
         model.getPopular().observe(viewLifecycleOwner) {
             if (it != null) {
-                if (oldIncludeList == (it.onList != false)) {
-                    val prev = model.aniMangaSearchResults.results.size
-                    model.aniMangaSearchResults.results.addAll(it.results)
-                    popularAdaptor.notifyItemRangeInserted(prev, it.results.size)
-                } else {
+                if (it.page <= 1 || oldIncludeList != (it.onList != false)) {
+                    model.aniMangaSearchResults.results.clear()
                     model.aniMangaSearchResults.results.addAll(it.results)
                     popularAdaptor.notifyDataSetChanged()
                     oldIncludeList = it.onList ?: true
+                } else {
+                    val prev = model.aniMangaSearchResults.results.size
+                    model.aniMangaSearchResults.results.addAll(it.results)
+                    popularAdaptor.notifyItemRangeInserted(prev, it.results.size)
                 }
                 model.aniMangaSearchResults.onList = it.onList
                 model.aniMangaSearchResults.hasNextPage = it.hasNextPage
@@ -313,16 +314,14 @@ class AnimeFragment : Fragment() {
                             }
                         }
                     }
-                    model.loaded = true
-                    if (_binding?.animeRefresh?.isRefreshing == true) {
-                        withContext(Dispatchers.Main) {
-                            model.aniMangaSearchResults.results.clear()
-                            popularAdaptor.notifyDataSetChanged()
-                        }
+                    val isPullToRefresh = _binding?.animeRefresh?.isRefreshing == true
+                    val loadedOk = withContext(Dispatchers.IO) {
+                        model.loadAll(
+                            onList = PrefManager.getVal(PrefName.PopularAnimeList),
+                            forceRefresh = isPullToRefresh,
+                        )
                     }
-                    withContext(Dispatchers.IO) {
-                        model.loadAll(PrefManager.getVal(PrefName.PopularAnimeList))
-                    }
+                    model.loaded = loadedOk
                     live.postValue(false)
                     _binding?.animeRefresh?.isRefreshing = false
                     running = false

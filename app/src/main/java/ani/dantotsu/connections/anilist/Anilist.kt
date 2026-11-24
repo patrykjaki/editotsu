@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
+import ani.dantotsu.Mapper
 import ani.dantotsu.R
 import ani.dantotsu.client
 import ani.dantotsu.connections.comments.CommentsAPI
@@ -12,15 +13,16 @@ import ani.dantotsu.openLinkInBrowser
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
-import ani.dantotsu.toast
 import ani.dantotsu.util.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.contentOrNull
+import java.io.File
 import java.util.Calendar
 import java.util.Locale
 import kotlin.math.abs
@@ -48,7 +50,38 @@ object Anilist {
     /** Tag name -> AniList category ("Theme-Action", "Cast-Traits"); empty until fetched. */
     var tagCategories: Map<String, String> = emptyMap()
 
-    var rateLimitReset: Long = 0
+    val rateLimiter: AnilistRateLimiter = AnilistRateLimiter()
+    val coalescer: AnilistRequestCoalescer<String, String> = AnilistRequestCoalescer()
+    val responseCache: AnilistResponseCache = AnilistResponseCache(
+        diskDirProvider = {
+            currContext()?.cacheDir?.let { File(it, "anilist_cache") }
+        }
+    )
+
+    val rateLimitState: StateFlow<AnilistRateLimitState>
+        get() = rateLimiter.state
+
+    /**
+     * Legacy epoch-seconds cooldown gate. Kept synced with [rateLimiter] for callers and tests
+     * that inspect or force a rate-limit window directly.
+     */
+    var rateLimitReset: Long
+        get() = rateLimiter.currentBlockedUntilMs() / 1000L
+        set(value) {
+            if (value <= 0L) {
+                rateLimiter.clearExternalGate()
+            } else {
+                rateLimiter.externalBlockedUntilMs = value * 1000L
+            }
+        }
+
+    fun isRateLimited(): Boolean {
+        val state = rateLimiter.state.value
+        return state.waiting || state.exhausted || rateLimiter.isCurrentlyBlocked()
+    }
+
+    @Volatile
+    private var lastRateLimitSnackMs: Long = 0L
 
     var initialized = false
     var adult: Boolean = false
@@ -308,8 +341,7 @@ object Anilist {
         PrefManager.removeVal(PrefName.AnilistUserName)
         // Upstream c03efc37: re-login must not reuse stale home/stories caches
         // (methods introduced via 5ffa682b subset).
-        Anilist.query.invalidateHomePageCache()
-        Anilist.query.invalidateUserStatusCache()
+        clearAllCaches()
         // Reset per-section notification counts
         PrefManager.setVal(PrefName.UnreadUserNotifications, 0)
         PrefManager.setVal(PrefName.UnreadMediaNotifications, 0)
@@ -353,29 +385,73 @@ object Anilist {
         currContext()?.getString(R.string.anilist_error_fetching, detail)
             ?: "Error fetching AniList data: $detail"
 
-    suspend inline fun <reified T : Any> executeQuery(
+    fun clearAllCaches() {
+        responseCache.clearAll()
+        query.invalidateHomePageCache()
+        query.invalidateUserStatusCache()
+        query.invalidateBannerCache()
+        rateLimiter.reset()
+    }
+
+    fun buildRequestKey(query: String, variables: String = "", useToken: Boolean = true): String {
+        val authScope = if (useToken && !token.isNullOrEmpty()) {
+            "u:${userid ?: token.hashCode()}"
+        } else {
+            "anon"
+        }
+        return "$authScope|${query.trim()}|${variables.trim()}"
+    }
+
+    private fun buildCacheKey(
+        query: String,
+        variables: String,
+        useToken: Boolean,
+        cacheSpec: AnilistCacheSpec,
+    ): String {
+        val override = cacheSpec.cacheKeyOverride ?: return buildRequestKey(query, variables, useToken)
+        val authScope = if (useToken && !token.isNullOrEmpty()) {
+            "u:${userid ?: token.hashCode()}"
+        } else {
+            "anon"
+        }
+        return "$authScope|$override"
+    }
+
+    fun peekCachedRawQuery(
+        query: String,
+        variables: String = "",
+        useToken: Boolean = true,
+        cacheSpec: AnilistCacheSpec,
+    ): CacheLookup {
+        val key = buildCacheKey(query, variables, useToken, cacheSpec)
+        return responseCache.get(key, cacheSpec.category, checkDisk = cacheSpec.persistToDisk)
+    }
+
+    suspend fun executeRawQuery(
         query: String,
         variables: String = "",
         force: Boolean = false,
         useToken: Boolean = true,
         show: Boolean = false,
-        cache: Int? = null
-    ): T? {
+        @Suppress("UNUSED_PARAMETER") cache: Int? = null,
+        cacheSpec: AnilistCacheSpec? = null,
+        bypassCache: Boolean = false,
+    ): String? {
         lastError = null
-        return try {
-            if (show) Logger.log("Anilist Query: $query")
-            // Upstream aa98472a: single nowSec snapshot; clear a stale reset
-            // instead of comparing against a dead timestamp forever.
-            val nowSec = System.currentTimeMillis() / 1000
-            val secondsRemaining = rateLimitReset - nowSec
-            if (secondsRemaining > 0) {
-                val rateMsg = rateLimitedMessage(secondsRemaining)
-                toast(rateMsg)
-                lastError = rateMsg
-                throw Exception(rateMsg)
-            } else {
-                rateLimitReset = 0
+        if (token == null && !force) return null
+        val isMutation = isGraphqlMutation(query)
+        val requestKey = buildRequestKey(query, variables, useToken)
+        val cacheKey = cacheSpec?.let { buildCacheKey(query, variables, useToken, it) }
+
+        if (!isMutation && cacheSpec != null && cacheKey != null && !bypassCache) {
+            val cached = responseCache.get(cacheKey, cacheSpec.category, checkDisk = cacheSpec.persistToDisk)
+            if (cached is CacheLookup.Fresh) {
+                return cached.value
             }
+        }
+
+        suspend fun fetchOverNetwork(): String {
+            if (show) Logger.log("Anilist Query: $query")
             val headers = mutableMapOf(
                 "Content-Type" to "application/json; charset=utf-8",
                 "Accept" to "application/json",
@@ -383,113 +459,116 @@ object Anilist {
                 "Referer" to "https://anilist.co/",
                 "Origin" to "https://anilist.co"
             )
+            if (token != null && useToken) headers["Authorization"] = "Bearer $token"
 
-            if (token != null || force) {
-                if (token != null && useToken) headers["Authorization"] = "Bearer $token"
-
-                // Upstream e70fdc56: build the JSON body directly (bypasses
-                // NiceHttp reflection, which throws NoSuchFieldError on
-                // minified release builds).
-                val jsonPayload = buildString {
-                    append("{\"query\":")
-                    append(Json.encodeToString(query))
-                    if (variables.isNotBlank() && variables.trim().startsWith("{")) {
-                        append(",\"variables\":")
-                        append(variables.trim())
-                    }
-                    append("}")
+            // Upstream e70fdc56: build the JSON body directly (bypasses
+            // NiceHttp reflection, which throws NoSuchFieldError on
+            // minified release builds).
+            val jsonPayload = buildString {
+                append("{\"query\":")
+                append(Json.encodeToString(query))
+                if (variables.isNotBlank() && variables.trim().startsWith("{")) {
+                    append(",\"variables\":")
+                    append(variables.trim())
                 }
-                val requestBody = jsonPayload.toRequestBody("application/json; charset=utf-8".toMediaType())
+                append("}")
+            }
 
-                val json = client.post(
+            val response = rateLimiter.execute(isMutation = isMutation) {
+                val requestBody = jsonPayload.toRequestBody("application/json; charset=utf-8".toMediaType())
+                val res = client.post(
                     "https://graphql.anilist.co/",
                     headers,
                     requestBody = requestBody,
-                    // Upstream 5ffa682b (+ e70fdc56 payload): forced queries
-                    // bypass the NiceHTTP cache. Restores the force branch
-                    // local executeQuery had dropped; required so PTR refresh
-                    // (getUserStatus/initHomePage force flags) actually refetches.
-                    cacheTime = if (force) 0 else (cache ?: 10)
+                    cacheTime = 0
                 )
-                val remaining = json.headers["X-RateLimit-Remaining"]?.toIntOrNull() ?: -1
-                Logger.log("Remaining requests: $remaining")
-                if (json.code == 429) {
-                    // Upstream aa98472a: normalize ms-vs-s reset headers, honor
-                    // Retry-After first, fall back to the reset timestamp, and
-                    // always set a concrete positive wait (60s default).
-                    val currentSec = System.currentTimeMillis() / 1000
-                    val retry = json.headers["Retry-After"]?.toIntOrNull() ?: -1
-                    var passedLimitReset = json.headers["X-RateLimit-Reset"]?.toLongOrNull() ?: 0L
-                    if (passedLimitReset > 10_000_000_000L) {
-                        passedLimitReset /= 1000
-                    }
-                    val waitFromReset = if (passedLimitReset > currentSec) (passedLimitReset - currentSec).toInt() else 0
-                    val actualWait = when {
-                        retry > 0 -> retry
-                        waitFromReset > 0 -> waitFromReset
-                        else -> 60
-                    }.coerceAtLeast(1)
+                AnilistHttpResponse(
+                    code = res.code,
+                    text = res.text,
+                    retryAfterSeconds = res.headers["Retry-After"]?.toIntOrNull(),
+                    rateLimitRemaining = res.headers["X-RateLimit-Remaining"]?.toIntOrNull(),
+                    rateLimitResetRaw = res.headers["X-RateLimit-Reset"]?.toLongOrNull(),
+                    rateLimitLimit = res.headers["X-RateLimit-Limit"]?.toIntOrNull(),
+                )
+            }
+            Logger.log("Remaining requests: ${response.rateLimitRemaining ?: -1}")
 
-                    rateLimitReset = currentSec + actualWait
-
-                    val rateMsg = rateLimitedMessage(actualWait.toLong())
-                    toast(rateMsg)
-                    lastError = rateMsg
-                    throw Exception(rateMsg)
-                }
-
-                // 401: AniList answers an expired or revoked token with "Invalid token".
-                if (json.code == 403 || json.code == 400 || json.code == 401) {
-                    // Upstream e70fdc56: surface field-level validation messages
-                    // instead of a generic Forbidden.
-                    val message = runCatching {
-                        val root = Json.parseToJsonElement(json.text).jsonObject
-                        val firstError = root["errors"]?.jsonArray?.firstOrNull()?.jsonObject
-                        val validationObj = firstError?.get("validation")?.jsonObject
-                        if (validationObj != null) {
-                            val validationMessages = validationObj.values.flatMap { elem ->
-                                (elem as? kotlinx.serialization.json.JsonArray)?.mapNotNull {
-                                    it.jsonPrimitive.contentOrNull
-                                } ?: emptyList()
-                            }
-                            if (validationMessages.isNotEmpty()) {
-                                validationMessages.joinToString("\n")
-                            } else {
-                                firstError["message"]?.jsonPrimitive?.contentOrNull
-                            }
-                        } else {
-                            firstError?.get("message")?.jsonPrimitive?.contentOrNull
+            // 401: AniList answers an expired or revoked token with "Invalid token".
+            if (response.code == 403 || response.code == 400 || response.code == 401) {
+                // Upstream e70fdc56: surface field-level validation messages
+                // instead of a generic Forbidden.
+                val message = runCatching {
+                    val root = Json.parseToJsonElement(response.text).jsonObject
+                    val firstError = root["errors"]?.jsonArray?.firstOrNull()?.jsonObject
+                    val validationObj = firstError?.get("validation")?.jsonObject
+                    if (validationObj != null) {
+                        val validationMessages = validationObj.values.flatMap { elem ->
+                            (elem as? kotlinx.serialization.json.JsonArray)?.mapNotNull {
+                                it.jsonPrimitive.contentOrNull
+                            } ?: emptyList()
                         }
-                    }.getOrNull() ?: "Forbidden (error ${json.code})"
-
-                    lastError = message
-
-                    if (message.contains("disabled", ignoreCase = true)) {
-                        anilistDisabledSignal = true
-                    } else if (json.code == 401 || message.contains("Invalid token")) {
-                        if (!show) snackString(
-                            currContext()?.getString(R.string.anilist_token_expired)
-                                ?: "AniList login expired, log in again"
-                        )
+                        if (validationMessages.isNotEmpty()) {
+                            validationMessages.joinToString("\n")
+                        } else {
+                            firstError["message"]?.jsonPrimitive?.contentOrNull
+                        }
                     } else {
-                        if (!show) snackString(anilistErrorMessage(message))
+                        firstError?.get("message")?.jsonPrimitive?.contentOrNull
                     }
+                }.getOrNull() ?: "Forbidden (error ${response.code})"
 
-                    throw Exception(message)
-                }
-                if (!json.text.startsWith("{")) {
+                lastError = message
+
+                if (message.contains("disabled", ignoreCase = true)) {
                     anilistDisabledSignal = true
-                    val downMsg = (currContext()?.getString(R.string.anilist_down) ?: "AniList is down") + " (error: ${json.code})"
-                    lastError = downMsg
-                    throw Exception(downMsg)
+                } else if (response.code == 401 || message.contains("Invalid token")) {
+                    if (!show) snackString(
+                        currContext()?.getString(R.string.anilist_token_expired)
+                            ?: "AniList login expired, log in again"
+                    )
+                } else {
+                    if (!show) snackString(anilistErrorMessage(message))
                 }
 
-                anilistDisabledSignal = false
-                json.parsed()
-            } else null
+                throw Exception(message)
+            }
+            if (!response.text.startsWith("{")) {
+                anilistDisabledSignal = true
+                val downMsg = (currContext()?.getString(R.string.anilist_down) ?: "AniList is down") + " (error: ${response.code})"
+                lastError = downMsg
+                throw Exception(downMsg)
+            }
+
+            anilistDisabledSignal = false
+            if (!isMutation && cacheSpec != null && cacheKey != null) {
+                responseCache.put(cacheKey, response.text, cacheSpec)
+            }
+            return response.text
+        }
+
+        return try {
+            if (isMutation) {
+                fetchOverNetwork()
+            } else {
+                coalescer.execute(requestKey) { fetchOverNetwork() }
+            }
         } catch (e: CancellationException) {
             // M6 HOLD Blocker 2: cancellation is not a request failure.
             throw e
+        } catch (e: AnilistRateLimitException) {
+            val rateMsg = rateLimitedMessage(e.waitSeconds)
+            lastError = rateMsg
+            // Quiet rate limiting: never spam a toast for each throttled request.
+            // Only surface a debounced snackbar for explicit user mutations with show = true.
+            if (isMutation && show) {
+                val now = System.currentTimeMillis()
+                if (now - lastRateLimitSnackMs > 30_000L) {
+                    lastRateLimitSnackMs = now
+                    snackString(rateMsg)
+                }
+            }
+            Logger.log("Anilist Rate Limited: $rateMsg")
+            null
         } catch (e: Exception) {
             // Upstream edb1a9eb: timeouts are transient; only host/connect
             // failures mean Anilist is down.
@@ -501,6 +580,37 @@ object Anilist {
             }
             if (show) snackString(anilistErrorMessage(e.message.orEmpty()))
             Logger.log("Anilist Query Error: ${e.message}")
+            null
+        }
+    }
+
+    suspend inline fun <reified T : Any> executeQuery(
+        query: String,
+        variables: String = "",
+        force: Boolean = false,
+        useToken: Boolean = true,
+        show: Boolean = false,
+        cache: Int? = null,
+        cacheSpec: AnilistCacheSpec? = null,
+        bypassCache: Boolean = false,
+    ): T? {
+        val raw = executeRawQuery(
+            query = query,
+            variables = variables,
+            force = force,
+            useToken = useToken,
+            show = show,
+            cache = cache,
+            cacheSpec = cacheSpec,
+            bypassCache = bypassCache,
+        ) ?: return null
+        return try {
+            Mapper.parse<T>(raw)
+        } catch (e: Exception) {
+            if (lastError == null) {
+                lastError = e.message
+            }
+            Logger.log("Anilist Query Parse Error: ${e.message}")
             null
         }
     }

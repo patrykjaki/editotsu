@@ -242,14 +242,15 @@ class MangaFragment : Fragment() {
 
         model.getPopular().observe(viewLifecycleOwner) {
             if (it != null) {
-                if (oldIncludeList == (it.onList != false)) {
-                    val prev = model.aniMangaSearchResults.results.size
-                    model.aniMangaSearchResults.results.addAll(it.results)
-                    popularAdaptor.notifyItemRangeInserted(prev, it.results.size)
-                } else {
+                if (it.page <= 1 || oldIncludeList != (it.onList != false)) {
+                    model.aniMangaSearchResults.results.clear()
                     model.aniMangaSearchResults.results.addAll(it.results)
                     popularAdaptor.notifyDataSetChanged()
                     oldIncludeList = it.onList ?: true
+                } else {
+                    val prev = model.aniMangaSearchResults.results.size
+                    model.aniMangaSearchResults.results.addAll(it.results)
+                    popularAdaptor.notifyItemRangeInserted(prev, it.results.size)
                 }
                 model.aniMangaSearchResults.onList = it.onList
                 model.aniMangaSearchResults.hasNextPage = it.hasNextPage
@@ -271,7 +272,10 @@ class MangaFragment : Fragment() {
         }
 
         var running = false
-        val live = Refresh.activity.getOrPut(this.hashCode()) { MutableLiveData(true) }
+        // Start false (matching AnimeFragment) so offscreen ViewPager2 pre-creation does not
+        // fire a background Manga catalog fetch on cold start or login; onResume triggers it
+        // when the user opens the Manga tab.
+        val live = Refresh.activity.getOrPut(this.hashCode()) { MutableLiveData(false) }
         live.observe(viewLifecycleOwner) {
             if (!running && it) {
                 running = true
@@ -284,27 +288,19 @@ class MangaFragment : Fragment() {
                             Anilist.userid =
                                 PrefManager.getNullableVal<String>(PrefName.AnilistUserId, null)
                                     ?.toIntOrNull()
-                            if (Anilist.userid == null) {
-                                getUserId(requireContext()) {
-                                    load()
-                                }
-                            } else {
-                                getUserId(requireContext()) {
-                                    load()
-                                }
+                            getUserId(requireContext()) {
+                                load()
                             }
                         }
                     }
-                    model.loaded = true
-                    if (_binding?.mangaRefresh?.isRefreshing == true) {
-                        withContext(Dispatchers.Main) {
-                            model.aniMangaSearchResults.results.clear()
-                            popularAdaptor.notifyDataSetChanged()
-                        }
+                    val isPullToRefresh = _binding?.mangaRefresh?.isRefreshing == true
+                    val loadedOk = withContext(Dispatchers.IO) {
+                        model.loadAll(
+                            onList = PrefManager.getVal(PrefName.PopularMangaList),
+                            forceRefresh = isPullToRefresh,
+                        )
                     }
-                    withContext(Dispatchers.IO) {
-                        model.loadAll(PrefManager.getVal(PrefName.PopularMangaList))
-                    }
+                    model.loaded = loadedOk
 
                     live.postValue(false)
                     _binding?.mangaRefresh?.isRefreshing = false
