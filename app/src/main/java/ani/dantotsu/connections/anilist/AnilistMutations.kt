@@ -85,6 +85,12 @@ class AnilistMutations {
         """.trimIndent().replace("\n", "").replace("""    """, "").replace(",}", "}")
 
         executeQuery<JsonObject>(query, variables)
+        Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_PROFILE)
+        if (displayAdultContent != null) {
+            Anilist.query.invalidateHomePageCache()
+            Anilist.responseCache.invalidateCategory(AnilistCacheCategory.CATALOG)
+            Anilist.responseCache.invalidateCategory(AnilistCacheCategory.SEARCH)
+        }
     }
 
     suspend fun toggleFav(anime: Boolean = true, id: Int) {
@@ -106,6 +112,10 @@ class AnilistMutations {
         """.trimIndent()
         val variables = if (anime) """{"animeId":"$id"}""" else """{"mangaId":"$id"}"""
         executeQuery<JsonObject>(query, variables)
+        Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_FAVS)
+        Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_LIST)
+        Anilist.responseCache.invalidateMedia(id)
+        Anilist.query.invalidateHomePageCache()
     }
 
     suspend fun toggleFav(type: FavType, id: Int): Boolean {
@@ -128,7 +138,16 @@ class AnilistMutations {
             }
         """.trimIndent()
         val result = executeQuery<JsonObject>(query)
-        return result?.get("errors") == null && result != null
+        val ok = result?.get("errors") == null && result != null
+        if (ok) {
+            Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_FAVS)
+            if (type == FavType.ANIME || type == FavType.MANGA) {
+                Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_LIST)
+                Anilist.responseCache.invalidateMedia(id)
+                Anilist.query.invalidateHomePageCache()
+            }
+        }
+        return ok
     }
 
     enum class FavType {
@@ -145,7 +164,12 @@ class AnilistMutations {
         """.trimIndent()
         val variables = deleteCustomListVariables(name, type).toString()
         val result = executeQuery<JsonObject>(query, variables)
-        return result != null && result["errors"] == null
+        val ok = result != null && result["errors"] == null
+        if (ok) {
+            Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_PROFILE)
+            Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_LIST)
+        }
+        return ok
     }
 
     suspend fun updateCustomLists(
@@ -175,7 +199,12 @@ class AnilistMutations {
         """.trimIndent().replace("\n", "").replace("""    """, "").replace(",}", "}")
 
         val result = executeQuery<JsonObject>(query, variables)
-        return result?.get("errors") == null
+        val ok = result?.get("errors") == null
+        if (ok) {
+            Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_PROFILE)
+            Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_LIST)
+        }
+        return ok
     }
 
     suspend fun editList(
@@ -271,9 +300,12 @@ class AnilistMutations {
             advancedScores = advancedScores,
         ).toString()
         val result = executeQuery<JsonObject>(query, variables, show = true)
-        // Upstream 5ffa682b: list edits must drop stale home/stories caches.
+        // Upstream 5ffa682b: list edits must drop stale home/stories/media/list caches.
         Anilist.query.invalidateUserStatusCache()
         Anilist.query.invalidateHomePageCache()
+        Anilist.responseCache.invalidateMedia(mediaID)
+        Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_LIST)
+        Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_PROFILE)
         // null = network error, timeout, 429 window or HTTP error.
         return result != null && result["errors"] == null
     }
@@ -288,9 +320,12 @@ class AnilistMutations {
         """.trimIndent()
         val variables = """{"id":"$listId"}"""
         executeQuery<JsonObject>(query, variables)
-        // Upstream 5ffa682b: deletions must drop stale home/stories caches.
+        // Upstream 5ffa682b: deletions must drop stale home/stories/media/list caches.
         Anilist.query.invalidateUserStatusCache()
         Anilist.query.invalidateHomePageCache()
+        Anilist.responseCache.invalidateCategory(AnilistCacheCategory.MEDIA_DETAILS)
+        Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_LIST)
+        Anilist.responseCache.invalidateCategory(AnilistCacheCategory.USER_PROFILE)
     }
 
     suspend fun rateReview(reviewId: Int, rating: String): Query.RateReviewResponse? {
@@ -326,7 +361,7 @@ class AnilistMutations {
     }
 
     suspend fun toggleFollow(id: Int): Query.ToggleFollow? {
-        return executeQuery<Query.ToggleFollow>(
+        val res = executeQuery<Query.ToggleFollow>(
             """
             mutation {
                 ToggleFollow(userId: $id) {
@@ -337,6 +372,10 @@ class AnilistMutations {
             }
         """.trimIndent()
         )
+        if (res != null) {
+            Anilist.query.invalidateUserStatusCache()
+        }
+        return res
     }
 
     suspend fun toggleLike(id: Int, type: String): ToggleLike? {
