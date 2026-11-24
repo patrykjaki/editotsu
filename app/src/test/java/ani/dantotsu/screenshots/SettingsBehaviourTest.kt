@@ -14,8 +14,10 @@ import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.settings.saving.internal.BackupSection
 import ani.dantotsu.settings.saving.internal.Location
 import ani.dantotsu.settings.saving.internal.PreferencePackager
+import ani.dantotsu.settings.screens.NotificationsScreen
 import ani.dantotsu.settings.screens.SettingsScreens
 import ani.dantotsu.settings.screens.SourcesScreen
+import ani.dantotsu.settings.screens.TrackingScreen
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -68,6 +70,33 @@ class SettingsBehaviourTest : ScreenshotTest() {
     @Test fun search_backup_jumps_to_its_row() = assertSearchJumps("backup")
 
     @Test fun search_advanced_row_opens_with_advanced_shown() = assertSearchJumps("user agent")
+
+    @Test fun search_moved_rows_jump_to_new_screens() {
+        assertSearchJumps("smart download (next episode)")
+        assertSearchJumps("hide notification dot")
+    }
+
+    @Test fun search_tracking_still_finds_accounts_and_tracking_rows() {
+        val hits = SettingsIndex.search(context, "tracking")
+        assertTrue("no TrackingScreen hit for 'tracking'", hits.any { it.entry.screen == TrackingScreen })
+    }
+
+    @Test fun notifications_signed_out_is_not_empty_and_drops_hidden_headers() {
+        val intent = SettingsScreenActivity.intent(context, NotificationsScreen)
+        ActivityScenario.launch<SettingsScreenActivity>(intent).use { scenario ->
+            scenario.onActivity { activity ->
+                val list = activity.findViewById<RecyclerView>(R.id.settingScreenList)
+                idle()
+                assertEquals(
+                    listOf(
+                        "header:${R.string.settings_section_anilist_comments}:",
+                        PrefName.ShowNotificationRedDot.name,
+                    ),
+                    list.rowAdapterKeys(),
+                )
+            }
+        }
+    }
 
     @Test fun every_screen_more_rows_show_and_hide_advanced_rows() {
         SettingsScreenActivity.closeAllSections()

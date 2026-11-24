@@ -17,6 +17,7 @@ import ani.dantotsu.download.novel.NovelDownloaderService
 import ani.dantotsu.media.MediaType
 import ani.dantotsu.others.calc.BiometricPromptUtils
 import ani.dantotsu.restartApp
+import ani.dantotsu.settings.ResolutionPriorityDialog
 import ani.dantotsu.settings.rows.Section
 import ani.dantotsu.settings.rows.SettingsHost
 import ani.dantotsu.settings.rows.SettingsScreen
@@ -125,6 +126,17 @@ object DataScreen : SettingsScreen("data", R.string.label_data_storage, R.drawab
             stepperRow(PrefName.MaxParallelDownloads, R.string.max_parallel_downloads, R.string.max_parallel_downloads_desc,
                 R.drawable.ic_download_24, from = 1f, to = 10f, step = 1f,
                 format = { _, v -> v.toInt().toString() }, read = { it.coerceAtLeast(1f) }),
+            actionRow(
+                "preferred_download_resolutions", R.string.preferred_download_resolutions,
+                icon = R.drawable.ic_round_high_quality_24,
+                current = { PrefManager.getPreferredDownloadResolutions(null).joinToString(", ") },
+            ) { host, _ -> ResolutionPriorityDialog.show(host.activity, null) { host.refresh() } },
+            switchRow(PrefName.AutoSelectResolutionPriority, R.string.auto_select_resolution_priority,
+                R.string.auto_select_resolution_priority_desc, R.drawable.ic_round_high_quality_24),
+            switchRow(PrefName.SmartDownloadAnime, R.string.smart_download_anime, R.string.smart_download_anime_desc,
+                R.drawable.ic_download_24),
+            switchRow(PrefName.SmartDownloadManga, R.string.smart_download_manga, R.string.smart_download_manga_desc,
+                R.drawable.ic_download_24),
             purgeRow("purge_anime", R.string.purge_anime_downloads, R.string.anime) { host ->
                 Injekt.get<DownloadsManager>().purgeDownloads(MediaType.ANIME)
             },

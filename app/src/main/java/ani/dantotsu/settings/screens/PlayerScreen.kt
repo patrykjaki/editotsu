@@ -18,7 +18,6 @@ import ani.dantotsu.media.anime.player.upscaler.CunnyUpscalerProvider
 import ani.dantotsu.media.anime.player.upscaler.UpscalerBundleManager
 import ani.dantotsu.restartApp
 import ani.dantotsu.settings.PlayerSettingsActivity
-import ani.dantotsu.settings.ResolutionPriorityDialog
 import ani.dantotsu.settings.rows.ChoiceOption
 import ani.dantotsu.settings.rows.ChoiceSheet
 import ani.dantotsu.settings.rows.Row
@@ -372,7 +371,7 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
                 advanced = true, visible = { FlavorFeatures.googleServices }),
         )),
         Section(R.string.anime, listOf(
-            // Anime pages: episode list layout, dub preference, downloads.
+            // Anime pages: episode list layout, dub preference.
             segmentedRow(PrefName.AnimeDefaultView, R.string.default_ep_view, R.drawable.view_list_24, listOf(
                 textSegment(R.string.list), textSegment(R.string.grid), textSegment(R.string.compact),
             )),
@@ -381,15 +380,6 @@ object PlayerScreen : SettingsScreen("player", R.string.settings_player, R.drawa
             switchRow(PrefName.ShowYtButton, R.string.show_yt, R.string.show_yt_desc, R.drawable.ic_round_play_circle_24),
             switchRow(PrefName.IncludeAnimeList, R.string.include_list, R.string.include_list_anime_desc,
                 R.drawable.view_list_24, onChange = { host, _ -> host.activity.restartApp() }),
-            actionRow(
-                "preferred_download_resolutions", R.string.preferred_download_resolutions,
-                icon = R.drawable.ic_round_high_quality_24,
-                current = { PrefManager.getPreferredDownloadResolutions(null).joinToString(", ") },
-            ) { host, _ -> ResolutionPriorityDialog.show(host.activity, null) { host.refresh() } },
-            switchRow(PrefName.AutoSelectResolutionPriority, R.string.auto_select_resolution_priority,
-                R.string.auto_select_resolution_priority_desc, R.drawable.ic_round_high_quality_24),
-            switchRow(PrefName.SmartDownloadAnime, R.string.smart_download_anime, R.string.smart_download_anime_desc,
-                R.drawable.ic_download_24),
         )),
         Section(R.string.anime_themes_section, listOf(
             // The Themes tab on anime pages (AnimeThemes openings and endings): which video file

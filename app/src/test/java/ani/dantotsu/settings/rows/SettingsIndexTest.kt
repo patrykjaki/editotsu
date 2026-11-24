@@ -31,6 +31,14 @@ class SettingsIndexTest {
     }
 
     @Test
+    fun sectionTitlesAreUniqueWithinEachScreen() {
+        for (screen in SettingsScreens.all) {
+            val titles = screen.sections().map { it.title }.filter { it != 0 }
+            assertEquals("duplicate section title in ${screen.id}", titles.distinct(), titles)
+        }
+    }
+
+    @Test
     fun everyRowHasATitleAndPrefRowsUseTheirKeyAsId() {
         for (e in entries) {
             assertNotEquals("row ${e.row.id} has no title", 0, e.row.title)

@@ -53,6 +53,15 @@ class ScreenItemsTest {
     }
 
     @Test
+    fun headerlessSectionFollowedByAllHiddenSectionDropsHiddenHeader() {
+        val sections = listOf(
+            Section(0, listOf(row("a"))),
+            Section(2, listOf(row("b", visible = false), row("c", advanced = true, visible = false))),
+        )
+        assertEquals(listOf("a"), keys(ScreenItems.build(sections, setOf(1))))
+    }
+
+    @Test
     fun sectionOfFindsTheRowsSection() {
         val sections = listOf(Section(1, listOf(row("a"))), Section(2, listOf(row("x", advanced = true))))
         assertEquals(1, ScreenItems.sectionOf(sections, "x"))

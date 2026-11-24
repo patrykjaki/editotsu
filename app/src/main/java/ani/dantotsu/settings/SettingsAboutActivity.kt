@@ -36,7 +36,7 @@ object AboutScreen : SettingsScreen("about", R.string.about, R.drawable.ic_round
     private val googleOnly = { !BuildConfig.FLAVOR.contains("fdroid") }
 
     override fun sections() = listOf(
-        Section(0, listOf(
+        Section(R.string.info, listOf(
             actionRow("build", R.string.workstream_build, icon = R.drawable.ic_round_info_24,
                 visible = { BuildConfig.EDITOTSU_BUILD_ID.isNotBlank() },
                 current = { BuildConfig.EDITOTSU_BUILD_ID },
@@ -45,6 +45,12 @@ object AboutScreen : SettingsScreen("about", R.string.about, R.drawable.ic_round
                 onClick = { host, _ -> host.activity.startActivity(Intent(host.activity, FAQActivity::class.java)) }),
             switchRow(PrefName.CheckUpdate, R.string.check_app_updates, R.string.check_app_updates_desc,
                 R.drawable.ic_round_new_releases_24, visible = googleOnly),
+            actionRow("devs", R.string.devs, R.string.devs_desc, R.drawable.ic_round_accessible_forward_24, opensScreen = true,
+                onClick = { host, _ -> DevelopersDialogFragment().show(host.activity.supportFragmentManager, "dialog") }),
+            actionRow("forks", R.string.forks, R.string.forks_desc, R.drawable.ic_round_restaurant_24, opensScreen = true,
+                onClick = { host, _ -> ForksDialogFragment().show(host.activity.supportFragmentManager, "dialog") }),
+        )),
+        Section(R.string.settings_section_diagnostics, listOf(
             switchRow(PrefName.SharedUserID, R.string.share_username_in_crash_reports,
                 R.string.share_username_in_crash_reports_desc, R.drawable.ic_round_search_24, visible = googleOnly,
                 onChange = { _, on -> applyCrashlyticsIdentity(on) }),
@@ -55,10 +61,8 @@ object AboutScreen : SettingsScreen("about", R.string.about, R.drawable.ic_round
                     Logger.clearLog()
                     host.activity.restartApp()
                 }),
-            actionRow("devs", R.string.devs, R.string.devs_desc, R.drawable.ic_round_accessible_forward_24, opensScreen = true,
-                onClick = { host, _ -> DevelopersDialogFragment().show(host.activity.supportFragmentManager, "dialog") }),
-            actionRow("forks", R.string.forks, R.string.forks_desc, R.drawable.ic_round_restaurant_24, opensScreen = true,
-                onClick = { host, _ -> ForksDialogFragment().show(host.activity.supportFragmentManager, "dialog") }),
+        )),
+        Section(R.string.settings_section_legal, listOf(
             actionRow("disclaimer", R.string.disclaimer, R.string.disclaimer_desc, R.drawable.ic_round_info_24, opensScreen = true,
                 onClick = { host, _ -> showDisclaimer(host) }),
             actionRow("privacy_policy", R.string.privacy_policy, R.string.privacy_policy_desc, R.drawable.ic_incognito_24, opensScreen = true,
