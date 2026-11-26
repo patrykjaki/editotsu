@@ -37,7 +37,7 @@ import tachiyomi.core.util.lang.launchIO
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-/** Settings > Sources: extensions and repositories, torrents, search. */
+/** Settings > Sources: extensions and repositories, torrents, network. */
 object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.drawable.ic_extension, R.string.settings_sources_desc) {
 
     override val activity get() = SettingsGroupActivity::class.java
@@ -57,9 +57,8 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
             switchRow(PrefName.NSFWExtension, R.string.NSFWExtention, R.string.NSFWExtention_desc, R.drawable.ic_round_nsfw_24),
             switchRow(PrefName.SkipExtensionIcons, R.string.skip_loading_extension_icons,
                 R.string.skip_loading_extension_icons_desc, R.drawable.ic_round_no_icon_24),
-            choiceRow(PrefName.DohProvider, R.string.selected_dns, R.drawable.lan_24,
-                labels = { DNS_PROVIDERS }, advanced = true,
-                onChange = { host, _ -> restartProcess(host) }),
+            switchRow(PrefName.SearchSources, R.string.search_source_list, R.string.search_source_list_desc,
+                R.drawable.ic_round_search_sources_24),
             actionRow("extension_installer", R.string.extension_installer, icon = R.drawable.ic_round_new_releases_24,
                 advanced = true,
                 current = { Injekt.get<BasePreferences>().extensionInstaller().get().titleResId },
@@ -69,15 +68,6 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
                 onClick = { host, _ ->
                     host.activity.startActivity(Intent(host.activity, ParserTestActivity::class.java))
                 }),
-            actionRow("DefaultUserAgent", R.string.user_agent, R.string.user_agent_desc,
-                R.drawable.ic_round_video_settings_24, advanced = true, keys = listOf(PrefName.DefaultUserAgent),
-                onClick = { host, _ -> editUserAgent(host) }),
-            switchRow(PrefName.EnableSocks5Proxy, R.string.proxy, R.string.proxy_desc,
-                R.drawable.swap_horizontal_circle_24, advanced = true,
-                onChange = { host, _ -> restartProcess(host) }),
-            actionRow("proxy_setup", R.string.proxy_setup, R.string.proxy_setup_desc, R.drawable.lan_24,
-                advanced = true,
-                onClick = { host, _ -> ProxyDialogFragment().show(host.activity.supportFragmentManager, "dialog") }),
         )),
         Section(R.string.settings_section_torrents, listOf(
             switchRow(PrefName.TorrentEnabled, R.string.enable_torrent, R.string.enable_torrent_desc,
@@ -116,9 +106,19 @@ object SourcesScreen : SettingsScreen("sources", R.string.settings_sources, R.dr
             switchRow(PrefName.TorrentDisableUtp, R.string.torrent_disable_utp, R.string.torrent_disable_utp_desc,
                 R.drawable.lan_24, advanced = true, visible = torrentsOn),
         )),
-        Section(R.string.settings_section_search, listOf(
-            switchRow(PrefName.SearchSources, R.string.search_source_list, R.string.search_source_list_desc,
-                R.drawable.ic_round_search_sources_24),
+        Section(R.string.settings_section_network, listOf(
+            choiceRow(PrefName.DohProvider, R.string.selected_dns, R.drawable.lan_24,
+                labels = { DNS_PROVIDERS }, advanced = true,
+                onChange = { host, _ -> restartProcess(host) }),
+            actionRow("DefaultUserAgent", R.string.user_agent, R.string.user_agent_desc,
+                R.drawable.ic_round_video_settings_24, advanced = true, keys = listOf(PrefName.DefaultUserAgent),
+                onClick = { host, _ -> editUserAgent(host) }),
+            switchRow(PrefName.EnableSocks5Proxy, R.string.proxy, R.string.proxy_desc,
+                R.drawable.swap_horizontal_circle_24, advanced = true,
+                onChange = { host, _ -> restartProcess(host) }),
+            actionRow("proxy_setup", R.string.proxy_setup, R.string.proxy_setup_desc, R.drawable.lan_24,
+                advanced = true,
+                onClick = { host, _ -> ProxyDialogFragment().show(host.activity.supportFragmentManager, "dialog") }),
         )),
     )
 

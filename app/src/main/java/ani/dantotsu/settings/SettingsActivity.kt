@@ -28,13 +28,20 @@ import ani.dantotsu.others.AppUpdater
 import ani.dantotsu.others.CustomBottomDialog
 import ani.dantotsu.pop
 import ani.dantotsu.setSafeOnClickListener
+import ani.dantotsu.settings.data.DataScreen
 import ani.dantotsu.settings.rows.RowAdapter
-import ani.dantotsu.settings.rows.ScreenItem
+import ani.dantotsu.settings.rows.ScreenItems
+import ani.dantotsu.settings.rows.Section
 import ani.dantotsu.settings.rows.SettingsHost
+import ani.dantotsu.settings.rows.SettingsScreen
 import ani.dantotsu.settings.rows.SettingsScreenActivity
 import ani.dantotsu.settings.rows.actionRow
 import ani.dantotsu.settings.saving.PrefManager
-import ani.dantotsu.settings.screens.SettingsScreens
+import ani.dantotsu.settings.screens.NotificationsScreen
+import ani.dantotsu.settings.screens.PlayerScreen
+import ani.dantotsu.settings.screens.ReaderScreen
+import ani.dantotsu.settings.screens.SourcesScreen
+import ani.dantotsu.settings.screens.TrackingScreen
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
 import ani.dantotsu.startMainActivity
@@ -117,15 +124,9 @@ class SettingsActivity : AppCompatActivity(), SettingsHost {
                 }
             }
 
-            // One row per screen, from the same list search indexes.
+            // Grouped into Account, Media & sources, and App; matches SettingsScreens.all.
             val mainAdapter = RowAdapter(this@SettingsActivity) {}
-            mainAdapter.submitList(SettingsScreens.all.map { screen ->
-                ScreenItem.RowItem(
-                    actionRow(screen.id, screen.title, screen.summary, screen.icon, opensScreen = true) { host, _ ->
-                        host.activity.startActivity(SettingsScreenActivity.intent(host.activity, screen))
-                    }
-                )
-            })
+            mainAdapter.submitList(ScreenItems.build(homeSections(), emptySet()))
 
             val searchAdapter = ani.dantotsu.settings.search.SettingsSearchAdapter(emptyList())
 
@@ -274,6 +275,17 @@ class SettingsActivity : AppCompatActivity(), SettingsHost {
             ?: "Unknown Architecture"
         }
     }
+
+    private fun screenRow(screen: SettingsScreen) =
+        actionRow(screen.id, screen.title, screen.summary, screen.icon, opensScreen = true) { host, _ ->
+            host.activity.startActivity(SettingsScreenActivity.intent(host.activity, screen))
+        }
+
+    private fun homeSections() = listOf(
+        Section(R.string.settings_section_account, listOf(TrackingScreen, NotificationsScreen).map(::screenRow)),
+        Section(R.string.settings_section_media_sources, listOf(PlayerScreen, ReaderScreen, SourcesScreen).map(::screenRow)),
+        Section(R.string.app, listOf(AppearanceScreen, DataScreen, AboutScreen).map(::screenRow)),
+    )
 
     override fun onResume() {
         ThemeManager(this).applyTheme()

@@ -156,6 +156,8 @@ object AppearanceScreen : SettingsScreen("appearance", R.string.settings_appeara
                 R.drawable.ic_round_brightness_4_24, onChange = { host, _ -> reloadTheme(host) }),
             switchRow(PrefName.UseSystemFont, R.string.use_system_font, icon = R.drawable.ic_round_font_size_24,
                 onChange = { host, _ -> reloadTheme(host) }),
+        )),
+        Section(R.string.settings_section_dynamic_colors, listOf(
             switchRow(PrefName.UseMaterialYou, R.string.use_material_you, R.string.use_material_you_desc,
                 R.drawable.ic_round_new_releases_24, visible = sdkS,
                 onChange = { host, on ->
@@ -182,19 +184,11 @@ object AppearanceScreen : SettingsScreen("appearance", R.string.settings_appeara
             switchRow(PrefName.RecentlyListOnly, R.string.recentlyListOnly, R.string.recentlyListOnly_desc,
                 R.drawable.ic_round_new_releases_24),
         )),
-        Section(R.string.app, listOf(
+        Section(R.string.tab_display, listOf(
             switchRow(PrefName.HideSpoilerTags, R.string.hide_spoiler_tags, icon = R.drawable.format_spoiler_24),
             switchRow(PrefName.HideEpisodeSpoilers, R.string.hide_episode_spoilers, icon = R.drawable.format_spoiler_24),
             switchRow(PrefName.ImmersiveMode, R.string.immersive_mode, R.string.immersive_mode_info,
                 R.drawable.ic_round_fullscreen_24, onChange = restart),
-            Row(
-                id = PrefName.ShowNotificationRedDot.name, title = R.string.hide_notification_dot,
-                icon = R.drawable.ic_round_notifications_active_24, keys = listOf(PrefName.ShowNotificationRedDot),
-                kind = Kind.Switch(
-                    get = { !PrefManager.getVal<Boolean>(PrefName.ShowNotificationRedDot) },
-                    set = { _, hide -> PrefManager.setVal(PrefName.ShowNotificationRedDot, !hide) },
-                ),
-            ),
             actionRow(PrefName.HomeLayout.name, R.string.home_layout_show, icon = R.drawable.ic_round_playlist_add_24,
                 keys = listOf(PrefName.HomeLayout, PrefName.HomeLayoutOrder),
                 onClick = { host, _ -> editHomeLayout(host) }),

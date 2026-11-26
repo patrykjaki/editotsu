@@ -85,8 +85,6 @@ object ReaderScreen : SettingsScreen("reading", R.string.settings_reading, R.dra
                 listOf(textSegment(R.string.list), textSegment(R.string.compact))),
             switchRow(PrefName.IncludeMangaList, R.string.include_list, R.string.include_list_desc, R.drawable.view_list_24,
                 onChange = { host, _ -> host.activity.restartApp() }),
-            switchRow(PrefName.SmartDownloadManga, R.string.smart_download_manga, R.string.smart_download_manga_desc,
-                R.drawable.ic_download_24),
         )),
     )
 }

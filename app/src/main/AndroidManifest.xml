@@ -193,6 +193,9 @@
             android:name=".settings.SettingsAccountActivity"
             android:parentActivityName=".MainActivity" />
         <activity
+            android:name=".settings.SettingsNotificationActivity"
+            android:parentActivityName=".settings.SettingsActivity" />
+        <activity
             android:name=".settings.data.SettingsDataActivity"
             android:parentActivityName=".settings.SettingsActivity" />
         <activity

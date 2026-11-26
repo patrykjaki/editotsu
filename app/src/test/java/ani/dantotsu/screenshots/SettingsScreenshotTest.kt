@@ -13,6 +13,7 @@ import ani.dantotsu.settings.AnilistScreen
 import ani.dantotsu.settings.rows.ScreenItem
 import ani.dantotsu.settings.rows.SettingsScreen
 import ani.dantotsu.settings.rows.SettingsScreenActivity
+import ani.dantotsu.settings.screens.NotificationsScreen
 import ani.dantotsu.settings.screens.PlayerScreen
 import ani.dantotsu.settings.screens.ReaderScreen
 import ani.dantotsu.settings.screens.SettingsScreens
@@ -37,7 +38,7 @@ class SettingsScreenshotTest : ScreenshotTest() {
     @Test fun every_screen_is_covered() {
         // A new screen in SettingsScreens.all needs its own test methods below.
         assertEquals(
-            listOf(AppearanceScreen, PlayerScreen, ReaderScreen, SourcesScreen, TrackingScreen, DataScreen, AboutScreen),
+            listOf(TrackingScreen, NotificationsScreen, PlayerScreen, ReaderScreen, SourcesScreen, AppearanceScreen, DataScreen, AboutScreen),
             SettingsScreens.all,
         )
     }
@@ -52,6 +53,8 @@ class SettingsScreenshotTest : ScreenshotTest() {
     @Test fun sources_advanced() = screen(SourcesScreen, "sources", advanced = true, perFlavor = true)
     @Test fun tracking() = screen(TrackingScreen, "tracking")
     @Test fun tracking_advanced() = screen(TrackingScreen, "tracking", advanced = true)
+    @Test fun notifications() = screen(NotificationsScreen, "notifications")
+    @Test fun notifications_advanced() = screen(NotificationsScreen, "notifications", advanced = true)
     @Test fun data() = screen(DataScreen, "data", perFlavor = true)
     @Test fun data_advanced() = screen(DataScreen, "data", advanced = true, perFlavor = true)
     @Test fun about() = screen(AboutScreen, "about", perFlavor = true)
