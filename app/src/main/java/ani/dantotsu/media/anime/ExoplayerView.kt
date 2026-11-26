@@ -1744,7 +1744,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             pipActionIntent(ACTION_PIP_PREV_EP, 10)
         )
         val rewindAction = RemoteAction(
-            Icon.createWithResource(this, R.drawable.ic_round_fast_rewind_24),
+            Icon.createWithBitmap(SeekIcon.bitmap(this, seekSec, forward = false)),
             rewindTitle,
             rewindTitle,
             pipActionIntent(ACTION_PIP_REWIND, 1)
@@ -1759,7 +1759,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             pipActionIntent(ACTION_PIP_PLAY_PAUSE, 2)
         )
         val skipAction = RemoteAction(
-            Icon.createWithResource(this, R.drawable.ic_round_fast_forward_24),
+            Icon.createWithBitmap(SeekIcon.bitmap(this, seekSec, forward = true)),
             forwardTitle,
             forwardTitle,
             pipActionIntent(ACTION_PIP_SKIP, 3)

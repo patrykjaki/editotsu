@@ -1,5 +1,6 @@
 package ani.dantotsu.media
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.res.ColorStateList
@@ -125,35 +126,23 @@ object SearchFilterPickers {
             dialog.dismiss()
         }
 
-        val metrics = context.resources.displayMetrics
-        val density = metrics.density
-        val gridCap = (312 * density).toInt().coerceAtMost((metrics.heightPixels * 0.48f).toInt())
-        b.yearPickerGrid.layoutParams = b.yearPickerGrid.layoutParams.apply {
-            height = gridCap
-        }
+        val activeDecade = selectedYear?.let(SearchFilterPolicy::decadeOf)
+            ?: SearchFilterPolicy.lastYearDecade?.takeIf { d -> decades.any { it.decade == d } }
+            ?: decades.firstOrNull()?.decade
 
-        val layoutManager = GridLayoutManager(context, YEAR_COLUMNS)
-        val adapter = YearGridAdapter(years, selectedYear) { picked ->
+        // The grid shows one decade at a time (at most 10 years, no scrolling); the decade
+        // chips wrap onto a second row instead of running off the screen edge.
+        val adapter = YearGridAdapter(SearchFilterPolicy.yearsInDecade(years, activeDecade), selectedYear) { picked ->
             SearchFilterPolicy.lastYearDecade = SearchFilterPolicy.decadeOf(picked)
             val next = if (picked == selectedYear) null else picked
             onPick(next)
             dialog.dismiss()
         }
-        b.yearPickerGrid.layoutManager = layoutManager
+        b.yearPickerGrid.layoutManager = GridLayoutManager(context, YEAR_COLUMNS)
         b.yearPickerGrid.adapter = adapter
         b.yearPickerGrid.itemAnimator = null
 
-        val activeDecade = selectedYear?.let(SearchFilterPolicy::decadeOf)
-            ?: SearchFilterPolicy.lastYearDecade?.takeIf { d -> decades.any { it.decade == d } }
-            ?: decades.firstOrNull()?.decade
-
         val decadeChips = LinkedHashMap<Int, Chip>(decades.size)
-        fun highlightDecade(decade: Int?) {
-            decadeChips.forEach { (d, chip) ->
-                chip.isChecked = d == decade
-            }
-        }
-
         decades.forEach { jump ->
             val chip = inflater.inflate(R.layout.item_search_chip, b.yearPickerDecades, false) as Chip
             chip.id = View.generateViewId()
@@ -161,30 +150,11 @@ object SearchFilterPickers {
             chip.isChecked = jump.decade == activeDecade
             chip.setOnClickListener {
                 SearchFilterPolicy.lastYearDecade = jump.decade
-                highlightDecade(jump.decade)
-                layoutManager.scrollToPositionWithOffset(jump.firstIndex, 0)
+                decadeChips.forEach { (d, c) -> c.isChecked = d == jump.decade }
+                adapter.submit(SearchFilterPolicy.yearsInDecade(years, jump.decade))
             }
             decadeChips[jump.decade] = chip
             b.yearPickerDecades.addView(chip)
-        }
-
-        b.yearPickerGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                if (dy == 0) return
-                val first = layoutManager.findFirstVisibleItemPosition()
-                val visibleYear = years.getOrNull(first) ?: return
-                highlightDecade(SearchFilterPolicy.decadeOf(visibleYear))
-            }
-        })
-
-        // Scroll straight to the chosen year (or last-browsed decade) so the user never hunts for it.
-        val initialTarget = when {
-            selectedYear != null -> years.indexOf(selectedYear)
-            activeDecade != null -> decades.firstOrNull { it.decade == activeDecade }?.firstIndex ?: 0
-            else -> 0
-        }
-        if (initialTarget > 0) {
-            layoutManager.scrollToPositionWithOffset(initialTarget, (48 * density).toInt())
         }
 
         dialog.setContentView(b.root)
@@ -352,12 +322,18 @@ object SearchFilterPickers {
     }
 
     private class YearGridAdapter(
-        private val years: List<Int>,
+        private var years: List<Int>,
         private val selectedYear: Int?,
         private val onPick: (Int) -> Unit,
     ) : RecyclerView.Adapter<YearGridAdapter.YearHolder>() {
 
         override fun getItemCount(): Int = years.size
+
+        @SuppressLint("NotifyDataSetChanged")
+        fun submit(next: List<Int>) {
+            years = next
+            notifyDataSetChanged()
+        }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): YearHolder =
             YearHolder(ItemYearCellBinding.inflate(LayoutInflater.from(parent.context), parent, false))

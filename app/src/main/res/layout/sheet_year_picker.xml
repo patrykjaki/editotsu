@@ -53,22 +53,13 @@
             tools:visibility="visible" />
     </LinearLayout>
 
-    <HorizontalScrollView
-        android:id="@+id/yearPickerDecadesScroll"
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/yearPickerDecades"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:clipToPadding="false"
-        android:paddingStart="16dp"
-        android:paddingEnd="8dp"
-        android:scrollbars="none">
-
-        <LinearLayout
-            android:id="@+id/yearPickerDecades"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal" />
-    </HorizontalScrollView>
+        android:paddingHorizontal="16dp"
+        app:chipSpacingHorizontal="8dp"
+        app:chipSpacingVertical="0dp" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/yearPickerGrid"
@@ -76,9 +67,8 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:clipToPadding="false"
-        android:overScrollMode="ifContentScrolls"
+        android:overScrollMode="never"
         android:paddingHorizontal="12dp"
         android:paddingBottom="4dp"
-        android:scrollbars="vertical"
         tools:listitem="@layout/item_year_cell" />
 </LinearLayout>

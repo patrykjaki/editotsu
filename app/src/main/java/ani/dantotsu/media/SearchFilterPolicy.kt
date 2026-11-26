@@ -214,6 +214,10 @@ object SearchFilterPolicy {
 
     fun decadeOf(year: Int): Int = (year / 10) * 10
 
+    /** The years of [decade] from [years], newest first; all of [years] when [decade] is null. */
+    fun yearsInDecade(years: List<Int>, decade: Int?): List<Int> =
+        if (decade == null) years else years.filter { decadeOf(it) == decade }
+
     /** Distinct decades in [years] paired with the index of the first year in each decade. */
     fun decades(years: List<Int>): List<DecadeJump> {
         val out = ArrayList<DecadeJump>()

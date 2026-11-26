@@ -1,5 +1,6 @@
 package ani.dantotsu.profile
 
+import android.view.ViewGroup
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.content.res.Configuration
@@ -37,6 +38,7 @@ import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
 import ani.dantotsu.snackString
 import ani.dantotsu.statusBarHeight
+import ani.dantotsu.navBarHeight
 import ani.dantotsu.themes.ThemeManager
 import ani.dantotsu.themes.followThemeStatusBarIcons
 import ani.dantotsu.toast
@@ -74,6 +76,9 @@ class ProfileActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedListene
         navBar.addTab(feedTab)
         navBar.addTab(statsTab)
         navBar.visibility = View.GONE
+        binding.profileNavBarContainer.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+            bottomMargin = navBarHeight
+        }
 
         lifecycleScope.launch(Dispatchers.IO) {
             val userid = intent.getIntExtra("userId", -1)
@@ -256,6 +261,9 @@ class ProfileActivity : AppCompatActivity(), AppBarLayout.OnOffsetChangedListene
                     profileBannerImageNoKen.updateLayoutParams { height += statusBarHeight }
                     profileBannerGradient.updateLayoutParams { height += statusBarHeight }
                     profileTopBar.updatePadding(top = profileTopBar.paddingTop + statusBarHeight)
+                    // collapsed, the header keeps a surface strip under the status bar so the
+                    // pages' own sticky rows (stats filters) never slide under the clock
+                    profileCollapsing.minimumHeight = statusBarHeight
 
                     activeBanner.openImage(
                         context.getString(R.string.banner, user.name),

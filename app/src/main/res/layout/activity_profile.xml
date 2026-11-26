@@ -36,30 +36,32 @@
             tools:ignore="SpeakableTextPresentCheck" />
     </LinearLayout>
 
-    <LinearLayout
+    <!-- same floating pill as the home screen (item_navbar.xml) -->
+    <FrameLayout
         android:id="@+id/profileNavBarContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:background="?attr/colorSurfaceContainer"
-        android:orientation="vertical">
+        android:layout_gravity="bottom">
 
         <nl.joery.animatedbottombar.AnimatedBottomBar
             android:id="@+id/profileNavBar"
-            android:layout_width="match_parent"
-            android:layout_height="64dp"
-            android:background="@null"
-            android:padding="0dp"
+            android:layout_width="240dp"
+            android:layout_height="56dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="32dp"
+            android:background="@drawable/bottom_nav"
+            android:elevation="8dp"
+            android:padding="6dp"
+            app:abb_animationDuration="300"
             app:abb_animationInterpolator="@anim/over_shoot"
-            app:abb_indicatorAppearance="round"
-            app:abb_indicatorLocation="top"
+            app:abb_indicatorColor="?attr/colorTertiary"
+            app:abb_indicatorLocation="bottom"
+            app:abb_indicatorMargin="28dp"
             app:abb_selectedTabType="text"
-            app:abb_textAppearance="@style/NavBarText"
-            app:itemActiveIndicatorStyle="@style/BottomNavBar"
-            app:itemIconTint="@color/tab_layout_icon"
-            app:itemRippleColor="#00000000"
-            app:itemTextAppearanceActive="@style/NavBarText"
-            app:itemTextAppearanceInactive="@style/NavBarText"
-            app:itemTextColor="@color/tab_layout_icon" />
-    </LinearLayout>
+            app:abb_tabColor="?attr/colorOutline"
+            app:abb_tabColorDisabled="?attr/colorPrimaryContainer"
+            app:abb_tabColorSelected="?attr/colorPrimary"
+            app:abb_textAppearance="@style/NavBarText" />
+    </FrameLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

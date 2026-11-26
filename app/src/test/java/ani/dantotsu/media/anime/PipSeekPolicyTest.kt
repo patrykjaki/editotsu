@@ -32,4 +32,12 @@ class PipSeekPolicyTest {
         assertEquals(10, pipSeekSeconds(-5))
         assertEquals(10_000L, pipSeekMs(-5))
     }
+
+    @Test
+    fun `seek icon shows the same seconds the action seeks`() {
+        assertEquals("15", seekIconLabel(15))
+        assertEquals("5", seekIconLabel(5))
+        assertEquals("10", seekIconLabel(0))
+        assertEquals(pipSeekSeconds(37).toString(), seekIconLabel(37))
+    }
 }

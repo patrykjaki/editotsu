@@ -176,4 +176,12 @@ class SearchFilterPolicyTest {
         assertEquals("Not yet released", SearchFilterPolicy.pretty("NOT_YET_RELEASED"))
         assertEquals("Light novel", SearchFilterPolicy.pretty("LIGHT_NOVEL"))
     }
+
+    @Test
+    fun `year grid shows only the chosen decade`() {
+        val years = SearchFilterPolicy.yearsDescending(2027)
+        assertEquals((2027 downTo 2020).toList(), SearchFilterPolicy.yearsInDecade(years, 2020))
+        assertEquals((2019 downTo 2010).toList(), SearchFilterPolicy.yearsInDecade(years, 2010))
+        assertEquals(years, SearchFilterPolicy.yearsInDecade(years, null))
+    }
 }
