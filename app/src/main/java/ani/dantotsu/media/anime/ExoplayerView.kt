@@ -346,6 +346,11 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     companion object {
         var initialized = false
         lateinit var media: Media
+
+        /** Task of a player whose PiP window was closed; reopening the app returns to it. */
+        @Volatile
+        var hiddenPlayerTaskId: Int? = null
+        const val EXTRA_RETURN_TO_PLAYER = "returnToPlayer"
         private const val MAX_PLAYER_ERROR_RETRIES = 1
 
         const val ACTION_PIP_PREV_EP = "ani.dantotsu.PIP_PREV_EP"
@@ -2197,14 +2202,21 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             // away (or tapped its close button), not "expand". Pause and keep the player, like
             // YouTube: opening the app again shows it paused where it was. Before, the sound
             // kept going with no window, because onStop ran while still in PiP and skipped its pause.
+            if (this::aniSkipManager.isInitialized) aniSkipManager.buttonsSuppressed = false
             if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
                 unregisterPipReceiver()
                 if (this::playerManager.isInitialized && playerManager.isInitialized) {
-                    playerManager.playbackEngine?.pause()
+                    // through the coordinator, so coming back doesn't resume by itself
+                    playerManager.playbackCoordinator?.pause() ?: playerManager.playbackEngine?.pause()
+                }
+                // The player now sits in its own task behind everything; the next time the
+                // app is opened, App brings that task forward instead of the details page.
+                if (!isFinishing && ani.dantotsu.App.instance?.mFTActivityLifecycleCallbacks?.inBackground == true) {
+                    hiddenPlayerTaskId = taskId
+                    showControlsOnResume = true
                 }
                 return
             }
-            if (this::aniSkipManager.isInitialized) aniSkipManager.buttonsSuppressed = false
             unregisterPipReceiver()
             hideSystemBars()
             if (!themeMode && this::aniSkipManager.isInitialized && PrefManager.getVal(PrefName.TimeStampsEnabled)) {
@@ -2243,7 +2255,13 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             playerManager.playbackCoordinator?.setLifecycleSuppressed(false)
         }
         updatePipParams()
+        if (showControlsOnResume) {
+            showControlsOnResume = false
+            playerView.showController()
+        }
     }
+
+    private var showControlsOnResume = false
 
     override fun onPause() {
         super.onPause()
@@ -2291,6 +2309,8 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     @SuppressLint("UnsafeIntentLaunch")
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // back from a closed PiP: keep this player as it is
+        if (intent.getBooleanExtra(EXTRA_RETURN_TO_PLAYER, false)) return
         finishAndRemoveTask()
         startActivity(intent)
     }
@@ -2344,6 +2364,7 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
     }
 
     override fun onDestroy() {
+        if (hiddenPlayerTaskId == taskId) hiddenPlayerTaskId = null
         if (isFinishing) {
             // Leaving the player: torrents nothing streams any more are removed after a
             // short grace (an immediate reopen keeps its torrent), instead of downloading

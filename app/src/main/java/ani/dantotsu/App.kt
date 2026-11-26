@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import ani.dantotsu.addons.download.DownloadAddonManager
@@ -20,6 +21,7 @@ import ani.dantotsu.parsers.AnimeSources
 import ani.dantotsu.parsers.MangaSources
 import ani.dantotsu.parsers.NovelSources
 import ani.dantotsu.parsers.novel.NovelExtensionManager
+import ani.dantotsu.media.anime.ExoplayerView
 import ani.dantotsu.settings.SettingsActivity
 import ani.dantotsu.settings.saving.PrefManager
 import ani.dantotsu.settings.saving.PrefName
@@ -232,9 +234,48 @@ class App : Application() {
             lastActivity = p0.javaClass.simpleName
         }
 
+        val inBackground: Boolean get() = startedActivityCount <= 0
+        private var afterPin = false
+
         override fun onActivityStarted(p0: Activity) {
+            val fromBackground = startedActivityCount <= 0
             currentActivity = p0
             startedActivityCount++
+            val playerTask = ExoplayerView.hiddenPlayerTaskId ?: return
+            if (p0 is ExoplayerView) {
+                if (p0.taskId == playerTask) ExoplayerView.hiddenPlayerTaskId = null
+                return
+            }
+            // the PIN screen goes first; the player comes back after it
+            if (p0 is ani.dantotsu.others.calc.CalcActivity) {
+                if (fromBackground) afterPin = true
+                return
+            }
+            if (!fromBackground && !afterPin) return
+            afterPin = false
+            ExoplayerView.hiddenPlayerTaskId = null
+            // a link or a notification opened something specific: go there instead
+            if (opensSomethingSpecific(p0)) return
+            // The player is single-task: starting it brings its own task forward. The system
+            // doesn't list that task once PiP is closed, so it can't be moved to the front directly.
+            p0.window?.decorView?.post {
+                runCatching {
+                    p0.startActivity(
+                        android.content.Intent(p0, ExoplayerView::class.java)
+                            .putExtra(ExoplayerView.EXTRA_RETURN_TO_PLAYER, true)
+                    )
+                }
+            }
+        }
+
+        private fun opensSomethingSpecific(a: Activity): Boolean {
+            if (a is ani.dantotsu.connections.anilist.UrlMedia) return true
+            // other screens keep their ids on the intent; only a fresh MainActivity routes
+            if (a !is MainActivity) return false
+            val intent = a.intent ?: return false
+            if (intent.action == android.content.Intent.ACTION_VIEW) return true
+            val extras = intent.extras ?: return false
+            return listOf("mediaId", "media", "activityId", "FRAGMENT_TO_LOAD", "username").any(extras::containsKey)
         }
 
         override fun onActivityResumed(p0: Activity) {
@@ -248,6 +289,10 @@ class App : Application() {
 
         override fun onActivityStopped(p0: Activity) {
             startedActivityCount--
+            // back in the restored player, left paused and the app closed again: same as a closed PiP
+            if (startedActivityCount <= 0 && p0 is ExoplayerView && p0.isTaskRoot && !p0.isFinishing &&
+                !(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && p0.isInPictureInPictureMode)
+            ) ExoplayerView.hiddenPlayerTaskId = p0.taskId
         }
 
         override fun onActivitySaveInstanceState(p0: Activity, p1: Bundle) {}

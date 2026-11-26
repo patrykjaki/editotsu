@@ -872,8 +872,11 @@ class MediaDetailsViewModel : ViewModel() {
                 ep.sEpisode?.let {
                     loadByVideoServers(link, ep.extra, it) { extractor ->
                         if (extractor.videos.isNotEmpty()) {
-                            list.add(extractor)
-                            ep.extractors = list.toMutableList()
+                            // releases arrive from parallel loads; unguarded adds dropped some
+                            synchronized(list) {
+                                list.add(extractor)
+                                ep.extractors = list.toMutableList()
+                            }
                             ep.extractorCallback?.invoke(extractor)
                         }
                     }

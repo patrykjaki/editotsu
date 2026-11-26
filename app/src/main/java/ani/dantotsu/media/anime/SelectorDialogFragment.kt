@@ -689,7 +689,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                         )
                         if (decision.entry != RememberedSelectionPolicy.AutoplayEntry.PICKER) {
                             showPage(SheetPage.AUTO, forward = false, animate = false)
-                            // last episode's release name would read as the wrong episode; show the group then
+                            // last episode's release title reads as the wrong episode; show the group then
                             binding.selectorAutoText.text = selected?.takeIf { ReleaseEpisode.fits(it, ep.number) }
                                 ?.lineSequence()?.firstOrNull { it.isNotBlank() }
                                 ?: entryFamily?.groupKey?.let { getString(R.string.picker_auto_group, it) } ?: ""
@@ -755,9 +755,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                         withContext(Dispatchers.Main) {
                                             // The sheet may be gone by now (cancel, back); its views are.
                                             if (_binding == null || !isAdded) return@withContext
-                                            // rows named for another episode (torrent lists carry neighbours) never match
                                             val servers = ep.extractors?.map { it.server }
-                                                ?.filter { ReleaseEpisode.fits(it.name, ep.number) }
                                                 ?: emptyList()
                                             val recovery = RecoveryCoordinator.resolve(
                                                 storedExactKey = storedKey,
@@ -854,7 +852,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                     if (model.watchSources!!.isDownloadedSource(media!!.selected!!.sourceIndex)) {
                                         ep.extractors?.firstOrNull()
                                     } else {
-                                        ep.extractors?.find { it.server.name == selected && ReleaseEpisode.fits(it.server.name, ep.number) }
+                                        ep.extractors?.find { it.server.name == selected }
                                             ?: if (rememberedRelease) null
                                             else preferredPlayableFallback(ep.extractors)
                                                 ?: ep.extractors?.firstOrNull()
@@ -886,13 +884,11 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             // explicit selection — the named single-server
                             // load is attempted first; fallback happens in
                             // load() only afterwards.
-                            // a remembered name for another episode is not this episode's pick
-                            val selectedFits = selected?.let { ReleaseEpisode.fits(it, ep.number) } != false
-                            val hasExplicit = selectedFits && hasExplicitServer(ep.extractors, selected)
+                            val hasExplicit = hasExplicitServer(ep.extractors, selected)
 
                             if (decision.entry == RememberedSelectionPolicy.AutoplayEntry.RECOVER) {
                                 failToList()
-                            } else if (!hasExplicit && selected != null && (rememberedRelease || !selectedFits)) {
+                            } else if (!hasExplicit && selected != null && rememberedRelease) {
                                 // all rows are needed to pick the family; failToList
                                 // loads them and resolves exact key, then family
                                 failToList()
