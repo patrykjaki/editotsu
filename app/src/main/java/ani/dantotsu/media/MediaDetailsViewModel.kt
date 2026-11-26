@@ -863,14 +863,17 @@ class MediaDetailsViewModel : ViewModel() {
         val link = ep.link ?: return
         if (!ep.allStreams || ep.extractors.isNullOrEmpty()) {
             val existingExtractors = ep.extractors?.toMutableList() ?: mutableListOf()
+            // `list` is private to this load; readers only see published copies (copy-on-write),
+            // so the player and selector can iterate ep.extractors on the main thread safely.
             val list = mutableListOf<VideoExtractor>()
-            ep.extractors = list
+            ep.extractors = list.toMutableList()
             watchSources?.get(i)?.apply {
                 if (!post && !allowsPreloading) return@apply
                 ep.sEpisode?.let {
                     loadByVideoServers(link, ep.extra, it) { extractor ->
                         if (extractor.videos.isNotEmpty()) {
                             list.add(extractor)
+                            ep.extractors = list.toMutableList()
                             ep.extractorCallback?.invoke(extractor)
                         }
                     }
@@ -1018,30 +1021,17 @@ class MediaDetailsViewModel : ViewModel() {
         // must not skip the named load below.
         if (!hasExplicitServer(ep.extractors, server)) {
             Log.d("AnimeDownloader", "Loading Video Server for episode: ${ep.number}, selected server: $server")
-            if(ep.extractors == null){
-                ep.extractors = mutableListOf(watchSources?.get(selected.sourceIndex)?.let {
-                    selected.sourceIndex = selected.sourceIndex
-                    if (!post && !it.allowsPreloading) null
-                    else ep.sEpisode?.let { it1 ->
-                        it.loadSingleVideoServer(
-                            server, link, ep.extra,
-                            it1, post
-                        )
-                    }
-                } ?: return false)
-            }
-            else{
-                ep.extractors!!.add(watchSources?.get(selected.sourceIndex)?.let {
-                    selected.sourceIndex = selected.sourceIndex
-                    if (!post && !it.allowsPreloading) null
-                    else ep.sEpisode?.let { it1 ->
-                        it.loadSingleVideoServer(
-                            server, link, ep.extra,
-                            it1, post
-                        )
-                    }
-                } ?: return false)
-            }
+            val loaded = watchSources?.get(selected.sourceIndex)?.let {
+                if (!post && !it.allowsPreloading) null
+                else ep.sEpisode?.let { it1 ->
+                    it.loadSingleVideoServer(
+                        server, link, ep.extra,
+                        it1, post
+                    )
+                }
+            } ?: return false
+            // copy-on-write, see loadEpisodeVideos: never add to a list readers may be iterating
+            ep.extractors = (ep.extractors.orEmpty() + loaded).toMutableList()
             //ep.extractors?.forEach { Log.d("AnimeDownloader", "Extractor episode ${ep.number}: ${it.server.name}") }
             ep.allStreams = false
         }

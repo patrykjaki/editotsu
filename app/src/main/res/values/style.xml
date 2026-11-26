@@ -169,4 +169,26 @@
         <item name="textAllCaps">false</item>
         <item name="android:textAllCaps">false</item>
     </style>
+
+    <!-- The floating bottom pill: home (item_navbar.xml) and profile (activity_profile.xml). One definition. -->
+    <style name="Widget.Editotsu.FloatingNavPill" parent="">
+        <item name="android:layout_width">240dp</item>
+        <item name="android:layout_height">56dp</item>
+        <item name="android:layout_gravity">center_horizontal</item>
+        <item name="android:layout_marginTop">16dp</item>
+        <item name="android:layout_marginBottom">32dp</item>
+        <item name="android:background">@drawable/bottom_nav</item>
+        <item name="android:elevation">8dp</item>
+        <item name="android:padding">6dp</item>
+        <item name="abb_animationDuration">300</item>
+        <item name="abb_animationInterpolator">@anim/over_shoot</item>
+        <item name="abb_indicatorColor">?attr/colorTertiary</item>
+        <item name="abb_indicatorLocation">bottom</item>
+        <item name="abb_indicatorMargin">28dp</item>
+        <item name="abb_selectedTabType">text</item>
+        <item name="abb_tabColor">?attr/colorOutline</item>
+        <item name="abb_tabColorDisabled">?attr/colorPrimaryContainer</item>
+        <item name="abb_tabColorSelected">?attr/colorPrimary</item>
+        <item name="abb_textAppearance">@style/NavBarText</item>
+    </style>
 </resources>

@@ -2193,6 +2193,18 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 aniSkipManager.buttonsSuppressed = true
             }
         } else {
+            // PiP closed while the activity is no longer visible: the user swiped the window
+            // away (or tapped its close button), not "expand". Stop playback and close the
+            // player, episodes and openings/endings alike; otherwise the sound kept going
+            // with no window, because onStop ran while still in PiP and skipped its pause.
+            if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                unregisterPipReceiver()
+                if (this::playerManager.isInitialized && playerManager.isInitialized) {
+                    playerManager.playbackEngine?.pause()
+                }
+                finish()
+                return
+            }
             if (this::aniSkipManager.isInitialized) aniSkipManager.buttonsSuppressed = false
             unregisterPipReceiver()
             hideSystemBars()

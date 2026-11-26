@@ -9,26 +9,10 @@
 
     <nl.joery.animatedbottombar.AnimatedBottomBar
         android:id="@+id/navbar"
+        style="@style/Widget.Editotsu.FloatingNavPill"
         android:layout_width="300dp"
-        android:layout_height="56dp"
-        android:layout_gravity="center_horizontal"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="32dp"
-        android:background="@drawable/bottom_nav"
-        android:elevation="8dp"
-        android:padding="6dp"
         android:visibility="gone"
-        app:abb_animationDuration="300"
-        app:abb_animationInterpolator="@anim/over_shoot"
         app:abb_badgeBackgroundColor="#F44336"
-        app:abb_indicatorColor="?attr/colorTertiary"
-        app:abb_indicatorLocation="bottom"
-        app:abb_indicatorMargin="28dp"
-        app:abb_selectedTabType="text"
-        app:abb_tabColor="?attr/colorOutline"
-        app:abb_tabColorDisabled="?attr/colorPrimaryContainer"
-        app:abb_tabColorSelected="?attr/colorPrimary"
         app:abb_tabs="@menu/bottom_navbar_offline_menu"
-        app:abb_textAppearance="@style/NavBarText"
         tools:visibility="visible" />
 </FrameLayout>
