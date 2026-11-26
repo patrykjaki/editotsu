@@ -698,6 +698,30 @@ class HomeFragment : Fragment() {
             }
         }
 
+        // Quiet inline status while AniList rate-limits or retries in the background.
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                Anilist.rateLimitState.collect { state ->
+                    val b = _binding ?: return@collect
+                    val inRescueMode: Boolean = PrefManager.getVal(PrefName.RescueMode)
+                    val showBanner = !inRescueMode && (state.waiting || state.exhausted)
+                    b.homeRateLimitBanner.isVisible = showBanner
+                    if (showBanner) {
+                        val remainingSec = ((state.retryAtEpochMs - System.currentTimeMillis() + 999L) / 1000L).coerceAtLeast(0L)
+                        b.homeRateLimitProgress.isVisible = state.waiting
+                        b.homeRateLimitText.text = when {
+                            state.waiting && remainingSec > 0L ->
+                                getString(R.string.anilist_rate_limit_waiting, remainingSec)
+                            state.waiting ->
+                                getString(R.string.anilist_rate_limit_waiting_short)
+                            else ->
+                                getString(R.string.anilist_rate_limit_exhausted)
+                        }
+                    }
+                }
+            }
+        }
+
         live.observe(viewLifecycleOwner) { shouldRefresh ->
             if (!running && shouldRefresh) {
                 running = true
