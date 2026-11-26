@@ -4,6 +4,7 @@ import ani.dantotsu.R
 import ani.dantotsu.Refresh
 import ani.dantotsu.connections.anilist.Anilist
 import ani.dantotsu.connections.mal.MAL
+import ani.dantotsu.currActivity
 import ani.dantotsu.currContext
 import ani.dantotsu.media.Media
 import ani.dantotsu.media.MediaType
@@ -117,7 +118,10 @@ fun updateProgress(media: Media, number: String) {
                         // Upstream aa98472a anti-regression: userProgress advances
                         // only after the primary tracker accepted the update.
                         media.userProgress = a
-                        toast(currContext()?.getString(R.string.setting_progress, a))
+                        // no toast over the player: it updates mid-episode, the list shows it
+                        if (currActivity() !is ani.dantotsu.media.anime.ExoplayerView) {
+                            toast(currContext()?.getString(R.string.setting_progress, a))
+                        }
                     } else {
                         toast(currContext()?.getString(R.string.progress_sync_later, a))
                     }

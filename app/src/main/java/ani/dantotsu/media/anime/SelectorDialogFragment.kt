@@ -98,6 +98,7 @@ import ani.dantotsu.media.anime.selector.FamilyPayload
 import ani.dantotsu.media.anime.selector.RecoveryCoordinator
 import ani.dantotsu.media.anime.selector.RecoveryResult
 import ani.dantotsu.media.anime.selector.RememberedSelectionPolicy
+import ani.dantotsu.media.anime.selector.ReleaseEpisode
 import ani.dantotsu.media.anime.selector.SelectedFamilyStore
 import ani.dantotsu.media.anime.selector.SelectedKeyStore
 import ani.dantotsu.media.anime.selector.StableCandidateBuilder
@@ -688,7 +689,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                         )
                         if (decision.entry != RememberedSelectionPolicy.AutoplayEntry.PICKER) {
                             showPage(SheetPage.AUTO, forward = false, animate = false)
-                            binding.selectorAutoText.text = selected?.lineSequence()?.firstOrNull { it.isNotBlank() }
+                            // last episode's release name would read as the wrong episode; show the group then
+                            binding.selectorAutoText.text = selected?.takeIf { ReleaseEpisode.fits(it, ep.number) }
+                                ?.lineSequence()?.firstOrNull { it.isNotBlank() }
                                 ?: entryFamily?.groupKey?.let { getString(R.string.picker_auto_group, it) } ?: ""
                             // Same rule as the player: a saved position resumes unless the
                             // episode was finished (92%), which starts again at 0:00.
@@ -752,7 +755,9 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                         withContext(Dispatchers.Main) {
                                             // The sheet may be gone by now (cancel, back); its views are.
                                             if (_binding == null || !isAdded) return@withContext
+                                            // rows named for another episode (torrent lists carry neighbours) never match
                                             val servers = ep.extractors?.map { it.server }
+                                                ?.filter { ReleaseEpisode.fits(it.name, ep.number) }
                                                 ?: emptyList()
                                             val recovery = RecoveryCoordinator.resolve(
                                                 storedExactKey = storedKey,
@@ -849,7 +854,7 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                                     if (model.watchSources!!.isDownloadedSource(media!!.selected!!.sourceIndex)) {
                                         ep.extractors?.firstOrNull()
                                     } else {
-                                        ep.extractors?.find { it.server.name == selected }
+                                        ep.extractors?.find { it.server.name == selected && ReleaseEpisode.fits(it.server.name, ep.number) }
                                             ?: if (rememberedRelease) null
                                             else preferredPlayableFallback(ep.extractors)
                                                 ?: ep.extractors?.firstOrNull()
@@ -881,11 +886,13 @@ class SelectorDialogFragment : BottomSheetDialogFragment() {
                             // explicit selection — the named single-server
                             // load is attempted first; fallback happens in
                             // load() only afterwards.
-                            val hasExplicit = hasExplicitServer(ep.extractors, selected)
+                            // a remembered name for another episode is not this episode's pick
+                            val selectedFits = selected?.let { ReleaseEpisode.fits(it, ep.number) } != false
+                            val hasExplicit = selectedFits && hasExplicitServer(ep.extractors, selected)
 
                             if (decision.entry == RememberedSelectionPolicy.AutoplayEntry.RECOVER) {
                                 failToList()
-                            } else if (!hasExplicit && selected != null && rememberedRelease) {
+                            } else if (!hasExplicit && selected != null && (rememberedRelease || !selectedFits)) {
                                 // all rows are needed to pick the family; failToList
                                 // loads them and resolves exact key, then family
                                 failToList()

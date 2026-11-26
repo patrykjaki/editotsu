@@ -2194,15 +2194,14 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
             }
         } else {
             // PiP closed while the activity is no longer visible: the user swiped the window
-            // away (or tapped its close button), not "expand". Stop playback and close the
-            // player, episodes and openings/endings alike; otherwise the sound kept going
-            // with no window, because onStop ran while still in PiP and skipped its pause.
+            // away (or tapped its close button), not "expand". Pause and keep the player, like
+            // YouTube: opening the app again shows it paused where it was. Before, the sound
+            // kept going with no window, because onStop ran while still in PiP and skipped its pause.
             if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
                 unregisterPipReceiver()
                 if (this::playerManager.isInitialized && playerManager.isInitialized) {
                     playerManager.playbackEngine?.pause()
                 }
-                finish()
                 return
             }
             if (this::aniSkipManager.isInitialized) aniSkipManager.buttonsSuppressed = false
@@ -2252,8 +2251,13 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
         if (inPip) return
         // Leaving the player: stop the sound now, not after the exit animation (onStop).
-        if (isFinishing && !themeMode && this::playerManager.isInitialized && playerManager.isInitialized) {
-            playerManager.playbackEngine?.pause()
+        if (isFinishing) {
+            // a theme still loading must not start once the screen is gone
+            themeJob?.cancel()
+            themeRadioJob?.cancel()
+            if (this::playerManager.isInitialized && playerManager.isInitialized) {
+                playerManager.playbackEngine?.pause()
+            }
         }
         if (this::aniSkipManager.isInitialized) {
             aniSkipManager.stopTracking()
@@ -2584,6 +2588,9 @@ class ExoplayerView : AppCompatActivity(), PlaybackListener {
                 // with no notification to stop it. Start once the player is on screen again.
                 lifecycle.withStarted { }
             }
+            // Back while the theme was still loading: the screen is closing but still "started"
+            // until its exit ends, and a theme started now would keep playing with no screen.
+            if (isFinishing || isDestroyed) return@launch
             loadTheme(track, next.url, themeLastPositionMs)
         }
     }
